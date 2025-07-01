@@ -1,0 +1,205 @@
+"""
+Workspace management commands for the Maia CLI.
+"""
+import asyncio
+import argparse
+import logging
+from typing import List, Dict, Any, Optional
+
+from promaia.config.workspaces import get_workspace_manager
+from promaia.config.databases import get_database_manager
+
+logger = logging.getLogger(__name__)
+
+async def handle_workspace_list(args):
+    """Handle 'maia workspace list' command."""
+    workspace_manager = get_workspace_manager()
+    workspaces = workspace_manager.list_workspaces()
+    default_workspace = workspace_manager.get_default_workspace()
+    
+    if not workspaces:
+        print("No workspaces configured.")
+        print("Add a workspace with: maia workspace add <name> <api_key>")
+        return
+    
+    print("Configured workspaces:")
+    for workspace_name in workspaces:
+        workspace = workspace_manager.get_workspace(workspace_name)
+        status = "✓" if workspace.enabled else "✗"
+        default_marker = " (default)" if workspace_name == default_workspace else ""
+        print(f"  {status} {workspace_name}{default_marker}")
+        if workspace.description:
+            print(f"    Description: {workspace.description}")
+    
+    print(f"\nDefault workspace: {default_workspace or 'None'}")
+
+async def handle_workspace_add(args):
+    """Handle 'maia workspace add' command."""
+    workspace_manager = get_workspace_manager()
+    
+    name = args.name
+    api_key = args.api_key
+    description = getattr(args, 'description', '')
+    
+    if workspace_manager.add_workspace(name, api_key, description):
+        print(f"✓ Added workspace '{name}'")
+        
+        # Set as default if requested or if it's the first workspace
+        if getattr(args, 'set_default', False) or not workspace_manager.get_default_workspace():
+            workspace_manager.set_default_workspace(name)
+            print(f"✓ Set '{name}' as default workspace")
+    else:
+        print(f"✗ Failed to add workspace '{name}' (already exists)")
+
+async def handle_workspace_remove(args):
+    """Handle 'maia workspace remove' command."""
+    workspace_manager = get_workspace_manager()
+    db_manager = get_database_manager()
+    
+    name = args.name
+    
+    # Check if workspace has databases
+    workspace_databases = db_manager.get_workspace_databases(name)
+    if workspace_databases and not getattr(args, 'force', False):
+        print(f"✗ Workspace '{name}' has {len(workspace_databases)} databases:")
+        for db in workspace_databases:
+            print(f"  - {db.get_qualified_name()}")
+        print("Use --force to remove workspace and all its databases")
+        return
+    
+    # Remove databases first if force is used
+    if workspace_databases and getattr(args, 'force', False):
+        for db in workspace_databases:
+            db_manager.remove_database(db.nickname, name)
+        print(f"Removed {len(workspace_databases)} databases from workspace")
+    
+    if workspace_manager.remove_workspace(name):
+        print(f"✓ Removed workspace '{name}'")
+    else:
+        print(f"✗ Failed to remove workspace '{name}' (not found)")
+
+async def handle_workspace_set_default(args):
+    """Handle 'maia workspace set-default' command."""
+    workspace_manager = get_workspace_manager()
+    
+    name = args.name
+    
+    if workspace_manager.set_default_workspace(name):
+        print(f"✓ Set '{name}' as default workspace")
+    else:
+        print(f"✗ Failed to set default workspace ('{name}' not found)")
+
+async def handle_workspace_info(args):
+    """Handle 'maia workspace info' command."""
+    workspace_manager = get_workspace_manager()
+    db_manager = get_database_manager()
+    
+    name = args.name
+    workspace = workspace_manager.get_workspace(name)
+    
+    if not workspace:
+        print(f"✗ Workspace '{name}' not found")
+        return
+    
+    print(f"Workspace: {name}")
+    print(f"Description: {workspace.description or 'None'}")
+    print(f"Enabled: {workspace.enabled}")
+    print(f"API Key: {'*' * 30}...{workspace.api_key[-4:] if workspace.api_key else 'None'}")
+    print(f"Created: {workspace.created_at}")
+    
+    # Show databases in this workspace
+    workspace_databases = db_manager.get_workspace_databases(name)
+    print(f"\nDatabases ({len(workspace_databases)}):")
+    if workspace_databases:
+        for db in workspace_databases:
+            sync_status = "✓" if db.sync_enabled else "✗"
+            print(f"  {sync_status} {db.get_qualified_name()} - {db.description}")
+    else:
+        print("  None")
+
+async def handle_workspace_test(args):
+    """Handle 'maia workspace test' command."""
+    workspace_manager = get_workspace_manager()
+    
+    name = args.name
+    workspace = workspace_manager.get_workspace(name)
+    
+    if not workspace:
+        print(f"✗ Workspace '{name}' not found")
+        return
+    
+    if not workspace.api_key:
+        print(f"✗ Workspace '{name}' has no API key configured")
+        return
+    
+    # Test the API key by making a simple request
+    try:
+        from notion_client import Client
+        client = Client(auth=workspace.api_key)
+        
+        # Try to list users (minimal API call)
+        response = client.users.list()
+        print(f"✓ Workspace '{name}' API key is valid")
+        print(f"  Connected to workspace with {len(response.get('results', []))} users")
+        
+    except Exception as e:
+        print(f"✗ Workspace '{name}' API key test failed: {str(e)}")
+
+def add_workspace_commands(subparsers):
+    """Add workspace management commands to CLI."""
+    workspace_parser = subparsers.add_parser('workspace', help='Manage Notion workspaces')
+    workspace_subparsers = workspace_parser.add_subparsers(dest='workspace_command', required=True)
+    add_workspace_commands_to_existing_parser(workspace_parser, workspace_subparsers)
+
+def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
+    """Helper function to add workspace subcommands to any parser with aliases."""
+    
+    # List workspaces
+    list_parser = subparsers.add_parser('list', help='List all configured workspaces')
+    list_parser.set_defaults(func=handle_workspace_list)
+    
+    # Add 'ls' alias for list
+    ls_parser = subparsers.add_parser('ls', help='List all configured workspaces (alias for list)')
+    ls_parser.set_defaults(func=handle_workspace_list)
+    
+    # Add workspace
+    add_parser = subparsers.add_parser('add', help='Add a new workspace')
+    add_parser.add_argument('name', help='Workspace name/nickname')
+    add_parser.add_argument('api_key', help='Notion API key for this workspace')
+    add_parser.add_argument('--description', help='Optional description')
+    add_parser.add_argument('--set-default', action='store_true', help='Set as default workspace')
+    add_parser.set_defaults(func=handle_workspace_add)
+    
+    # Remove workspace
+    remove_parser = subparsers.add_parser('remove', help='Remove a workspace')
+    remove_parser.add_argument('name', help='Workspace name to remove')
+    remove_parser.add_argument('--force', action='store_true', help='Force removal even if databases exist')
+    remove_parser.set_defaults(func=handle_workspace_remove)
+    
+    # Add 'rm' alias for remove
+    rm_parser = subparsers.add_parser('rm', help='Remove a workspace (alias for remove)')
+    rm_parser.add_argument('name', help='Workspace name to remove')
+    rm_parser.add_argument('--force', action='store_true', help='Force removal even if databases exist')
+    rm_parser.set_defaults(func=handle_workspace_remove)
+    
+    # Set default workspace
+    default_parser = subparsers.add_parser('set-default', help='Set default workspace')
+    default_parser.add_argument('name', help='Workspace name to set as default')
+    default_parser.set_defaults(func=handle_workspace_set_default)
+    
+    # Workspace info
+    info_parser = subparsers.add_parser('info', help='Show workspace information')
+    info_parser.add_argument('name', help='Workspace name')
+    info_parser.set_defaults(func=handle_workspace_info)
+    
+    # Test workspace connection
+    test_parser = subparsers.add_parser('test', help='Test workspace API connection')
+    test_parser.add_argument('name', help='Workspace name to test')
+    test_parser.set_defaults(func=handle_workspace_test)
+    
+    # Gmail setup (optional)
+    try:
+        from promaia.cli.gmail_commands import add_workspace_gmail_commands
+        add_workspace_gmail_commands(subparsers)
+    except ImportError:
+        pass  # Gmail commands not available 

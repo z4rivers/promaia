@@ -1,0 +1,861 @@
+"""
+File storage operations for saving and reading markdown files.
+"""
+import os
+import glob
+import json
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+import re
+from promaia.utils.timezone_utils import now_utc
+from pathlib import Path
+import logging
+import sqlite3
+
+# Determine Project Root (assuming this file, files.py, is in maia/storage/)
+# So, two levels up from this file's directory is the project root.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Dynamic path functions that load from config
+def get_journal_directory() -> str:
+    """
+    Get the journal markdown directory path from config.
+    
+    Returns:
+        Journal directory path from database config
+    """
+    try:
+        from promaia.config.databases import get_database_config
+        db_config = get_database_config("journal")
+        if db_config and hasattr(db_config, 'markdown_directory'):
+            return db_config.markdown_directory
+    except Exception as e:
+        print(f"Warning: Could not load journal directory from config: {e}")
+    
+    # Fallback to default path if config loading fails
+    return "data/md/notion/koii/journal"
+
+def get_cms_directory() -> str:
+    """
+    Get the CMS markdown directory path from config.
+    
+    Returns:
+        CMS directory path from database config
+    """
+    try:
+        from promaia.config.databases import get_database_config
+        db_config = get_database_config("cms")
+        if db_config and hasattr(db_config, 'markdown_directory'):
+            return db_config.markdown_directory
+    except Exception as e:
+        print(f"Warning: Could not load CMS directory from config: {e}")
+    
+    # Fallback to default path if config loading fails
+    return "data/md/notion/koii/cms"
+
+def get_public_entries_directory() -> str:
+    """
+    Get the public entries directory path.
+    This is currently hardcoded as it's not in config yet.
+    
+    Returns:
+        Public entries directory path
+    """
+    return "KOii-chat-entries"
+
+# Legacy constants for backward compatibility (DEPRECATED - use functions above)
+PUBLIC_ENTRIES_DIR_NAME = get_public_entries_directory()  # For scrubbed, public entries for web app
+
+# The old get_output_dir and ensure_output_dir relied on os.getcwd(), which is brittle.
+# We will make read_markdown_files more robust by using PROJECT_ROOT directly.
+# These functions remain for other uses but their cwd-dependency is noted.
+def get_output_dir(content_type: str) -> str:
+    """
+    Get the output directory for a specific content type.
+    Constructs path relative to PROJECT_ROOT using dynamic config loading.
+
+    Args:
+        content_type: Type of content (e.g., "journal", "cms", "example")
+    Returns:
+        Absolute path to the output directory
+    """
+    dir_name = ""
+    if content_type == "journal":
+        dir_name = get_journal_directory()
+    elif content_type == "cms": # Explicitly "cms"
+        dir_name = get_cms_directory()
+    else:
+        # For any other content_type, create a directory named notion-<content_type>
+        # e.g., if content_type is "example", dir_name will be "notion-example"
+        dir_name = f"notion-{content_type}"
+    
+    return os.path.join(PROJECT_ROOT, dir_name)
+
+def ensure_output_dir(content_type: str):
+    """Ensure the output directory exists. Uses PROJECT_ROOT via get_output_dir."""
+    # This function is problematic due to get_output_dir's reliance on CWD. # This comment is now less relevant
+    # For read_markdown_files, we will handle directory creation directly. # This comment might be outdated
+    # For save_page_to_file, it will continue to use this potentially brittle path. # Path is now robust
+    output_dir_path = get_output_dir(content_type)
+    os.makedirs(output_dir_path, exist_ok=True)
+
+async def save_page_to_file(page_id: str, title: str, markdown_content: str, content_type: str = "journal") -> str:
+    """
+    Save a page to a markdown file.
+    
+    Args:
+        page_id: ID of the page
+        title: Title of the page
+        markdown_content: Markdown content to save
+        content_type: Type of content ("journal", "webflow", "cms")
+        
+    Returns:
+        Path to the saved file
+    """
+    ensure_output_dir(content_type)
+    output_dir = get_output_dir(content_type)
+    
+    # Create a safe filename from the title
+    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+    
+    # Create the filename with just the title and page ID
+    filename = f"{safe_title} {page_id}.md"
+    filepath = os.path.join(output_dir, filename)
+    
+    # Save the markdown content to the file
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(markdown_content)
+    
+    return filepath
+
+# ADDED: Helper function to predict journal entry filepath
+def get_journal_entry_filepath(title: str, page_id: str) -> str:
+    """
+    Construct the expected filepath for a journal entry, mirroring save_page_to_file logic.
+    
+    Args:
+        title: The title of the journal entry.
+        page_id: The Notion page ID of the journal entry.
+        
+    Returns:
+        The predicted absolute filepath for the journal entry.
+    """
+    output_dir = get_output_dir("journal") # Specifically for journal content type
+    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+    filename = f"{safe_title} {page_id}.md"
+    return os.path.join(output_dir, filename)
+
+def get_existing_page_ids(content_type: str = "journal") -> set:
+    """
+    Get the IDs of existing saved pages.
+    
+    Args:
+        content_type: Type of content ("journal" or "webflow" or "cms")
+        
+    Returns:
+        Set of page IDs that have already been saved
+    """
+    output_dir = get_output_dir(content_type)
+    existing_ids = set()
+    for file in glob.glob(os.path.join(output_dir, "*.md")):
+        # Extract page ID from filename (last part after the last space)
+        try:
+            page_id = file.split()[-1].replace('.md', '')
+            existing_ids.add(page_id)
+        except:
+            # Skip files with invalid format
+            pass
+    return existing_ids
+
+def cleanup_old_pages(days: int = 30) -> int:
+    """
+    This function previously removed markdown files older than the specified 
+    number of days, but we're now disabling this behavior to prevent unwanted
+    file deletion. The files will remain in the OUTPUT_DIR.
+    
+    Args:
+        days: Number of days parameter (ignored)
+        
+    Returns:
+        Always returns 0 (no files removed)
+    """
+    # We no longer remove older files
+    return 0
+
+def read_markdown_files(
+    days: Optional[int] = None, 
+    content_type: str = "journal", # Deprecated for choosing source, use target_data_source
+    target_data_source: str = "private" # "private" for notion-journal, "public" for public-entries
+) -> List[Dict[str, Any]]:
+    """
+    Read markdown files and return their content as a list of dictionaries.
+    Uses target_data_source to choose between private ('notion-journal') and public ('public-entries') sources.
+    The content_type arg is kept for backward compatibility for non-journal types but ignored for journal source selection if target_data_source is used.
+    """
+    source_dir_name = ""
+    # Prioritize webflow content_type check
+    if content_type == "webflow" or content_type == "cms":
+        source_dir_name = get_cms_directory()
+    # Then check target_data_source for journal types
+    elif target_data_source == "private":
+        source_dir_name = get_journal_directory()
+    elif target_data_source == "public":
+        source_dir_name = get_public_entries_directory()
+    # elif content_type == "prompts": # REMOVED
+    #     source_dir_name = PROMPTS_DIR_NAME # REMOVED
+    else:
+        # Fallback or error if no valid source can be determined
+        # This case might need review - should it ever happen now?
+        print(f"Warning: Could not determine data source. Defaulting to private journal. target_data_source: {target_data_source}, content_type: {content_type}")
+        source_dir_name = get_journal_directory() # Default to private journal if ambiguous
+
+    # Construct the absolute path to the source directory using PROJECT_ROOT
+    data_directory_path = os.path.join(PROJECT_ROOT, source_dir_name)
+
+    if not os.path.isdir(data_directory_path):
+        print(f"Error: Source directory not found: {data_directory_path}")
+        # If public is specified and not found, do not fallback to private here unless explicitly desired.
+        # For now, we simply return empty if the intended directory is missing.
+        if target_data_source == "public":
+            print(f"Specifically, public entries directory '{data_directory_path}' does not exist.")
+        return []
+    
+    # Ensure the directory exists (primarily for save operations, but good check)
+    # os.makedirs(data_directory_path, exist_ok=True) # Not strictly needed for read if check above is done
+    
+    pages = []
+    markdown_files_glob = os.path.join(data_directory_path, "*.md")
+    markdown_files = glob.glob(markdown_files_glob)
+    
+    total_files = 0
+    filtered_files = 0
+    all_dates = []
+    
+    # Collect all dates from filenames for reference
+    for file_path_iter in markdown_files: # Renamed to avoid conflict with outer scope var if any
+        try:
+            filename_iter = os.path.basename(file_path_iter)
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename_iter)
+            if date_match:
+                try:
+                    date_str_iter = date_match.group(1)
+                    file_date_iter = datetime.strptime(date_str_iter, "%Y-%m-%d")
+                    all_dates.append(file_date_iter)
+                except ValueError:
+                    pass
+        except Exception:
+            pass # ... (original exception handling)
+    
+    if all_dates:
+        all_dates.sort(reverse=True)
+    
+    cutoff_date = None
+    if days is not None:
+        reference_date = max(all_dates) if all_dates else datetime.now()
+        cutoff_date = reference_date - timedelta(days=days)
+    
+    for file_path in markdown_files:
+        total_files += 1
+        try:
+            filename = os.path.basename(file_path)
+            file_mtime = os.path.getmtime(file_path)
+            mod_date_obj = datetime.fromtimestamp(file_mtime)
+            date_from_filename = None
+            # Using simplified content_type check here for date extraction context
+            # The primary directory choice is done by target_data_source
+            is_journal_context = (source_dir_name == get_journal_directory() or source_dir_name == get_public_entries_directory()) # Removed PROMPTS_DIR_NAME
+
+            if is_journal_context: 
+                date_match = re.search(r'^(\d{4}-\d{2}-\d{2})', filename) 
+                if not date_match: 
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename) 
+                if not date_match: 
+                    id_match = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', filename.lower()) 
+                    if id_match: 
+                        page_id = id_match.group(1) 
+                        for other_file in markdown_files: 
+                            other_filename = os.path.basename(other_file) 
+                            if page_id in other_filename.lower() and re.search(r'(\d{4}-\d{2}-\d{2})', other_filename): 
+                                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', other_filename) 
+                                break 
+                if date_match: 
+                    try: 
+                        date_str = date_match.group(1) 
+                        date_from_filename = datetime.strptime(date_str, "%Y-%m-%d") 
+                    except ValueError: 
+                        pass 
+                elif all_dates and ("alweyssamer" in filename.lower() or "today" in filename.lower()): 
+                    date_from_filename = all_dates[0]
+            
+            # IMPROVED DATE LOGIC: Always prioritize date from filename over mtime for better chronological ordering
+            date_obj = mod_date_obj
+            debug_info = "date from mtime"
+            
+            # First priority: date extracted from filename (most reliable)
+            if date_from_filename:
+                date_obj = date_from_filename
+                debug_info = "date in filename"
+            # Second priority: use mtime but ensure it's reasonable
+            elif all_dates and is_journal_context:
+                # If file mtime seems unreliable (very different from other files), use reference date
+                if abs(max(all_dates).year - datetime.now().year) > 1:
+                    if date_obj.year != max(all_dates).year:
+                        date_obj = max(all_dates)
+                        debug_info = "newest file date (due to year diff, simplified)"
+            
+            date_str_display = date_obj.strftime("%Y-%m-%d")
+            
+            if cutoff_date is not None and date_obj.date() < cutoff_date.date():
+                filtered_files += 1
+                continue
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            pages.append({
+                'date': date_str_display,
+                'date_obj': date_obj,
+                'content': content,
+                'file_path': file_path,
+                'filename': filename,
+                'debug_info': debug_info
+            })
+        except Exception as e:
+            print(f"Error reading file {file_path}: {str(e)}")
+    
+    pages.sort(key=lambda x: x['date_obj'], reverse=True)
+    print(f"Read {len(pages)} pages from {data_directory_path}. Total files scanned: {total_files}, initially filtered out by date: {filtered_files}")
+    return pages
+
+def test_days_filtering(days=7):
+    """Test function to debug the date filtering in read_markdown_files."""
+    print(f"\nTESTING DAYS FILTERING WITH {days} DAYS\n" + "="*50)
+    
+    # Get the pages filtered by days
+    pages = read_markdown_files(days=days)
+    
+    # Print summary of included pages
+    print(f"\nINCLUDED PAGES ({len(pages)}):")
+    for page in pages:
+        print(f"  - {page['filename']} (Date: {page['date']}, Source: {'filename' if 'date in filename' in page.get('debug_info', '') else 'mtime'})")
+    
+    # Get all pages without filtering
+    all_pages = read_markdown_files(days=None)
+    
+    # Find excluded pages
+    excluded_filenames = set(p['filename'] for p in all_pages) - set(p['filename'] for p in pages)
+    
+    print(f"\nEXCLUDED PAGES ({len(excluded_filenames)}):")
+    for filename in sorted(excluded_filenames):
+        page = next((p for p in all_pages if p['filename'] == filename), None)
+        if page:
+            print(f"  - {page['filename']} (Date: {page['date']})")
+    
+    print("\n" + "="*50)
+    
+    return pages
+
+def read_markdown_files_from_sources(sources: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Read markdown files from multiple sources with different day filters.
+    
+    Args:
+        sources: List of source configurations, each containing:
+                - database: database name (matches directory name in data/)
+                - days: number of days to filter (int or 'all')
+    
+    Returns:
+        Dictionary with database names as keys and lists of pages as values:
+        {
+            'koii_journal': [page1, page2, ...],
+            'awakenings': [page1, page2, ...],
+            ...
+        }
+    """
+    source_data = {}
+    total_pages = 0
+    
+    for source in sources:
+        database_name = source.get('database')
+        days = source.get('days')
+        
+        if not database_name:
+            print(f"Warning: Skipping source with missing database name: {source}")
+            continue
+            
+        # Convert 'all' to None for the read function
+        days_filter = None if days == 'all' else days
+        
+        # Construct the path to the database directory
+        database_path = os.path.join(PROJECT_ROOT, "data", database_name)
+        
+        if not os.path.isdir(database_path):
+            print(f"Warning: Database directory not found: {database_path}")
+            continue
+            
+        print(f"Loading from {database_name} with {days} days filter...")
+        
+        # Use the existing read_markdown_files logic but with custom directory
+        pages = read_markdown_files_from_directory(database_path, days_filter)
+        
+        # Add source information to each page
+        for page in pages:
+            page['source_database'] = database_name
+            
+        # Sort pages by date (newest first)
+        pages.sort(key=lambda x: x['date_obj'], reverse=True)
+        
+        source_data[database_name] = pages
+        total_pages += len(pages)
+        print(f"Loaded {len(pages)} pages from {database_name}")
+    
+    print(f"Total loaded: {total_pages} pages from {len(sources)} sources")
+    return source_data
+
+def read_markdown_files_from_directory(directory_path: str, days: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Read markdown files from a specific directory with date filtering.
+    Similar to read_markdown_files but takes a direct directory path.
+    
+    Args:
+        directory_path: Absolute path to the directory containing markdown files
+        days: Number of days to look back (None for all files)
+    
+    Returns:
+        List of page data dictionaries
+    """
+    if not os.path.isdir(directory_path):
+        return []
+
+    pages = []
+    markdown_files_glob = os.path.join(directory_path, "*.md")
+    markdown_files = glob.glob(markdown_files_glob)
+    
+    total_files = 0
+    filtered_files = 0
+    all_dates = []
+    
+    # Collect all dates from filenames for reference
+    for file_path_iter in markdown_files:
+        try:
+            filename_iter = os.path.basename(file_path_iter)
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename_iter)
+            if date_match:
+                try:
+                    date_str_iter = date_match.group(1)
+                    file_date_iter = datetime.strptime(date_str_iter, "%Y-%m-%d")
+                    all_dates.append(file_date_iter)
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+    
+    if all_dates:
+        all_dates.sort(reverse=True)
+    
+    cutoff_date = None
+    if days is not None:
+        reference_date = max(all_dates) if all_dates else datetime.now()
+        cutoff_date = reference_date - timedelta(days=days)
+    
+    for file_path in markdown_files:
+        total_files += 1
+        try:
+            filename = os.path.basename(file_path)
+            file_mtime = os.path.getmtime(file_path)
+            mod_date_obj = datetime.fromtimestamp(file_mtime)
+            date_from_filename = None
+            
+            # IMPROVED DATE EXTRACTION: Try to extract date from filename with better patterns
+            date_from_filename = None
+            
+            # First: try YYYY-MM-DD at start of filename (preferred format)
+            date_match = re.search(r'^(\d{4}-\d{2}-\d{2})', filename)
+            if date_match:
+                try:
+                    date_str = date_match.group(1)
+                    date_from_filename = datetime.strptime(date_str, "%Y-%m-%d")
+                except ValueError:
+                    pass
+            
+            # Second: try YYYY-MM-DD anywhere in filename
+            if not date_from_filename:
+                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+                if date_match:
+                    try:
+                        date_str = date_match.group(1)
+                        date_from_filename = datetime.strptime(date_str, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+            
+            # Third: look for cross-references by page ID if no date found
+            if not date_from_filename:
+                id_match = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', filename.lower())
+                if id_match:
+                    page_id = id_match.group(1)
+                    for other_file in markdown_files:
+                        other_filename = os.path.basename(other_file)
+                        if page_id in other_filename.lower() and re.search(r'(\d{4}-\d{2}-\d{2})', other_filename):
+                            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', other_filename)
+                            if date_match:
+                                try:
+                                    date_str = date_match.group(1)
+                                    date_from_filename = datetime.strptime(date_str, "%Y-%m-%d")
+                                    break
+                                except ValueError:
+                                    pass
+            
+            # Fourth: special case handling for legacy filenames
+            if not date_from_filename and all_dates and ("alweyssamer" in filename.lower() or "today" in filename.lower()):
+                date_from_filename = all_dates[0]
+            
+            # IMPROVED DATE LOGIC: Always prioritize date from filename over mtime for better chronological ordering
+            date_obj = mod_date_obj
+            debug_info = "date from mtime"
+            
+            # First priority: date extracted from filename (most reliable)
+            if date_from_filename:
+                date_obj = date_from_filename
+                debug_info = "date in filename"
+            # Second priority: use mtime but ensure it's reasonable  
+            elif all_dates:
+                # If file mtime seems unreliable (very different from other files), use reference date
+                if abs(max(all_dates).year - datetime.now().year) > 1:
+                    if date_obj.year != max(all_dates).year:
+                        date_obj = max(all_dates)
+                        debug_info = "newest file date (due to year diff, simplified)"
+            
+            date_str_display = date_obj.strftime("%Y-%m-%d")
+            
+            if cutoff_date is not None and date_obj.date() < cutoff_date.date():
+                filtered_files += 1
+                continue
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            pages.append({
+                'date': date_str_display,
+                'date_obj': date_obj,
+                'content': content,
+                'file_path': file_path,
+                'filename': filename,
+                'debug_info': debug_info
+            })
+        except Exception as e:
+            print(f"Error reading file {file_path}: {str(e)}")
+    
+    pages.sort(key=lambda x: x['date_obj'], reverse=True)
+    return pages
+
+def load_json_files_with_property_filter(property_filters: Dict[str, Any], json_directory: str = "data/json") -> List[str]:
+    """
+    Load JSON files and return page IDs that match the specified property filters.
+    
+    Args:
+        property_filters: Dictionary of property_name -> value filters
+        json_directory: Directory containing JSON files
+        
+    Returns:
+        List of page IDs that match all property filters
+    """
+    if not property_filters:
+        return []
+    
+    json_dir_path = os.path.join(PROJECT_ROOT, json_directory)
+    
+    if not os.path.exists(json_dir_path):
+        print(f"Warning: JSON directory not found: {json_dir_path}")
+        return []
+    
+    matching_page_ids = []
+    json_files = glob.glob(os.path.join(json_dir_path, "*.json"))
+    
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                page_data = json.load(f)
+            
+            # Check if this page matches all property filters
+            matches_all_filters = True
+            page_properties = page_data.get('properties', {})
+            
+            for prop_name, expected_value in property_filters.items():
+                prop_data = page_properties.get(prop_name)
+                if not prop_data:
+                    matches_all_filters = False
+                    break
+                
+                # Extract the actual value based on property type
+                prop_type = prop_data.get('type')
+                actual_value = None
+                
+                if prop_type == 'checkbox':
+                    actual_value = prop_data.get('checkbox', False)
+                elif prop_type == 'select' and prop_data.get('select'):
+                    actual_value = prop_data['select'].get('name')
+                elif prop_type == 'status' and prop_data.get('status'):
+                    actual_value = prop_data['status'].get('name')
+                elif prop_type == 'title' and prop_data.get('title'):
+                    actual_value = ''.join([t.get('plain_text', '') for t in prop_data['title']])
+                elif prop_type == 'rich_text' and prop_data.get('rich_text'):
+                    actual_value = ''.join([t.get('plain_text', '') for t in prop_data['rich_text']])
+                # Add more property types as needed
+                
+                # Compare values
+                if actual_value != expected_value:
+                    matches_all_filters = False
+                    break
+            
+            if matches_all_filters:
+                page_id = page_data.get('page_id') or page_data.get('id')  # Try both keys
+                if page_id:
+                    matching_page_ids.append(page_id)
+                    
+        except Exception as e:
+            print(f"Warning: Error processing JSON file {json_file}: {e}")
+            continue
+    
+    return matching_page_ids
+
+def read_markdown_files_by_page_ids(page_ids: List[str], directory_path: str, days: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Read specific markdown files by page IDs from a directory.
+    
+    Args:
+        page_ids: List of page IDs to load
+        directory_path: Directory containing markdown files
+        days: Optional days filter for additional time-based filtering
+        
+    Returns:
+        List of page data dictionaries for matching files
+    """
+    if not page_ids:
+        return []
+    
+    if not os.path.exists(directory_path):
+        print(f"Warning: Markdown directory not found: {directory_path}")
+        return []
+    
+    pages = []
+    markdown_files = glob.glob(os.path.join(directory_path, "*.md"))
+    
+    # Create a set for faster lookup
+    target_page_ids = set(page_ids)
+    
+    for file_path in markdown_files:
+        try:
+            filename = os.path.basename(file_path)
+            
+            # Extract page ID from filename (assuming format: "title page_id.md")
+            # Handle both UUID format and Gmail thread ID format
+            page_id_match = re.search(r'([a-f0-9-]{36}|thread_[a-f0-9]{16})\.md$', filename)
+            if not page_id_match:
+                continue
+                
+            file_page_id = page_id_match.group(1)
+            
+            # Only process if this page ID is in our target list
+            if file_page_id not in target_page_ids:
+                continue
+            
+            # Apply days filter if specified
+            if days is not None:
+                file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                cutoff_date = datetime.now() - timedelta(days=days)
+                if file_mtime < cutoff_date:
+                    continue
+            
+            # Read the markdown content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Create page data structure
+            page_data = {
+                'id': file_page_id,
+                'filename': filename,
+                'content': content,
+                'file_path': file_path,
+                'modified_time': datetime.fromtimestamp(os.path.getmtime(file_path))
+            }
+            
+            pages.append(page_data)
+            
+        except Exception as e:
+            print(f"Warning: Error processing markdown file {file_path}: {e}")
+            continue
+    
+    return pages
+
+def read_markdown_files_with_registry(
+    database_config, 
+    days: Optional[int] = None,
+    comparison_filters: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Read markdown files using the database registry as the source of truth for ordering.
+    
+    This function provides more accurate chronological ordering by using the SQLite
+    registry which contains the actual created_time from the original data sources.
+    
+    Args:
+        database_config: DatabaseConfig object with workspace and nickname
+        days: Number of days to look back (None for all files)
+        comparison_filters: Dictionary of comparison filters (e.g., {'created_time_after': [...]})
+    
+    Returns:
+        List of page data dictionaries ordered by database created_time
+    """
+    from promaia.storage.json_registry import get_json_registry
+    
+    pages = []
+    
+    try:
+        # Get registry entries for this database, ordered by created_time
+        registry = get_json_registry()
+        
+        # Query registry for files in this database
+        with sqlite3.connect(registry.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Determine which date property to use from config, default to created_time
+            date_filter_prop = database_config.date_filters.get("property", "created_time")
+            
+            # Basic sanitization to prevent SQL injection from config values
+            # This is a safeguard; config should be trusted but it's good practice
+            allowed_props = ["created_time", "last_edited_time"] # Removed "Date", "received_time" as they are not columns
+            if date_filter_prop not in allowed_props:
+                # If the configured property is not a direct column, assume it's a proxy 
+                # for created_time, which should hold the canonical date.
+                # This prevents the "no such column" error.
+                print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'created_time' for query.")
+                date_filter_prop = "created_time"
+            
+            # Build query with optional date filtering
+            base_query = f"""
+                SELECT page_id, title, created_time, synced_time, file_path, metadata
+                FROM content_registry 
+                WHERE workspace = ? AND database_name = ?
+                AND {date_filter_prop} IS NOT NULL AND {date_filter_prop} != ''
+            """
+            
+            params = [database_config.workspace, database_config.nickname]
+            
+            # Build date filtering clauses
+            filter_clauses = []
+
+            # 1. Handle `days` argument
+            if days is not None:
+                cutoff_date = now_utc() - timedelta(days=days)
+                filter_clauses.append(f"datetime({date_filter_prop}) >= ?")
+                params.append(cutoff_date.isoformat())
+
+            # 2. Handle `comparison_filters` for multiple date ranges
+            if comparison_filters:
+                # Expecting keys like 'created_time_after', 'created_time_before'
+                # The property name in the filter key (e.g., 'created_time') is ignored, 
+                # we use the one derived from config: `date_filter_prop`.
+                
+                after_dates = []
+                before_dates = []
+
+                for key, values in comparison_filters.items():
+                    if key.endswith('_after'):
+                        after_dates.extend(values)
+                    elif key.endswith('_before'):
+                        before_dates.extend(values)
+
+                if len(after_dates) == len(before_dates) and after_dates:
+                    range_clauses = []
+                    for start, end in zip(after_dates, before_dates):
+                        range_clauses.append(f"(datetime({date_filter_prop}) >= ? AND datetime({date_filter_prop}) <= ?)")
+                        params.extend([start, end])
+                    
+                    if range_clauses:
+                        filter_clauses.append(f"({ ' OR '.join(range_clauses) })")
+
+            if filter_clauses:
+                base_query += " AND " + " AND ".join(filter_clauses)
+            
+            base_query += f" ORDER BY datetime({date_filter_prop}) DESC"
+            
+            logging.debug(f"Executing registry query: {base_query}")
+            logging.debug(f"Query params: {params}")
+
+            cursor.execute(base_query, params)
+            registry_entries = cursor.fetchall()
+            
+        # For each registry entry, find and load the corresponding markdown file
+        md_dir = database_config.markdown_directory
+        if not os.path.exists(md_dir):
+            print(f"Warning: Markdown directory not found: {md_dir}")
+            return []
+        
+        for page_id, title, created_time, synced_time, file_path, metadata in registry_entries:
+            try:
+                # Find the markdown file for this page_id
+                md_files = glob.glob(os.path.join(md_dir, f"*{page_id}*.md"))
+                
+                if not md_files:
+                    print(f"Warning: No markdown file found for page_id {page_id}")
+                    continue
+                
+                # If multiple files exist for the same page_id, use the most recent one
+                if len(md_files) > 1:
+                    md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+                
+                md_file = md_files[0]
+                
+                # Read the markdown content
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Parse created_time from registry
+                try:
+                    if created_time:
+                        date_obj = datetime.fromisoformat(created_time.replace("Z", "+00:00"))
+                    else:
+                        # Fallback to file mtime
+                        date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
+                except (ValueError, TypeError):
+                    date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
+                
+                pages.append({
+                    'page_id': page_id,
+                    'date': date_obj.strftime("%Y-%m-%d"),
+                    'date_obj': date_obj,
+                    'content': content,
+                    'file_path': md_file,
+                    'filename': os.path.basename(md_file),
+                    'title': title or "Untitled",
+                    'created_time': created_time,
+                    'synced_time': synced_time,
+                    'debug_info': "date from database registry"
+                })
+                
+            except Exception as e:
+                print(f"Error processing registry entry {page_id}: {e}")
+                continue
+    
+    except Exception as e:
+        print(f"Error reading from registry: {e}")
+        print(f"✗ Registry-first architecture requires functional metadata database.")
+        print(f"  Run 'maia database register-markdown-files' to fix registry.")
+        return []
+    
+    print(f"Read {len(pages)} pages from database registry for {database_config.workspace}.{database_config.nickname}")
+    
+    # Registry-first: if no results, that's the authoritative answer
+    if len(pages) == 0:
+        print(f"No entries found in registry for {database_config.workspace}.{database_config.nickname}")
+        print(f"Registry is the authoritative source - if files exist but aren't registered:")
+        print(f"  Run 'maia database register-markdown-files --database {database_config.nickname} --workspace {database_config.workspace}'")
+        return []
+    
+    return pages
+
+# If this file is run directly, run the test
+if __name__ == "__main__":
+    import sys
+    days = int(sys.argv[1]) if len(sys.argv) > 1 else 7
+    test_days_filtering(days) 

@@ -1,0 +1,502 @@
+"""
+Unified storage system for managing content with the new directory structure.
+
+This module implements the new storage architecture:
+- Markdown files: data/md/notion/{workspace}/{database}/
+- JSON files: data/json/ (flat structure with SQLite registry)
+"""
+import os
+import json
+import logging
+import hashlib
+from datetime import datetime
+from typing import Dict, Any, Optional, List
+from pathlib import Path
+
+from promaia.config.databases import DatabaseConfig, get_database_manager
+from promaia.storage.json_registry import get_json_registry
+
+logger = logging.getLogger(__name__)
+
+class UnifiedStorage:
+    """Unified storage manager for the new directory structure."""
+    
+    def __init__(self, config_file: str = "promaia.config.json"):
+        self.config_file = config_file
+        self.db_manager = get_database_manager()
+        self.json_registry = get_json_registry()
+        
+    def save_content(self, 
+                    page_id: str,
+                    title: str,
+                    content_data: Dict[str, Any],
+                    database_config: DatabaseConfig,
+                    markdown_content: Optional[str] = None) -> Dict[str, str]:
+        """
+        Save content using the new storage structure.
+        
+        Args:
+            page_id: Notion page ID
+            title: Page title
+            content_data: Full page data from Notion
+            database_config: Database configuration
+            markdown_content: Optional markdown content
+            
+        Returns:
+            Dictionary with paths to saved files
+        """
+        saved_paths = {}
+        
+        # Save JSON file (flat structure with registry) - only if enabled
+        if database_config.save_json or database_config.primary_format == "json":
+            json_path = self._save_json_file(
+                page_id, title, content_data, database_config
+            )
+            if json_path:
+                saved_paths['json'] = json_path
+        
+        # Save Markdown file (hierarchical structure)
+        if database_config.save_markdown and markdown_content:
+            md_path = self._save_markdown_file(
+                page_id, title, markdown_content, database_config, content_data
+            )
+            if md_path:
+                saved_paths['markdown'] = md_path
+                
+        return saved_paths
+    
+    def _save_json_file(self, 
+                       page_id: str,
+                       title: str, 
+                       content_data: Dict[str, Any],
+                       database_config: DatabaseConfig) -> Optional[str]:
+        """Save JSON file in flat structure and register it."""
+        try:
+            # Ensure JSON directory exists (only if JSON storage is enabled)
+            json_dir = database_config.json_directory
+            if not (database_config.save_json or database_config.primary_format == "json"):
+                logger.warning(f"JSON storage disabled but _save_json_file called for {page_id}")
+                return None
+            os.makedirs(json_dir, exist_ok=True)
+            
+            # Create safe filename with hash for uniqueness in flat structure
+            safe_title = self._create_safe_filename(title)
+            filename = f"{safe_title}_{page_id}.json"
+            file_path = os.path.join(json_dir, filename)
+            
+            # Extract metadata from content
+            title = content_data.get('title', '')
+            
+            # For Gmail and other sources, try different date field names
+            created_time = (content_data.get('created_time') or 
+                           content_data.get('date') or 
+                           content_data.get('saved_at') or '')
+            
+            last_edited_time = (content_data.get('last_edited_time') or 
+                               content_data.get('date') or 
+                               content_data.get('saved_at') or '')
+            
+            # Calculate content hash for change detection
+            try:
+                content_hash = hashlib.md5(json.dumps(content_data, sort_keys=True).encode()).hexdigest()
+            except Exception as e:
+                logger.warning(f"Error calculating content hash for {page_id}: {e}")
+                content_hash = hashlib.md5(str(page_id).encode()).hexdigest()  # Fallback hash
+            
+            # Enhanced data with metadata
+            enhanced_data = {
+                'page_id': page_id,
+                'workspace': database_config.workspace,
+                'database_name': database_config.nickname,
+                'file_path': file_path,
+                'content_hash': content_hash,
+                'saved_at': datetime.now().isoformat(),
+                **content_data  # Include all original content
+            }
+            
+            # Save JSON file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(enhanced_data, f, indent=2, ensure_ascii=False)
+            
+            # Register in database with proper date handling
+            if self.json_registry.register_content(
+                page_id=page_id,
+                workspace=database_config.workspace,
+                database_name=database_config.nickname,
+                file_path=file_path,
+                content_data={
+                    **content_data,
+                    'title': title,
+                    'created_time': created_time,
+                    'last_edited_time': last_edited_time,
+                    'saved_at': datetime.now().isoformat()
+                }
+                         ):
+                logger.debug(f"Saved JSON file: {file_path}")
+                return file_path
+            else:
+                logger.error(f"Failed to register JSON content in database: {file_path}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error saving JSON file for {page_id}: {e}")
+            return None
+    
+    def _save_markdown_file(self, 
+                           page_id: str,
+                           title: str,
+                           markdown_content: str,
+                           database_config: DatabaseConfig,
+                           content_data: Dict[str, Any] = None) -> Optional[str]:
+        """Save markdown file in hierarchical structure."""
+        try:
+            # Ensure markdown directory exists
+            md_dir = database_config.markdown_directory
+            os.makedirs(md_dir, exist_ok=True)
+            
+            # Create safe filename with date prefix
+            safe_title = self._create_safe_filename(title)
+            
+            # Extract created_time for date prefix
+            date_prefix = ""
+            try:
+                if content_data:
+                    created_time_str = content_data.get("created_time")
+                    
+                    if created_time_str:
+                        # Parse the created_time and format as YYYY-MM-DD
+                        created_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
+                        date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                        logger.debug(f"Using created_time {created_time_str} for markdown file prefix: {date_prefix}")
+                    else:
+                        # Try to extract from the 'date' property in content for Gmail/other sources
+                        date_str = content_data.get("date")
+                        if date_str:
+                            if isinstance(date_str, str):
+                                created_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                                date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                                logger.debug(f"Using date field {date_str} for markdown file prefix: {date_prefix}")
+                            elif hasattr(date_str, 'strftime'):  # datetime object
+                                date_prefix = date_str.strftime("%Y-%m-%d") + " "
+                                logger.debug(f"Using datetime object for markdown file prefix: {date_prefix}")
+                
+                if not date_prefix:
+                    logger.warning(f"No created_time found for markdown file {page_id}, using current date")
+                    date_prefix = datetime.now().strftime("%Y-%m-%d") + " "
+                    
+            except Exception as e:
+                logger.warning(f"Error extracting created_time for markdown file {page_id}: {e}")
+                date_prefix = datetime.now().strftime("%Y-%m-%d") + " "
+            
+            filename = f"{date_prefix}{safe_title} {page_id}.md"
+            file_path = os.path.join(md_dir, filename)
+            
+            # Save markdown file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+            
+            # If JSON saving is disabled but markdown is being saved, still register in the registry
+            # This ensures markdown-only databases get registry entries for proper ordering
+            if not database_config.save_json and database_config.primary_format != "json" and content_data:
+                logger.debug(f"Registering markdown-only content in registry: {page_id}")
+                self.json_registry.register_content(
+                    page_id=page_id,
+                    workspace=database_config.workspace,
+                    database_name=database_config.nickname,
+                    file_path=file_path,
+                    content_data=content_data
+                )
+            
+            logger.debug(f"Saved markdown file: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logger.error(f"Error saving markdown file for {page_id}: {e}")
+            return None
+    
+    def _create_safe_filename(self, title: str, max_length: int = 100) -> str:
+        """Create a safe filename from title."""
+        # Remove or replace problematic characters
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+        
+        # Limit length and strip whitespace
+        safe_title = safe_title[:max_length].strip()
+        
+        # Ensure it's not empty
+        if not safe_title:
+            safe_title = "untitled"
+            
+        return safe_title
+    
+    def get_content_by_page_id(self, page_id: str) -> Optional[Dict[str, Any]]:
+        """Get content information by page ID from registry."""
+        return self.json_registry.get_content_info(page_id)
+    
+    def list_content(self, 
+                    workspace: Optional[str] = None,
+                    database_name: Optional[str] = None,
+                    limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """List content with optional filtering."""
+        return self.json_registry.list_content(workspace, database_name, limit)
+    
+    def get_existing_page_ids(self, database_config: DatabaseConfig) -> set:
+        """Get existing page IDs for a database."""
+        content_list = self.json_registry.list_content(
+            workspace=database_config.workspace,
+            database_name=database_config.nickname
+        )
+        return {item['page_id'] for item in content_list}
+    
+    def files_exist_locally(self, page_id: str, title: str, database_config: DatabaseConfig) -> Dict[str, bool]:
+        """
+        Check if files exist locally for a given page.
+        
+        Args:
+            page_id: Notion page ID
+            title: Page title (used as hint, but we search by page_id for reliability)
+            database_config: Database configuration
+            
+        Returns:
+            Dictionary indicating which file types exist locally
+        """
+        file_status = {
+            'json': False,
+            'markdown': False
+        }
+        
+        # Check JSON file existence by searching for files with the page_id
+        if database_config.save_json or database_config.primary_format == "json":
+            json_dir = database_config.json_directory
+            if os.path.exists(json_dir):
+                # Look for any JSON file containing the page_id
+                for filename in os.listdir(json_dir):
+                    if filename.endswith('.json') and page_id in filename:
+                        file_status['json'] = True
+                        break
+        
+        # Check markdown file existence by searching for files with the page_id
+        if database_config.save_markdown:
+            md_dir = database_config.markdown_directory
+            if os.path.exists(md_dir):
+                # Look for any markdown file containing the page_id
+                for filename in os.listdir(md_dir):
+                    if filename.endswith('.md') and page_id in filename:
+                        file_status['markdown'] = True
+                        break
+            
+        return file_status
+    
+    def cleanup_orphaned_files(self) -> int:
+        """Clean up orphaned registry entries."""
+        return self.json_registry.cleanup_orphaned_entries()
+    
+    def get_storage_stats(self) -> Dict[str, Any]:
+        """Get storage statistics."""
+        registry_stats = self.json_registry.get_stats()
+        
+        # Add markdown directory stats
+        md_stats = self._get_markdown_stats()
+        
+        return {
+            'json_registry': registry_stats,
+            'markdown_directories': md_stats,
+            'total_databases': len(self.db_manager.databases)
+        }
+    
+    def _get_markdown_stats(self) -> Dict[str, Dict[str, int]]:
+        """Get markdown directory statistics."""
+        stats = {}
+        
+        for db_name, db_config in self.db_manager.databases.items():
+            md_dir = db_config.markdown_directory
+            
+            if os.path.exists(md_dir):
+                md_files = list(Path(md_dir).glob("*.md"))
+                stats[db_name] = {
+                    'file_count': len(md_files),
+                    'total_size': sum(f.stat().st_size for f in md_files),
+                    'directory': md_dir
+                }
+            else:
+                stats[db_name] = {
+                    'file_count': 0,
+                    'total_size': 0,
+                    'directory': md_dir
+                }
+        
+        return stats
+    
+    def migrate_existing_data(self, dry_run: bool = True) -> Dict[str, Any]:
+        """
+        Migrate existing data to the new directory structure.
+        
+        Args:
+            dry_run: If True, only show what would be moved without actually moving
+            
+        Returns:
+            Migration report
+        """
+        report = {
+            'markdown_migrations': [],
+            'json_migrations': [],
+            'errors': [],
+            'dry_run': dry_run
+        }
+        
+        for db_name, db_config in self.db_manager.databases.items():
+            try:
+                # Check for existing markdown files to migrate
+                old_md_dir = db_config.output_directory  # Legacy directory
+                new_md_dir = db_config.markdown_directory
+                
+                if os.path.exists(old_md_dir) and old_md_dir != new_md_dir:
+                    md_files = list(Path(old_md_dir).glob("*.md"))
+                    for md_file in md_files:
+                        new_path = Path(new_md_dir) / md_file.name
+                        
+                        migration = {
+                            'type': 'markdown',
+                            'database': db_name,
+                            'from': str(md_file),
+                            'to': str(new_path),
+                            'size': md_file.stat().st_size
+                        }
+                        
+                        if not dry_run:
+                            os.makedirs(new_md_dir, exist_ok=True)
+                            md_file.rename(new_path)
+                            
+                        report['markdown_migrations'].append(migration)
+                
+                # Check for existing JSON files to register
+                old_json_pattern = f"data/json/{db_name}/*.json"
+                if db_name.startswith("trass."):
+                    # Handle qualified names
+                    old_json_pattern = f"data/json/{db_name}/*.json"
+                
+                old_json_files = list(Path(".").glob(old_json_pattern))
+                for json_file in old_json_files:
+                    if json_file.exists():
+                        try:
+                            with open(json_file, 'r', encoding='utf-8') as f:
+                                content_data = json.load(f)
+                            
+                            page_id = content_data.get('page_id', '')
+                            if page_id:
+                                # Move to flat structure
+                                new_json_path = Path(db_config.json_directory) / json_file.name
+                                
+                                migration = {
+                                    'type': 'json',
+                                    'database': db_name,
+                                    'from': str(json_file),
+                                    'to': str(new_json_path),
+                                    'page_id': page_id
+                                }
+                                
+                                if not dry_run:
+                                    # Only migrate JSON files if JSON storage is enabled
+                                    if db_config.save_json or db_config.primary_format == "json":
+                                        os.makedirs(db_config.json_directory, exist_ok=True)
+                                        json_file.rename(new_json_path)
+                                        
+                                        # Register in new system
+                                        self.json_registry.register_content(
+                                            page_id=page_id,
+                                            workspace=db_config.workspace,
+                                            database_name=db_config.nickname,
+                                            file_path=str(new_json_path),
+                                            content_data=content_data
+                                        )
+                                    else:
+                                        # JSON storage disabled, just remove the old file
+                                        json_file.unlink()
+                                        logger.info(f"Removed unused JSON file: {json_file}")
+                                
+                                report['json_migrations'].append(migration)
+                                
+                        except Exception as e:
+                            report['errors'].append(f"Error migrating {json_file}: {e}")
+                            
+            except Exception as e:
+                report['errors'].append(f"Error processing database {db_name}: {e}")
+        
+        return report
+
+def load_metadata_with_filters(property_filters: Optional[Dict[str, str]] = None) -> List[str]:
+    """
+    Load page IDs from metadata.db with optional property filtering.
+    Replaces load_json_files_with_property_filter.
+    
+    Args:
+        property_filters: Optional dictionary of property filters (e.g., {"status": "published"})
+        
+    Returns:
+        List of page IDs matching the filters
+    """
+    registry = get_json_registry()
+    
+    if not property_filters:
+        # No filters, return all page IDs
+        content_list = registry.list_content()
+        return [item['page_id'] for item in content_list]
+    
+    # Apply property filters
+    content_list = registry.list_content()
+    matching_page_ids = []
+    
+    for item in content_list:
+        metadata = item.get('metadata', {})
+        properties = metadata.get('properties', {})
+        
+        # Check if all filters match
+        matches = True
+        for filter_key, filter_value in property_filters.items():
+            property_value = properties.get(filter_key, {})
+            
+            # Handle different property types
+            if isinstance(property_value, dict):
+                # For Notion properties like checkbox, select, etc.
+                actual_value = property_value.get(property_value.get('type', ''), None)
+                
+                # Handle checkbox specifically
+                if property_value.get('type') == 'checkbox':
+                    actual_value = property_value.get('checkbox', False)
+                elif property_value.get('type') == 'select':
+                    select_obj = property_value.get('select', {})
+                    actual_value = select_obj.get('name', '') if select_obj else ''
+                elif property_value.get('type') == 'status':
+                    status_obj = property_value.get('status', {})
+                    actual_value = status_obj.get('name', '') if status_obj else ''
+                
+                # Convert filter_value to appropriate type for comparison
+                if actual_value is not None:
+                    if filter_value.lower() in ['true', 'false']:
+                        filter_value = filter_value.lower() == 'true'
+                    
+                    if str(actual_value).lower() != str(filter_value).lower():
+                        matches = False
+                        break
+                else:
+                    matches = False
+                    break
+            else:
+                # Direct value comparison
+                if str(property_value).lower() != str(filter_value).lower():
+                    matches = False
+                    break
+        
+        if matches:
+            matching_page_ids.append(item['page_id'])
+    
+    return matching_page_ids
+
+# Global storage instance
+_storage_instance = None
+
+def get_unified_storage(config_file: str = "promaia.config.json") -> UnifiedStorage:
+    """Get the global unified storage instance."""
+    global _storage_instance
+    if _storage_instance is None:
+        _storage_instance = UnifiedStorage(config_file)
+    return _storage_instance 

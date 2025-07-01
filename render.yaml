@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: maia-journal-processor
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m maia.scripts.process_journals
+    schedule: "0 0 * * *"  # Run at midnight every day
+    envVars:
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_JOURNAL_DATABASE_ID
+        sync: false
+      - key: MAIA_DEBUG
+        value: "0" 

@@ -1,0 +1,131 @@
+{
+  "workspaces": {
+    "personal": {
+      "api_key": "secret_YOUR_PERSONAL_API_KEY", 
+      "description": "Personal workspace",
+      "enabled": true,
+      "created_at": "2025-01-01T00:00:00"
+    },
+    "work": {
+      "api_key": "secret_YOUR_WORK_API_KEY",
+      "description": "Work/company workspace", 
+      "enabled": true,
+      "created_at": "2025-01-01T00:00:00"
+    }
+  },
+  "default_workspace": "personal",
+  "global": {
+    "default_sync_days": 7,
+    "default_output_directory": "data",
+    "vector_db_enabled": false,
+    "vector_db_type": "chroma",
+    "vector_db_path": "vector_db"
+  },
+  "databases": {
+    "journal": {
+      "source_type": "notion",
+      "database_id": "your_journal_database_id_here",
+      "nickname": "journal",
+      "description": "Personal journal entries",
+      "workspace": "personal",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 7,
+      "filters": {},
+      "property_filters": {},
+      "date_filters": {},
+      "output_directory": "data/koii_journal",
+      "save_markdown": true,
+      "save_to_vector_db": false,
+      "vector_db_collection": "journal",
+      "property_mapping": {},
+      "required_properties": ["Date", "Name"],
+      "excluded_properties": [],
+      "auth": {}
+    },
+    "cms": {
+      "source_type": "notion",
+      "database_id": "your_cms_database_id_here",
+      "nickname": "cms",
+      "description": "Content management system",
+      "workspace": "personal",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 30,
+      "filters": {},
+      "property_filters": {
+        "Blog Status": ["To push", "Update on sync", "Live"]
+      },
+      "date_filters": {
+        "property": "last_edited_time",
+        "type": "date"
+      },
+      "output_directory": "data/koii_cms",
+      "save_markdown": true,
+      "save_to_vector_db": false,
+      "vector_db_collection": "cms",
+      "property_mapping": {
+        "Name": "title",
+        "Slug": "slug",
+        "Publish Date": "publish_date"
+      },
+      "required_properties": ["Name", "Blog Status"],
+      "excluded_properties": ["Internal Notes"],
+      "auth": {}
+    },
+    "work.stories": {
+      "source_type": "notion",
+      "database_id": "your_work_stories_database_id_here",
+      "nickname": "stories",
+      "description": "Work stories database",
+      "workspace": "work",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 14,
+      "filters": {},
+      "property_filters": {
+        "Team": ["plush", "maker", "customer support"]
+      },
+      "date_filters": {
+        "property": "Created",
+        "type": "date"
+      },
+      "output_directory": "data/work/stories",
+      "save_markdown": true,
+      "save_to_vector_db": false,
+      "vector_db_collection": "work-stories",
+      "property_mapping": {},
+      "required_properties": [],
+      "excluded_properties": [],
+      "auth": {}
+    },
+    "gmail": {
+      "source_type": "gmail",
+      "database_id": "your.email@gmail.com",
+      "nickname": "gmail",
+      "description": "Gmail integration for personal workspace",
+      "workspace": "personal",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 30,
+      "filters": {},
+      "property_filters": {},
+      "date_filters": {
+        "property": "Date",
+        "type": "date"
+      },
+      "output_directory": "data/md/gmail/youremail",
+      "save_markdown": true,
+      "save_to_vector_db": false,
+      "vector_db_collection": "gmail",
+      "property_mapping": {},
+      "required_properties": [],
+      "excluded_properties": [],
+      "auth": {}
+    }
+  }
+} 
