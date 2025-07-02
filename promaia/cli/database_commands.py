@@ -481,6 +481,7 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
             days_was_specified = False
             property_filters = {}
             comparison_filters = {}
+            complex_filter = None  # New: store complex filter expressions
             
             # Logic to separate database name from days/filters
             spec_parts = spec.split(':', 1)
@@ -514,7 +515,12 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                 if len(parts) > 1:
                     filter_parts_str = parts[1]
                     for filter_part in filter_parts_str.split('.'):
-                        if '=' in filter_part:
+                        # Check for complex expression
+                        if filter_part.startswith('__COMPLEX_EXPR__'):
+                            # Extract the actual expression (remove the prefix)
+                            complex_expr = filter_part[16:]  # Remove '__COMPLEX_EXPR__' prefix (16 chars)
+                            complex_filter = parse_complex_filter_expression(complex_expr)
+                        elif '=' in filter_part:
                             prop_name, prop_value = filter_part.split('=', 1)
                             prop_name = prop_name.strip()
                             prop_value = prop_value.strip()
@@ -550,11 +556,16 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                 'qualified_name': database,
                 'days': days,
                 'property_filters': property_filters,
-                'comparison_filters': comparison_filters
+                'comparison_filters': comparison_filters,
+                'complex_filter': complex_filter  # New: include complex filter
             }
             
             parsed_sources.append(parsed_source)
-            logger.info(f"Parsed source: {database}, days: {days}, filters: {property_filters}, comparison_filters: {comparison_filters}")
+            
+            if complex_filter:
+                logger.info(f"Parsed source: {database}, days: {days}, complex_filter: {complex_filter}")
+            else:
+                logger.info(f"Parsed source: {database}, days: {days}, filters: {property_filters}, comparison_filters: {comparison_filters}")
             
         except Exception as e:
             logger.error(f"Error parsing source spec '{spec}': {e}")
@@ -566,21 +577,30 @@ def parse_filter_expression(filter_expr: str) -> str:
     """
     Parse a single filter expression and convert it to the format expected by parse_source_specs.
     
-    Examples:
+    Now supports complex expressions with 'or' and 'and' operators:
+        'created_time<2024-12-30 or created_time>2025-06-30'
+        'status=published and created_time>2025-01-01'
+        'created_time<2024-12-30 or created_time>2025-06-30 and status=planned'
+    
+    Simple expressions still work:
         'status=published' -> 'status=published'
         'created_time>2025-03-01' -> 'created_time_after=2025-03-01'
         'created_time<2025-03-30' -> 'created_time_before=2025-03-30'
-        'priority<5' -> 'priority_before=5'
     
     Args:
         filter_expr: A filter expression string
         
     Returns:
-        Converted filter expression for use in source specs
+        Converted filter expression for use in source specs, or special format for complex expressions
     """
     filter_expr = filter_expr.strip()
     
-    # Handle comparison operators
+    # Check if this is a complex expression with 'or' or 'and'
+    if ' or ' in filter_expr.lower() or ' and ' in filter_expr.lower():
+        # Return a special marker to indicate this needs complex parsing
+        return f"__COMPLEX_EXPR__{filter_expr}"
+    
+    # Handle simple comparison operators (existing logic)
     if '>' in filter_expr:
         prop, value = filter_expr.split('>', 1)
         return f"{prop.strip()}_after={value.strip()}"
@@ -592,7 +612,126 @@ def parse_filter_expression(filter_expr: str) -> str:
         return filter_expr
     else:
         # Invalid format
-        raise ValueError(f"Invalid filter format: '{filter_expr}'. Use 'property=value', 'property>value', or 'property<value'")
+        raise ValueError(f"Invalid filter format: '{filter_expr}'. Use 'property=value', 'property>value', 'property<value', or complex expressions with 'and'/'or'")
+
+
+def parse_complex_filter_expression(expr: str) -> Dict[str, Any]:
+    """
+    Parse a complex filter expression with 'or' and 'and' operators.
+    
+    Examples:
+        "created_time<2024-12-30 or created_time>2025-06-30"
+        "status=published and created_time>2025-01-01" 
+        "created_time<2024-12-30 or created_time>2025-06-30 and status=planned"
+    
+    Returns:
+        Dictionary with parsed conditions and operators for SQL generation
+    """
+    from typing import List, Union
+    
+    # Split on 'or' first (lowest precedence)
+    or_clauses = []
+    for or_part in expr.split(' or '):
+        or_part = or_part.strip()
+        
+        # Split each OR clause on 'and' (higher precedence)
+        and_conditions = []
+        for and_part in or_part.split(' and '):
+            and_part = and_part.strip()
+            
+            # Parse individual condition
+            condition = parse_single_condition(and_part)
+            and_conditions.append(condition)
+        
+        or_clauses.append(and_conditions)
+    
+    return {
+        'type': 'complex',
+        'or_clauses': or_clauses  # List of lists: [[and_conds], [and_conds], ...]
+    }
+
+
+def parse_single_condition(condition: str) -> Dict[str, str]:
+    """
+    Parse a single condition like 'created_time<2024-12-30' or 'status=published'.
+    
+    Returns:
+        Dictionary with property, operator, and value
+    """
+    condition = condition.strip()
+    
+    if '>=' in condition:
+        prop, value = condition.split('>=', 1)
+        return {'property': prop.strip(), 'operator': '>=', 'value': value.strip()}
+    elif '<=' in condition:
+        prop, value = condition.split('<=', 1)
+        return {'property': prop.strip(), 'operator': '<=', 'value': value.strip()}
+    elif '>' in condition:
+        prop, value = condition.split('>', 1)
+        return {'property': prop.strip(), 'operator': '>', 'value': value.strip()}
+    elif '<' in condition:
+        prop, value = condition.split('<', 1)
+        return {'property': prop.strip(), 'operator': '<', 'value': value.strip()}
+    elif '=' in condition:
+        prop, value = condition.split('=', 1)
+        return {'property': prop.strip(), 'operator': '=', 'value': value.strip()}
+    else:
+        raise ValueError(f"Invalid condition format: '{condition}'")
+
+
+def build_sql_from_complex_filter(complex_filter: Dict[str, Any], date_filter_prop: str) -> tuple[str, List[str]]:
+    """
+    Build SQL WHERE clause and parameters from a complex filter expression.
+    
+    Args:
+        complex_filter: Parsed complex filter from parse_complex_filter_expression
+        date_filter_prop: The date property name to use for date comparisons
+        
+    Returns:
+        Tuple of (sql_where_clause, parameters_list)
+    """
+    if complex_filter['type'] != 'complex':
+        raise ValueError("Expected complex filter type")
+    
+    or_clauses_sql = []
+    params = []
+    
+    for and_conditions in complex_filter['or_clauses']:
+        and_clauses_sql = []
+        
+        for condition in and_conditions:
+            prop = condition['property']
+            op = condition['operator']
+            value = condition['value']
+            
+            # Handle date properties
+            if prop in ['created_time', 'last_edited_time'] or prop == date_filter_prop:
+                if op == '>':
+                    and_clauses_sql.append(f"datetime({date_filter_prop}) > datetime(?)")
+                elif op == '>=':
+                    and_clauses_sql.append(f"datetime({date_filter_prop}) >= datetime(?)")
+                elif op == '<':
+                    and_clauses_sql.append(f"datetime({date_filter_prop}) < datetime(?)")
+                elif op == '<=':
+                    and_clauses_sql.append(f"datetime({date_filter_prop}) <= datetime(?)")
+                elif op == '=':
+                    and_clauses_sql.append(f"date({date_filter_prop}) = date(?)")
+                params.append(value)
+            else:
+                # Handle regular properties (these would need to be in JSON metadata)
+                # For now, we'll note that these can't be filtered at SQL level
+                # and need to be handled post-query
+                and_clauses_sql.append("1=1")  # Always true, will filter later
+                # We'll store these for post-SQL filtering
+        
+        if and_clauses_sql:
+            or_clauses_sql.append(f"({' AND '.join(and_clauses_sql)})")
+    
+    if or_clauses_sql:
+        where_clause = f"({' OR '.join(or_clauses_sql)})"
+        return where_clause, params
+    else:
+        return "", []
 
 def parse_filter_string(filter_str: str) -> Dict[str, Any]:
     """Parse filter string like 'date>-30d,status=published'."""

@@ -1222,7 +1222,15 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     # Import the helper function and convert the filter to the format expected by parse_source_specs
                     from promaia.cli.database_commands import parse_filter_expression
                     converted_filter = parse_filter_expression(filter_expr)
-                    enhanced_source = enhanced_source + "." + converted_filter
+                    
+                    # Check if this is a complex expression
+                    if converted_filter.startswith("__COMPLEX_EXPR__"):
+                        # For complex expressions, we need to handle them specially
+                        # Store the original expression for later parsing
+                        enhanced_source = enhanced_source + "." + converted_filter
+                    else:
+                        # Simple expression, use existing logic
+                        enhanced_source = enhanced_source + "." + converted_filter
                 except ValueError as e:
                     print(f"ERROR: {e}")
                     return
@@ -1286,6 +1294,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 # Check if we have property filters - if so, use hybrid JSON+MD approach
                 property_filters = source_conf.get('property_filters', {})
                 comparison_filters = source_conf.get('comparison_filters', {})
+                complex_filter = source_conf.get('complex_filter', None)  # New: get complex filter
                 
                 if property_filters:
                     debug_print(f"Property filters detected for {qualified_db_name}: {property_filters}")
@@ -1304,10 +1313,13 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     
                     if db_config:
                         debug_print(f"Using database registry for {qualified_db_name}")
+                        if complex_filter:
+                            debug_print(f"Complex filter detected: {complex_filter}")
                         pages_from_markdown = read_markdown_files_with_registry(
                             db_config, 
                             days=actual_days_param,
-                            comparison_filters=comparison_filters
+                            comparison_filters=comparison_filters,
+                            complex_filter=complex_filter
                         )
                     else:
                         debug_print(f"No database config found for {qualified_db_name}, using directory method")

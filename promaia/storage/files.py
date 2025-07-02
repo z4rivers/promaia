@@ -690,7 +690,8 @@ def read_markdown_files_by_page_ids(page_ids: List[str], directory_path: str, da
 def read_markdown_files_with_registry(
     database_config, 
     days: Optional[int] = None,
-    comparison_filters: Optional[Dict[str, Any]] = None
+    comparison_filters: Optional[Dict[str, Any]] = None,
+    complex_filter: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Read markdown files using the database registry as the source of truth for ordering.
@@ -702,6 +703,7 @@ def read_markdown_files_with_registry(
         database_config: DatabaseConfig object with workspace and nickname
         days: Number of days to look back (None for all files)
         comparison_filters: Dictionary of comparison filters (e.g., {'created_time_after': [...]})
+        complex_filter: Dictionary representing a complex filter expression with 'or'/'and' operators
     
     Returns:
         List of page data dictionaries ordered by database created_time
@@ -750,8 +752,16 @@ def read_markdown_files_with_registry(
                 filter_clauses.append(f"datetime({date_filter_prop}) >= ?")
                 params.append(cutoff_date.isoformat())
 
-            # 2. Handle `comparison_filters` for multiple date ranges
-            if comparison_filters:
+            # 2. Handle complex filter expressions
+            if complex_filter:
+                from promaia.cli.database_commands import build_sql_from_complex_filter
+                complex_where, complex_params = build_sql_from_complex_filter(complex_filter, date_filter_prop)
+                if complex_where:
+                    filter_clauses.append(complex_where)
+                    params.extend(complex_params)
+
+            # 3. Handle `comparison_filters` for multiple date ranges (legacy support)
+            elif comparison_filters:
                 # Expecting keys like 'created_time_after', 'created_time_before'
                 # The property name in the filter key (e.g., 'created_time') is ignored, 
                 # we use the one derived from config: `date_filter_prop`.
@@ -765,6 +775,7 @@ def read_markdown_files_with_registry(
                     elif key.endswith('_before'):
                         before_dates.extend(values)
 
+                # Handle paired date ranges (both after and before dates)
                 if len(after_dates) == len(before_dates) and after_dates:
                     range_clauses = []
                     for start, end in zip(after_dates, before_dates):
@@ -773,6 +784,42 @@ def read_markdown_files_with_registry(
                     
                     if range_clauses:
                         filter_clauses.append(f"({ ' OR '.join(range_clauses) })")
+                
+                # Handle single after filters (e.g., created_time>2025-01-01)
+                elif after_dates and not before_dates:
+                    after_clauses = []
+                    for start_date in after_dates:
+                        after_clauses.append(f"datetime({date_filter_prop}) >= ?")
+                        params.append(start_date)
+                    
+                    if after_clauses:
+                        filter_clauses.append(f"({ ' OR '.join(after_clauses) })")
+                
+                # Handle single before filters (e.g., created_time<2025-12-30)
+                elif before_dates and not after_dates:
+                    before_clauses = []
+                    for end_date in before_dates:
+                        before_clauses.append(f"datetime({date_filter_prop}) <= ?")
+                        params.append(end_date)
+                    
+                    if before_clauses:
+                        filter_clauses.append(f"({ ' OR '.join(before_clauses) })")
+                
+                # Handle mixed single filters (different numbers of after/before)
+                elif after_dates or before_dates:
+                    mixed_clauses = []
+                    
+                    for start_date in after_dates:
+                        mixed_clauses.append(f"datetime({date_filter_prop}) >= ?")
+                        params.append(start_date)
+                    
+                    for end_date in before_dates:
+                        mixed_clauses.append(f"datetime({date_filter_prop}) <= ?")
+                        params.append(end_date)
+                    
+                    if mixed_clauses:
+                        # Use OR logic for mixed filters (satisfy any condition)
+                        filter_clauses.append(f"({ ' OR '.join(mixed_clauses) })")
 
             if filter_clauses:
                 base_query += " AND " + " AND ".join(filter_clauses)
