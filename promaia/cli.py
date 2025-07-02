@@ -991,6 +991,10 @@ def chat_run(args):
     from promaia.chat.interface import chat
     from promaia.config.workspaces import get_workspace_manager
     
+    # Handle recents option
+    if getattr(args, 'recent', False):
+        return chat_run_recents(args)
+    
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
     workspace = getattr(args, 'workspace', None)
@@ -1018,6 +1022,12 @@ def chat_run(args):
                 print("No workspace specified and no default workspace configured.", file=sys.stderr)
                 return
         
+        # Save query to recents before executing (only if there are meaningful parameters)
+        if sources or filters or workspace:
+            from promaia.storage.recents import RecentsManager
+            recents_manager = RecentsManager()
+            recents_manager.add_query(sources=sources, filters=filters, workspace=workspace)
+        
         # The `chat` function will now need to handle the main loop
         chat(sources=sources, filters=filters, workspace=workspace, non_interactive=not sys.stdout.isatty())
 
@@ -1026,6 +1036,47 @@ def chat_run(args):
         print("Please check your dependencies.", file=sys.stderr)
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run: {e}", exc_info=True)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+
+
+def chat_run_recents(args):
+    """Run the chat interface with recent queries selection."""
+    from promaia.chat.recents_interface import RecentsSelector, edit_query_string
+    from promaia.config.workspaces import get_workspace_manager
+    
+    try:
+        selector = RecentsSelector()
+        action, selected_query = selector.select_query()
+        
+        if action == 'quit' or not selected_query:
+            return
+        
+        if action == 'edit':
+            # Allow user to edit the query
+            edited_query = edit_query_string(selected_query)
+            if not edited_query:
+                return
+            selected_query = edited_query
+        
+        # Create args object for the selected/edited query
+        class QueryArgs:
+            def __init__(self, query):
+                self.sources = query.sources
+                self.filters = query.filters
+                self.workspace = query.workspace or getattr(args, 'workspace', None)
+                self.recent = False  # Prevent infinite recursion
+        
+        query_args = QueryArgs(selected_query)
+        
+        # Execute the selected query
+        print(f"\nExecuting: maia chat {str(selected_query).replace(f'maia chat ', '').split(' (')[0]}")
+        chat_run(query_args)
+        
+    except ImportError as e:
+        print(f"Error importing recents interface: {e}", file=sys.stderr)
+        print("Please check your dependencies.", file=sys.stderr)
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in chat_run_recents: {e}", exc_info=True)
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
 
 async def write_run_async(args):
@@ -1166,7 +1217,20 @@ def main():
         "--workspace", "-ws",
         help="Specify which workspace to use for chat (defaults to default workspace)"
     )
+    chat_parser.add_argument(
+        "--recent", "-r",
+        action="store_true",
+        help="Show recent queries for selection and re-execution"
+    )
     chat_parser.set_defaults(func=chat_run)
+    
+    # Add 'r' alias for chat with recents
+    r_parser = subparsers.add_parser("r", help="Recent chat queries (alias for 'chat --recent')")
+    r_parser.add_argument(
+        "--workspace", "-ws",
+        help="Specify which workspace to use for chat (defaults to default workspace)"
+    )
+    r_parser.set_defaults(func=lambda args: chat_run_recents(args))
 
     # Write command
     write_parser = subparsers.add_parser("write", help="Generate blog content using AI")
@@ -1291,7 +1355,7 @@ def main():
             del os.environ["MAIA_DEBUG"]
 
     # Startup registry validation (only for data operations)
-    data_commands = ["sync", "chat", "database", "db", "cms", "write"]
+    data_commands = ["sync", "chat", "database", "db", "cms", "write", "r"]
     if args.command in data_commands:
         try:
             from promaia.config.registry_sync import validate_startup_registry
@@ -1304,7 +1368,7 @@ def main():
         return
 
     # Handle commands
-    if args.command in ["chat", "model", "write"]:
+    if args.command in ["chat", "model", "write", "r"]:
         args.func(args)
     elif args.command == "cms":
         if hasattr(args, 'func'):
