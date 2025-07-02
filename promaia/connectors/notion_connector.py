@@ -3,6 +3,7 @@ Notion database connector implementation.
 """
 import os
 import asyncio
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -97,6 +98,30 @@ class NotionConnector(BaseConnector):
                          limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Query pages from the Notion database with proper pagination."""
         try:
+            # Special handling for page_id filter - fetch specific page directly
+            if filters:
+                page_id_filter = None
+                other_filters = []
+                
+                for filter_obj in filters:
+                    if filter_obj.property_name == "page_id" and filter_obj.operator == "eq":
+                        page_id_filter = filter_obj.value
+                    else:
+                        other_filters.append(filter_obj)
+                
+                if page_id_filter:
+                    self.logger.debug(f"Fetching specific page by ID: {page_id_filter}")
+                    try:
+                        page = await self.client.pages.retrieve(page_id=page_id_filter)
+                        self.logger.info(f"Successfully fetched page {page_id_filter}: {page.get('properties', {}).get('Name', {}).get('title', [{}])[0].get('plain_text', 'No title')}")
+                        return [page]
+                    except Exception as e:
+                        self.logger.error(f"Failed to fetch page {page_id_filter}: {e}")
+                        return []
+                
+                # Use remaining filters for normal database query
+                filters = other_filters if other_filters else None
+            
             # Build Notion filter
             notion_filter = self._build_notion_filter(filters, date_filter)
             
@@ -525,17 +550,19 @@ class NotionConnector(BaseConnector):
         # This will help us use the correct filter format
         prop_type = None
         if hasattr(self, '_cached_schema') and self._cached_schema:
-            prop_type = self._cached_schema.get(prop_name)
-        
+            schema_prop = self._cached_schema.get(prop_name)
+            if schema_prop:
+                prop_type = schema_prop.get("type")
+
         # Map operators to Notion filter format
         if operator == "eq":
             # Use the correct filter type based on property type
-            if prop_type and prop_type.get("type") == "status":
+            if prop_type == "status":
                 return {
                     "property": prop_name,
                     "status": {"equals": value}
                 }
-            elif prop_type and prop_type.get("type") == "checkbox":
+            elif prop_type == "checkbox":
                 return {
                     "property": prop_name,
                     "checkbox": {"equals": value}
@@ -573,6 +600,11 @@ class NotionConnector(BaseConnector):
                             "property": prop_name,
                             "status": {"equals": v}
                         })
+                    elif prop_type == "multi_select":
+                        conditions.append({
+                            "property": prop_name,
+                            "multi_select": {"contains": v}
+                        })
                     else:
                         conditions.append({
                             "property": prop_name,
@@ -584,6 +616,11 @@ class NotionConnector(BaseConnector):
                     return {
                         "property": prop_name,
                         "status": {"equals": value}
+                    }
+                elif prop_type == "multi_select":
+                    return {
+                        "property": prop_name,
+                        "multi_select": {"contains": value}
                     }
                 else:
                     return {
@@ -703,14 +740,41 @@ class NotionConnector(BaseConnector):
                 self.logger.warning(f"Could not cache database schema: {e}")
                 self._cached_schema = {}
             
-            # Query pages from the database
-            result.add_api_call()  # MONITORING: Track API call
-            pages = await self.query_pages(
-                filters=filters,
-                date_filter=date_filter,
-                sort_by=None,
-                sort_direction="desc"
-            )
+            # Special handling for page_id filter - fetch specific page directly
+            page_id_filter = None
+            remaining_filters = []
+            
+            if filters:
+                self.logger.debug(f"Processing {len(filters)} filters: {[(f.property_name, f.operator, f.value) for f in filters]}")
+                for filter_obj in filters:
+                    if filter_obj.property_name == "page_id" and filter_obj.operator == "eq":
+                        page_id_filter = filter_obj.value
+                        self.logger.debug(f"Found page_id filter: {page_id_filter}")
+                    else:
+                        remaining_filters.append(filter_obj)
+            else:
+                self.logger.debug("No filters provided")
+            
+            if page_id_filter:
+                self.logger.info(f"Fetching specific page by ID: {page_id_filter}")
+                try:
+                    result.add_api_call()  # MONITORING: Track API call
+                    page = await self.client.pages.retrieve(page_id=page_id_filter)
+                    pages = [page]
+                    self.logger.info(f"Successfully fetched page {page_id_filter}")
+                except Exception as e:
+                    result.add_api_error()  # MONITORING: Track API error
+                    self.logger.error(f"Failed to fetch page {page_id_filter}: {e}")
+                    pages = []
+            else:
+                # Normal database query with remaining filters
+                result.add_api_call()  # MONITORING: Track API call
+                pages = await self.query_pages(
+                    filters=remaining_filters if remaining_filters else None,
+                    date_filter=date_filter,
+                    sort_by=None,
+                    sort_direction="desc"
+                )
             
             result.pages_fetched = len(pages)
             self.logger.info(f"Found {len(pages)} pages to sync")

@@ -319,7 +319,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
             storage=storage,
             db_config=db_config,
             filters=filters,
-            date_filter=date_filter,
+            date_filter=date_filter if date_filter else None,
             include_properties=db_config.include_properties,
             force_update=getattr(args, 'force', False),
             excluded_properties=db_config.excluded_properties
@@ -541,7 +541,9 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                                 elif prop_value.isdigit():
                                     prop_value = int(prop_value)
                                 else:
-                                    prop_name = prop_name.replace('_', ' ')
+                                    # Special case: don't convert underscores for page_id
+                                    if prop_name != 'page_id':
+                                        prop_name = prop_name.replace('_', ' ')
                                 property_filters[prop_name] = prop_value
                         else:
                              logger.warning(f"Invalid property filter format '{filter_part}' in spec '{spec}'")
@@ -761,21 +763,37 @@ def build_filters(source_spec: Dict[str, Any], db_config) -> List[QueryFilter]:
     filters = []
     
     # Add filters from source specification
+    logger.debug(f"Source spec filters: {source_spec.get('filters', {})}")
     for key, value in source_spec.get("filters", {}).items():
         if not key.endswith(('_after', '_before')):  # Skip date filters
+            logger.debug(f"Adding source filter: {key} = {value}")
             filters.append(QueryFilter(key, "eq", value))
     
     # Add filters from database configuration
+    logger.debug(f"Database config property_filters: {db_config.property_filters}")
     for prop_name, prop_values in db_config.property_filters.items():
         if isinstance(prop_values, list):
+            logger.debug(f"Adding config filter: {prop_name} in {prop_values}")
             filters.append(QueryFilter(prop_name, "in", prop_values))
         else:
+            logger.debug(f"Adding config filter: {prop_name} = {prop_values}")
             filters.append(QueryFilter(prop_name, "eq", prop_values))
     
+    logger.debug(f"Final filters: {[(f.property_name, f.operator, f.value) for f in filters]}")
     return filters
 
 def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[DateRangeFilter]:
     """Build DateRangeFilter from source specification and arguments."""
+    force_sync = getattr(args, 'force', False)
+    
+    # Case 1: --force without --days (sync all, respecting other filters if any)
+    if force_sync:
+        # No specific date range, sync all (or based on other non-date filters)
+        # If a date_prop was specified in db_config (e.g. for "Date" field), respect it for Notion query
+        # otherwise, no date filter is applied here by default for --force. Connector might have its own.
+        logger.debug(f"Using --force, so no date filter will be applied.")
+        return None
+    
     date_prop = db_config.date_filters.get("property") # Default to None, will be handled
     
     spec_filters = source_spec.get("filters", {})
@@ -823,9 +841,7 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
         if not date_prop:
             date_prop = "created_time"
 
-    force_sync = getattr(args, 'force', False)
-
-    # Case 1: Source-specific days (e.g., journal:30)
+    # Case 2: Source-specific days (e.g., journal:30)
     if source_spec.get("days") is not None:
         source_days = source_spec.get("days")
         if source_days == 'all':
@@ -847,7 +863,7 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
             logger.debug(f"Using source days ({days_to_sync}). Date prop: {date_prop}. Start: {start_date}, End: {end_date}")
             return DateRangeFilter(property_name=date_prop or "last_edited_time", start_date=start_date, end_date=end_date)
 
-    # Case 2: --days argument is provided
+    # Case 3: --days argument is provided
     if hasattr(args, 'days') and args.days is not None:
         days_to_sync = args.days if isinstance(args.days, int) else db_config.default_days
         # If --force, use created_time to get all items within the --days range
@@ -868,23 +884,13 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
         logger.debug(f"Using --days ({days_to_sync}). Date prop: {date_prop}. Start: {start_date}, End: {end_date}")
         return DateRangeFilter(property_name=date_prop or "last_edited_time", start_date=start_date, end_date=end_date)
 
-    # Case 3: Date filters are provided in the source specification (e.g., journal[date_prop_after>2023-01-01])
+    # Case 4: Date filters are provided in the source specification (e.g., journal[date_prop_after>2023-01-01])
     if start_date or end_date:
         if not date_prop: # Should have been set if _after or _before was found
             logger.warning("Date filter found in spec, but date property could not be determined. Defaulting to 'last_edited_time'.")
             date_prop = "last_edited_time"
         logger.debug(f"Using date filter from source spec. Date prop: {date_prop}. Start: {start_date}, End: {end_date}")
         return DateRangeFilter(property_name=date_prop, start_date=start_date, end_date=end_date)
-
-    # Case 4: --force without --days (sync all, respecting other filters if any)
-    if force_sync:
-        # No specific date range, sync all (or based on other non-date filters)
-        # If a date_prop was specified in db_config (e.g. for "Date" field), respect it for Notion query
-        # otherwise, no date filter is applied here by default for --force. Connector might have its own.
-        logger.debug(f"Using --force without --days. No specific date range. Date prop from config (if any): {date_prop}")
-        if date_prop: # e.g. if db_config.date_filters.property = "Date"
-             return DateRangeFilter(property_name=date_prop, start_date=None, end_date=None) # Sync all for this prop
-        return None # No date filter, sync all based on other criteria
 
     # Case 5: Default incremental sync (no --days, no --force, no date spec)
     # Use last_sync_time and 'last_edited_time'

@@ -70,7 +70,7 @@ if os.getenv("OPENAI_API_KEY"):
 gemini_client = None
 if os.getenv("GOOGLE_API_KEY"):
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    gemini_client = genai.GenerativeModel('gemini-pro')
+    gemini_client = genai.GenerativeModel('gemini-2.5-pro')
 
 current_api = get_api_preference()
 os.environ["API_TYPE"] = current_api
@@ -259,8 +259,25 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 chat_completion = openai_client.chat.completions.create(messages=messages, model="gpt-4-turbo-preview")
                 ai_reply_content = chat_completion.choices[0].message.content
             elif current_api == "gemini" and gemini_client:
-                gemini_messages = [m for m in messages if m['role'] != 'system']
-                response = gemini_client.generate_content(gemini_messages)
+                # Convert messages to the format expected by the Gemini API
+                gemini_messages = []
+                for m in messages:
+                    if m['role'] == 'system':
+                        continue # System role is handled separately in Gemini
+                    
+                    # Gemini uses 'model' for the assistant's role
+                    role = 'user' if m['role'] == 'user' else 'model'
+                    gemini_messages.append({'role': role, 'parts': [m['content']]})
+                
+                # The system prompt is now passed during model initialization,
+                # but if we needed to pass it here, it would be different.
+                # For this model, we re-create it with the system prompt.
+                gemini_model = genai.GenerativeModel(
+                    'gemini-2.5-pro',
+                    system_instruction=system_prompt
+                )
+                
+                response = gemini_model.generate_content(gemini_messages)
                 ai_reply_content = response.text
             else:
                 print(f"ERROR: API client for '{current_api}' is not available. Check your API keys.")
