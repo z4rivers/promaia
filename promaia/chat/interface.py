@@ -224,9 +224,25 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 continue
 
             try:
+                # Check if this source has a complex filter with date conditions
+                has_date_filter_in_complex = False
+                if source_conf.get('complex_filter'):
+                    complex_filter = source_conf.get('complex_filter')
+                    if complex_filter.get('type') == 'complex':
+                        for or_clause in complex_filter.get('or_clauses', []):
+                            for condition in or_clause:
+                                if condition.get('property') in ['created_time', 'last_edited_time']:
+                                    has_date_filter_in_complex = True
+                                    break
+                            if has_date_filter_in_complex:
+                                break
+
+                # Don't use days constraint if complex filter already has date conditions
+                days_to_use = None if has_date_filter_in_complex else source_conf.get('days')
+
                 pages = read_markdown_files_with_registry(
                     db_config,
-                    days=source_conf.get('days'),
+                    days=days_to_use,
                     comparison_filters=source_conf.get('comparison_filters', {}),
                     complex_filter=source_conf.get('complex_filter')
                 )
