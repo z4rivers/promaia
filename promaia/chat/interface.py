@@ -14,13 +14,15 @@ from prompt_toolkit.formatted_text import HTML
 import datetime
 import asyncio
 import traceback
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pathlib import Path
 
 from promaia.storage.files import read_markdown_files_with_registry
 from promaia.utils.config import load_environment, get_last_sync_time
 from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
-from promaia.utils.display import print_markdown, print_text
+from promaia.utils.display import print_markdown, print_code, print_text
+from promaia.utils.timezone_utils import now_utc
 
 import google.generativeai as genai
 
@@ -98,7 +100,7 @@ def debug_print(message):
         print(f"DEBUG ({timestamp}){caller_name}: {message}")
 
 def display_message_with_timestamp(role, content):
-    """Displays a message with a timestamp."""
+    """Displays a message with a timestamp using copy-friendly Rich display."""
     if role == 'assistant':
         print_markdown(f"**Maia:** {content}")
     elif role == 'user':
@@ -106,24 +108,26 @@ def display_message_with_timestamp(role, content):
     else:
         print_text(content, style="yellow")
 
-def print_welcome_message():
+def print_welcome_message(query_command=None, total_pages=0):
     """Prints the welcome message for a chat session."""
-    print("\n" + "=" * 40)
-    print("Welcome to Maia Chat!")
-    print("\nType your message and press Enter to chat.")
-    print("Available commands:")
-    print("  /quit  - Exit the chat")
-    print("  /debug - Toggle debug mode")
-    print("  /push  - Push the current chat session to Notion")
-    print("  /help  - Show this help message")
-    print("=" * 40 + "\n")
+    # Use clean format for both debug and non-debug modes
+    print_text("🐙 maia chat", style="bold cyan")
+    if query_command:
+        print_text(f"Query: {query_command}", style="dim")
+    print_text(f"Pages loaded: {total_pages}", style="green")
+    print_text("Available commands:")
+    print_text("  /quit  - Exit the chat")
+    print_text("  /debug - Toggle debug mode")
+    print_text("  /push  - Push the current chat session to Notion")
+    print_text("  /help  - Show this help message")
+    print_text("")  # Empty line for spacing
 
 # --- Core Chat Logic ---
 
 async def push_chat_to_notion(messages):
     """Pushes the current chat history to a new Notion page."""
     # This is a placeholder for the actual implementation
-    print("\n[Pushing chat to Notion...]")
+    print_text("\n[Pushing chat to Notion...]", style="yellow")
     await asyncio.sleep(1) # Simulate async operation
     return "Successfully pushed chat to Notion."
 
@@ -154,12 +158,26 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
+    # Reconstruct the query command for display
+    query_parts = ["maia", "chat"]
+    if sources:
+        if len(sources) == 1:
+            query_parts.extend(["-s", sources[0]])
+        else:
+            query_parts.extend(["-s"] + sources)
+    if filters:
+        for filter_expr in filters:
+            query_parts.extend(["-f", f'"{filter_expr}"'])
+    if workspace:
+        query_parts.extend(["-w", workspace])
+    query_command = " ".join(query_parts)
+
     # 1. Determine Workspace
     workspace_manager = get_workspace_manager()
     if not workspace:
         workspace = workspace_manager.get_default_workspace()
     if not workspace:
-        print("ERROR: No workspace available. Please configure one.")
+        print_text("ERROR: No workspace available. Please configure one.", style="bold red")
         return
 
     # 2. Determine and Process Sources
@@ -168,13 +186,14 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 
     db_manager = get_database_manager()
     initial_multi_source_data = {}
+    total_pages_loaded = 0
 
     if not sources:
         debug_print(f"No sources provided, loading all databases for workspace '{workspace}'.")
         workspace_databases = db_manager.get_workspace_databases(workspace)
         sources = [db.nickname for db in workspace_databases]
         if not sources:
-            print(f"Warning: No databases configured for workspace '{workspace}'. Chat will lack context.")
+            print_text(f"Warning: No databases configured for workspace '{workspace}'. Chat will lack context.", style="bold yellow")
 
     if filters and sources:
         debug_print(f"Applying filters: {filters}")
@@ -193,7 +212,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                         converted_filter = parse_filter_expression(filter_expr)
                         filter_parts.append(converted_filter)
                     except Exception as e:
-                        print(f"Warning: Invalid filter '{filter_expr}': {e}")
+                        print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
                         continue
                 
                 if filter_parts:
@@ -212,15 +231,18 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
         try:
             parsed_sources_init = parse_source_specs(processed_sources)
         except Exception as e:
-            print(f"Warning: Error parsing source specifications: {e}")
+            print_text(f"Warning: Error parsing source specifications: {e}", style="bold yellow")
 
     if parsed_sources_init:
-        print("Loading context from sources...")
+        if DEBUG_MODE:
+            print_text("Loading context from sources...", style="cyan")
+        
         for source_conf in parsed_sources_init:
             db_name = source_conf['database']
             db_config = db_manager.get_database(db_name)
             if not db_config:
-                print(f"Warning: Config for database '{db_name}' not found. Skipping.")
+                if DEBUG_MODE:
+                    print_text(f"Warning: Config for database '{db_name}' not found. Skipping.", style="bold yellow")
                 continue
 
             try:
@@ -247,132 +269,149 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     complex_filter=source_conf.get('complex_filter')
                 )
                 initial_multi_source_data[db_config.nickname] = pages
-                print(f"  - Loaded {len(pages)} entries from: {db_config.nickname}")
+                total_pages_loaded += len(pages)
+                
+                if DEBUG_MODE:
+                    print_text(f"  - Loaded {len(pages)} entries from: {db_config.nickname}", style="green")
             except Exception as e:
-                print(f"Error loading data for database {db_config.name}: {e}")
+                if DEBUG_MODE:
+                    print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
 
     # 5. Generate System Prompt
     system_prompt = create_system_prompt(initial_multi_source_data)
     debug_print(f"System prompt generated ({len(system_prompt)} chars).")
 
-    # 6. Save debug file if debug mode is enabled
+    # Save debug file if debug mode is enabled
     if DEBUG_MODE:
-        debug_dir = "debug"
-        os.makedirs(debug_dir, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        debug_file = os.path.join(debug_dir, f"{timestamp}_session_init_prompt.txt")
-        
         try:
-            with open(debug_file, "w", encoding="utf-8") as f:
-                f.write(f"Chat Session Debug Info\n")
-                f.write(f"======================\n")
-                f.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
+            timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
+            debug_filename = f"debug/{timestamp}_session_init_prompt.txt"
+            
+            # Ensure debug directory exists
+            os.makedirs("debug", exist_ok=True)
+            
+            # Write debug file with session info
+            with open(debug_filename, 'w', encoding='utf-8') as f:
+                f.write("=== MAIA CHAT SESSION INITIALIZATION ===\n")
+                f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"API Type: {current_api}\n")
                 f.write(f"Workspace: {workspace}\n")
                 f.write(f"Sources: {sources}\n")
                 f.write(f"Filters: {filters}\n")
-                f.write(f"Processed Sources: {processed_sources}\n")
-                f.write(f"System Prompt Length: {len(system_prompt)} chars\n\n")
-                f.write(f"System Prompt Content:\n")
-                f.write(f"=====================\n")
+                f.write(f"Total Pages Loaded: {total_pages_loaded}\n")
+                f.write(f"System Prompt Length: {len(system_prompt)} characters\n")
+                f.write("\n" + "="*50 + "\n")
+                f.write("SYSTEM PROMPT:\n")
+                f.write("="*50 + "\n")
                 f.write(system_prompt)
-            debug_print(f"Debug file saved: {debug_file}")
+            
+            debug_print(f"Debug file saved: {debug_filename}")
         except Exception as e:
             debug_print(f"Failed to save debug file: {e}")
 
-    # 7. Display Welcome Message
-    print_welcome_message()
+    # 6. Display Welcome Message
+    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded)
 
-    # 8. Initialize Messages
-    messages = []
-    if current_api != "anthropic":
-        messages.append({"role": "system", "content": system_prompt})
-
-    # 9. Non-interactive Mode
+    # 7. Handle Non-interactive Mode
     if non_interactive:
-        print("---MAIA_BACKEND_READY---", flush=True)
         return
 
-    # 10. Interactive Chat Loop
+    # 8. Start Interactive Chat Loop
+    messages = []
+    
     while True:
         try:
-            user_input = session.prompt(HTML('<style fg="green">You: </style>')).strip()
-            if not user_input:
+            user_input = session.prompt("You: ", style=style)
+            
+            if user_input.strip().lower() in ['/quit', '/exit']:
+                print_text("Goodbye!", style="bold cyan")
+                break
+            elif user_input.strip().lower() == '/debug':
+                DEBUG_MODE = not DEBUG_MODE
+                status = "enabled" if DEBUG_MODE else "disabled"
+                print_text(f"Debug mode {status}.", style="bold yellow")
                 continue
-
-            if user_input.lower().startswith('/'):
-                if user_input.lower() in ['/exit', '/quit']:
-                    print("Goodbye!")
-                    break
-                elif user_input.lower() == '/help':
-                    print_welcome_message()
-                elif user_input.lower() == '/debug':
-                    DEBUG_MODE = not DEBUG_MODE
-                    os.environ["MAIA_DEBUG"] = "1" if DEBUG_MODE else "0"
-                    print(f"Debug mode {'enabled' if DEBUG_MODE else 'disabled'}.")
-                elif user_input.lower() == '/push':
-                    asyncio.run(push_chat_to_notion(messages))
-                else:
-                    print(f"Unknown command: {user_input}")
+            elif user_input.strip().lower() == '/push':
+                try:
+                    result = asyncio.run(push_chat_to_notion(messages))
+                    print_text(result, style="bold green")
+                except Exception as e:
+                    print_text(f"Error pushing to Notion: {e}", style="bold red")
                 continue
-
+            elif user_input.strip().lower() == '/help':
+                print_welcome_message(query_command=query_command, total_pages=total_pages_loaded)
+                continue
+            
+            if not user_input.strip():
+                continue
+            
             messages.append({"role": "user", "content": user_input})
-            ai_reply_content = ""
-
-            if current_api == "anthropic" and anthropic_client:
-                response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
-                if response:
-                    ai_reply_content = response.content[0].text
-            elif current_api == "openai" and openai_client:
-                chat_completion = openai_client.chat.completions.create(messages=messages, model="gpt-4-turbo-preview")
-                ai_reply_content = chat_completion.choices[0].message.content
-            elif current_api == "gemini" and gemini_client:
-                # Convert messages to the format expected by the Gemini API
-                gemini_messages = []
-                for m in messages:
-                    if m['role'] == 'system':
-                        continue # System role is handled separately in Gemini
+            
+            # Call the appropriate API
+            response_content = None
+            try:
+                if current_api == "anthropic" and anthropic_client:
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
+                    if response and response.content:
+                        response_content = response.content[0].text
+                elif current_api == "openai" and openai_client:
+                    formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                    response = openai_client.chat.completions.create(
+                        model="gpt-4",
+                        messages=formatted_messages,
+                        max_tokens=4096,
+                        temperature=0.7
+                    )
+                    if response.choices:
+                        response_content = response.choices[0].message.content
+                elif current_api == "gemini" and gemini_client:
+                    formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
+                    for msg in messages:
+                        formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
                     
-                    # Gemini uses 'model' for the assistant's role
-                    role = 'user' if m['role'] == 'user' else 'model'
-                    gemini_messages.append({'role': role, 'parts': [m['content']]})
+                    response = gemini_client.generate_content(formatted_prompt)
+                    if response.text:
+                        response_content = response.text
+                else:
+                    print_text(f"Error: {current_api} API client not available.", style="bold red")
+                    continue
                 
-                # The system prompt is now passed during model initialization,
-                # but if we needed to pass it here, it would be different.
-                # For this model, we re-create it with the system prompt.
-                gemini_model = genai.GenerativeModel(
-                    'gemini-2.5-pro',
-                    system_instruction=system_prompt
-                )
+                if response_content:
+                    # Use copy-friendly markdown display
+                    print_markdown(response_content, title="Maia")
+                    messages.append({"role": "assistant", "content": response_content})
+                else:
+                    print_text("Error: No response generated.", style="bold red")
+                    
+            except Exception as e:
+                print_text(f"Error calling {current_api} API: {e}", style="bold red")
+                debug_print(f"Full API error: {e}")
                 
-                response = gemini_model.generate_content(gemini_messages)
-                ai_reply_content = response.text
-            else:
-                print(f"ERROR: API client for '{current_api}' is not available. Check your API keys.")
-                continue
-
-            if ai_reply_content:
-                messages.append({"role": "assistant", "content": ai_reply_content})
-                display_message_with_timestamp('assistant', ai_reply_content)
-
         except KeyboardInterrupt:
-            print("\nGoodbye!")
+            print_text("\nGoodbye!", style="bold cyan")
             break
-        except Exception as e:
-            print(f"\nAn unexpected error occurred: {e}")
-            debug_print(traceback.format_exc())
+        except EOFError:
+            print_text("\nGoodbye!", style="bold cyan")
             break
 
 def main():
-    """Entry point for the chat interface, run from CLI."""
+    """Entry point for the chat interface."""
     import argparse
-    parser = argparse.ArgumentParser(description="Maia Chat Interface")
-    parser.add_argument("-s", "--sources", nargs='*', help="List of sources to load, e.g., 'journal:7'.")
-    parser.add_argument("-f", "--filters", nargs='*', help="List of filters to apply.")
-    parser.add_argument("-w", "--workspace", help="The workspace to use.")
-    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode.")
+    
+    parser = argparse.ArgumentParser(description="Interactive chat with Maia")
+    parser.add_argument("-s", "--sources", nargs="+", help="Data sources to load")
+    parser.add_argument("-f", "--filters", nargs="+", help="Filters to apply to sources")
+    parser.add_argument("-w", "--workspace", help="Workspace to use")
+    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode")
+    
     args = parser.parse_args()
-    chat(sources=args.sources, filters=args.filters, workspace=args.workspace, non_interactive=args.non_interactive)
+    
+    asyncio.run(chat(
+        sources=args.sources,
+        filters=args.filters,
+        workspace=args.workspace,
+        non_interactive=args.non_interactive
+    ))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

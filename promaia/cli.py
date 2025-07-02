@@ -1322,7 +1322,9 @@ def main():
     args = parser.parse_args()
 
     # Configure logging
-    log_level = logging.DEBUG if args.debug else logging.INFO
+    # Check both CLI flag and environment variable for debug mode
+    debug_mode = args.debug or os.getenv("MAIA_DEBUG", "0") == "1"
+    log_level = logging.DEBUG if debug_mode else logging.WARNING  # Use WARNING to suppress INFO messages
     
     # In non-interactive mode (like in the app), send logs to a file
     # and only critical errors to stderr.
@@ -1340,19 +1342,19 @@ def main():
         logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
     
     # Suppress noisy HTTP request logging unless in debug mode
-    if not args.debug:
+    if not debug_mode:
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("notion_client").setLevel(logging.WARNING)
         logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
     
     logger = logging.getLogger(__name__)
 
-    if args.debug:
+    # Ensure MAIA_DEBUG environment variable matches the determined debug mode
+    if debug_mode:
         os.environ["MAIA_DEBUG"] = "1"
         logger.info("Maia Debug Mode Enabled")
     else:
-        if "MAIA_DEBUG" in os.environ:
-            del os.environ["MAIA_DEBUG"]
+        os.environ["MAIA_DEBUG"] = "0"
 
     # Startup registry validation (only for data operations)
     data_commands = ["sync", "chat", "database", "db", "cms", "write", "r"]
