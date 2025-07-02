@@ -164,7 +164,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 
     # 2. Determine and Process Sources
     from promaia.config.databases import get_database_manager
-    from promaia.cli.database_commands import parse_source_specs
+    from promaia.cli.database_commands import parse_source_specs, parse_filter_expression
 
     db_manager = get_database_manager()
     initial_multi_source_data = {}
@@ -179,11 +179,38 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     if filters and sources:
         debug_print(f"Applying filters: {filters}")
 
-    # 3. Load Data
-    parsed_sources_init = []
+    # 3. Process filters and integrate them into source specifications
+    processed_sources = []
     if sources:
+        # Convert sources to proper format and integrate filters
+        for source in sources:
+            if filters:
+                # Integrate filters into the source specification
+                # Convert each filter expression and add to the source
+                filter_parts = []
+                for filter_expr in filters:
+                    try:
+                        converted_filter = parse_filter_expression(filter_expr)
+                        filter_parts.append(converted_filter)
+                    except Exception as e:
+                        print(f"Warning: Invalid filter '{filter_expr}': {e}")
+                        continue
+                
+                if filter_parts:
+                    # Create a source spec with integrated filters
+                    # Format: source_name:days.filter1.filter2...
+                    source_with_filters = f"{source}:7.{'.'.join(filter_parts)}"
+                    processed_sources.append(source_with_filters)
+                else:
+                    processed_sources.append(source)
+            else:
+                processed_sources.append(source)
+    
+    # 4. Parse the processed source specifications
+    parsed_sources_init = []
+    if processed_sources:
         try:
-            parsed_sources_init = parse_source_specs(sources)
+            parsed_sources_init = parse_source_specs(processed_sources)
         except Exception as e:
             print(f"Warning: Error parsing source specifications: {e}")
 
@@ -208,24 +235,49 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
             except Exception as e:
                 print(f"Error loading data for database {db_config.name}: {e}")
 
-    # 4. Generate System Prompt
+    # 5. Generate System Prompt
     system_prompt = create_system_prompt(initial_multi_source_data)
     debug_print(f"System prompt generated ({len(system_prompt)} chars).")
 
-    # 5. Display Welcome Message
+    # 6. Save debug file if debug mode is enabled
+    if DEBUG_MODE:
+        debug_dir = "debug"
+        os.makedirs(debug_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        debug_file = os.path.join(debug_dir, f"{timestamp}_session_init_prompt.txt")
+        
+        try:
+            with open(debug_file, "w", encoding="utf-8") as f:
+                f.write(f"Chat Session Debug Info\n")
+                f.write(f"======================\n")
+                f.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
+                f.write(f"API Type: {current_api}\n")
+                f.write(f"Workspace: {workspace}\n")
+                f.write(f"Sources: {sources}\n")
+                f.write(f"Filters: {filters}\n")
+                f.write(f"Processed Sources: {processed_sources}\n")
+                f.write(f"System Prompt Length: {len(system_prompt)} chars\n\n")
+                f.write(f"System Prompt Content:\n")
+                f.write(f"=====================\n")
+                f.write(system_prompt)
+            debug_print(f"Debug file saved: {debug_file}")
+        except Exception as e:
+            debug_print(f"Failed to save debug file: {e}")
+
+    # 7. Display Welcome Message
     print_welcome_message()
 
-    # 6. Initialize Messages
+    # 8. Initialize Messages
     messages = []
     if current_api != "anthropic":
         messages.append({"role": "system", "content": system_prompt})
 
-    # 7. Non-interactive Mode
+    # 9. Non-interactive Mode
     if non_interactive:
         print("---MAIA_BACKEND_READY---", flush=True)
         return
 
-    # 8. Interactive Chat Loop
+    # 10. Interactive Chat Loop
     while True:
         try:
             user_input = session.prompt(HTML('<style fg="green">You: </style>')).strip()
