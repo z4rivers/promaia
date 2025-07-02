@@ -18,7 +18,7 @@ class TestWorkspaceCommands(unittest.TestCase):
     def test_workspace_list_command(self):
         """Test that workspace list command works."""
         result = subprocess.run([
-            sys.executable, "-m", "prom"", "workspace", "list"
+            sys.executable, "-m", "promaia", "workspace", "list"
         ], cwd=self.project_root, capture_output=True, text=True)
         
         self.assertEqual(result.returncode, 0, f"Workspace list failed: {result.stderr}")
@@ -29,7 +29,7 @@ class TestWorkspaceCommands(unittest.TestCase):
     def test_workspace_help_command(self):
         """Test that workspace help command works."""
         result = subprocess.run([
-            sys.executable, "-m", "prom"", "workspace", "--help"
+            sys.executable, "-m", "promaia", "workspace", "--help"
         ], cwd=self.project_root, capture_output=True, text=True)
         
         self.assertEqual(result.returncode, 0, f"Workspace help failed: {result.stderr}")

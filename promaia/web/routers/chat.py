@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from promaia.web.models import ChatMessageInput, ChatMessageOutput, InitialMessageOutput
 
-from promaia.chat.interface import create_system_prompt, load_cms_entries
+from promaia.ai.prompts import create_system_prompt
 from promaia.utils.ai import debug_print
 from promaia.ai.models import GOOGLE_MODELS
+from promaia.config.databases import get_database_manager
+from promaia.storage.files import read_markdown_files_with_registry
 
 import os
 import traceback
@@ -76,40 +78,27 @@ def load_initial_message_prompt():
 async def get_initial_message():
     debug_print("--- get_initial_message invoked (Gemini) ---")
     
-    # Generate a new conversation ID
     conversation_id = str(uuid.uuid4())
     debug_print(f"Generated conversation ID: {conversation_id}")
     
-    cms_data = []
-    days_to_load_cms = None # Load all CMS entries by default
-
-    # For the web API, we primarily care about the "web" context using notion-cms.
-    debug_print(f"Web API: Loading CMS entries for initial message (days: {days_to_load_cms if days_to_load_cms is not None else 'all'}).")
+    multi_source_data = {}
     try:
-        cms_data = load_cms_entries(days_to_load=days_to_load_cms)
-        if not cms_data:
-            debug_print(f"No CMS entries found (loaded all: {days_to_load_cms is None}).")
+        db_manager = get_database_manager()
+        cms_db_config = db_manager.get_database("cms") # Assuming 'cms' is the nickname
+        if cms_db_config:
+            cms_data = read_markdown_files_with_registry(cms_db_config)
+            multi_source_data['cms'] = cms_data
+            debug_print(f"Loaded {len(cms_data)} CMS entries.")
+        else:
+            debug_print("CMS database config not found.")
     except Exception as e:
         debug_print(f"Error reading content files: {e}\\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to read content entries.")
 
-    system_prompt_str = "You are a helpful AI. (Fallback)"
-    try:
-        system_prompt_str = create_system_prompt(
-            original_journal_pages=[], 
-            cms_entries=cms_data
-        )
-        if not system_prompt_str:
-            debug_print("Warning: create_system_prompt returned an empty string. Using fallback.")
-            system_prompt_str = "You are a helpful AI. (Fallback after create_system_prompt)"
-    except FileNotFoundError as e:
-        chat_context_env = os.getenv("MAIA_CHAT_CONTEXT", "local")
-        prompt_file_expected = "prompts/KOii-chat-prompt.md" if chat_context_env == "web" else "prompt.md"
-        debug_print(f"Error: Prompt file '{prompt_file_expected}' not found. {e}")
-        raise HTTPException(status_code=500, detail=f"System prompt configuration file ({os.path.basename(prompt_file_expected)}) not found.")
-    except Exception as e:
-        debug_print(f"Error creating system prompt: {e}\\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Failed to create system prompt.")
+    system_prompt_str = create_system_prompt(multi_source_data)
+    if not system_prompt_str:
+        debug_print("Warning: create_system_prompt returned an empty string. Using fallback.")
+        system_prompt_str = "You are a helpful AI."
 
     initial_message = "Welcome to KOii's journal! How can I help you today?"
 
@@ -186,38 +175,24 @@ async def handle_chat_message(chat_input: ChatMessageInput):
     debug_print(f"Conversation ID: {conversation_id}")
     debug_print(f"Message history length: {len(message_history)}")
     
-    cms_data = []
-    days_to_load_cms = None # Load all CMS entries by default
-
-    # For the web API, we primarily care about the "web" context using notion-cms.
-    # MAIA_CHAT_CONTEXT will still influence prompt template loading in create_system_prompt.
-    debug_print(f"Web API: Loading CMS entries only (days: {days_to_load_cms if days_to_load_cms is not None else 'all'}).")
+    multi_source_data = {}
     try:
-        cms_data = load_cms_entries(days_to_load=days_to_load_cms)
-        if not cms_data:
-            debug_print(f"No CMS entries found (loaded all: {days_to_load_cms is None}).")
-
+        db_manager = get_database_manager()
+        cms_db_config = db_manager.get_database("cms") # Assuming 'cms' is the nickname
+        if cms_db_config:
+            cms_data = read_markdown_files_with_registry(cms_db_config)
+            multi_source_data['cms'] = cms_data
+            debug_print(f"Loaded {len(cms_data)} CMS entries.")
+        else:
+            debug_print("CMS database config not found.")
     except Exception as e:
         debug_print(f"Error reading content files: {e}\\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to read content entries.")
 
-    system_prompt_str = "You are a helpful AI. (Fallback)"
-    try:
-        system_prompt_str = create_system_prompt(
-            original_journal_pages=[], 
-            cms_entries=cms_data
-        )
-        if not system_prompt_str:
-            debug_print("Warning: create_system_prompt returned an empty string. Using fallback.")
-            system_prompt_str = "You are a helpful AI. (Fallback after create_system_prompt)"
-    except FileNotFoundError as e:
-        chat_context_env = os.getenv("MAIA_CHAT_CONTEXT", "local")
-        prompt_file_expected = "prompts/KOii-chat-prompt.md" if chat_context_env == "web" else "prompt.md"
-        debug_print(f"Error: Prompt file '{prompt_file_expected}' not found. {e}")
-        raise HTTPException(status_code=500, detail=f"System prompt configuration file ({os.path.basename(prompt_file_expected)}) not found.")
-    except Exception as e:
-        debug_print(f"Error creating system prompt: {e}\\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Failed to create system prompt.")
+    system_prompt_str = create_system_prompt(multi_source_data)
+    if not system_prompt_str:
+        debug_print("Warning: create_system_prompt returned an empty string. Using fallback.")
+        system_prompt_str = "You are a helpful AI."
 
     ai_reply_content = "Sorry, I couldn't process that with Gemini." 
 

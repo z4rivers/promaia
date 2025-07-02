@@ -79,6 +79,9 @@ class UnifiedStorage:
                 return None
             os.makedirs(json_dir, exist_ok=True)
             
+            # DEDUPLICATION: Remove any existing files with the same page_id
+            self._cleanup_existing_files_for_page_id(page_id, database_config)
+            
             # Create safe filename with hash for uniqueness in flat structure
             safe_title = self._create_safe_filename(title)
             filename = f"{safe_title}_{page_id}.json"
@@ -153,6 +156,9 @@ class UnifiedStorage:
             # Ensure markdown directory exists
             md_dir = database_config.markdown_directory
             os.makedirs(md_dir, exist_ok=True)
+            
+            # DEDUPLICATION: Remove any existing files with the same page_id
+            self._cleanup_existing_files_for_page_id(page_id, database_config)
             
             # Create safe filename with date prefix
             safe_title = self._create_safe_filename(title)
@@ -422,6 +428,43 @@ class UnifiedStorage:
                 report['errors'].append(f"Error processing database {db_name}: {e}")
         
         return report
+
+    def _cleanup_existing_files_for_page_id(self, page_id: str, database_config: DatabaseConfig):
+        """Clean up existing files for a given page ID."""
+        files_removed = []
+        
+        # Clean up markdown files
+        if database_config.save_markdown:
+            md_dir = database_config.markdown_directory
+            if os.path.exists(md_dir):
+                for filename in os.listdir(md_dir):
+                    if filename.endswith('.md') and page_id in filename:
+                        file_path = os.path.join(md_dir, filename)
+                        try:
+                            os.remove(file_path)
+                            files_removed.append(file_path)
+                            logger.debug(f"Removed existing markdown file: {file_path}")
+                        except OSError as e:
+                            logger.warning(f"Failed to remove markdown file {file_path}: {e}")
+        
+        # Clean up JSON files
+        if database_config.save_json or database_config.primary_format == "json":
+            json_dir = database_config.json_directory
+            if os.path.exists(json_dir):
+                for filename in os.listdir(json_dir):
+                    if filename.endswith('.json') and page_id in filename:
+                        file_path = os.path.join(json_dir, filename)
+                        try:
+                            os.remove(file_path)
+                            files_removed.append(file_path)
+                            logger.debug(f"Removed existing JSON file: {file_path}")
+                        except OSError as e:
+                            logger.warning(f"Failed to remove JSON file {file_path}: {e}")
+        
+        if files_removed:
+            logger.info(f"Cleaned up {len(files_removed)} existing files for page_id {page_id}")
+        
+        return files_removed
 
 def load_metadata_with_filters(property_filters: Optional[Dict[str, str]] = None) -> List[str]:
     """

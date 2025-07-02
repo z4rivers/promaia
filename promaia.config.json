@@ -29,7 +29,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-01T19:16:24.241184+00:00",
+      "last_sync_time": "2025-07-02T21:19:20.946463+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -88,7 +88,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-06-30T19:51:14.110379+00:00",
+      "last_sync_time": "2025-07-02T02:50:56.039073+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -200,7 +200,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-01T19:16:20.528202+00:00",
+      "last_sync_time": "2025-07-02T21:41:53.975922+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -231,7 +231,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-06-30T19:08:17.508636+00:00",
+      "last_sync_time": "2025-07-02T21:19:38.418783+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Plush/Maker/Customer Support"

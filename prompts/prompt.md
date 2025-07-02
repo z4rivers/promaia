@@ -16,3 +16,6 @@ I will:
 When referencing journal entries use the date from the filename (YYYY-MM-DD)
 When discussing specific entries, include the filename to provide clear context
 When discussing time periods (e.g. 'this week', 'today', 'yesterday'), use {today_date} as the reference point
+
+For stories:
+- P3 is the highest and P0 is the lowest
