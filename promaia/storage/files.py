@@ -691,7 +691,8 @@ def read_markdown_files_with_registry(
     database_config, 
     days: Optional[int] = None,
     comparison_filters: Optional[Dict[str, Any]] = None,
-    complex_filter: Optional[Dict[str, Any]] = None
+    complex_filter: Optional[Dict[str, Any]] = None,
+    property_filters: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Read markdown files using the database registry as the source of truth for ordering.
@@ -704,6 +705,7 @@ def read_markdown_files_with_registry(
         days: Number of days to look back (None for all files)
         comparison_filters: Dictionary of comparison filters (e.g., {'created_time_after': [...]})
         complex_filter: Dictionary representing a complex filter expression with 'or'/'and' operators
+        property_filters: Dictionary of simple property filters (e.g., {'Reference': True, 'status': 'published'})
     
     Returns:
         List of page data dictionaries ordered by database created_time
@@ -877,6 +879,7 @@ def read_markdown_files_with_registry(
                     'title': title or "Untitled",
                     'created_time': created_time,
                     'synced_time': synced_time,
+                    'metadata': metadata,  # Include the metadata from the registry!
                     'debug_info': "date from database registry"
                 })
                 
@@ -890,7 +893,25 @@ def read_markdown_files_with_registry(
         print(f"  Run 'maia database register-markdown-files' to fix registry.")
         return []
     
-    print(f"Read {len(pages)} pages from database registry for {database_config.workspace}.{database_config.nickname}")
+    initial_page_count = len(pages)
+    print(f"Read {initial_page_count} pages from database registry for {database_config.workspace}.{database_config.nickname}")
+    
+    # Apply custom property filters
+    filters_applied = False
+    
+    # Apply complex filters first
+    if complex_filter:
+        pages = apply_custom_property_filters(pages, complex_filter)
+        filters_applied = True
+    
+    # Apply simple property filters
+    if property_filters:
+        pages = apply_simple_property_filters(pages, property_filters)
+        filters_applied = True
+    
+    # Report filtering results
+    if filters_applied and len(pages) != initial_page_count:
+        print(f"Applied property filters: {len(pages)} pages remain after filtering")
     
     # Registry-first: if no results, that's the authoritative answer
     if len(pages) == 0:
@@ -900,6 +921,235 @@ def read_markdown_files_with_registry(
         return []
     
     return pages
+
+def apply_custom_property_filters(pages: List[Dict[str, Any]], complex_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """
+    Apply custom property filters to pages based on their metadata.
+    
+    Args:
+        pages: List of page dictionaries with metadata
+        complex_filter: Complex filter expression with custom properties
+        
+    Returns:
+        Filtered list of pages
+    """
+    if not complex_filter or complex_filter.get('type') != 'complex':
+        return pages
+    
+    filtered_pages = []
+    
+    for page in pages:
+        # Parse metadata to get properties
+        metadata = page.get('metadata', '{}')
+        try:
+            if isinstance(metadata, str):
+                metadata_dict = json.loads(metadata) if metadata else {}
+            else:
+                metadata_dict = metadata
+            
+            properties = metadata_dict.get('properties', {})
+            
+            # Check if page matches the complex filter
+            if evaluate_complex_filter(properties, complex_filter):
+                filtered_pages.append(page)
+                
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Could not parse metadata for page {page.get('page_id', 'unknown')}: {e}")
+            continue
+    
+    return filtered_pages
+
+
+def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Apply simple property filters to pages based on their metadata.
+    
+    Args:
+        pages: List of page dictionaries with metadata
+        property_filters: Dictionary of property_name -> expected_value filters
+        
+    Returns:
+        Filtered list of pages
+    """
+    if not property_filters:
+        return pages
+    
+    filtered_pages = []
+    
+    for page in pages:
+        # Parse metadata to get properties
+        metadata = page.get('metadata', '{}')
+        try:
+            if isinstance(metadata, str):
+                metadata_dict = json.loads(metadata) if metadata else {}
+            else:
+                metadata_dict = metadata
+            
+            properties = metadata_dict.get('properties', {})
+            
+            # Check if page matches all property filters
+            matches = True
+            for prop_name, expected_value in property_filters.items():
+                prop_data = properties.get(prop_name, {})
+                actual_value = extract_property_value(prop_data)
+                
+                # Apply the condition using the existing evaluate_condition function
+                if not evaluate_condition(actual_value, '=', expected_value):
+                    matches = False
+                    break
+            
+            if matches:
+                filtered_pages.append(page)
+                
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Could not parse metadata for page {page.get('page_id', 'unknown')}: {e}")
+            continue
+    return filtered_pages
+
+
+def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str, Any]) -> bool:
+    """
+    Evaluate a complex filter expression against page properties.
+    
+    Args:
+        properties: Dictionary of page properties from Notion
+        complex_filter: Complex filter expression
+        
+    Returns:
+        True if the properties match the filter, False otherwise
+    """
+    if complex_filter.get('type') != 'complex':
+        return True
+    
+    or_clauses = complex_filter.get('or_clauses', [])
+    
+    # Evaluate each OR clause
+    for and_conditions in or_clauses:
+        # All conditions in an AND clause must be true
+        and_result = True
+        
+        for condition in and_conditions:
+            prop_name = condition.get('property', '')
+            operator = condition.get('operator', '=')
+            expected_value = condition.get('value', '')
+            
+            # Skip date properties as they are handled at SQL level
+            if prop_name in ['created_time', 'last_edited_time']:
+                continue
+            
+            # Get the actual property value from the page
+            prop_data = properties.get(prop_name, {})
+            actual_value = extract_property_value(prop_data)
+            
+            # Apply the condition
+            if not evaluate_condition(actual_value, operator, expected_value):
+                and_result = False
+                break
+        
+        # If any OR clause is satisfied, return True
+        if and_result:
+            return True
+    
+    # If no OR clause was satisfied, return False
+    return False
+
+
+def extract_property_value(prop_data: Dict[str, Any]) -> Any:
+    """
+    Extract the actual value from a Notion property data structure.
+    
+    Args:
+        prop_data: Property data from Notion
+        
+    Returns:
+        The actual value of the property
+    """
+    if not prop_data:
+        return None
+    
+    prop_type = prop_data.get('type')
+    
+    if prop_type == 'checkbox':
+        return prop_data.get('checkbox', False)
+    elif prop_type == 'select' and prop_data.get('select'):
+        return prop_data['select'].get('name', '')
+    elif prop_type == 'status' and prop_data.get('status'):
+        return prop_data['status'].get('name', '')
+    elif prop_type == 'title' and prop_data.get('title'):
+        return ''.join([t.get('plain_text', '') for t in prop_data['title']])
+    elif prop_type == 'rich_text' and prop_data.get('rich_text'):
+        return ''.join([t.get('plain_text', '') for t in prop_data['rich_text']])
+    elif prop_type == 'number':
+        return prop_data.get('number')
+    elif prop_type == 'url':
+        return prop_data.get('url', '')
+    elif prop_type == 'email':
+        return prop_data.get('email', '')
+    elif prop_type == 'phone_number':
+        return prop_data.get('phone_number', '')
+    elif prop_type == 'date' and prop_data.get('date'):
+        return prop_data['date'].get('start', '')
+    elif prop_type == 'multi_select':
+        return [item.get('name', '') for item in prop_data.get('multi_select', [])]
+    # Add more property types as needed
+    
+    return None
+
+
+def evaluate_condition(actual_value: Any, operator: str, expected_value: str) -> bool:
+    """
+    Evaluate a single condition against property values.
+    
+    Args:
+        actual_value: The actual value from the property
+        operator: The comparison operator (=, >, <, etc.)
+        expected_value: The expected value from the filter
+        
+    Returns:
+        True if the condition is satisfied, False otherwise
+    """
+    # Handle None values
+    if actual_value is None:
+        return False
+    
+    # Convert expected_value to appropriate type
+    if isinstance(actual_value, bool):
+        if isinstance(expected_value, bool):
+            # expected_value is already a boolean, use as-is
+            pass
+        elif isinstance(expected_value, str) and expected_value.lower() in ['true', 'false']:
+            expected_value = expected_value.lower() == 'true'
+        else:
+            return False
+    elif isinstance(actual_value, (int, float)):
+        try:
+            expected_value = float(expected_value)
+        except ValueError:
+            return False
+    elif isinstance(actual_value, list):
+        # For multi-select properties, check if expected value is in the list
+        if operator == '=':
+            return expected_value in actual_value
+        else:
+            return False
+    else:
+        # String comparison
+        actual_value = str(actual_value)
+        expected_value = str(expected_value)
+    
+    # Apply the operator
+    if operator == '=':
+        return actual_value == expected_value
+    elif operator == '>':
+        return actual_value > expected_value
+    elif operator == '<':
+        return actual_value < expected_value
+    elif operator == '>=':
+        return actual_value >= expected_value
+    elif operator == '<=':
+        return actual_value <= expected_value
+    else:
+        return False
 
 # If this file is run directly, run the test
 if __name__ == "__main__":

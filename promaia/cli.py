@@ -1029,7 +1029,8 @@ def chat_run(args):
             recents_manager.add_query(sources=sources, filters=filters, workspace=workspace)
         
         # The `chat` function will now need to handle the main loop
-        chat(sources=sources, filters=filters, workspace=workspace, non_interactive=not sys.stdout.isatty())
+        non_interactive = getattr(args, 'non_interactive', False) or not sys.stdout.isatty()
+        chat(sources=sources, filters=filters, workspace=workspace, non_interactive=non_interactive)
 
     except ImportError as e:
         print(f"Error importing chat interface: {e}", file=sys.stderr)
@@ -1211,7 +1212,7 @@ def main():
         "--filter", "-f",
         action="append",
         dest="filters",
-        help="Add property filters in format 'property_name=value' or 'property_name>value' or 'property_name<value'. Can be used multiple times. Examples: 'status=published', 'created_time>2025-03-01', 'priority<5'"
+        help="Add property filters in format 'property_name=value' or '\"Property Name\"=value'. Use quotes for properties with spaces. Can be used multiple times. Examples: 'status=published', '\"Reference\"=true', '\"Blog Status\"=live and created_time>2025-03-01'"
     )
     chat_parser.add_argument(
         "--workspace", "-ws",
@@ -1221,6 +1222,11 @@ def main():
         "--recent", "-r",
         action="store_true",
         help="Show recent queries for selection and re-execution"
+    )
+    chat_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Run in non-interactive mode for testing"
     )
     chat_parser.set_defaults(func=chat_run)
     

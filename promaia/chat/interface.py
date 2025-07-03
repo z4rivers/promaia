@@ -200,31 +200,96 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 
     # 3. Process filters and integrate them into source specifications
     processed_sources = []
-    if sources:
-        # Convert sources to proper format and integrate filters
-        for source in sources:
-            if filters:
-                # Integrate filters into the source specification
-                # Convert each filter expression and add to the source
-                filter_parts = []
-                for filter_expr in filters:
-                    try:
-                        converted_filter = parse_filter_expression(filter_expr)
-                        filter_parts.append(converted_filter)
-                    except Exception as e:
-                        print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
-                        continue
+    source_specific_filters = {}  # Dict of source -> list of filters
+    global_filters = []  # Filters without source prefix (backward compatibility)
+    
+    # Parse and categorize filters
+    if filters:
+        debug_print(f"Processing filters: {filters}")
+        
+        for filter_expr in filters:
+            try:
+                parsed_filter = parse_filter_expression(filter_expr)
                 
-                if filter_parts:
-                    # Create a source spec with integrated filters
-                    # Format: source_name:days.filter1.filter2...
-                    source_with_filters = f"{source}:7.{'.'.join(filter_parts)}"
-                    processed_sources.append(source_with_filters)
+                # Check if this is a source-specific filter (new format)
+                if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
+                    source = parsed_filter['source']
+                    filter_spec = parsed_filter['filter']
+                    
+                    if source not in source_specific_filters:
+                        source_specific_filters[source] = []
+                    source_specific_filters[source].append(filter_spec)
+                    debug_print(f"Added source-specific filter: {source} -> {filter_spec}")
                 else:
-                    processed_sources.append(source)
+                    # Backward compatibility - filter without source prefix
+                    global_filters.append(parsed_filter)
+                    debug_print(f"Added global filter: {parsed_filter}")
+                    
+            except Exception as e:
+                print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
+                continue
+    
+    # Validation for multi-source scenarios
+    if sources and len(sources) > 1:
+        if global_filters:
+            print_text(
+                "Error: In multi-source scenarios, all filters must specify a source prefix.\n"
+                f"Example: Instead of '{global_filters[0]}', use 'source:\"{global_filters[0]}\"'\n"
+                "Available sources: " + ", ".join(sources),
+                style="bold red"
+            )
+            return
+        
+        # Check that all filter sources are valid
+        for filter_source in source_specific_filters.keys():
+            if filter_source not in sources:
+                print_text(
+                    f"Error: Filter source '{filter_source}' not found in specified sources.\n"
+                    f"Available sources: {', '.join(sources)}",
+                    style="bold red"
+                )
+                return
+    
+    # Build processed sources with appropriate filters
+    if sources:
+        for source in sources:
+            # Determine which filters apply to this source
+            applicable_filters = []
+            
+            # Add source-specific filters
+            if source in source_specific_filters:
+                applicable_filters.extend(source_specific_filters[source])
+            
+            # Add global filters (only in single-source scenarios or backward compatibility)
+            if len(sources) == 1 or not source_specific_filters:
+                applicable_filters.extend(global_filters)
+            
+            # Build the source specification
+            if applicable_filters:
+                # Create a source spec with integrated filters
+                # Format: source_name:all.filter1.filter2... (use 'all' when filters are present)
+                source_with_filters = f"{source}:all.{'.'.join(applicable_filters)}"
+                processed_sources.append(source_with_filters)
+                debug_print(f"Created filtered source spec: {source_with_filters}")
             else:
                 processed_sources.append(source)
+                debug_print(f"Using unfiltered source: {source}")
     
+    # Log final filter application
+    if DEBUG_MODE and (source_specific_filters or global_filters):
+        print_text("Filter Summary:", style="bold cyan")
+        for source in sources or []:
+            filters_for_source = []
+            if source in source_specific_filters:
+                filters_for_source.extend([f"source-specific: {f}" for f in source_specific_filters[source]])
+            if len(sources) == 1 or not source_specific_filters:
+                filters_for_source.extend([f"global: {f}" for f in global_filters])
+            
+            if filters_for_source:
+                print_text(f"  {source}: {', '.join(filters_for_source)}", style="dim")
+            else:
+                print_text(f"  {source}: no filters", style="dim")
+
     # 4. Parse the processed source specifications
     parsed_sources_init = []
     if processed_sources:
@@ -266,7 +331,8 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     db_config,
                     days=days_to_use,
                     comparison_filters=source_conf.get('comparison_filters', {}),
-                    complex_filter=source_conf.get('complex_filter')
+                    complex_filter=source_conf.get('complex_filter'),
+                    property_filters=source_conf.get('property_filters', {})
                 )
                 initial_multi_source_data[db_config.nickname] = pages
                 total_pages_loaded += len(pages)

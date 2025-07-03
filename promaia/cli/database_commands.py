@@ -549,8 +549,14 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                              logger.warning(f"Invalid property filter format '{filter_part}' in spec '{spec}'")
 
             # If days were not specified in the spec string, use the default from the config
+            # UNLESS filters are present, in which case ignore days constraint entirely
             if not days_was_specified:
-                days = db_config.default_days
+                # Check if any filters are present
+                has_filters = (property_filters or comparison_filters or complex_filter)
+                if has_filters:
+                    days = None  # Ignore days constraint when filters are present
+                else:
+                    days = db_config.default_days
 
             parsed_source = {
                 'name': database,
@@ -565,9 +571,11 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
             parsed_sources.append(parsed_source)
             
             if complex_filter:
-                logger.info(f"Parsed source: {database}, days: {days}, complex_filter: {complex_filter}")
+                days_desc = "all (filters override)" if days is None and (property_filters or comparison_filters or complex_filter) else days
+                logger.info(f"Parsed source: {database}, days: {days_desc}, complex_filter: {complex_filter}")
             else:
-                logger.info(f"Parsed source: {database}, days: {days}, filters: {property_filters}, comparison_filters: {comparison_filters}")
+                days_desc = "all (filters override)" if days is None and (property_filters or comparison_filters) else days
+                logger.info(f"Parsed source: {database}, days: {days_desc}, filters: {property_filters}, comparison_filters: {comparison_filters}")
             
         except Exception as e:
             logger.error(f"Error parsing source spec '{spec}': {e}")
@@ -575,28 +583,56 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
     
     return parsed_sources
 
-def parse_filter_expression(filter_expr: str) -> str:
+def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
     """
-    Parse a single filter expression and convert it to the format expected by parse_source_specs.
+    Parse a single filter expression and convert it to a format that includes source information.
     
-    Now supports complex expressions with 'or' and 'and' operators:
-        'created_time<2024-12-30 or created_time>2025-06-30'
-        'status=published and created_time>2025-01-01'
-        'created_time<2024-12-30 or created_time>2025-06-30 and status=planned'
+    Now supports source-specific filtering:
+        'cms:"Reference"=true' -> {'source': 'cms', 'filter': '"Reference"=true'}
+        'journal:created_time>2025-01-01' -> {'source': 'journal', 'filter': 'created_time_after=2025-01-01'}
     
-    Simple expressions still work:
-        'status=published' -> 'status=published'
-        'created_time>2025-03-01' -> 'created_time_after=2025-03-01'
-        'created_time<2025-03-30' -> 'created_time_before=2025-03-30'
+    And complex expressions within a single source:
+        'cms:"Reference"=true and "Blog status"=live' -> {'source': 'cms', 'filter': '__COMPLEX_EXPR__"Reference"=true and "Blog status"=live'}
+    
+    Simple expressions without source prefix (backward compatibility):
+        'status=published' -> {'source': None, 'filter': 'status=published'}
     
     Args:
         filter_expr: A filter expression string
         
     Returns:
-        Converted filter expression for use in source specs, or special format for complex expressions
+        Dictionary with 'source' and 'filter' keys, or converted filter expression for backward compatibility
     """
     filter_expr = filter_expr.strip()
     
+    # Check for source prefix (source:filter_expression)
+    source_match = re.match(r'^([a-zA-Z0-9_.-]+):\s*(.+)$', filter_expr)
+    if source_match:
+        source = source_match.group(1)
+        filter_part = source_match.group(2)
+        
+        # Check if this is a complex expression with 'or' or 'and'
+        if ' or ' in filter_part.lower() or ' and ' in filter_part.lower():
+            # Return source-specific complex filter
+            return {'source': source, 'filter': f"__COMPLEX_EXPR__{filter_part}"}
+        
+        # Handle simple comparison operators
+        if '>' in filter_part:
+            prop, value = filter_part.split('>', 1)
+            converted_filter = f"{prop.strip()}_after={value.strip()}"
+        elif '<' in filter_part:
+            prop, value = filter_part.split('<', 1)
+            converted_filter = f"{prop.strip()}_before={value.strip()}"
+        elif '=' in filter_part:
+            # Direct equality - no conversion needed
+            converted_filter = filter_part
+        else:
+            # Invalid format
+            raise ValueError(f"Invalid filter format: '{filter_part}'. Use 'property=value', 'property>value', or 'property<value'")
+        
+        return {'source': source, 'filter': converted_filter}
+    
+    # No source prefix - handle as before for backward compatibility
     # Check if this is a complex expression with 'or' or 'and'
     if ' or ' in filter_expr.lower() or ' and ' in filter_expr.lower():
         # Return a special marker to indicate this needs complex parsing
@@ -656,12 +692,23 @@ def parse_complex_filter_expression(expr: str) -> Dict[str, Any]:
 def parse_single_condition(condition: str) -> Dict[str, str]:
     """
     Parse a single condition like 'created_time<2024-12-30' or 'status=published'.
+    Now supports quoted property names like '"Reference"=true' and '"Blog status"=live'.
     
     Returns:
         Dictionary with property, operator, and value
     """
     condition = condition.strip()
     
+    # Handle quoted property names
+    # Look for patterns like "Property Name"=value or "Property Name">value
+    quoted_prop_match = re.match(r'^"([^"]+)"([><=]+)(.*)$', condition)
+    if quoted_prop_match:
+        prop = quoted_prop_match.group(1)
+        operator = quoted_prop_match.group(2)
+        value = quoted_prop_match.group(3).strip()
+        return {'property': prop, 'operator': operator, 'value': value}
+    
+    # Handle unquoted property names (existing logic)
     if '>=' in condition:
         prop, value = condition.split('>=', 1)
         return {'property': prop.strip(), 'operator': '>=', 'value': value.strip()}
