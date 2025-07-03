@@ -29,7 +29,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-02T21:19:20.946463+00:00",
+      "last_sync_time": "2025-07-03T18:41:07.513320+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -60,7 +60,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 30,
-      "last_sync_time": "2025-06-30T19:51:14.468064+00:00",
+      "last_sync_time": "2025-07-03T02:25:49.778852+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -88,7 +88,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-02T02:50:56.039073+00:00",
+      "last_sync_time": "2025-07-03T18:41:03.301584+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -200,7 +200,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-02T21:41:53.975922+00:00",
+      "last_sync_time": "2025-07-03T19:28:25.924863+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -231,7 +231,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-02T22:14:59.662855+00:00",
+      "last_sync_time": "2025-07-03T19:38:16.776351+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Plush/Maker/Customer Support"

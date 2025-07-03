@@ -1,0 +1,24 @@
+[1;33mWarning: Invalid filter [0m[32m'journal:created_time'[0m[1;33m: Invalid filter format: [0m[32m'created_time'[0m[1;33m. Use [0m[32m'[0m[32mproperty[0m[32m=[0m[32mvalue[0m[32m'[0m[1;33m, [0m[32m'property>value'[0m[1;33m, or [0m[32m'property<value'[0m
+
+Read 28 pages from database registry for koii.cms
+Applied property filters: 10 pages remain after filtering
+Info: date_filter property 'Date' in config is not a direct column. Using 'created_time' for query.
+Read 6 pages from database registry for koii.journal
+[1;36m🐙 maia chat[0m
+
+[2mQuery: maia chat -s cms journal -f [0m[2;32m"cms:[0m[2;32mReference[0m[2;32m=[0m[2;32mtrue"[0m[2m -f [0m[2;32m"journal:created_time"[0m[2m -w koii[0m
+
+[32mPages loaded: [0m[1;36m16[0m
+
+Available commands:
+
+  [35m/[0m[95mquit[0m  - Exit the chat
+
+  [35m/[0m[95mdebug[0m - Toggle debug mode
+
+  [35m/[0m[95mpush[0m  - Push the current chat session to Notion
+
+  [35m/[0m[95mhelp[0m  - Show this help message
+
+
+
