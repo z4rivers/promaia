@@ -698,32 +698,32 @@ def read_markdown_files_with_registry(
     Read markdown files using the database registry as the source of truth for ordering.
     
     This function provides more accurate chronological ordering by using the SQLite
-    registry which contains the actual created_time from the original data sources.
+    registry which contains the actual date information from the original data sources.
     
     Args:
         database_config: DatabaseConfig object with workspace and nickname
-        days: Number of days to look back (None for all files)
+        days: Number of days to look back (None for all files) - filters based on last_edited_time by default
         comparison_filters: Dictionary of comparison filters (e.g., {'created_time_after': [...]})
         complex_filter: Dictionary representing a complex filter expression with 'or'/'and' operators
         property_filters: Dictionary of simple property filters (e.g., {'Reference': True, 'status': 'published'})
     
     Returns:
-        List of page data dictionaries ordered by database created_time
+        List of page data dictionaries ordered by the configured date property (last_edited_time by default)
     """
     from promaia.storage.json_registry import get_json_registry
     
     pages = []
     
     try:
-        # Get registry entries for this database, ordered by created_time
+        # Get registry entries for this database, ordered by date property
         registry = get_json_registry()
         
         # Query registry for files in this database
         with sqlite3.connect(registry.db_path) as conn:
             cursor = conn.cursor()
             
-            # Determine which date property to use from config, default to created_time
-            date_filter_prop = database_config.date_filters.get("property", "created_time")
+            # Determine which date property to use from config, default to last_edited_time
+            date_filter_prop = database_config.date_filters.get("property", "last_edited_time")
             
             # Basic sanitization to prevent SQL injection from config values
             # This is a safeguard; config should be trusted but it's good practice
