@@ -128,6 +128,12 @@ class ResendClient:
                 html_lines.append(f'<h2 style="font-size: 18px; font-weight: bold; margin: 15px 0 8px 0; color: #555;">{line}</h2>')
                 continue
             
+            # Cover image (convert to actual image)
+            if line.startswith('🖼️ http'):
+                image_url = line.replace('🖼️ ', '').strip()
+                html_lines.append(f'<p style="margin: 16px 0; text-align: center;"><img src="{image_url}" alt="Cover Image" style="max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></p>')
+                continue
+            
             # URLs (convert to clickable links)
             if line.startswith('http'):
                 html_lines.append(f'<p style="margin: 8px 0;"><a href="{line}" style="color: #007acc; text-decoration: underline;">{line}</a></p>')
@@ -159,13 +165,11 @@ class ResendClient:
             else:
                 html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">{line}</p>')
         
-        # Wrap in basic HTML structure
+        # Wrap in minimal HTML structure
         html = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
-            <div style="background-color: #ffffff;">
-                {''.join(html_lines)}
-            </div>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+            {''.join(html_lines)}
         </body>
         </html>
         """

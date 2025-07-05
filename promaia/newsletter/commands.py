@@ -426,44 +426,26 @@ async def send_newsletter_via_resend(page: Dict[str, Any]) -> Tuple[bool, str, O
     except Exception as e:
         return False, f"❌ Error converting page to plain text: {str(e)}", None
 
-    # Create email content based on whether we have a cover image
+    # Create simple newsletter content (always use plain text approach)
     try:
+        print(f"   📧 Creating simple newsletter...")
+        from promaia.newsletter.template import create_plain_text_newsletter
+        
+        # Create the plain text newsletter
+        email_plain_text = create_plain_text_newsletter(
+            content_text=content_text,
+            newsletter_title=title,
+            subtitle=subtitle,
+            post_link=post_link,
+            cover_image_url=cover_image_url  # Pass the cover image URL
+        )
+        
+        print(f"   📧 Generated plain text email content length: {len(email_plain_text)} characters")
         if cover_image_url:
-            print(f"   📧 Creating HTML newsletter with cover image...")
-            from promaia.newsletter.template import populate_email_template
-            
-            email_html_content = populate_email_template(
-                content_html=html_content,
-                newsletter_title=title,
-                header_image=cover_image_url,
-                subtitle=subtitle,
-                post_link=post_link
-            )
-            
-            # Also create plain text version
-            from promaia.newsletter.template import create_plain_text_newsletter
-            email_plain_text = create_plain_text_newsletter(
-                content_text=content_text,
-                newsletter_title=title,
-                subtitle=subtitle,
-                post_link=post_link
-            )
-            
-            print(f"   📧 Generated HTML email content length: {len(email_html_content)} characters")
-            print(f"   📧 Using cover image: {truncate_url(cover_image_url)}")
-        else:
-            print(f"   📧 Creating plain text newsletter (no cover image found)...")
-            from promaia.newsletter.template import create_plain_text_newsletter
-            
-            email_plain_text = create_plain_text_newsletter(
-                content_text=content_text,
-                newsletter_title=title,
-                subtitle=subtitle,
-                post_link=post_link
-            )
-            email_html_content = None
-            
-            print(f"   📧 Generated plain text email content length: {len(email_plain_text)} characters")
+            print(f"   📧 Including cover image: {truncate_url(cover_image_url)}")
+        
+        # Let Resend client handle the HTML conversion (it will include the image)
+        email_html_content = None
         
     except Exception as e:
         return False, f"❌ Error creating newsletter content: {str(e)}", None
