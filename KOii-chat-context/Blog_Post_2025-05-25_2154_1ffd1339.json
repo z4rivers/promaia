@@ -1,0 +1,287 @@
+{
+  "object": "page",
+  "id": "1ffd1339-6967-8109-abcc-c95e4d27774f",
+  "created_time": "2025-05-26T04:54:00.000Z",
+  "last_edited_time": "2025-06-30T17:12:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "c27b0405-c9fe-4769-bae9-6afcae2d8804"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": null,
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Koii Benvenutto",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Koii Benvenutto",
+          "href": null
+        }
+      ]
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": {
+        "start": "2025-05-25",
+        "end": null,
+        "time_zone": null
+      }
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-26T04:54:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": {
+        "id": "95ea51af-58cd-4193-8aeb-f1d4e336da8a",
+        "name": "AI",
+        "color": "default"
+      }
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't sync",
+        "color": "default"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't send",
+        "color": "default"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "5 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "5 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Blog Post 2025-05-25 21:54",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Blog Post 2025-05-25 21:54",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/Blog-Post-2025-05-25-21-54-1ffd133969678109abccc95e4d27774f",
+  "public_url": null,
+  "content": "## Dream Grow Share: A Crossroads of Perspectives\n\nHey guys, thank you all for trusting me and joining the Dream Grow Share (DGS) Discord!\n\nI've been sculpting the vision behind DGS since August of 2024. In short, it's a cross-disciplinary accountability group built around the dream, grow, share loop. That means we're all out in the world dreaming, growing, and sharing.  Let's have a place to share our passions in a low-stakes, safe space, among an eclectic group of people.\n\nBuilders, ever wondered how an artist would perceive your ideas?\n\nActivists, ever wanted an inside look into how a technical mind approaches problem-solving?\n\n## The Power of Cross-Disciplinary Thinking\n\nI can certainly attribute a lot of the success I've experienced recently to my wanderings across many domains. From art and tech to activism, being a server at a restaurant, and public speaking—the more I do, the more I realize that underneath everything lie the same universal principles and structures.\n\n## Dream Grow Share: A Dream Dojo\n\nDGS initially started as a \"dream dojo\"—a place to get perspective on your ideas from a uniquely talented and perspicacious group of people. For those of you familiar with my writing circle, this is basically the next step.  If you haven't attended a writing circle yet, I encourage you to check it out (link forthcoming) and message me if you're interested in attending the next one.\n\n## Sharing Our Journeys\n\nI would love to have a cross-disciplinary group where we can discuss our work to broaden everyone's perspectives and share the value we create along our individual paths more effectively. So, I'll provide the space and structure the activities, and you guys just talk about what you're up to. I'm so excited to hear what everyone has to share.\n\n"
+}

@@ -1,0 +1,174 @@
+{
+  "object": "page",
+  "id": "1f9d1339-6967-804c-9bf6-e86f8f5b9745",
+  "created_time": "2025-05-20T06:49:00.000Z",
+  "last_edited_time": "2025-06-30T17:12:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": {
+    "type": "emoji",
+    "emoji": "🌻"
+  },
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": null
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-20T06:49:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": null
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't sync",
+        "color": "default"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't send",
+        "color": "default"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "3 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "3 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "2025-05-13",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "2025-05-13",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/2025-05-13-1f9d13396967804c9bf6e86f8f5b9745",
+  "public_url": null,
+  "content": "> **Exit**\n    - [x] ❤️ Self hug 0039\n    - [x] ❤️ Positive affirmation: doing an incredible job and I’m so proud of you keep it up and make sure to keep killing it on your workout trash games. I’m really proud of you for taking steps Your backlogged today.\n> **During the day**\n    - 1033-1038\n        - [x] reschedule therapy and clear calendar\n    - 1055-1107\n        - Breakyyyy 🥪\n    - 1134-1143\n        - Graham chose come videos for me to educate myself on, they’re in my Youtube watch later 🙂\n        ![](https://prod-files-secure.s3.us-west-2.amazonaws.com/f4d12422-ffa2-4704-8cab-2e1cb1700dd9/2daaf39f-3c0b-42fc-b05e-78a4732c1a31/Screenshot_2025-05-13_at_11.43.28.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIAZI2LB4665JNUDVEU%2F20250705%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250705T200407Z&X-Amz-Expires=3600&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEEQaCXVzLXdlc3QtMiJGMEQCIA381VJRMoVSTOPB0WFMFdlS81wAKeJRch9QsS8UZwtkAiAdMzK79%2BVsUxxdrUPwMPVOf34cMoSnHAuOt%2FKVP8FBZyr%2FAwhNEAAaDDYzNzQyMzE4MzgwNSIMrdjhYnEfd4uhNaYvKtwDha6YL8svRXeIb8af1DGA17W1sRQFjb4%2B4N8arbm0FHvIXMa9uHPPnZuJAuGQ7jXRUfYqlBIvWNA9639dKvCx5iRGXuAjGOzFSrRItFGBU0xnrsXBIZL14ZevxkmWo2COldQYvI02IQk%2FfMC2ndjkfC5UH6U7Kb14rRBbueKcwNf70GC8e0vo9FLZhYmAI5S%2Bf%2Fa67NvCaFGHzZ%2BzzjV%2Bv3qOZ4bc6AY9TaxRE9t082wwkElTYgyWu1wfZ4XiT2iRyzLUe1P7KoA65DkxPHHVd28RyxItR%2B5906cq7bOqk4bFFSGdNu0YOrjAsHiJKnsl9bzMZ65iVL3tpde38jrP3mJcdwOmCxvglXYV1lrhxVuNToQ8lXicRN0Adfgvx4ueXkchnPM%2FssgBjDrPCSfTE3Gg%2BFYD3kti9b7TUPxE4tLq7s2A17L%2BFezWkMUDaonBuw7Mz4z7reMn2M9S8Rks1s4ameJgNs9mN3pGIsaBFgLvs631q6wauZz%2Bq9Cuy3RCQA0jlKrcZettyCQx88lkPcHvITRGz0Ndjaq7DkGEqYfvw2gE9%2BgJNO8tIJOKL4%2BtXypiIcGojzk1wx07KdqmDTfPPzOrFAhPz5XyQ1tIJchYbC7KbD93bAV%2BDb4wtfmlwwY6pgG4Mzn9nDSHs5kbEVXwZsMB%2FXc4G0h6LtSl5B%2BspKipEMTCFX5FqlD4GbOFnGfsqc4OQjgh7sjfQRkcNVrR1NhyspNp50%2FNjlyKsWy0aFOKuiB1E0WvdakLMNEmXOoK4GeaRSHVZAXVx7V84HP%2BZgENDoTYM49HqJYZh2X1JGs%2B0gQSpjYfZuMH6uZhXUk%2BfBVaxqx7vRmGbvSW7NYBvrJ9jft3zWk5&X-Amz-Signature=fbc790fb20b9dbbcb1f29f2b4b11bbdac5407c5e024e911d8bf12223eb2027a7&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject)\n\n    - 1226-1235\n        - Snoogles with grum\n    - 1353-\n        > **🤫 **\n            🚽\n\n        - 1400-1407\n    - 1424-1428\n        - Make sweetgreen order\n    - 1433.\n        - Grum (Graham) says that I need to tell him about deadlines\n    - 1513-1518\n        - [Remove auto delete pages based on rolling 1 month window in notion-journals dir](https://www.notion.so/1f2d13396967809cb842c16882dc298d) \n    - 1536-1630\n        - Lunch\n        - Walk with grum\n    - 1654-1658\n        > **🤫**\n            Struggle with grum sexually and consensually :)\n\n    - 1743-\n        - Just finished a lot of Trass work. Time to take a short break.\n    - 1742-1806\n        - Had fun working on my notes system using the metaphor of a computer multithreading to organize my notes. I named the background thread bg for where I put all the stuff that’s just kind of on the side that’s not worth making a main thread for on its own. I feel so clear inside.\n            - Claude chat [here](https://claude.ai/share/668f4e6e-a8f6-4925-bf2a-e26a6666a882).\n    ---\n\n\n\n"
+}

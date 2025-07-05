@@ -33,7 +33,7 @@ from promaia.cli.conversion_commands import add_conversion_commands
 # from promaia.cli.edit_commands import edit  # Remove this import as we're using argparse handlers
 
 # Import newsletter commands
-from promaia.newsletter.commands import newsletter_sync_command
+from promaia.newsletter.commands import newsletter_sync_command, newsletter_test_command
 
 # Import workspace commands
 from promaia.cli.workspace_commands import (
@@ -1273,6 +1273,9 @@ def main():
     newsletter_send_parser = newsletter_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
     newsletter_send_parser.set_defaults(func=newsletter_sync_command)
     
+    newsletter_test_parser = newsletter_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    newsletter_test_parser.set_defaults(func=newsletter_test_command)
+    
     # Add 'news' alias for newsletter
     news_parser = subparsers.add_parser("news", help="Newsletter operations (alias for newsletter)")
     news_subparsers = news_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
@@ -1280,14 +1283,10 @@ def main():
     news_send_parser = news_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
     news_send_parser.set_defaults(func=newsletter_sync_command)
     
-    # Add subscriber migration command
-    migration_parser = subparsers.add_parser("migrate", help="Migrate subscribers from MailerLite to Resend")
-    migration_parser.add_argument("--audience-name", help="Name of the Resend audience to create/use")
-    migration_parser.add_argument("--include-unsubscribed", action="store_true", help="Include unsubscribed users in migration")
-    migration_parser.add_argument("--batch-size", type=int, default=50, help="Number of contacts to import per batch")
+    news_test_parser = news_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    news_test_parser.set_defaults(func=newsletter_test_command)
     
-    from promaia.newsletter.subscriber_migration import migrate_subscribers_command
-    migration_parser.set_defaults(func=migrate_subscribers_command)
+
 
     # Add conversion commands
     add_conversion_commands(subparsers)
@@ -1392,7 +1391,7 @@ def main():
             asyncio.run(args.func(args))
         else:
             cms_parser.print_help()
-    elif args.command == "newsletter":
+    elif args.command in ["newsletter", "news"]:
         if hasattr(args, 'func'):
             asyncio.run(args.func(args))
         else:

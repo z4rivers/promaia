@@ -1,0 +1,174 @@
+{
+  "object": "page",
+  "id": "1f9d1339-6967-8062-a477-fefb2c976d19",
+  "created_time": "2025-05-20T06:49:00.000Z",
+  "last_edited_time": "2025-06-30T17:12:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": {
+    "type": "emoji",
+    "emoji": "🌻"
+  },
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": null
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-20T06:49:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": null
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't sync",
+        "color": "default"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't send",
+        "color": "default"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "3 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "3 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "2025-05-16",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "2025-05-16",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/2025-05-16-1f9d133969678062a477fefb2c976d19",
+  "public_url": null,
+  "content": "> **✅ enter […1253]**\n    - [x] 💏 Relationship [stayed at graham’s]\n    - [x] 🪥 Mouth ≤1005\n    - [x]  🛁 Shower\n    - [x] ❤️ Self hug -1001\n    - [x] ❤️ Positive affirmation: body part positivity telling each part of my body how much I appreciate them\n    - [x] 🍏 Coffee\n    - [x] 🚰 **Liquid 1003-1005**\n    - [x] 👗 Outfit\n    - [x] 👗 Hair\n    - [x] 🍏 **Fuel …1156…**\n    - [x] ✉️ [gmail](https://mail.google.com/mail/u/0/#inbox) 1008-1016, 1156-…, 1230-1235-1237\n        - Check email\n            - Whoah Frontier tower wants to fucking interview me 😵‍💫🤯😮☺️\n            - ✅ Confirmed hair appt for 2025-05-28 with @hayleycutsyou at Edo Salon SF\n            - 1231] looks like my rent payment went through to mom, going to check money rq\n                - 💸 ✅ payed down credit card by 1.8k\n            - 1235] unsub bloomberg ✅\n    - [x] ✉️ me@koiib.com\n    - [x] 🧹 Room\n    - [x] ⏰ Schedule alarms\n    ---\n\n    - [maybe] ☯️ Awake\n    - [probably not happening today…maybe a walk with sten later] 🧘‍♀️ Yoga\n    - 👗 Accessories\n    ---\n\n    - [good]🍏 Rice\n    \n\n> **at founder inc**\n    - …1228] Sten is at Finc yay that’s so awesome! I gave them the tour and have been getting settled in. Also went to grab a panini with Christine and made some friends with Yonna, Harry, and Sam at goody cafe. 😊 now going back to checking email\n    - [1306-1456]\n        - lunch\n        - Walk along the Marina with Sten\n> **evening**\n    - [2008…] at graham’s house figuring out how I want to orient my evening. I am feeling a strong pull toward working on maia and integrating it into my website so that i can have that ready for upscale. However I also need to finish up some stuff for trass games in order to stick to the deadline. So I need to prioritize that. [-2011]\n    - [2124-] Now I’m hungry for dinner…I could head home now and I could request that my mom make me dinner and even a salad (I do pay her lol!)\n    - [2318-] Just got back ended up going to La Mission with Graham. So yummy. So good. Great conversation. I’m going to spend a little time on Maia now. ~~However the first step to doing that is to wash up. and get ready for bed.~~\n        - Eh whatever\n"
+}
