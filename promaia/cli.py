@@ -1270,15 +1270,24 @@ def main():
     newsletter_parser = subparsers.add_parser("newsletter", help="Newsletter operations")
     newsletter_subparsers = newsletter_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
-    newsletter_push_parser = newsletter_subparsers.add_parser("push", help="Send newsletters via Resend for eligible CMS pages")
-    newsletter_push_parser.set_defaults(func=newsletter_sync_command)
+    newsletter_send_parser = newsletter_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    newsletter_send_parser.set_defaults(func=newsletter_sync_command)
     
     # Add 'news' alias for newsletter
     news_parser = subparsers.add_parser("news", help="Newsletter operations (alias for newsletter)")
     news_subparsers = news_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
-    news_push_parser = news_subparsers.add_parser("push", help="Send newsletters via Resend for eligible CMS pages")
-    news_push_parser.set_defaults(func=newsletter_sync_command)
+    news_send_parser = news_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    news_send_parser.set_defaults(func=newsletter_sync_command)
+    
+    # Add subscriber migration command
+    migration_parser = subparsers.add_parser("migrate", help="Migrate subscribers from MailerLite to Resend")
+    migration_parser.add_argument("--audience-name", help="Name of the Resend audience to create/use")
+    migration_parser.add_argument("--include-unsubscribed", action="store_true", help="Include unsubscribed users in migration")
+    migration_parser.add_argument("--batch-size", type=int, default=50, help="Number of contacts to import per batch")
+    
+    from promaia.newsletter.subscriber_migration import migrate_subscribers_command
+    migration_parser.set_defaults(func=migrate_subscribers_command)
 
     # Add conversion commands
     add_conversion_commands(subparsers)

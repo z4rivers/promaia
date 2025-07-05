@@ -77,8 +77,21 @@ maia cms sync --force-update
 
 ### Newsletter
 ```bash
-# Push eligible CMS pages to MailerLite
-maia newsletter push
+# Send eligible CMS pages to newsletter via Resend
+# Automatically includes Notion cover photos (uses Webflow-hosted images when available)
+maia newsletter send
+
+# Alternative command alias
+maia news send
+```
+
+### Subscriber Migration
+```bash
+# Migrate subscribers from MailerLite to Resend
+maia migrate                                    # Migrate only active subscribers
+maia migrate --include-unsubscribed             # Include unsubscribed subscribers
+maia migrate --audience-name "My Newsletter"    # Specify custom audience name
+maia migrate --batch-size 100                   # Adjust batch size for import
 ```
 
 ## Configuration
@@ -117,6 +130,12 @@ export GOOGLE_API_KEY="your_key"
 # Legacy database IDs (auto-migrated to config)
 export NOTION_JOURNAL_DATABASE_ID="your_id"
 export NOTION_CMS_DATABASE_ID="your_id"
+
+# Newsletter settings (for email sending)
+export RESEND_API_KEY="your_resend_api_key"
+export RESEND_FROM_EMAIL="newsletter@yourdomain.com"
+export RESEND_FROM_NAME="Your Name"
+export RESEND_TEST_EMAIL="your_test_email@domain.com"
 
 # Optional settings
 export WEBFLOW_COLLECTION_ID="your_id"
@@ -168,7 +187,7 @@ maia chat --source journal:30 --source awakenings:all --source projects:14
 ```bash
 maia cms pull                                       # Pull latest CMS entries
 maia cms sync                                       # Sync to Webflow
-maia newsletter push                                # Push to email campaign
+maia newsletter send                                # Send to email campaign with cover photos
 ```
 
 ## Debug and Help
