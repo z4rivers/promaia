@@ -88,6 +88,10 @@ style = Style.from_dict({
     'user': 'ansiblue',
 })
 
+def get_local_timestamp():
+    """Get current local timestamp formatted as YYYY-MM-DD HH:MM:SS."""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 def debug_print(message):
     """Print debug messages if debug mode is enabled."""
     if DEBUG_MODE:
@@ -108,19 +112,15 @@ def display_message_with_timestamp(role, content):
     else:
         print_text(content, style="yellow")
 
-def print_welcome_message(query_command=None, total_pages=0):
-    """Prints the welcome message for a chat session."""
-    # Use clean format for both debug and non-debug modes
-    print_text("🐙 maia chat", style="bold cyan")
-    if query_command:
-        print_text(f"Query: {query_command}", style="dim")
-    print_text(f"Pages loaded: {total_pages}", style="green")
-    print_text("Available commands:")
-    print_text("  /quit  - Exit the chat")
-    print_text("  /debug - Toggle debug mode")
-    print_text("  /push  - Push the current chat session to Notion")
-    print_text("  /help  - Show this help message")
-    print_text("")  # Empty line for spacing
+def print_welcome_message(query_command, total_pages):
+    """Prints the welcome message for the chat interface."""
+    print_text("🐙 maia chat", style="bold magenta")
+    print_text(f"Query: {query_command}", style="dim")
+    if total_pages > 0:
+        print_text(f"Pages loaded: {total_pages}", style="dim")
+    print_text("Available commands: /quit /debug /push /help", style="dim")
+    print_text("")
+    
 
 # --- Core Chat Logic ---
 
@@ -376,6 +376,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
             debug_print(f"Failed to save debug file: {e}")
 
     # 6. Display Welcome Message
+    print()
     print_welcome_message(query_command=query_command, total_pages=total_pages_loaded)
 
     # 7. Handle Non-interactive Mode
@@ -419,7 +420,37 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 if current_api == "anthropic" and anthropic_client:
                     response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
                     if response and response.content:
-                        response_content = response.content[0].text
+                        response_text = response.content[0].text
+                        
+                        # Extract token usage for Anthropic
+                        if hasattr(response, 'usage'):
+                            input_tokens = response.usage.input_tokens
+                            output_tokens = response.usage.output_tokens
+                            total_tokens = input_tokens + output_tokens
+                            
+                            # Calculate cost based on Claude 3 Sonnet pricing
+                            # Input: $3.00/1M tokens, Output: $15.00/1M tokens
+                            input_cost = (input_tokens / 1_000_000) * 3.00
+                            output_cost = (output_tokens / 1_000_000) * 15.00
+                            total_cost = input_cost + output_cost
+                            
+                            debug_print(f"Token usage: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
+                            
+                            response_content = {
+                                'text': response_text,
+                                'tokens': {
+                                    'prompt_tokens': input_tokens,
+                                    'response_tokens': output_tokens,
+                                    'total_tokens': total_tokens,
+                                    'cost': total_cost,
+                                    'model': 'Claude 3 Sonnet'
+                                }
+                            }
+                        else:
+                            response_content = {
+                                'text': response_text,
+                                'tokens': None
+                            }
                 elif current_api == "openai" and openai_client:
                     formatted_messages = [{"role": "system", "content": system_prompt}] + messages
                     response = openai_client.chat.completions.create(
@@ -429,7 +460,37 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                         temperature=0.7
                     )
                     if response.choices:
-                        response_content = response.choices[0].message.content
+                        response_text = response.choices[0].message.content
+                        
+                        # Extract token usage for OpenAI
+                        if hasattr(response, 'usage') and response.usage:
+                            prompt_tokens = response.usage.prompt_tokens
+                            completion_tokens = response.usage.completion_tokens
+                            total_tokens = response.usage.total_tokens
+                            
+                            # Calculate cost based on GPT-4 pricing
+                            # Input: $30.00/1M tokens, Output: $60.00/1M tokens
+                            input_cost = (prompt_tokens / 1_000_000) * 30.00
+                            output_cost = (completion_tokens / 1_000_000) * 60.00
+                            total_cost = input_cost + output_cost
+                            
+                            debug_print(f"Token usage: {prompt_tokens:,} prompt + {completion_tokens:,} completion = {total_tokens:,} total")
+                            
+                            response_content = {
+                                'text': response_text,
+                                'tokens': {
+                                    'prompt_tokens': prompt_tokens,
+                                    'response_tokens': completion_tokens,
+                                    'total_tokens': total_tokens,
+                                    'cost': total_cost,
+                                    'model': 'GPT-4'
+                                }
+                            }
+                        else:
+                            response_content = {
+                                'text': response_text,
+                                'tokens': None
+                            }
                 elif current_api == "gemini" and gemini_client:
                     formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
                     for msg in messages:
@@ -438,14 +499,76 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     response = gemini_client.generate_content(formatted_prompt)
                     if response.text:
                         response_content = response.text
+                        
+                        # Extract and display token usage for Gemini
+                        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                            usage = response.usage_metadata
+                            prompt_tokens = getattr(usage, 'prompt_token_count', 0)
+                            response_tokens = getattr(usage, 'candidates_token_count', 0)
+                            total_tokens = getattr(usage, 'total_token_count', 0)
+                            
+                            # Calculate cost based on Gemini 2.5 Pro pricing
+                            # Input: $2.50/1M tokens, Output: $15.00/1M tokens
+                            input_cost = (prompt_tokens / 1_000_000) * 2.50
+                            output_cost = (response_tokens / 1_000_000) * 15.00
+                            total_cost = input_cost + output_cost
+                            
+                            debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
+                            
+                            # Store token info for display after response
+                            response_content = {
+                                'text': response_content,
+                                'tokens': {
+                                    'prompt_tokens': prompt_tokens,
+                                    'response_tokens': response_tokens,
+                                    'total_tokens': total_tokens,
+                                    'cost': total_cost,
+                                    'model': 'Gemini 2.5 Pro'
+                                }
+                            }
+                        else:
+                            # Fallback for when usage metadata is not available
+                            response_content = {
+                                'text': response_content,
+                                'tokens': None
+                            }
                 else:
                     print_text(f"Error: {current_api} API client not available.", style="bold red")
                     continue
                 
                 if response_content:
-                    # Use copy-friendly markdown display
-                    print_markdown(response_content, title="Maia")
-                    messages.append({"role": "assistant", "content": response_content})
+                    # Handle different response formats
+                    if isinstance(response_content, dict):
+                        # AI response with token data
+                        response_text = response_content['text']
+                        token_data = response_content.get('tokens')
+                        
+                        timestamp = get_local_timestamp()
+                        metadata_parts = [f"{timestamp} Maia"]
+                        if token_data:
+                            metadata_parts.append(f"{token_data['prompt_tokens']:,}, {token_data['response_tokens']:,}, {token_data['total_tokens']:,}")
+                            metadata_parts.append(f"${token_data['cost']:.6f}")
+                        
+                        # Print each metadata part on its own line
+                        print()
+                        if metadata_parts:
+                            print_text(metadata_parts[0])  # Print timestamp line without dim
+                        for part in metadata_parts[1:]:
+                            print_text(part, style="dim")  # Print rest of metadata with dim
+                        print()
+
+                        # Use copy-friendly markdown display
+                        print_markdown(response_text)
+                        
+                        messages.append({"role": "assistant", "content": response_text})
+                    else:
+                        # String response (fallback for responses without token data)
+                        timestamp = get_local_timestamp()
+                        print()
+                        print_text(f"{timestamp} Maia") # No style
+                        print()
+                        print_markdown(response_content)
+                        messages.append({"role": "assistant", "content": response_content})
                 else:
                     print_text("Error: No response generated.", style="bold red")
                     

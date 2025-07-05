@@ -894,7 +894,8 @@ def read_markdown_files_with_registry(
         return []
     
     initial_page_count = len(pages)
-    print(f"Read {initial_page_count} pages from database registry for {database_config.workspace}.{database_config.nickname}")
+    if os.environ.get("MAIA_DEBUG") == "1":
+        print(f"Read {initial_page_count} pages from database registry for {database_config.workspace}.{database_config.nickname}")
     
     # Apply custom property filters
     filters_applied = False

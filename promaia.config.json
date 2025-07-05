@@ -29,11 +29,11 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-03T18:41:07.513320+00:00",
+      "last_sync_time": "2025-07-05T05:00:43.559133+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
-        "property": "Date",
+        "property": "last_edited_time",
         "type": "date"
       },
       "output_directory": "data/koii/md/journal",
@@ -200,7 +200,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-03T19:28:25.924863+00:00",
+      "last_sync_time": "2025-07-05T05:00:41.294062+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -231,7 +231,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-03T19:38:16.776351+00:00",
+      "last_sync_time": "2025-07-04T01:28:10.198467+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Plush/Maker/Customer Support"

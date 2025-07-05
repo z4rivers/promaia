@@ -268,8 +268,6 @@ class CopyFriendlyConsole:
             self.console.print(text, style=style)
         else:
             self.console.print(text)
-        
-        self.console.print()
     
     def print_separator(self, text: Optional[str] = None) -> None:
         """

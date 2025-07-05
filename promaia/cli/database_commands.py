@@ -340,7 +340,6 @@ async def sync_database(source_spec: Dict[str, Any], args):
         duration_str = f" in {duration:.1f}s" if duration else ""
         
         print(f"✓ {qualified_name}: {result.pages_saved} saved, {result.pages_skipped} skipped{duration_str}")
-        
         # MONITORING: Display performance metrics
         if hasattr(result, 'api_calls_count') and result.api_calls_count > 0:
             print(f"  API calls: {result.api_calls_count}")
@@ -374,10 +373,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
 def display_sync_summary(sync_results: List, overall_duration: float):
     """Display a comprehensive summary of all database sync results."""
     from promaia.connectors.base import SyncResult
-    
-    print("\n" + "=" * 50)
-    print("SYNC SUMMARY")
-    print("=" * 50)
+    from promaia.utils.display import print_text, print_markdown
     
     # Separate successful results from exceptions
     successful_results = []
@@ -408,45 +404,80 @@ def display_sync_summary(sync_results: List, overall_duration: float):
                 'duration': 0
             })
     
+    # Calculate summary stats
+    total_databases = len(successful_results) + len(failed_results)
+    success_rate = (len(successful_results) / total_databases * 100) if total_databases > 0 else 0
+    
+    # Header
+    print("🔄 DATABASE SYNC SUMMARY")
+    print("─" * 30)
     # Display successful syncs
     if successful_results:
-        print(f"\n✓ SUCCESSFUL SYNCS ({len(successful_results)}):")
+        print(f"✅ SUCCESSFUL SYNCS ({len(successful_results)} databases)")
         total_saved = 0
         total_skipped = 0
         total_api_calls = 0
         
         for result in successful_results:
-            duration_str = f" ({result.duration_seconds:.1f}s)" if result.duration_seconds else ""
-            saved_str = f"{result.pages_saved} saved" if result.pages_saved > 0 else "0 saved"
-            skipped_str = f"{result.pages_skipped} skipped" if result.pages_skipped > 0 else "0 skipped"
+            # Format timing
+            duration_str = f"{result.duration_seconds:.1f}s" if result.duration_seconds else "0.0s"
             
-            print(f"  {result.database_name}: {saved_str}, {skipped_str}{duration_str}")
+            # Format counters with colors
+            saved_color = "green" if result.pages_saved > 0 else "dim"
+            skipped_color = "yellow" if result.pages_skipped > 0 else "dim"
             
+            saved_str = f"{result.pages_saved} saved"
+            skipped_str = f"{result.pages_skipped} skipped"
+            
+            # Database name with formatting
+            db_name = result.database_name
+            if '.' in db_name:
+                workspace, name = db_name.split('.', 1)
+                db_display = f"{workspace}.{name}"
+            else:
+                db_display = f"{db_name}"
+            
+            api_calls_str = ""
             if hasattr(result, 'api_calls_count') and result.api_calls_count > 0:
-                print(f"    API calls: {result.api_calls_count}")
+                api_calls_str = f" • 🌐 {result.api_calls_count} API calls"
                 total_api_calls += result.api_calls_count
-                
+
+            print(f"  📊 {db_display} • 💾 {saved_str} • {skipped_str} • ⏱️ {duration_str}{api_calls_str}")
+
             total_saved += result.pages_saved
             total_skipped += result.pages_skipped
         
-        print(f"\n  TOTALS: {total_saved} pages saved, {total_skipped} skipped")
-        if total_api_calls > 0:
-            print(f"  Total API calls: {total_api_calls}")
+        # Totals section
+        print("📈 TOTALS")
+        print(f"   💾 {total_saved} saved • ⏭️ {total_skipped} skipped" + (f" • 🌐 {total_api_calls} API calls" if total_api_calls > 0 else ""))
     
     # Display failed syncs
     if failed_results:
-        print(f"\n✗ FAILED SYNCS ({len(failed_results)}):")
+        print(f"❌ FAILED SYNCS ({len(failed_results)} databases)")
         for failure in failed_results:
             duration_str = f" ({failure['duration']:.1f}s)" if failure['duration'] > 0 else ""
-            print(f"  {failure['database_name']}: {failure['error']}{duration_str}")
+            
+            db_name = failure['database_name']
+            if '.' in db_name:
+                workspace, name = db_name.split('.', 1) 
+                db_display = f"{workspace}.{name}"
+            else:
+                db_display = db_name
+                
+            print(f"  ⚠️  {db_display}{duration_str} • {failure['error']}")
+    # Overall summary
+    print("🎯 OVERALL RESULTS")
     
-    # Display overall summary
-    total_databases = len(successful_results) + len(failed_results)
-    success_rate = (len(successful_results) / total_databases * 100) if total_databases > 0 else 0
+    # Success rate with color coding
+    if success_rate == 100:
+        rate_emoji = "🎉"
+    elif success_rate >= 80:
+        rate_emoji = "✅"
+    else:
+        rate_emoji = "⚠️"
     
-    print(f"\nOVERALL: {len(successful_results)}/{total_databases} databases synced successfully ({success_rate:.1f}%)")
-    print(f"Total time: {overall_duration:.1f}s")
-    print("=" * 50)
+    print(f"   {rate_emoji} {len(successful_results)}/{total_databases} databases synced ({success_rate:.1f}%) • ⏱️ {overall_duration:.1f}s")
+    print("─" * 30)
 
 def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
     """
