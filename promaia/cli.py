@@ -1271,6 +1271,7 @@ def main():
     newsletter_subparsers = newsletter_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
     newsletter_send_parser = newsletter_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    newsletter_send_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (use with caution)")
     newsletter_send_parser.set_defaults(func=newsletter_sync_command)
     
     newsletter_test_parser = newsletter_subparsers.add_parser("test", help="Test newsletter generation without sending")
@@ -1281,6 +1282,7 @@ def main():
     news_subparsers = news_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
     news_send_parser = news_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    news_send_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (use with caution)")
     news_send_parser.set_defaults(func=newsletter_sync_command)
     
     news_test_parser = news_subparsers.add_parser("test", help="Test newsletter generation without sending")

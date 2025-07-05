@@ -633,7 +633,64 @@ async def newsletter_sync_command(args):
         print("Make sure pages have Newsletter Status set to 'To send'.")
         return
     
-    print(f"\nFound {len(eligible_pages)} eligible CMS pages for newsletter sending:\n")
+    print(f"\nFound {len(eligible_pages)} eligible CMS pages for newsletter sending:")
+    
+    # Show the newsletters that will be sent
+    newsletter_titles = []
+    for i, page in enumerate(eligible_pages, 1):
+        title = get_page_display_title(page)
+        newsletter_titles.append(title)
+        print(f"   {i}. {title}")
+    
+    print()
+    
+    # SAFETY CONFIRMATION - Require user to type newsletter title(s) to confirm (unless --force is used)
+    force_send = getattr(args, 'force', False)
+    
+    if force_send:
+        print("⚠️  --force flag detected: Skipping confirmation prompt")
+        print("📧 Proceeding directly to newsletter sending...")
+        print("=" * 60)
+    else:
+        print("⚠️  🚨 SAFETY CONFIRMATION 🚨 ⚠️")
+        print("You are about to send newsletter(s) to ALL SUBSCRIBERS via Resend.")
+        print("This will send real emails to your entire subscriber list!")
+        print()
+        print("💡 TIP: Use 'maia newsletter test' to preview emails safely before sending.")
+        print("💡 TIP: Use 'maia newsletter send --force' to skip this confirmation.")
+        print()
+        
+        if len(newsletter_titles) == 1:
+            # Single newsletter - require exact title
+            expected_title = newsletter_titles[0]
+            print(f"To confirm, please type the newsletter title exactly as shown:")
+            print(f'"{expected_title}"')
+            print()
+            
+            user_input = input("Type the newsletter title and press Enter to send (or Ctrl+C to cancel): ").strip()
+            
+            if user_input != expected_title:
+                print(f"\n❌ Confirmation failed. You typed: '{user_input}'")
+                print(f"   Expected: '{expected_title}'")
+                print("Newsletter sending cancelled for safety.")
+                return
+                
+        else:
+            # Multiple newsletters - require typing "SEND ALL"
+            print(f"You are about to send {len(newsletter_titles)} newsletters.")
+            print("To confirm sending ALL newsletters, type: SEND ALL")
+            print()
+            
+            user_input = input("Type 'SEND ALL' and press Enter to send (or Ctrl+C to cancel): ").strip()
+            
+            if user_input != "SEND ALL":
+                print(f"\n❌ Confirmation failed. You typed: '{user_input}'")
+                print("   Expected: 'SEND ALL'")
+                print("Newsletter sending cancelled for safety.")
+                return
+        
+        print("\n✅ Confirmation received. Proceeding with newsletter sending...")
+        print("=" * 60)
     
     success_count = 0
     failure_count = 0
