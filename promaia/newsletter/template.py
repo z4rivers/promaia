@@ -299,7 +299,8 @@ def create_plain_text_newsletter(
     newsletter_title: str,
     subtitle: Optional[str] = None,
     post_link: Optional[str] = None,
-    from_name: Optional[str] = None
+    from_name: Optional[str] = None,
+    cover_image_url: Optional[str] = None
 ) -> str:
     """
     Create a plain text newsletter from content.
@@ -310,6 +311,7 @@ def create_plain_text_newsletter(
         subtitle: Optional subtitle
         post_link: Optional link to full post
         from_name: Optional sender name
+        cover_image_url: Optional cover image URL (will be included in plain text)
         
     Returns:
         Plain text newsletter ready to send
@@ -323,6 +325,11 @@ def create_plain_text_newsletter(
     
     # Build the plain text email
     email_parts = []
+    
+    # Include cover image if provided (simple approach)
+    if cover_image_url:
+        email_parts.append(f"🖼️ {cover_image_url}")
+        email_parts.append("")
     
     # Subtitle if provided (but no title since it's in the subject)
     if subtitle:

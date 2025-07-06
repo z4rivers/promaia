@@ -1,0 +1,75 @@
+# welcome to dgs
+
+Join [here](https://discord.gg/aUvNbx6x)
+
+---
+
+Hi all,
+
+Thank you for trusting me and joining Dream Grow Share. I've been quietly shaping this vision since August 2024, and now I'm ready to share it.
+
+## **What is DGS?**
+
+DGS is a cross-disciplinary salon exploring the power of stories to augment the creative cycle. It is the hearth by which to share valuable learnings, and exchange the abstract tools we use to grow.
+
+The hypothesis is simple: **dreams grow when shared, so let's weave our stories together.**
+
+### **The loop**
+
+Whether we know it or not, we're all cycling through patterns—some creative, some destructive, some stagnant. The loop you're in shapes you. I propose that we all begin to cultivate our own dream grow share loop:
+
+- **Dreaming** — Imagining what could be
+- **Growing** — Working toward that vision
+- **Sharing** — Reflecting and distributing what we've learned
+Each phase feeds the next. Sharing what we've learned closes the loop and seeds the next cycle of dreaming.
+
+### **Sharing is a multiplier**
+
+Just verbalizing our ideas or goals makes them more likely to happen. When we articulate our path, we take the first step.
+
+This is the place for us to share the story of this loop in our lives.
+
+## **Why Cross-Disciplinary?**
+
+The more I've wandered in life, across domains — from music, art, and tech to activism, public speaking, waiting tables, and mixing sound at concerts — the more I've realized that **universal principles** underlie everything. DGS is about discovering and developing those shared tools and structures — then applying them in unexpected ways.
+
+We ask, for example:
+
+- Builders: How would an artist see your work?
+- Activists: How might a developer reframe your challenge?
+- Writers: What could a yoga instructor teach you about structure?
+The position that best prepared me to build companies: waiting tables.
+
+Economic value is not an accurate indicator of the skill of one's craft. We must look with a curious eye to the work of all disciplines to find structures that could unlock our next breakthrough.
+
+**How We Gather**
+
+- **Monthly**, for story days where members share stories, projects, or reflections from wherever they are in the dgs loop.
+- **In-person**, rotating through handpicked Bay Area locations
+- **Virtually**, when distance calls for it
+In addition to the stories of the members, we will invite outside speakers and practitioners too! Don't worry, there will be plenty of space for spontaneity.
+
+## **Group Composition**
+
+This salon intentionally brings together people across a range of abilities and diverse skillsets.
+
+As we reach expert level, we often become so embedded in our domain that we lose the ability to communicate our cutting-edge ideas to those outside it. But I believe storytelling holds the answer. By sharing our stories with beginners, we're forced to distill our insights into their essence—and beginners bring fresh eyes that help us see what we've become blind to.
+
+Similarly, by building a group with members from various domains, we better equip ourselves to find the underlying commonalities and abstract tools that are at the core of all our success.
+
+## **What's Next?**
+
+I'll guide the structure and hold the space. You just show up, share what you're working on or wondering about, and we'll discover what sprouts. 🌱
+
+Can we create the conditions necessary to grow our dreams with the nutrients of the decaying industrial age? Let's find out together.
+
+Thank you again for being part of this experiment in dreaming, growing, and sharing.
+
+— Koii
+
+
+
+Join [here](https://discord.gg/aUvNbx6x)
+
+
+

@@ -1,0 +1,251 @@
+{
+  "object": "page",
+  "id": "1ffd1339-6967-8034-a1d3-f48895e215a3",
+  "created_time": "2025-05-26T08:50:00.000Z",
+  "last_edited_time": "2025-06-30T19:09:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": null,
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "2025-06-16T04:29:02.206274",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "2025-06-16T04:29:02.206274",
+          "href": null
+        }
+      ]
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": {
+        "start": "2025-05-26",
+        "end": null,
+        "time_zone": null
+      }
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-26T08:50:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": {
+        "id": "75171274-463b-4e7a-a471-533651f2336f",
+        "name": "dgs",
+        "color": "purple"
+      }
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "c3629bb2-9098-41d1-aa9a-ac21fc0f2356",
+        "name": "Live",
+        "color": "green"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "c3629bb2-9098-41d1-aa9a-ac21fc0f2356",
+        "name": "Sent",
+        "color": "green"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "6862dff05f54689e6a34f190",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "6862dff05f54689e6a34f190",
+          "href": null
+        }
+      ]
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "7 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "7 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "155889620846904833",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "155889620846904833",
+          "href": null
+        }
+      ]
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "🌱 ✨ 🌍",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "🌱 ✨ 🌍",
+          "href": null
+        }
+      ]
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "welcome to dgs",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "welcome to dgs",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/welcome-to-dgs-1ffd133969678034a1d3f48895e215a3",
+  "public_url": null,
+  "content": "Join [here](https://discord.gg/aUvNbx6x)\n\n---\n\nHi all,\n\nThank you for trusting me and joining Dream Grow Share. I've been quietly shaping this vision since August 2024, and now I'm ready to share it.\n\n## **What is DGS?**\n\nDGS is a cross-disciplinary salon exploring the power of stories to augment the creative cycle. It is the hearth by which to share valuable learnings, and exchange the abstract tools we use to grow.\n\nThe hypothesis is simple: **dreams grow when shared, so let's weave our stories together.**\n\n### **The loop**\n\nWhether we know it or not, we're all cycling through patterns—some creative, some destructive, some stagnant. The loop you're in shapes you. I propose that we all begin to cultivate our own dream grow share loop:\n\n- **Dreaming** — Imagining what could be\n- **Growing** — Working toward that vision\n- **Sharing** — Reflecting and distributing what we've learned\nEach phase feeds the next. Sharing what we've learned closes the loop and seeds the next cycle of dreaming.\n\n### **Sharing is a multiplier**\n\nJust verbalizing our ideas or goals makes them more likely to happen. When we articulate our path, we take the first step.\n\nThis is the place for us to share the story of this loop in our lives.\n\n## **Why Cross-Disciplinary?**\n\nThe more I've wandered in life, across domains — from music, art, and tech to activism, public speaking, waiting tables, and mixing sound at concerts — the more I've realized that **universal principles** underlie everything. DGS is about discovering and developing those shared tools and structures — then applying them in unexpected ways.\n\nWe ask, for example:\n\n- Builders: How would an artist see your work?\n- Activists: How might a developer reframe your challenge?\n- Writers: What could a yoga instructor teach you about structure?\nThe position that best prepared me to build companies: waiting tables.\n\nEconomic value is not an accurate indicator of the skill of one's craft. We must look with a curious eye to the work of all disciplines to find structures that could unlock our next breakthrough.\n\n**How We Gather**\n\n- **Monthly**, for story days where members share stories, projects, or reflections from wherever they are in the dgs loop.\n- **In-person**, rotating through handpicked Bay Area locations\n- **Virtually**, when distance calls for it\nIn addition to the stories of the members, we will invite outside speakers and practitioners too! Don't worry, there will be plenty of space for spontaneity.\n\n## **Group Composition**\n\nThis salon intentionally brings together people across a range of abilities and diverse skillsets.\n\nAs we reach expert level, we often become so embedded in our domain that we lose the ability to communicate our cutting-edge ideas to those outside it. But I believe storytelling holds the answer. By sharing our stories with beginners, we're forced to distill our insights into their essence—and beginners bring fresh eyes that help us see what we've become blind to.\n\nSimilarly, by building a group with members from various domains, we better equip ourselves to find the underlying commonalities and abstract tools that are at the core of all our success.\n\n## **What's Next?**\n\nI'll guide the structure and hold the space. You just show up, share what you're working on or wondering about, and we'll discover what sprouts. 🌱\n\nCan we create the conditions necessary to grow our dreams with the nutrients of the decaying industrial age? Let's find out together.\n\nThank you again for being part of this experiment in dreaming, growing, and sharing.\n\n— Koii\n\n\n\nJoin [here](https://discord.gg/aUvNbx6x)\n\n\n\n"
+}

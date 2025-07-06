@@ -2,7 +2,7 @@
 Test suite for newsletter functionality.
 
 Tests the complete newsletter workflow:
-- Status filtering (only "To push" newsletters)
+- Status filtering (only "To send" newsletters)
 - Content conversion from Notion to plain text
 - Email formatting and template generation
 - Resend API integration
@@ -32,7 +32,7 @@ from promaia.newsletter.resend_client import ResendClient
 
 
 class TestNewsletterStatusFiltering:
-    """Test that newsletter system only processes pages with 'To push' status."""
+    """Test that newsletter system only processes pages with 'To send' status."""
     
     @pytest.fixture
     def mock_notion_pages(self):
@@ -42,7 +42,7 @@ class TestNewsletterStatusFiltering:
                 "id": "page-1",
                 "properties": {
                     "Name": {"type": "title", "title": [{"text": {"content": "Newsletter 1"}}]},
-                    "Newsletter Status": {"type": "status", "status": {"name": "To push"}}
+                    "Newsletter Status": {"type": "status", "status": {"name": "To send"}}
                 }
             },
             {
@@ -56,48 +56,48 @@ class TestNewsletterStatusFiltering:
                 "id": "page-3",
                 "properties": {
                     "Name": {"type": "title", "title": [{"text": {"content": "Newsletter 3"}}]},
-                    "Newsletter Status": {"type": "status", "status": {"name": "Don't push"}}
+                    "Newsletter Status": {"type": "status", "status": {"name": "Don't send"}}
                 }
             },
             {
                 "id": "page-4",
                 "properties": {
                     "Name": {"type": "title", "title": [{"text": {"content": "Newsletter 4"}}]},
-                    "Newsletter Status": {"type": "status", "status": {"name": "To push"}}
+                    "Newsletter Status": {"type": "status", "status": {"name": "To send"}}
                 }
             }
         ]
     
     @pytest.mark.asyncio
     @patch('promaia.newsletter.commands.query_pages_by_status')
-    async def test_only_to_push_pages_returned(self, mock_query, mock_notion_pages):
-        """Test that get_eligible_newsletter_pages only returns 'To push' pages."""
-        # Mock the query to return only "To push" pages
-        to_push_pages = [p for p in mock_notion_pages if 
-                        get_property_value(p, "Newsletter Status") == "To push"]
-        mock_query.return_value = to_push_pages
+    async def test_only_to_send_pages_returned(self, mock_query, mock_notion_pages):
+        """Test that get_eligible_newsletter_pages only returns 'To send' pages."""
+        # Mock the query to return only "To send" pages
+        to_send_pages = [p for p in mock_notion_pages if 
+                        get_property_value(p, "Newsletter Status") == "To send"]
+        mock_query.return_value = to_send_pages
         
         # Get eligible pages
         eligible_pages = await get_eligible_newsletter_pages("test-db-id")
         
-        # Verify only "To push" pages are returned
+        # Verify only "To send" pages are returned
         assert len(eligible_pages) == 2
         for page in eligible_pages:
-            assert get_property_value(page, "Newsletter Status") == "To push"
+            assert get_property_value(page, "Newsletter Status") == "To send"
         
         # Verify the query was called with correct status
-        mock_query.assert_called_once_with("test-db-id", "To push")
+        mock_query.assert_called_once_with("test-db-id", "To send")
     
     @pytest.mark.asyncio
-    async def test_empty_result_when_no_to_push_pages(self):
-        """Test that empty list is returned when no pages have 'To push' status."""
+    async def test_empty_result_when_no_to_send_pages(self):
+        """Test that empty list is returned when no pages have 'To send' status."""
         with patch('promaia.newsletter.commands.query_pages_by_status') as mock_query:
             mock_query.return_value = []
             
             eligible_pages = await get_eligible_newsletter_pages("test-db-id")
             
             assert eligible_pages == []
-            mock_query.assert_called_once_with("test-db-id", "To push")
+            mock_query.assert_called_once_with("test-db-id", "To send")
 
 
 class TestNewsletterContentConversion:
@@ -279,7 +279,7 @@ class TestNewsletterWorkflow:
                 },
                 "Newsletter Status": {
                     "type": "status", 
-                    "status": {"name": "To push"}
+                    "status": {"name": "To send"}
                 }
             }
         }
@@ -349,12 +349,12 @@ class TestPropertyUtilities:
             "properties": {
                 "Newsletter Status": {
                     "type": "status",
-                    "status": {"name": "To push"}
+                    "status": {"name": "To send"}
                 }
             }
         }
         
-        assert get_property_value(page, "Newsletter Status") == "To push"
+        assert get_property_value(page, "Newsletter Status") == "To send"
     
     def test_get_property_value_missing(self):
         """Test handling of missing properties."""
@@ -434,7 +434,7 @@ class TestNewsletterIntegration:
                 # Verify appropriate message is printed
                 print_calls = [call[0][0] for call in mock_print.call_args_list]
                 assert any("No CMS pages eligible" in call for call in print_calls)
-                assert any("Make sure pages have Newsletter Status set to 'To push'" in call for call in print_calls)
+                assert any("Make sure pages have Newsletter Status set to 'To send'" in call for call in print_calls)
 
 
 if __name__ == "__main__":

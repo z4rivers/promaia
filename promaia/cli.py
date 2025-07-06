@@ -33,7 +33,7 @@ from promaia.cli.conversion_commands import add_conversion_commands
 # from promaia.cli.edit_commands import edit  # Remove this import as we're using argparse handlers
 
 # Import newsletter commands
-from promaia.newsletter.commands import newsletter_sync_command
+from promaia.newsletter.commands import newsletter_sync_command, newsletter_test_command
 
 # Import workspace commands
 from promaia.cli.workspace_commands import (
@@ -1270,15 +1270,25 @@ def main():
     newsletter_parser = subparsers.add_parser("newsletter", help="Newsletter operations")
     newsletter_subparsers = newsletter_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
-    newsletter_push_parser = newsletter_subparsers.add_parser("push", help="Send newsletters via Resend for eligible CMS pages")
-    newsletter_push_parser.set_defaults(func=newsletter_sync_command)
+    newsletter_send_parser = newsletter_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    newsletter_send_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (use with caution)")
+    newsletter_send_parser.set_defaults(func=newsletter_sync_command)
+    
+    newsletter_test_parser = newsletter_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    newsletter_test_parser.set_defaults(func=newsletter_test_command)
     
     # Add 'news' alias for newsletter
     news_parser = subparsers.add_parser("news", help="Newsletter operations (alias for newsletter)")
     news_subparsers = news_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
     
-    news_push_parser = news_subparsers.add_parser("push", help="Send newsletters via Resend for eligible CMS pages")
-    news_push_parser.set_defaults(func=newsletter_sync_command)
+    news_send_parser = news_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
+    news_send_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (use with caution)")
+    news_send_parser.set_defaults(func=newsletter_sync_command)
+    
+    news_test_parser = news_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    news_test_parser.set_defaults(func=newsletter_test_command)
+    
+
 
     # Add conversion commands
     add_conversion_commands(subparsers)
@@ -1383,7 +1393,7 @@ def main():
             asyncio.run(args.func(args))
         else:
             cms_parser.print_help()
-    elif args.command == "newsletter":
+    elif args.command in ["newsletter", "news"]:
         if hasattr(args, 'func'):
             asyncio.run(args.func(args))
         else:

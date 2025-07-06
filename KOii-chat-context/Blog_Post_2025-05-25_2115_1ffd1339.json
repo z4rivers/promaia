@@ -1,0 +1,287 @@
+{
+  "object": "page",
+  "id": "1ffd1339-6967-8102-b77f-cb065b29bb8a",
+  "created_time": "2025-05-26T04:15:00.000Z",
+  "last_edited_time": "2025-06-30T17:12:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "c27b0405-c9fe-4769-bae9-6afcae2d8804"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": null,
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Koii Benvenutto",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Koii Benvenutto",
+          "href": null
+        }
+      ]
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": {
+        "start": "2025-05-25",
+        "end": null,
+        "time_zone": null
+      }
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-26T04:15:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": {
+        "id": "95ea51af-58cd-4193-8aeb-f1d4e336da8a",
+        "name": "AI",
+        "color": "default"
+      }
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't sync",
+        "color": "default"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't send",
+        "color": "default"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "5 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "5 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "",
+          "href": null
+        }
+      ]
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Blog Post 2025-05-25 21:15",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Blog Post 2025-05-25 21:15",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/Blog-Post-2025-05-25-21-15-1ffd133969678102b77fcb065b29bb8a",
+  "public_url": null,
+  "content": "## Dream Grow Share: A Dream Dojo for the Digital Age\n\nLet's create a cross disciplinary community space where we can share the mental frameworks, tools and practices that we use to succeed day to day. This is the place to go to get an eclectic range of perspectives on your dream and grow together with an eclectic community, get out of the echo chamber. The value of this group is that everyone is different. \n\nWe’ll grow together by taking part in structured practices like the writing circle. \n\nknowledge, and strategies for thriving in the digital age. It's also a place where we can heal and process complex emotions together. This is Dream Grow Share.\n\nI recently wrote in my journal, \"The goal of Dream Grow Share is simply to get people thinking on a deeper level.\" So many tech people, myself included, get tunnel vision. But we have trust and love—that's our advantage. My goal is for everyone to pursue their dreams, whether that's something simple like taking a daily walk or something bigger like writing a book. My goal is for everyone to *play*. Play is the stage of discovery.\n\nCross disciplinary self development group to cross pollinate the ideas that people use to succeed across various walks of life kind of like NPM for self development…\n\n## What is Dream Grow Share?\n\nDream Grow Share started as a simple idea: a \"dream dojo.\" I envisioned a space where a hand-picked group of talented people with unique perspectives—techies, artists, scientists, writers, activists, and more—could share their journeys and gain perspective on their ideas. Think of it as the next evolution of my writing circle (which you can check out here: [/1dad1339696780689c6bc15d0e6f511a](/1dad1339696780689c6bc15d0e6f511a)).\n\nIt's a space for:\n\n- **Accountability:** We keep each other on track.\n- **Resource Sharing:** We share tools, knowledge, and connections.\n- **Stepping Outside Our Domains:** We learn from each other's diverse perspectives.\n- **Support:** We encourage each other to pursue our dreams and overcome obstacles.\nMost importantly, it's about play. It's a huge privilege to play, and we need more platonic adult play in our lives. I'm deeply emotional, and when I channel those emotions, I change the world. Dream Grow Share is a place to do just that.\n\n## Why is this important?\n\nThe systems established during the industrial age to prepare people for life are collapsing as the digital age rapidly emerges. We face existential threats but also incredible opportunities. I reject the notion that abstaining from capitalism is the solution. Capitalism is a tool, and it's up to us to learn how to use it effectively. The value lies in data and compute, and we have the ability to bypass traditional gatekeepers. We must learn to play the game.\n\nWe're on the verge of a total decoupling of labor and economic value. If eclectic communities like this one opt to sit this round out, there won't be another chance. We have love, trust, and global connectivity. We have rapidly advancing technology and unrestricted access to knowledge. We're going to win.\n\n## An Invitation\n\nDream Grow Share is an invitation to co-create, to share our journeys, and to support each other as we navigate these turbulent times. If this resonates with you, I encourage you to reach out. Let's dream together, grow together, and share the journey ahead. The future is uncertain, but I believe that together, we can make it a bright one.\n\n"
+}

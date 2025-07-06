@@ -1,0 +1,174 @@
+{
+  "object": "page",
+  "id": "1f9d1339-6967-80d8-89c4-d580d80e95d1",
+  "created_time": "2025-05-20T06:50:00.000Z",
+  "last_edited_time": "2025-06-30T17:12:00.000Z",
+  "created_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "last_edited_by": {
+    "object": "user",
+    "id": "634192f4-e145-43eb-a411-be3d0c2ece72"
+  },
+  "cover": null,
+  "icon": {
+    "type": "emoji",
+    "emoji": "🌻"
+  },
+  "parent": {
+    "type": "database_id",
+    "database_id": "10dd1339-6967-807a-b987-c92a4d29b9b8"
+  },
+  "archived": false,
+  "in_trash": false,
+  "properties": {
+    "Featured": {
+      "id": "%3Fh%5Ck",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "Author Name": {
+      "id": "%40oBd",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Newsletter Last Synced": {
+      "id": "Gcpt",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Publish Date": {
+      "id": "MSit",
+      "type": "date",
+      "date": null
+    },
+    "Created time": {
+      "id": "NCH%7B",
+      "type": "created_time",
+      "created_time": "2025-05-20T06:50:00.000Z"
+    },
+    "Tag": {
+      "id": "OX%7Ba",
+      "type": "select",
+      "select": null
+    },
+    "Thumbnail Image": {
+      "id": "TorZ",
+      "type": "files",
+      "files": []
+    },
+    "Blog Status": {
+      "id": "_%7C%5BO",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't sync",
+        "color": "default"
+      }
+    },
+    "Newsletter Status": {
+      "id": "%60lV%40",
+      "type": "status",
+      "status": {
+        "id": "T]?B",
+        "name": "Don't send",
+        "color": "default"
+      }
+    },
+    "Author Photo": {
+      "id": "auBe",
+      "type": "files",
+      "files": []
+    },
+    "Slug": {
+      "id": "b%3EkS",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Description": {
+      "id": "e%7DoB",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Webflow ID": {
+      "id": "s%5ENG",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Read Time Estimate": {
+      "id": "uxh%3A",
+      "type": "rich_text",
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "3 min read",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "3 min read",
+          "href": null
+        }
+      ]
+    },
+    "Reference": {
+      "id": "v%3B%3AD",
+      "type": "checkbox",
+      "checkbox": false
+    },
+    "MailerLite Campaign ID": {
+      "id": "y%7C%7Dk",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "image alt text": {
+      "id": "z%5CPh",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "Emoji Tags": {
+      "id": "%7CuuM",
+      "type": "rich_text",
+      "rich_text": []
+    },
+    "KOii chat": {
+      "id": "~fQn",
+      "type": "checkbox",
+      "checkbox": true
+    },
+    "Name": {
+      "id": "title",
+      "type": "title",
+      "title": [
+        {
+          "type": "text",
+          "text": {
+            "content": "2025-05-1",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "2025-05-1",
+          "href": null
+        }
+      ]
+    }
+  },
+  "url": "https://www.notion.so/2025-05-1-1f9d1339696780d889c4d580d80e95d1",
+  "public_url": null,
+  "content": "\n\n> **bg**\n    - [~1230]💡\n        - Products for practice\n        - Products for progress\n- [0825…] Main\n    - 0825. I’m going to spend most of the day working on Trass today.\n    - [1223-] Taking a break from work to drive home to give my mom the car and get lunch with graham then we’ll drive back together and grum will let me dwive his new car yay! Meow!\n- tech is the volume , amplitude\n- And that’s the flaw of tech in general is that we’re attacking the foundation before we move everyone with us \n- apple understandings that every product is an experience but not every experience is a product. \n- Facebooks thinks that every experience is a product. \n- I think I just found a really great strategy and a really good explanation as to why the left must be all people together and can’t rise up against the right unless we all work together. It’s like a cap table where there’s like two people that have like three or four people that have like 40% of it or maybe 30% of the pie and then there’s 50 people that have you know or well it’s the 70 people that have one percent pie or 2% or three at most right that’s what I need to think of this in terms of both that they have and so basically those and power have no limit and we know already that they have like no like Marohl like they’re gonna kill us basically like they’re not gonna stop we need to rise up everyone together to prevent that from happening because otherwise we’re gonna die cause, if you get to the top alone, then they can pluck you just like a plant rising through a deck.\n📄 **[Sub-page]** 1f9d1339\n\n    *[synced_block block]*: \n\n        What if i told you that AI is actualy a playing field that bends the odds back in the favor of the people because if it gets too much information into it that doesn’t make sense it’s no longer able to perform effectively on hard engineering, science, math, physics and other industry leading problems such that it must always be fed the truth or it will not perpetuate the goals of capitalism. \n\n        ---\n\n        2025-05-14 23:13:16 | AI\nThat's a fascinating perspective on AI as a playing field.  It suggests a built-in safeguard against certain dystopian scenarios, where AI becomes so powerful it can manipulate or control human systems without consequence.\n\n        Your argument hinges on AI's dependence on truthful, coherent data, particularly in complex fields like engineering, science, and math.  If AI is \"poisoned\" with misinformation or illogical data, its ability to solve these problems – the very problems that drive capitalist innovation and profit – would be compromised.  This creates a situation where those who control the flow of information to AI also control its effectiveness within a capitalist framework.\n\n        However, your journal entries reveal a more nuanced view of AI's role.  For instance, on 2025-04-21 (File: `1dcd1339-6967-81ef-b0c5-df2b5d6996df.md`), you wrote about AI's ability to enhance leadership skills:  \"It really does make you better at all the skills that you need for leadership...you have to become an effective communicator and leader. With an understanding of how to break problems down into the atomic pieces. And then build those back up to make effective prompts.\" This suggests you see AI not just as a problem-solver, but as a tool that *shapes* human capabilities, even in areas like leadership and communication.\n\n        Furthermore, on 2025-05-02 (File: `1e7d1339-6967-812c-bc74-dbdc9b797add.md`), you explored the idea of AI automating your work at Trass Games, aiming to \"build an agentic AI that can do my work for me.\"  This points to a potential future where AI *replaces* certain human roles within capitalist systems, regardless of whether the information it receives is perfectly truthful.\n\n        So, while your initial statement presents a compelling argument about truth as a limiting factor for AI within capitalism, your own experiences documented in your journal suggest AI's influence is likely to be far more complex and multifaceted.  It may not just be about solving existing problems, but about changing the nature of work, enhancing human skills, and potentially even altering the power dynamics within capitalist systems themselves.\n\n*[synced_block block]*: \n\n    What if i told you that AI is actualy a playing field that bends the odds back in the favor of the people because if it gets too much information into it that doesn’t make sense it’s no longer able to perform effectively on hard engineering, science, math, physics and other industry leading problems such that it must always be fed the truth or it will not perpetuate the goals of capitalism. \n\n    ---\n\n    2025-05-14 23:13:16 | AI\nThat's a fascinating perspective on AI as a playing field.  It suggests a built-in safeguard against certain dystopian scenarios, where AI becomes so powerful it can manipulate or control human systems without consequence.\n\n    Your argument hinges on AI's dependence on truthful, coherent data, particularly in complex fields like engineering, science, and math.  If AI is \"poisoned\" with misinformation or illogical data, its ability to solve these problems – the very problems that drive capitalist innovation and profit – would be compromised.  This creates a situation where those who control the flow of information to AI also control its effectiveness within a capitalist framework.\n\n    However, your journal entries reveal a more nuanced view of AI's role.  For instance, on 2025-04-21 (File: `1dcd1339-6967-81ef-b0c5-df2b5d6996df.md`), you wrote about AI's ability to enhance leadership skills:  \"It really does make you better at all the skills that you need for leadership...you have to become an effective communicator and leader. With an understanding of how to break problems down into the atomic pieces. And then build those back up to make effective prompts.\" This suggests you see AI not just as a problem-solver, but as a tool that *shapes* human capabilities, even in areas like leadership and communication.\n\n    Furthermore, on 2025-05-02 (File: `1e7d1339-6967-812c-bc74-dbdc9b797add.md`), you explored the idea of AI automating your work at Trass Games, aiming to \"build an agentic AI that can do my work for me.\"  This points to a potential future where AI *replaces* certain human roles within capitalist systems, regardless of whether the information it receives is perfectly truthful.\n\n    So, while your initial statement presents a compelling argument about truth as a limiting factor for AI within capitalism, your own experiences documented in your journal suggest AI's influence is likely to be far more complex and multifaceted.  It may not just be about solving existing problems, but about changing the nature of work, enhancing human skills, and potentially even altering the power dynamics within capitalist systems themselves.\n\n"
+}
