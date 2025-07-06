@@ -1140,12 +1140,15 @@ def model_run(args):
         key_status = "API Key Found" if os.getenv(api_keys[name]) else "API Key Missing"
         logger.info(f"{key}. {name.capitalize()} ({key_status})")
     
-    choice_key = input("\nSelect a model (1-3, or Enter to keep current): ").strip()
+    # Create a more descriptive prompt showing actual model names
+    model_names = [f"{key}={name.capitalize()}" for key, name in options.items()]
+    prompt = f"\nSelect a model ({', '.join(model_names)}, or Enter to keep current): "
+    choice_key = input(prompt).strip()
     
     if not choice_key:
         logger.info("Model selection unchanged.")
         return
-        
+    
     if choice_key in options:
         chosen_model = options[choice_key]
         if not os.getenv(api_keys[chosen_model]):
