@@ -169,7 +169,7 @@ class ResendClient:
         html = f"""
         <html>
         <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; line-height: 1.6;">
-            {''.join(html_lines)}
+                {''.join(html_lines)}
         </body>
         </html>
         """

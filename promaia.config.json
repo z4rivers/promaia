@@ -29,7 +29,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-05T18:35:02.199687+00:00",
+      "last_sync_time": "2025-07-06T18:12:13.715574+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -60,7 +60,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 30,
-      "last_sync_time": "2025-07-03T02:25:49.778852+00:00",
+      "last_sync_time": "2025-07-06T18:12:08.465094+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
