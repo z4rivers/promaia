@@ -159,11 +159,12 @@ class CopyFriendlyConsole:
             # Lists
             elif line.startswith('- ') or line.startswith('* '):
                 indent = len(line) - len(line.lstrip())
+                marker = line.lstrip()[:2]  # Preserve original marker ('- ' or '* ')
                 content_text = line[indent + 2:]  # Remove '- ' or '* '
                 # Process inline formatting in list items
                 formatted_text = self._process_inline_formatting(content_text)
                 spaces = " " * indent
-                self.console.print(f"{spaces}• ", end="")
+                self.console.print(f"{spaces}{marker}", end="")
                 self.console.print(formatted_text, markup=True)
             
             # Numbered lists  

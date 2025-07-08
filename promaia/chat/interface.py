@@ -103,6 +103,16 @@ def debug_print(message):
             pass
         print(f"DEBUG ({timestamp}){caller_name}: {message}")
 
+def get_current_model_name():
+    """Get the display name of the current model based on the current API."""
+    global current_api
+    model_names = {
+        "anthropic": "Claude 3 Sonnet",
+        "openai": "GPT-4",
+        "gemini": "Gemini 2.5 Pro"
+    }
+    return model_names.get(current_api, "Unknown Model")
+
 def display_message_with_timestamp(role, content):
     """Displays a message with a timestamp using copy-friendly Rich display."""
     if role == 'assistant':
@@ -112,15 +122,17 @@ def display_message_with_timestamp(role, content):
     else:
         print_text(content, style="yellow")
 
-def print_welcome_message(query_command, total_pages):
+def print_welcome_message(query_command, total_pages, model_name=None):
     """Prints the welcome message for the chat interface."""
     print_text("🐙 maia chat", style="bold magenta")
     print_text(f"Query: {query_command}", style="dim")
     if total_pages > 0:
         print_text(f"Pages loaded: {total_pages}", style="dim")
+    if model_name:
+        print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help", style="dim")
     print_text("")
-    
+
 
 # --- Core Chat Logic ---
 
@@ -202,20 +214,20 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     processed_sources = []
     source_specific_filters = {}  # Dict of source -> list of filters
     global_filters = []  # Filters without source prefix (backward compatibility)
-    
+
     # Parse and categorize filters
     if filters:
         debug_print(f"Processing filters: {filters}")
-        
+
         for filter_expr in filters:
             try:
                 parsed_filter = parse_filter_expression(filter_expr)
-                
+
                 # Check if this is a source-specific filter (new format)
                 if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
                     source = parsed_filter['source']
                     filter_spec = parsed_filter['filter']
-                    
+
                     if source not in source_specific_filters:
                         source_specific_filters[source] = []
                     source_specific_filters[source].append(filter_spec)
@@ -224,11 +236,11 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     # Backward compatibility - filter without source prefix
                     global_filters.append(parsed_filter)
                     debug_print(f"Added global filter: {parsed_filter}")
-                    
+
             except Exception as e:
                 print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
                 continue
-    
+
     # Validation for multi-source scenarios
     if sources and len(sources) > 1:
         if global_filters:
@@ -239,7 +251,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 style="bold red"
             )
             return
-        
+
         # Check that all filter sources are valid
         for filter_source in source_specific_filters.keys():
             if filter_source not in sources:
@@ -249,21 +261,21 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     style="bold red"
                 )
                 return
-    
+
     # Build processed sources with appropriate filters
     if sources:
         for source in sources:
             # Determine which filters apply to this source
             applicable_filters = []
-            
+
             # Add source-specific filters
             if source in source_specific_filters:
                 applicable_filters.extend(source_specific_filters[source])
-            
+
             # Add global filters (only in single-source scenarios or backward compatibility)
             if len(sources) == 1 or not source_specific_filters:
                 applicable_filters.extend(global_filters)
-            
+
             # Build the source specification
             if applicable_filters:
                 # Create a source spec with integrated filters
@@ -274,7 +286,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
             else:
                 processed_sources.append(source)
                 debug_print(f"Using unfiltered source: {source}")
-    
+
     # Log final filter application
     if DEBUG_MODE and (source_specific_filters or global_filters):
         print_text("Filter Summary:", style="bold cyan")
@@ -284,7 +296,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 filters_for_source.extend([f"source-specific: {f}" for f in source_specific_filters[source]])
             if len(sources) == 1 or not source_specific_filters:
                 filters_for_source.extend([f"global: {f}" for f in global_filters])
-            
+
             if filters_for_source:
                 print_text(f"  {source}: {', '.join(filters_for_source)}", style="dim")
             else:
@@ -301,7 +313,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     if parsed_sources_init:
         if DEBUG_MODE:
             print_text("Loading context from sources...", style="cyan")
-        
+
         for source_conf in parsed_sources_init:
             db_name = source_conf['database']
             db_config = db_manager.get_database(db_name)
@@ -336,7 +348,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 )
                 initial_multi_source_data[db_config.nickname] = pages
                 total_pages_loaded += len(pages)
-                
+
                 if DEBUG_MODE:
                     print_text(f"  - Loaded {len(pages)} entries from: {db_config.nickname}", style="green")
             except Exception as e:
@@ -352,10 +364,10 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
         try:
             timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
             debug_filename = f"debug/{timestamp}_session_init_prompt.txt"
-            
+
             # Ensure debug directory exists
             os.makedirs("debug", exist_ok=True)
-            
+
             # Write debug file with session info
             with open(debug_filename, 'w', encoding='utf-8') as f:
                 f.write("=== MAIA CHAT SESSION INITIALIZATION ===\n")
@@ -370,14 +382,14 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 f.write("SYSTEM PROMPT:\n")
                 f.write("="*50 + "\n")
                 f.write(system_prompt)
-            
+
             debug_print(f"Debug file saved: {debug_filename}")
         except Exception as e:
             debug_print(f"Failed to save debug file: {e}")
 
     # 6. Display Welcome Message
     print()
-    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded)
+    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
 
     # 7. Handle Non-interactive Mode
     if non_interactive:
@@ -385,11 +397,11 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 
     # 8. Start Interactive Chat Loop
     messages = []
-    
+
     while True:
         try:
             user_input = session.prompt("You: ", style=style)
-            
+
             if user_input.strip().lower() in ['/quit', '/exit']:
                 print_text("Goodbye!", style="bold cyan")
                 break
@@ -406,14 +418,14 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     print_text(f"Error pushing to Notion: {e}", style="bold red")
                 continue
             elif user_input.strip().lower() == '/help':
-                print_welcome_message(query_command=query_command, total_pages=total_pages_loaded)
+                print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
                 continue
-            
+
             if not user_input.strip():
                 continue
-            
+
             messages.append({"role": "user", "content": user_input})
-            
+
             # Call the appropriate API
             response_content = None
             try:
@@ -421,21 +433,21 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
                     if response and response.content:
                         response_text = response.content[0].text
-                        
+
                         # Extract token usage for Anthropic
                         if hasattr(response, 'usage'):
                             input_tokens = response.usage.input_tokens
                             output_tokens = response.usage.output_tokens
                             total_tokens = input_tokens + output_tokens
-                            
+
                             # Calculate cost based on Claude 3 Sonnet pricing
                             # Input: $3.00/1M tokens, Output: $15.00/1M tokens
                             input_cost = (input_tokens / 1_000_000) * 3.00
                             output_cost = (output_tokens / 1_000_000) * 15.00
                             total_cost = input_cost + output_cost
-                            
+
                             debug_print(f"Token usage: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
-                            
+
                             response_content = {
                                 'text': response_text,
                                 'tokens': {
@@ -461,21 +473,21 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     )
                     if response.choices:
                         response_text = response.choices[0].message.content
-                        
+
                         # Extract token usage for OpenAI
                         if hasattr(response, 'usage') and response.usage:
                             prompt_tokens = response.usage.prompt_tokens
                             completion_tokens = response.usage.completion_tokens
                             total_tokens = response.usage.total_tokens
-                            
+
                             # Calculate cost based on GPT-4 pricing
                             # Input: $30.00/1M tokens, Output: $60.00/1M tokens
                             input_cost = (prompt_tokens / 1_000_000) * 30.00
                             output_cost = (completion_tokens / 1_000_000) * 60.00
                             total_cost = input_cost + output_cost
-                            
+
                             debug_print(f"Token usage: {prompt_tokens:,} prompt + {completion_tokens:,} completion = {total_tokens:,} total")
-                            
+
                             response_content = {
                                 'text': response_text,
                                 'tokens': {
@@ -495,26 +507,26 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                     formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
                     for msg in messages:
                         formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
-                    
+
                     response = gemini_client.generate_content(formatted_prompt)
                     if response.text:
                         response_content = response.text
-                        
+
                         # Extract and display token usage for Gemini
                         if hasattr(response, 'usage_metadata') and response.usage_metadata:
                             usage = response.usage_metadata
                             prompt_tokens = getattr(usage, 'prompt_token_count', 0)
                             response_tokens = getattr(usage, 'candidates_token_count', 0)
                             total_tokens = getattr(usage, 'total_token_count', 0)
-                            
+
                             # Calculate cost based on Gemini 2.5 Pro pricing
                             # Input: $2.50/1M tokens, Output: $15.00/1M tokens
                             input_cost = (prompt_tokens / 1_000_000) * 2.50
                             output_cost = (response_tokens / 1_000_000) * 15.00
                             total_cost = input_cost + output_cost
-                            
+
                             debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
-                            
+
                             # Store token info for display after response
                             response_content = {
                                 'text': response_content,
@@ -535,20 +547,20 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                 else:
                     print_text(f"Error: {current_api} API client not available.", style="bold red")
                     continue
-                
+
                 if response_content:
                     # Handle different response formats
                     if isinstance(response_content, dict):
                         # AI response with token data
                         response_text = response_content['text']
                         token_data = response_content.get('tokens')
-                        
+
                         timestamp = get_local_timestamp()
                         metadata_parts = [f"{timestamp} Maia"]
                         if token_data:
                             metadata_parts.append(f"{token_data['prompt_tokens']:,}, {token_data['response_tokens']:,}, {token_data['total_tokens']:,}")
                             metadata_parts.append(f"${token_data['cost']:.6f}")
-                        
+
                         # Print each metadata part on its own line
                         print()
                         if metadata_parts:
@@ -559,7 +571,7 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 
                         # Use copy-friendly markdown display
                         print_markdown(response_text)
-                        
+
                         messages.append({"role": "assistant", "content": response_text})
                     else:
                         # String response (fallback for responses without token data)
@@ -571,11 +583,11 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
                         messages.append({"role": "assistant", "content": response_content})
                 else:
                     print_text("Error: No response generated.", style="bold red")
-                    
+
             except Exception as e:
                 print_text(f"Error calling {current_api} API: {e}", style="bold red")
                 debug_print(f"Full API error: {e}")
-                
+
         except KeyboardInterrupt:
             print_text("\nGoodbye!", style="bold cyan")
             break
@@ -586,15 +598,15 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
 def main():
     """Entry point for the chat interface."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Interactive chat with Maia")
     parser.add_argument("-s", "--sources", nargs="+", help="Data sources to load")
     parser.add_argument("-f", "--filters", nargs="+", help="Filters to apply to sources")
     parser.add_argument("-w", "--workspace", help="Workspace to use")
     parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode")
-    
+
     args = parser.parse_args()
-    
+
     asyncio.run(chat(
         sources=args.sources,
         filters=args.filters,
