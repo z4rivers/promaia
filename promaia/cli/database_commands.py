@@ -330,7 +330,8 @@ async def sync_database(source_spec: Dict[str, Any], args):
             result.database_name = qualified_name
         
         # Update last sync time on successful sync
-        if result.pages_saved > 0 or result.pages_skipped > 0:
+        # Update sync time if sync completed successfully (even if no new/updated pages found)
+        if not result.errors or result.pages_saved > 0 or result.pages_skipped > 0:
             # Update the last sync time in the database config
             db_config.last_sync_time = now_utc().isoformat()
             db_manager.save_config()
@@ -765,7 +766,7 @@ def build_sql_from_complex_filter(complex_filter: Dict[str, Any], date_filter_pr
     
     Args:
         complex_filter: Parsed complex filter from parse_complex_filter_expression
-        date_filter_prop: The date property name to use for date comparisons
+        date_filter_prop: The date property name to use for date comparisons (fallback)
         
     Returns:
         Tuple of (sql_where_clause, parameters_list)
@@ -784,8 +785,23 @@ def build_sql_from_complex_filter(complex_filter: Dict[str, Any], date_filter_pr
             op = condition['operator']
             value = condition['value']
             
-            # Handle date properties
-            if prop in ['created_time', 'last_edited_time'] or prop == date_filter_prop:
+            # Handle date properties - use the actual property specified in the filter
+            if prop in ['created_time', 'last_edited_time']:
+                # Use the property specified in the filter, not the default
+                actual_date_prop = prop
+                if op == '>':
+                    and_clauses_sql.append(f"datetime({actual_date_prop}) > datetime(?)")
+                elif op == '>=':
+                    and_clauses_sql.append(f"datetime({actual_date_prop}) >= datetime(?)")
+                elif op == '<':
+                    and_clauses_sql.append(f"datetime({actual_date_prop}) < datetime(?)")
+                elif op == '<=':
+                    and_clauses_sql.append(f"datetime({actual_date_prop}) <= datetime(?)")
+                elif op == '=':
+                    and_clauses_sql.append(f"date({actual_date_prop}) = date(?)")
+                params.append(value)
+            elif prop == date_filter_prop:
+                # Handle case where filter uses the configured date property
                 if op == '>':
                     and_clauses_sql.append(f"datetime({date_filter_prop}) > datetime(?)")
                 elif op == '>=':

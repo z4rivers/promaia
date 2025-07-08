@@ -560,22 +560,50 @@ Date: {date_str}
         
         Gmail's after:/before: syntax interprets dates in the account's local timezone,
         so we need to convert UTC dates to local timezone before formatting.
+        
+        For incremental syncs (start_date only), we use newer_than: which finds threads
+        with any activity in the specified timeframe, not just threads that started then.
         """
         from promaia.utils.timezone_utils import to_local
         
         query_parts = []
         
+        # Check if this looks like an incremental sync (start_date only, no end_date)
+        is_incremental_sync = date_filter.start_date and not date_filter.end_date
+        
         if date_filter.start_date:
             # Convert UTC date to local timezone before formatting for Gmail
             local_date = to_local(date_filter.start_date)
-            date_str = local_date.strftime('%Y/%m/%d')
-            query_parts.append(f'after:{date_str}')
+            
+            if is_incremental_sync:
+                # For incremental syncs, use newer_than which finds threads with ANY activity
+                # in the last N days, including threads that started earlier but had new messages
+                days_since = (datetime.now().date() - local_date.date()).days
+                if days_since <= 0:
+                    days_since = 1  # Gmail requires at least 1 day
+                
+                # Use newer_than for better thread activity detection
+                query_parts.append(f'newer_than:{days_since}d')
+                
+                # Also add a more inclusive after: search to catch edge cases
+                # Go back a bit further to ensure we don't miss any threads
+                buffer_date = local_date - timedelta(days=2)
+                date_str = buffer_date.strftime('%Y/%m/%d')
+                query_parts.append(f'after:{date_str}')
+                
+                self.logger.debug(f"Incremental Gmail sync: using newer_than:{days_since}d and after:{date_str}")
+            else:
+                # For date range syncs, use standard after: syntax
+                date_str = local_date.strftime('%Y/%m/%d')
+                query_parts.append(f'after:{date_str}')
+                self.logger.debug(f"Gmail date range sync: using after:{date_str}")
         
         if date_filter.end_date:
             # Convert UTC date to local timezone before formatting for Gmail
             local_date = to_local(date_filter.end_date)
             date_str = local_date.strftime('%Y/%m/%d')
             query_parts.append(f'before:{date_str}')
+            self.logger.debug(f"Gmail date range sync: using before:{date_str}")
         
         return ' '.join(query_parts) if query_parts else None
     

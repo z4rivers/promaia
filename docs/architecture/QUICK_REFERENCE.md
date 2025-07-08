@@ -37,6 +37,10 @@ maia chat
 maia chat --source journal:7 --source awakenings:all
 maia chat --source journal:30 --source cms:14
 
+# Advanced filtering (see docs/ENHANCED_FILTERING.md for complete guide)
+maia chat -s journal -f 'journal:created_time>2025-01-01'
+maia chat -s journal -f 'journal:created_time>2024-12-01 and created_time<2024-12-08 or created_time>2025-07-01 and created_time<2025-07-08'
+
 # Available in chat:
 # /pull        - Sync all databases and reload context
 # /days        - Change context days 

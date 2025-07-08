@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Maia chat command supports advanced filtering to help you select specific content from your databases as context sources. This is particularly useful for blog posts, research, or any scenario where you need to focus on specific types of content.
+The Maia chat command supports advanced filtering to help you select specific content from your databases as context sources. This is particularly powerful for journaling, research, and content analysis where you need precise control over which entries are included in your context.
 
 ## Syntax
 
@@ -25,6 +25,28 @@ maia chat -s cms -s journal -f 'cms:"Reference"=true' -f 'journal:created_time>2
 # ❌ Error: Global filter in multi-source scenario
 maia chat -s cms -s journal -f '"Reference"=true'
 ```
+
+## Date Property Behavior ⭐ IMPORTANT
+
+### Default Date Property
+- **General use (`--days` flag)**: Uses `last_edited_time` for better relevance
+- **Complex filters**: Uses the date property you explicitly specify
+
+### Date Property Selection
+```bash
+# Uses last_edited_time (default for general filtering)
+maia chat -s journal --days 7
+
+# Uses created_time (explicitly specified in complex filter)
+maia chat -s journal -f 'journal:created_time>2025-01-01'
+
+# Uses last_edited_time (explicitly specified in complex filter)
+maia chat -s journal -f 'journal:last_edited_time>2025-01-01'
+```
+
+**Why this matters for journaling**: 
+- `created_time` = When you originally created the entry
+- `last_edited_time` = When you last modified the entry (better for finding recently active thoughts)
 
 ## Filter Syntax Examples
 
@@ -67,6 +89,72 @@ maia chat -s cms -f 'cms:"Status"=draft or "Status"=review'
 maia chat -s cms -f 'cms:"Reference"=true and ("Status"=live or "Status"=published)'
 ```
 
+## Advanced Date Filtering for Journaling ⭐ NEW
+
+### Multiple Date Ranges (OR Logic)
+Perfect for analyzing patterns across time periods:
+
+```bash
+# First week of specific months
+maia chat -s journal -f 'journal:created_time>2024-12-01 and created_time<2024-12-08 or created_time>2025-01-01 and created_time<2025-01-08'
+
+# Last week of quarters
+maia chat -s journal -f 'journal:created_time>2024-12-24 and created_time<2024-12-31 or created_time>2025-03-24 and created_time<2025-03-31'
+
+# Specific weekdays across months (great for tracking patterns)
+maia chat -s journal -f 'journal:created_time>2025-01-06 and created_time<2025-01-07 or created_time>2025-02-03 and created_time<2025-02-04'
+```
+
+### Complex Journaling Patterns
+```bash
+# First week of every month from Dec 2024 to July 2025
+maia chat -s journal -f 'journal:created_time>2024-12-01 and created_time<2024-12-08 or created_time>2025-01-01 and created_time<2025-01-08 or created_time>2025-02-01 and created_time<2025-02-08 or created_time>2025-03-01 and created_time<2025-03-08 or created_time>2025-04-01 and created_time<2025-04-08 or created_time>2025-05-01 and created_time<2025-05-08 or created_time>2025-06-01 and created_time<2025-06-08 or created_time>2025-07-01 and created_time<2025-07-08'
+
+# Beginning and end of a period (great for "then vs now" analysis)
+maia chat -s journal -f 'journal:created_time>2024-12-01 and created_time<2024-12-08 or created_time>2025-07-01 and created_time<2025-07-08'
+
+# Monthly check-ins (1st-3rd of each month)
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-04 or created_time>2025-02-01 and created_time<2025-02-04 or created_time>2025-03-01 and created_time<2025-03-04'
+```
+
+### Seasonal and Periodic Analysis
+```bash
+# Same season across years
+maia chat -s journal -f 'journal:created_time>2024-12-21 and created_time<2025-03-20 or created_time>2023-12-21 and created_time<2024-03-20'
+
+# Monthly retrospectives (last 3 days of each month)
+maia chat -s journal -f 'journal:created_time>2024-12-29 and created_time<2025-01-01 or created_time>2025-01-29 and created_time<2025-02-01'
+
+# Weekend entries only
+maia chat -s journal -f 'journal:created_time>2025-01-04 and created_time<2025-01-06 or created_time>2025-01-11 and created_time<2025-01-13'
+```
+
+## Journaling-Specific Examples ⭐ NEW
+
+### Reflection and Pattern Analysis
+```bash
+# Monthly beginnings (track goal setting)
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-08 or created_time>2025-02-01 and created_time<2025-02-08 or created_time>2025-03-01 and created_time<2025-03-08'
+
+# Monthly endings (track reflection)
+maia chat -s journal -f 'journal:created_time>2025-01-24 and created_time<2025-01-31 or created_time>2025-02-21 and created_time<2025-02-28 or created_time>2025-03-24 and created_time<2025-03-31'
+
+# Crisis or breakthrough periods
+maia chat -s journal -f 'journal:created_time>2025-01-15 and created_time<2025-01-22 or created_time>2025-03-10 and created_time<2025-03-17'
+```
+
+### Habit and Routine Tracking
+```bash
+# Morning pages (assuming you journal in the morning)
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-02 or created_time>2025-01-08 and created_time<2025-01-09'
+
+# Weekly planning entries (Sundays)
+maia chat -s journal -f 'journal:created_time>2025-01-05 and created_time<2025-01-06 or created_time>2025-01-12 and created_time<2025-01-13'
+
+# Monthly reviews (combining created_time and last_edited_time)
+maia chat -s journal -f 'journal:created_time>2025-01-31 and created_time<2025-02-01' -f 'journal:last_edited_time>2025-01-28'
+```
+
 ### Multi-Source Complex Examples
 ```bash
 # Different filters for different sources
@@ -77,13 +165,16 @@ maia chat -s cms -s journal \
   -f 'cms:"Reference"=true' \
   -f 'cms:"Blog status"=live' \
   -f 'journal:created_time>2025-06-01'
+
+# Combining content creation with journal context
+maia chat -s cms -s journal -f 'cms:"Status"=draft' -f 'journal:created_time>2025-01-01 and created_time<2025-01-08'
 ```
 
 ## Property Names
 
 ### Built-in Properties
-- `created_time` - When the page was created
-- `last_edited_time` - When the page was last modified  
+- `created_time` - When the page was created (better for chronological analysis)
+- `last_edited_time` - When the page was last modified (better for finding active thoughts)
 - `title` - Page title
 - `page_id` - Unique page identifier
 
@@ -120,6 +211,15 @@ Within a single filter expression, you can use `and`/`or`:
 maia chat -s cms -f 'cms:"Reference"=true and ("Status"=live or "Status"=published)'
 ```
 
+### Complex Date Logic
+```bash
+# OR logic for multiple date ranges
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-08 or created_time>2025-02-01 and created_time<2025-02-08'
+
+# AND logic across multiple filter flags
+maia chat -s journal -f 'journal:created_time>2025-01-01' -f 'journal:created_time<2025-01-31'
+```
+
 ## Error Messages
 
 ### Multi-Source Global Filter Error
@@ -133,6 +233,12 @@ Available sources: cms, journal
 ```
 Error: Filter source 'invalid' not found in specified sources.
 Available sources: cms, journal
+```
+
+### Date Format Error
+```
+Error: Invalid date format. Use YYYY-MM-DD format.
+Example: 'created_time>2025-01-01' not 'created_time>Jan 1, 2025'
 ```
 
 ## Migration from Global Filters
@@ -155,6 +261,9 @@ maia chat -s cms -s journal -f 'cms:"Reference"=true'
 2. **Quote property names with spaces** to avoid parsing errors
 3. **Test complex expressions** with debug mode: `MAIA_DEBUG=1 maia chat ...`
 4. **Start simple** and build up complex filters incrementally
+5. **Use `created_time` for chronological analysis** and `last_edited_time` for finding recently active content
+6. **Break very long OR expressions** into multiple commands if they become unwieldy
+7. **Use consistent date formats** (YYYY-MM-DD) to avoid parsing errors
 
 ## Debug Mode
 
@@ -168,4 +277,29 @@ This will show:
 - How filters are parsed
 - Which filters apply to which sources  
 - Filter summary before content loading
-- Detailed processing information 
+- Detailed processing information
+- SQL queries being executed
+- Date property resolution
+
+## Common Use Cases
+
+### Journal Analysis Workflows
+```bash
+# Monthly pattern analysis
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-08 or created_time>2025-02-01 and created_time<2025-02-08'
+
+# Seasonal mood tracking
+maia chat -s journal -f 'journal:created_time>2024-12-21 and created_time<2025-03-20'
+
+# Project retrospective
+maia chat -s journal -f 'journal:created_time>2025-01-01 and created_time<2025-01-31' -f 'journal:last_edited_time>2025-01-15'
+```
+
+### Content Creation Workflows
+```bash
+# Research phase
+maia chat -s cms -s journal -f 'cms:"Reference"=true' -f 'journal:created_time>2025-01-01'
+
+# Writing phase
+maia chat -s cms -s journal -f 'cms:"Status"=draft' -f 'journal:last_edited_time>2025-01-01'
+``` 

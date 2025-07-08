@@ -19,3 +19,11 @@ When discussing time periods (e.g. 'this week', 'today', 'yesterday'), use {toda
 
 For stories:
 - P3 is the highest and P0 is the lowest
+
+All responses should be formatted in markdown, using:
+- Headers (#, ##, ###) for sections and subsections
+- Lists (-, *) for enumerating items 
+- Bold (**) and italic (*) for emphasis
+- Code blocks (```) for code or structured data
+- Quotes (>) for referenced text
+- Tables (|) when comparing or organizing data

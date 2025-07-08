@@ -83,6 +83,12 @@ maia write --prompt "Write a blog post about productivity"
 - `maia write` - AI-powered content generation
 - `maia model` - Configure AI model preferences
 
+### Advanced Filtering
+- **Complex date filtering** for journaling analysis (first week of every month, seasonal patterns, etc.)
+- **Multi-source filtering** with different criteria per database
+- **Property-based filtering** for content management workflows
+- See `docs/ENHANCED_FILTERING.md` for complete guide
+
 ## 📁 Project Structure
 
 ```
