@@ -353,11 +353,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     complex_filter=source_conf.get('complex_filter'),
                     property_filters=source_conf.get('property_filters', {})
                 )
-                initial_multi_source_data[db_config.nickname] = pages
+                # Use qualified name to avoid collisions between workspaces
+                unique_key = db_config.get_qualified_name()
+                initial_multi_source_data[unique_key] = pages
                 total_pages_loaded += len(pages)
 
                 if DEBUG_MODE:
-                    print_text(f"  - Loaded {len(pages)} entries from: {db_config.nickname}", style="green")
+                    print_text(f"  - Loaded {len(pages)} entries from: {unique_key}", style="green")
             except Exception as e:
                 if DEBUG_MODE:
                     print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
