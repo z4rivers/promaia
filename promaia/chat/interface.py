@@ -166,11 +166,11 @@ def run_non_interactive_chat(messages: List[Dict[str, Any]], system_prompt: str,
     """Handles a single, non-interactive chat exchange."""
     pass
 
-def chat(sources=None, filters=None, workspace=None, non_interactive=False):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
-    # Reconstruct the query command for display
+    # Reconstruct the query command for display (only show workspace if explicitly provided)
     query_parts = ["maia", "chat"]
     if sources:
         if len(sources) == 1:
@@ -181,15 +181,21 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     if filters:
         for filter_expr in filters:
             query_parts.extend(["-f", f'"{filter_expr}"'])
-    if workspace:
+    if workspace:  # Only show workspace if explicitly provided by user
         query_parts.extend(["-w", workspace])
     query_command = " ".join(query_parts)
 
-    # 1. Determine Workspace
-    workspace_manager = get_workspace_manager()
-    if not workspace:
-        workspace = workspace_manager.get_default_workspace()
-    if not workspace:
+    # 1. Determine Workspace (use resolved_workspace if provided, otherwise fallback)
+    if resolved_workspace:
+        actual_workspace = resolved_workspace
+    else:
+        workspace_manager = get_workspace_manager()
+        if not workspace:
+            actual_workspace = workspace_manager.get_default_workspace()
+        else:
+            actual_workspace = workspace
+    
+    if not actual_workspace:
         print_text("ERROR: No workspace available. Please configure one.", style="bold red")
         return
 
@@ -202,11 +208,11 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
     total_pages_loaded = 0
 
     if not sources:
-        debug_print(f"No sources provided, loading all databases for workspace '{workspace}'.")
-        workspace_databases = db_manager.get_workspace_databases(workspace)
+        debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
+        workspace_databases = db_manager.get_workspace_databases(actual_workspace)
         sources = [db.nickname for db in workspace_databases]
         if not sources:
-            print_text(f"Warning: No databases configured for workspace '{workspace}'. Chat will lack context.", style="bold yellow")
+            print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
 
     if filters and sources:
         debug_print(f"Applying filters: {filters}")

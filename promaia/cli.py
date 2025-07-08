@@ -997,7 +997,7 @@ def chat_run(args):
     
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
-    workspace = getattr(args, 'workspace', None)
+    original_workspace = getattr(args, 'workspace', None)  # Keep original for display
     
     # Non-interactive mode for the desktop app
     if not sys.stdout.isatty():
@@ -1008,29 +1008,29 @@ def chat_run(args):
         logging.info("Running in non-interactive mode.")
 
     try:
-        # Validate workspace if specified
-        if workspace:
-            workspace_manager = get_workspace_manager()
-            if not workspace_manager.validate_workspace(workspace):
-                print(f"✗ Workspace '{workspace}' is not properly configured.", file=sys.stderr)
+        # Resolve the actual workspace to use
+        workspace_manager = get_workspace_manager()
+        if original_workspace:
+            if not workspace_manager.validate_workspace(original_workspace):
+                print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
                 return
+            resolved_workspace = original_workspace
         else:
-            # Use default workspace
-            workspace_manager = get_workspace_manager()
-            workspace = workspace_manager.get_default_workspace()
-            if not workspace:
+            # Use default workspace for functionality, but don't show in query display
+            resolved_workspace = workspace_manager.get_default_workspace()
+            if not resolved_workspace:
                 print("No workspace specified and no default workspace configured.", file=sys.stderr)
                 return
         
         # Save query to recents before executing (only if there are meaningful parameters)
-        if sources or filters or workspace:
+        if sources or filters or original_workspace:
             from promaia.storage.recents import RecentsManager
             recents_manager = RecentsManager()
-            recents_manager.add_query(sources=sources, filters=filters, workspace=workspace)
+            recents_manager.add_query(sources=sources, filters=filters, workspace=original_workspace)
         
         # The `chat` function will now need to handle the main loop
         non_interactive = getattr(args, 'non_interactive', False) or not sys.stdout.isatty()
-        chat(sources=sources, filters=filters, workspace=workspace, non_interactive=non_interactive)
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive)
 
     except ImportError as e:
         print(f"Error importing chat interface: {e}", file=sys.stderr)
