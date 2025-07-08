@@ -176,7 +176,8 @@ def chat(sources=None, filters=None, workspace=None, non_interactive=False):
         if len(sources) == 1:
             query_parts.extend(["-s", sources[0]])
         else:
-            query_parts.extend(["-s"] + sources)
+            for source in sources:
+                query_parts.extend(["-s", source])
     if filters:
         for filter_expr in filters:
             query_parts.extend(["-f", f'"{filter_expr}"'])
