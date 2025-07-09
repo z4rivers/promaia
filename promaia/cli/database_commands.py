@@ -310,8 +310,8 @@ async def sync_database(source_spec: Dict[str, Any], args):
         
         # Ensure the new directory structure exists
         os.makedirs(db_config.markdown_directory, exist_ok=True)
-        # Only create JSON directory if JSON storage is enabled
-        if db_config.save_json or db_config.primary_format == "json":
+        # Only create JSON directory if JSON storage is enabled and directory is configured
+        if (db_config.save_json or db_config.primary_format == "json") and db_config.json_directory:
             os.makedirs(db_config.json_directory, exist_ok=True)
         
         # Perform sync using unified storage

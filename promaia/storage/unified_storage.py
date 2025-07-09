@@ -77,6 +77,9 @@ class UnifiedStorage:
             if not (database_config.save_json or database_config.primary_format == "json"):
                 logger.warning(f"JSON storage disabled but _save_json_file called for {page_id}")
                 return None
+            if not json_dir:
+                logger.error(f"JSON directory not configured for {page_id}")
+                return None
             os.makedirs(json_dir, exist_ok=True)
             
             # DEDUPLICATION: Remove any existing files with the same page_id
@@ -448,7 +451,7 @@ class UnifiedStorage:
                             logger.warning(f"Failed to remove markdown file {file_path}: {e}")
         
         # Clean up JSON files
-        if database_config.save_json or database_config.primary_format == "json":
+        if (database_config.save_json or database_config.primary_format == "json") and database_config.json_directory:
             json_dir = database_config.json_directory
             if os.path.exists(json_dir):
                 for filename in os.listdir(json_dir):

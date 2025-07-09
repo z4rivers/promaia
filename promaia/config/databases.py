@@ -58,16 +58,25 @@ class DatabaseConfig:
         self.markdown_directory = config_data.get("markdown_directory", default_md_dir)
         
         # JSON storage directory (flat structure with SQLite registry)
-        self.json_directory = config_data.get("json_directory", "data/json")
+        # Only set if JSON storage is actually enabled
+        if config_data.get("save_json", False) or config_data.get("primary_format", "markdown") == "json":
+            self.json_directory = config_data.get("json_directory", "data/json")
+        else:
+            self.json_directory = None
         
         # Backward compatibility: keep output_directory for legacy systems
         self.output_directory = config_data.get("output_directory", self.markdown_directory)
             
-        self.primary_format = config_data.get("primary_format", "json")
+        self.primary_format = config_data.get("primary_format", "markdown")
         self.save_markdown = config_data.get("save_markdown", True)
         self.save_json = config_data.get("save_json", False)
         self.save_to_vector_db = config_data.get("save_to_vector_db", False)
-        self.vector_db_collection = config_data.get("vector_db_collection", name)
+        
+        # Only set vector_db_collection if vector DB is actually enabled
+        if config_data.get("save_to_vector_db", False):
+            self.vector_db_collection = config_data.get("vector_db_collection", name)
+        else:
+            self.vector_db_collection = None
         
         # Subpage sync settings
         self.sync_subpages = config_data.get("sync_subpages", False)
@@ -82,7 +91,7 @@ class DatabaseConfig:
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert database config to dictionary."""
-        return {
+        result = {
             "source_type": self.source_type,
             "database_id": self.database_id,
             "nickname": self.nickname,
@@ -96,20 +105,33 @@ class DatabaseConfig:
             "filters": self.filters,
             "property_filters": self.property_filters,
             "date_filters": self.date_filters,
-            "output_directory": self.output_directory,  # For backward compatibility
             "markdown_directory": self.markdown_directory,
-            "json_directory": self.json_directory,
             "primary_format": self.primary_format,
             "save_markdown": self.save_markdown,
-            "save_json": self.save_json,
-            "save_to_vector_db": self.save_to_vector_db,
-            "vector_db_collection": self.vector_db_collection,
             "sync_subpages": self.sync_subpages,
             "property_mapping": self.property_mapping,
             "required_properties": self.required_properties,
             "excluded_properties": self.excluded_properties,
             "auth": self.auth_config
         }
+        
+        # Only include JSON-related settings if JSON storage is enabled
+        if self.save_json or self.primary_format == "json":
+            result["save_json"] = self.save_json
+            if self.json_directory:
+                result["json_directory"] = self.json_directory
+        
+        # Only include vector DB settings if vector storage is enabled
+        if self.save_to_vector_db:
+            result["save_to_vector_db"] = self.save_to_vector_db
+            if self.vector_db_collection:
+                result["vector_db_collection"] = self.vector_db_collection
+        
+        # Include backward compatibility fields only if they differ from current structure
+        if self.output_directory != self.markdown_directory:
+            result["output_directory"] = self.output_directory
+        
+        return result
     
     def get_qualified_name(self) -> str:
         """Get the workspace-qualified database name."""
