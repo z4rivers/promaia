@@ -24,27 +24,26 @@ class DatabaseConfig:
     def __init__(self, name: str, config_data: Dict[str, Any]):
         self.name = name
         self.source_type = config_data.get("source_type", "notion")
-        self.database_id = config_data.get("database_id")
+        self.database_id = config_data["database_id"]
         self.nickname = config_data.get("nickname", name)
         self.description = config_data.get("description", "")
         
-        # Workspace information (NEW)
-        self.workspace = config_data.get("workspace", "koii")  # Default to koii workspace
+        # Workspace assignment
+        self.workspace = config_data.get("workspace", "koii")
         
         # Sync settings
         self.sync_enabled = config_data.get("sync_enabled", True)
         self.include_properties = config_data.get("include_properties", True)
         self.sync_frequency = config_data.get("sync_frequency", "daily")
         self.default_days = config_data.get("default_days", 7)
-        self.last_sync_time = config_data.get("last_sync_time")
+        self.last_sync_time = config_data.get("last_sync_time", None)
         
-        # Filters
+        # Filtering settings
         self.filters = config_data.get("filters", {})
         self.property_filters = config_data.get("property_filters", {})
         self.date_filters = config_data.get("date_filters", {})
-        
-        # Storage settings - new unified directory structure
-        # Markdown output directory follows different patterns based on source_type
+
+        # Storage settings - markdown only
         if config_data.get("source_type") == "gmail":
             # For Gmail, use data/md/gmail/{username} structure
             # Extract username from email database_id (e.g., koii.create@gmail.com -> koiicreate)
@@ -57,26 +56,11 @@ class DatabaseConfig:
         
         self.markdown_directory = config_data.get("markdown_directory", default_md_dir)
         
-        # JSON storage directory (flat structure with SQLite registry)
-        # Only set if JSON storage is actually enabled
-        if config_data.get("save_json", False) or config_data.get("primary_format", "markdown") == "json":
-            self.json_directory = config_data.get("json_directory", "data/json")
-        else:
-            self.json_directory = None
-        
         # Backward compatibility: keep output_directory for legacy systems
         self.output_directory = config_data.get("output_directory", self.markdown_directory)
             
-        self.primary_format = config_data.get("primary_format", "markdown")
-        self.save_markdown = config_data.get("save_markdown", True)
-        self.save_json = config_data.get("save_json", False)
-        self.save_to_vector_db = config_data.get("save_to_vector_db", False)
-        
-        # Only set vector_db_collection if vector DB is actually enabled
-        if config_data.get("save_to_vector_db", False):
-            self.vector_db_collection = config_data.get("vector_db_collection", name)
-        else:
-            self.vector_db_collection = None
+        self.primary_format = "markdown"  # Always markdown
+        self.save_markdown = True  # Always save markdown
         
         # Subpage sync settings
         self.sync_subpages = config_data.get("sync_subpages", False)
@@ -96,7 +80,7 @@ class DatabaseConfig:
             "database_id": self.database_id,
             "nickname": self.nickname,
             "description": self.description,
-            "workspace": self.workspace,  # Include workspace in serialization
+            "workspace": self.workspace,
             "sync_enabled": self.sync_enabled,
             "include_properties": self.include_properties,
             "sync_frequency": self.sync_frequency,
@@ -115,24 +99,12 @@ class DatabaseConfig:
             "auth": self.auth_config
         }
         
-        # Only include JSON-related settings if JSON storage is enabled
-        if self.save_json or self.primary_format == "json":
-            result["save_json"] = self.save_json
-            if self.json_directory:
-                result["json_directory"] = self.json_directory
-        
-        # Only include vector DB settings if vector storage is enabled
-        if self.save_to_vector_db:
-            result["save_to_vector_db"] = self.save_to_vector_db
-            if self.vector_db_collection:
-                result["vector_db_collection"] = self.vector_db_collection
-        
         # Include backward compatibility fields only if they differ from current structure
         if self.output_directory != self.markdown_directory:
             result["output_directory"] = self.output_directory
         
         return result
-    
+        
     def get_qualified_name(self) -> str:
         """Get the workspace-qualified database name."""
         if self.workspace == "koii":
@@ -233,12 +205,7 @@ class DatabaseManager:
             "default_sync_days": 7,
             "default_output_directory": "data",
             "markdown_base_directory": "data/md",
-            "json_base_directory": "data/json",
-            "json_registry_db": "data/metadata.db",
-            "vector_db_enabled": False,
-            "vector_db_type": "chroma",
-            "vector_db_path": "vector_db",
-            "storage_format": "json",
+            "registry_db": "data/metadata.db",
             "enable_ai_editing": True,
             "ai_edit_safety_mode": True
         }

@@ -377,11 +377,6 @@ class NotionConnector(BaseConnector):
                     if not final_title or final_title == page_id: # Ensure we don't just use page_id if a better title was expected
                         final_title = f"untitled_{page_id[:8]}"
                     
-                    # Check configuration to determine save format
-                    save_json = self.config.get("save_json", False)
-                    save_markdown = self.config.get("save_markdown", True)
-                    primary_format = self.config.get("primary_format", "markdown")
-                    
                     # Construct qualified content_type based on workspace
                     nickname = self.config.get("nickname", "unknown")
                     workspace = self.config.get("workspace", "koii")
@@ -390,103 +385,59 @@ class NotionConnector(BaseConnector):
                     else:
                         content_type = f"{workspace}.{nickname}"
                     
-                    # Save in JSON format if configured
-                    if save_json or primary_format == "json":
-                        # Prepare the raw page data for JSON storage
-                        raw_page_data = {
-                            "properties": page_content.get("properties", {}),
-                            "content": page_content["content"]
-                        }
+                    # Always save in markdown format
+                    # Create a safe filename from the title
+                    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in final_title)
+
+                    # Extract created_time from page data and prepend to filename
+                    date_prefix = ""
+                    try:
+                        page_obj = page_content.get("page", {})
+                        created_time_str = page_obj.get("created_time") or page_content.get("created_time")
                         
-                        file_path = await save_page_to_json(
-                            page_id=page_id,
-                            title=final_title,
-                            page_data=raw_page_data,
-                            content_type=content_type
-                        )
-                        
-                        result.add_success(file_path)
-                        self.logger.debug(f"Saved page to JSON: {file_path}")
-
-                        # Derived Markdown Generation
-                        try:
-                            md_blocks = raw_page_data.get("content", [])
-                            md_properties = raw_page_data.get("properties", {})
-
-                            markdown_string_content = page_to_markdown(
-                                blocks=md_blocks,
-                                properties=md_properties,
-                                include_properties=include_properties 
-                            )
-
-                            temp_page_json_data_for_md = {
-                                "page_id": page_id,
-                                "title": final_title,
-                                "content_type": content_type,
-                            }
+                        if created_time_str:
+                            # Parse the created_time and format as YYYY-MM-DD
+                            created_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
+                            date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                            self.logger.debug(f"Using created_time {created_time_str} for date prefix: {date_prefix}")
+                        else:
+                            # Fallback: try to extract from properties if available
+                            properties = page_content.get("properties", {})
+                            for prop_name, prop_data in properties.items():
+                                if prop_data.get("type") == "date" and prop_name.lower() in ["date", "created", "created_time"]:
+                                    date_value = prop_data.get("date", {})
+                                    if date_value and date_value.get("start"):
+                                        date_str = date_value.get("start")
+                                        created_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                                        date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                                        self.logger.debug(f"Using property {prop_name} for date prefix: {date_prefix}")
+                                        break
                             
-                            md_file_path = save_page_to_markdown_file(
-                                temp_page_json_data_for_md, 
-                                markdown_string_content
-                            )
-                            self.logger.debug(f"Derived and saved Markdown twin for {page_id} to {md_file_path}")
-                        except Exception as e_md_derive:
-                            self.logger.error(f"Failed to derive/save Markdown twin for {page_id} after JSON save: {e_md_derive}")
+                            if not date_prefix:
+                                self.logger.warning(f"No created_time found for page {page_id}, using current date")
+                                date_prefix = now_utc().strftime("%Y-%m-%d") + " "
+                            
+                    except Exception as e:
+                        self.logger.warning(f"Error extracting created_time for page {page_id}: {e}, using current date")
+                        date_prefix = now_utc().strftime("%Y-%m-%d") + " "
+
+                    filename = f"{date_prefix}{safe_title} {page_id}.md"
+                    file_path = os.path.join(output_directory, filename)
                     
-                    # Save in markdown format if configured
-                    if save_markdown or (not save_json and primary_format != "json"):
-                        # Create a safe filename from the title
-                        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in final_title)
-
-                        # Extract created_time from page data and prepend to filename
-                        date_prefix = ""
-                        try:
-                            page_obj = page_content.get("page", {})
-                            created_time_str = page_obj.get("created_time") or page_content.get("created_time")
-                            
-                            if created_time_str:
-                                # Parse the created_time and format as YYYY-MM-DD
-                                created_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
-                                date_prefix = created_dt.strftime("%Y-%m-%d") + " "
-                                self.logger.debug(f"Using created_time {created_time_str} for date prefix: {date_prefix}")
-                            else:
-                                # Fallback: try to extract from properties if available
-                                properties = page_content.get("properties", {})
-                                for prop_name, prop_data in properties.items():
-                                    if prop_data.get("type") == "date" and prop_name.lower() in ["date", "created", "created_time"]:
-                                        date_value = prop_data.get("date", {})
-                                        if date_value and date_value.get("start"):
-                                            date_str = date_value.get("start")
-                                            created_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                                            date_prefix = created_dt.strftime("%Y-%m-%d") + " "
-                                            self.logger.debug(f"Using property {prop_name} for date prefix: {date_prefix}")
-                                            break
-                                
-                                if not date_prefix:
-                                    self.logger.warning(f"No created_time found for page {page_id}, using current date")
-                                    date_prefix = now_utc().strftime("%Y-%m-%d") + " "
-                                
-                        except Exception as e:
-                            self.logger.warning(f"Error extracting created_time for page {page_id}: {e}, using current date")
-                            date_prefix = now_utc().strftime("%Y-%m-%d") + " "
-
-                        filename = f"{date_prefix}{safe_title} {page_id}.md"
-                        file_path = os.path.join(output_directory, filename)
-                        
-                        # Convert to markdown
-                        markdown_content = page_to_markdown(
-                            page_content["content"], 
-                            properties=page_content.get("properties") if include_properties else None,
-                            include_properties=include_properties,
-                            excluded_properties=excluded_properties
-                        )
-                        
-                        # Save the markdown content to the file directly
-                        with open(file_path, "w", encoding="utf-8") as f:
-                            f.write(markdown_content)
-                        
-                        result.add_success(file_path)
-                        self.logger.debug(f"Saved page to markdown: {file_path}")
+                    # Convert to markdown
+                    markdown_content = page_to_markdown(
+                        page_content["content"], 
+                        properties=page_content.get("properties") if include_properties else None,
+                        include_properties=include_properties,
+                        excluded_properties=excluded_properties
+                    )
+                    
+                    # Save the markdown content to the file directly
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(markdown_content)
+                    
+                    result.add_success(file_path)
+                    self.logger.debug(f"Saved page to markdown: {file_path}")
                     
                     self.logger.debug(f"Processed page: {final_title}")
                     
@@ -861,12 +812,8 @@ class NotionConnector(BaseConnector):
                 file_status = storage.files_exist_locally(page_id, title_for_filename, db_config)
                 files_missing = False
                 
-                # Check if any required files are missing
-                if (db_config.save_json or db_config.primary_format == "json") and not file_status['json']:
-                    files_missing = True
-                    self.logger.debug(f"Page {page_id} ('{title_for_filename}'): JSON file missing locally. Will sync.")
-                
-                if db_config.save_markdown and not file_status['markdown']:
+                # Check if markdown file is missing
+                if not file_status['markdown']:
                     files_missing = True
                     self.logger.debug(f"Page {page_id} ('{title_for_filename}'): Markdown file missing locally. Will sync.")
                 
@@ -920,33 +867,23 @@ class NotionConnector(BaseConnector):
                 
                 # Generate markdown content if needed
                 markdown_content = None
-                if db_config.save_markdown:
-                    # Check if subpages sync is enabled for this database
-                    sync_subpages = getattr(db_config, 'sync_subpages', False)
-                    
-                    if sync_subpages:
-                        # Use enhanced subpage functionality with inline expansion
-                        from promaia.markdown.converter import page_to_markdown_with_subpages
-                        try:
-                            self.logger.debug(f"Fetching page with subpages for: {page_id}")
-                            markdown_content = await page_to_markdown_with_subpages(
-                                content_data["content"], 
-                                properties=content_data.get("properties") if include_properties else None,
-                                include_properties=include_properties,
-                                excluded_properties=excluded_properties or []
-                            )
-                        except Exception as subpage_error:
-                            self.logger.warning(f"Failed to process subpages for {page_id}, falling back to regular content: {subpage_error}")
-                            # Fall back to regular page_to_markdown
-                            from promaia.markdown.converter import page_to_markdown
-                            markdown_content = page_to_markdown(
-                                content_data["content"], 
-                                properties=content_data.get("properties") if include_properties else None,
-                                include_properties=include_properties,
-                                excluded_properties=excluded_properties or []
-                            )
-                    else:
-                        # Use regular page_to_markdown without subpages
+                # Check if subpages sync is enabled for this database
+                sync_subpages = getattr(db_config, 'sync_subpages', False)
+                
+                if sync_subpages:
+                    # Use enhanced subpage functionality with inline expansion
+                    from promaia.markdown.converter import page_to_markdown_with_subpages
+                    try:
+                        self.logger.debug(f"Fetching page with subpages for: {page_id}")
+                        markdown_content = await page_to_markdown_with_subpages(
+                            content_data["content"], 
+                            properties=content_data.get("properties") if include_properties else None,
+                            include_properties=include_properties,
+                            excluded_properties=excluded_properties or []
+                        )
+                    except Exception as subpage_error:
+                        self.logger.warning(f"Failed to process subpages for {page_id}, falling back to regular content: {subpage_error}")
+                        # Fall back to regular page_to_markdown
                         from promaia.markdown.converter import page_to_markdown
                         markdown_content = page_to_markdown(
                             content_data["content"], 
@@ -954,6 +891,15 @@ class NotionConnector(BaseConnector):
                             include_properties=include_properties,
                             excluded_properties=excluded_properties or []
                         )
+                else:
+                    # Use regular page_to_markdown without subpages
+                    from promaia.markdown.converter import page_to_markdown
+                    markdown_content = page_to_markdown(
+                        content_data["content"], 
+                        properties=content_data.get("properties") if include_properties else None,
+                        include_properties=include_properties,
+                        excluded_properties=excluded_properties or []
+                    )
                 
                 # Use the unified storage system to save the content
                 saved_files = storage.save_content(
