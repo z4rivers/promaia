@@ -204,20 +204,30 @@ async def handle_database_sync(args):
         print("No databases to sync")
         return
     
-    print(f"Syncing {len(sources)} database(s)...")
+    print(f"🚀 Syncing {len(sources)} database(s) with optimized performance...")
     
-    # OPTIMIZATION: Sync databases in parallel instead of sequentially
-    # Create coroutines for all database syncs
-    sync_tasks = [sync_database(source_spec, args) for source_spec in sources]
+    # OPTIMIZATION: Sync databases in parallel with maximum safe concurrency
+    # Chunk databases to prevent overwhelming the system while maximizing throughput
+    MAX_CONCURRENT_DATABASES = 15  # Optimal for most systems
+    all_results = []
     
-    # Execute all syncs concurrently and collect results
-    sync_results = await asyncio.gather(*sync_tasks, return_exceptions=True)
+    for i in range(0, len(sources), MAX_CONCURRENT_DATABASES):
+        chunk = sources[i:i + MAX_CONCURRENT_DATABASES]
+        chunk_tasks = [sync_database(source_spec, args) for source_spec in chunk]
+        
+        # Execute chunk concurrently
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        all_results.extend(chunk_results)
+        
+        # Minimal delay between chunks to prevent system overload
+        if i + MAX_CONCURRENT_DATABASES < len(sources):
+            await asyncio.sleep(0.05)
     
     # MONITORING: Report overall performance
     overall_duration = (datetime.now() - overall_start_time).total_seconds()
     
     # Display comprehensive summary
-    display_sync_summary(sync_results, overall_duration)
+    display_sync_summary(all_results, overall_duration)
 
 async def sync_database(source_spec: Dict[str, Any], args):
     """Sync a single database based on source specification."""

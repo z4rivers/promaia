@@ -122,9 +122,13 @@ class UnifiedStorage:
             filename = f"{date_prefix}{safe_title} {page_id}.md"
             file_path = os.path.join(md_dir, filename)
             
-            # Save markdown file
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(markdown_content)
+            # Save markdown file with optimized I/O
+            try:
+                # Use more efficient file writing
+                Path(file_path).write_text(markdown_content, encoding='utf-8')
+            except Exception as e:
+                logger.error(f"Failed to write markdown file {file_path}: {e}")
+                return None
             
             # Always register content in the registry for proper ordering and tracking
             if content_data:
@@ -193,13 +197,13 @@ class UnifiedStorage:
             'markdown': False
         }
         
-        # Check markdown file existence by searching for files with the page_id
+        # Optimized check: use glob pattern matching instead of iterating all files
         md_dir = database_config.markdown_directory
         if os.path.exists(md_dir):
-            for filename in os.listdir(md_dir):
-                if filename.endswith('.md') and page_id in filename:
-                    file_status['markdown'] = True
-                    break
+            import glob
+            pattern = os.path.join(md_dir, f"*{page_id}.md")
+            matching_files = glob.glob(pattern)
+            file_status['markdown'] = len(matching_files) > 0
         
         return file_status
     
@@ -293,21 +297,23 @@ class UnifiedStorage:
         """Clean up existing files for a given page ID."""
         files_removed = []
         
-        # Clean up markdown files
+        # Clean up markdown files using optimized glob pattern
         md_dir = database_config.markdown_directory
         if os.path.exists(md_dir):
-            for filename in os.listdir(md_dir):
-                if filename.endswith('.md') and page_id in filename:
-                    file_path = os.path.join(md_dir, filename)
-                    try:
-                        os.remove(file_path)
-                        files_removed.append(file_path)
-                        logger.debug(f"Removed existing markdown file: {file_path}")
-                    except OSError as e:
-                        logger.warning(f"Failed to remove markdown file {file_path}: {e}")
+            import glob
+            pattern = os.path.join(md_dir, f"*{page_id}.md")
+            existing_files = glob.glob(pattern)
+            
+            for file_path in existing_files:
+                try:
+                    os.remove(file_path)
+                    files_removed.append(file_path)
+                    logger.debug(f"Removed existing markdown file: {file_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to remove markdown file {file_path}: {e}")
         
         if files_removed:
-            logger.info(f"Cleaned up {len(files_removed)} existing files for page_id {page_id}")
+            logger.debug(f"Cleaned up {len(files_removed)} existing files for page_id {page_id}")
         
         return files_removed
 
