@@ -130,7 +130,9 @@ def print_welcome_message(query_command, total_pages, model_name=None):
         print_text(f"Pages loaded: {total_pages}", style="dim")
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e", style="dim")
+    print_text("  /s - Sync databases in current context", style="dim")
+    print_text("  /e - Edit context (sources, filters)", style="dim")
     print_text("")
 
 
@@ -170,203 +172,464 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
-    # Reconstruct the query command for display (only show workspace if explicitly provided)
-    query_parts = ["maia", "chat"]
-    if sources:
-        if len(sources) == 1:
-            query_parts.extend(["-s", sources[0]])
+    # Context state tracking for dynamic changes
+    context_state = {
+        'sources': sources,
+        'filters': filters,
+        'workspace': workspace,
+        'resolved_workspace': resolved_workspace,
+        'initial_multi_source_data': {},
+        'total_pages_loaded': 0,
+        'system_prompt': None,
+        'query_command': None
+    }
+
+    def update_query_command():
+        """Update the query command display based on current context state."""
+        query_parts = ["maia", "chat"]
+        if context_state['sources']:
+            if len(context_state['sources']) == 1:
+                query_parts.extend(["-s", context_state['sources'][0]])
+            else:
+                for source in context_state['sources']:
+                    query_parts.extend(["-s", source])
+        if context_state['filters']:
+            for filter_expr in context_state['filters']:
+                query_parts.extend(["-f", f'"{filter_expr}"'])
+        if context_state['workspace']:  # Only show workspace if explicitly provided by user
+            query_parts.extend(["-w", context_state['workspace']])
+        context_state['query_command'] = " ".join(query_parts)
+
+    # Initial query command setup
+    update_query_command()
+    query_command = context_state['query_command']
+
+    def reload_context():
+        """Reload the chat context with current state configuration."""
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command
+        
+        # Use current state
+        current_sources = context_state['sources']
+        current_filters = context_state['filters']
+        current_workspace = context_state['workspace']
+        current_resolved_workspace = context_state['resolved_workspace']
+        
+        # 1. Determine Workspace (use resolved_workspace if provided, otherwise fallback)
+        if current_resolved_workspace:
+            actual_workspace = current_resolved_workspace
         else:
-            for source in sources:
-                query_parts.extend(["-s", source])
-    if filters:
-        for filter_expr in filters:
-            query_parts.extend(["-f", f'"{filter_expr}"'])
-    if workspace:  # Only show workspace if explicitly provided by user
-        query_parts.extend(["-w", workspace])
-    query_command = " ".join(query_parts)
+            workspace_manager = get_workspace_manager()
+            if not current_workspace:
+                actual_workspace = workspace_manager.get_default_workspace()
+            else:
+                actual_workspace = current_workspace
+        
+        if not actual_workspace:
+            print_text("ERROR: No workspace available. Please configure one.", style="bold red")
+            return False
 
-    # 1. Determine Workspace (use resolved_workspace if provided, otherwise fallback)
-    if resolved_workspace:
-        actual_workspace = resolved_workspace
-    else:
-        workspace_manager = get_workspace_manager()
-        if not workspace:
-            actual_workspace = workspace_manager.get_default_workspace()
-        else:
-            actual_workspace = workspace
-    
-    if not actual_workspace:
-        print_text("ERROR: No workspace available. Please configure one.", style="bold red")
-        return
+        # 2. Determine and Process Sources
+        from promaia.config.databases import get_database_manager
+        from promaia.cli.database_commands import parse_source_specs, parse_filter_expression
 
-    # 2. Determine and Process Sources
-    from promaia.config.databases import get_database_manager
-    from promaia.cli.database_commands import parse_source_specs, parse_filter_expression
+        db_manager = get_database_manager()
+        new_multi_source_data = {}
+        new_total_pages_loaded = 0
 
-    db_manager = get_database_manager()
-    initial_multi_source_data = {}
-    total_pages_loaded = 0
+        if not current_sources:
+            debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
+            workspace_databases = db_manager.get_workspace_databases(actual_workspace)
+            current_sources = [db.nickname for db in workspace_databases]
+            context_state['sources'] = current_sources
+            if not current_sources:
+                print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
 
-    if not sources:
-        debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
-        workspace_databases = db_manager.get_workspace_databases(actual_workspace)
-        sources = [db.nickname for db in workspace_databases]
-        if not sources:
-            print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
+        if current_filters and current_sources:
+            debug_print(f"Applying filters: {current_filters}")
 
-    if filters and sources:
-        debug_print(f"Applying filters: {filters}")
+        # 3. Process filters and integrate them into source specifications
+        processed_sources = []
+        source_specific_filters = {}  # Dict of source -> list of filters
+        global_filters = []  # Filters without source prefix (backward compatibility)
 
-    # 3. Process filters and integrate them into source specifications
-    processed_sources = []
-    source_specific_filters = {}  # Dict of source -> list of filters
-    global_filters = []  # Filters without source prefix (backward compatibility)
+        # Parse and categorize filters
+        if current_filters:
+            debug_print(f"Processing filters: {current_filters}")
 
-    # Parse and categorize filters
-    if filters:
-        debug_print(f"Processing filters: {filters}")
+            for filter_expr in current_filters:
+                try:
+                    parsed_filter = parse_filter_expression(filter_expr)
 
-        for filter_expr in filters:
-            try:
-                parsed_filter = parse_filter_expression(filter_expr)
+                    # Check if this is a source-specific filter (new format)
+                    if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
+                        source = parsed_filter['source']
+                        filter_spec = parsed_filter['filter']
 
-                # Check if this is a source-specific filter (new format)
-                if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
-                    source = parsed_filter['source']
-                    filter_spec = parsed_filter['filter']
+                        if source not in source_specific_filters:
+                            source_specific_filters[source] = []
+                        source_specific_filters[source].append(filter_spec)
+                        debug_print(f"Added source-specific filter: {source} -> {filter_spec}")
+                    else:
+                        # Backward compatibility - filter without source prefix
+                        global_filters.append(parsed_filter)
+                        debug_print(f"Added global filter: {parsed_filter}")
 
-                    if source not in source_specific_filters:
-                        source_specific_filters[source] = []
-                    source_specific_filters[source].append(filter_spec)
-                    debug_print(f"Added source-specific filter: {source} -> {filter_spec}")
-                else:
-                    # Backward compatibility - filter without source prefix
-                    global_filters.append(parsed_filter)
-                    debug_print(f"Added global filter: {parsed_filter}")
+                except Exception as e:
+                    print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
+                    continue
 
-            except Exception as e:
-                print_text(f"Warning: Invalid filter '{filter_expr}': {e}", style="bold yellow")
-                continue
-
-    # Validation for multi-source scenarios
-    if sources and len(sources) > 1:
-        if global_filters:
-            print_text(
-                "Error: In multi-source scenarios, all filters must specify a source prefix.\n"
-                f"Example: Instead of '{global_filters[0]}', use 'source:\"{global_filters[0]}\"'\n"
-                "Available sources: " + ", ".join(sources),
-                style="bold red"
-            )
-            return
-
-        # Check that all filter sources are valid
-        for filter_source in source_specific_filters.keys():
-            if filter_source not in sources:
+        # Validation for multi-source scenarios
+        if current_sources and len(current_sources) > 1:
+            if global_filters:
                 print_text(
-                    f"Error: Filter source '{filter_source}' not found in specified sources.\n"
-                    f"Available sources: {', '.join(sources)}",
+                    "Error: In multi-source scenarios, all filters must specify a source prefix.\n"
+                    f"Example: Instead of '{global_filters[0]}', use 'source:\"{global_filters[0]}\"'\n"
+                    "Available sources: " + ", ".join(current_sources),
                     style="bold red"
                 )
-                return
+                return False
 
-    # Build processed sources with appropriate filters
-    if sources:
-        for source in sources:
-            # Determine which filters apply to this source
-            applicable_filters = []
+            # Check that all filter sources are valid
+            for filter_source in source_specific_filters.keys():
+                if filter_source not in current_sources:
+                    print_text(
+                        f"Error: Filter source '{filter_source}' not found in specified sources.\n"
+                        f"Available sources: {', '.join(current_sources)}",
+                        style="bold red"
+                    )
+                    return False
 
-            # Add source-specific filters
-            if source in source_specific_filters:
-                applicable_filters.extend(source_specific_filters[source])
+        # Build processed sources with appropriate filters
+        if current_sources:
+            for source in current_sources:
+                # Determine which filters apply to this source
+                applicable_filters = []
 
-            # Add global filters (only in single-source scenarios or backward compatibility)
-            if len(sources) == 1 or not source_specific_filters:
-                applicable_filters.extend(global_filters)
+                # Add source-specific filters
+                if source in source_specific_filters:
+                    applicable_filters.extend(source_specific_filters[source])
 
-            # Build the source specification
-            if applicable_filters:
-                # Create a source spec with integrated filters
-                # Format: source_name:all.filter1.filter2... (use 'all' when filters are present)
-                source_with_filters = f"{source}:all.{'.'.join(applicable_filters)}"
-                processed_sources.append(source_with_filters)
-                debug_print(f"Created filtered source spec: {source_with_filters}")
-            else:
-                processed_sources.append(source)
-                debug_print(f"Using unfiltered source: {source}")
+                # Add global filters (only in single-source scenarios or backward compatibility)
+                if len(current_sources) == 1 or not source_specific_filters:
+                    applicable_filters.extend(global_filters)
 
-    # Log final filter application
-    if DEBUG_MODE and (source_specific_filters or global_filters):
-        print_text("Filter Summary:", style="bold cyan")
-        for source in sources or []:
-            filters_for_source = []
-            if source in source_specific_filters:
-                filters_for_source.extend([f"source-specific: {f}" for f in source_specific_filters[source]])
-            if len(sources) == 1 or not source_specific_filters:
-                filters_for_source.extend([f"global: {f}" for f in global_filters])
+                # Build the source specification
+                if applicable_filters:
+                    # Create a source spec with integrated filters
+                    # Format: source_name:all.filter1.filter2... (use 'all' when filters are present)
+                    source_with_filters = f"{source}:all.{'.'.join(applicable_filters)}"
+                    processed_sources.append(source_with_filters)
+                    debug_print(f"Created filtered source spec: {source_with_filters}")
+                else:
+                    processed_sources.append(source)
+                    debug_print(f"Using unfiltered source: {source}")
 
-            if filters_for_source:
-                print_text(f"  {source}: {', '.join(filters_for_source)}", style="dim")
-            else:
-                print_text(f"  {source}: no filters", style="dim")
+        # Log final filter application
+        if DEBUG_MODE and (source_specific_filters or global_filters):
+            print_text("Filter Summary:", style="bold cyan")
+            for source in current_sources or []:
+                filters_for_source = []
+                if source in source_specific_filters:
+                    filters_for_source.extend([f"source-specific: {f}" for f in source_specific_filters[source]])
+                if len(current_sources) == 1 or not source_specific_filters:
+                    filters_for_source.extend([f"global: {f}" for f in global_filters])
 
-    # 4. Parse the processed source specifications
-    parsed_sources_init = []
-    if processed_sources:
-        try:
-            parsed_sources_init = parse_source_specs(processed_sources)
-        except Exception as e:
-            print_text(f"Warning: Error parsing source specifications: {e}", style="bold yellow")
+                if filters_for_source:
+                    print_text(f"  {source}: {', '.join(filters_for_source)}", style="dim")
+                else:
+                    print_text(f"  {source}: no filters", style="dim")
 
-    if parsed_sources_init:
-        if DEBUG_MODE:
-            print_text("Loading context from sources...", style="cyan")
-
-        for source_conf in parsed_sources_init:
-            db_name = source_conf['database']
-            db_config = db_manager.get_database(db_name)
-            if not db_config:
-                if DEBUG_MODE:
-                    print_text(f"Warning: Config for database '{db_name}' not found. Skipping.", style="bold yellow")
-                continue
-
+        # 4. Parse the processed source specifications
+        parsed_sources_init = []
+        if processed_sources:
             try:
-                # Check if this source has a complex filter with date conditions
-                has_date_filter_in_complex = False
-                if source_conf.get('complex_filter'):
-                    complex_filter = source_conf.get('complex_filter')
-                    if complex_filter.get('type') == 'complex':
-                        for or_clause in complex_filter.get('or_clauses', []):
-                            for condition in or_clause:
-                                if condition.get('property') in ['created_time', 'last_edited_time']:
-                                    has_date_filter_in_complex = True
-                                    break
-                            if has_date_filter_in_complex:
-                                break
-
-                # Don't use days constraint if complex filter already has date conditions
-                days_to_use = None if has_date_filter_in_complex else source_conf.get('days')
-
-                pages = read_markdown_files_with_registry(
-                    db_config,
-                    days=days_to_use,
-                    comparison_filters=source_conf.get('comparison_filters', {}),
-                    complex_filter=source_conf.get('complex_filter'),
-                    property_filters=source_conf.get('property_filters', {})
-                )
-                # Use qualified name to avoid collisions between workspaces
-                unique_key = db_config.get_qualified_name()
-                initial_multi_source_data[unique_key] = pages
-                total_pages_loaded += len(pages)
-
-                if DEBUG_MODE:
-                    print_text(f"  - Loaded {len(pages)} entries from: {unique_key}", style="green")
+                parsed_sources_init = parse_source_specs(processed_sources)
             except Exception as e:
-                if DEBUG_MODE:
-                    print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
+                print_text(f"Warning: Error parsing source specifications: {e}", style="bold yellow")
+                return False
 
-    # 5. Generate System Prompt
-    system_prompt = create_system_prompt(initial_multi_source_data)
-    debug_print(f"System prompt generated ({len(system_prompt)} chars).")
+        # Load content from sources
+        if parsed_sources_init:
+            if DEBUG_MODE:
+                print_text("Loading context from sources...", style="cyan")
+
+            for source_conf in parsed_sources_init:
+                db_name = source_conf['database']
+                db_config = db_manager.get_database(db_name)
+                if not db_config:
+                    if DEBUG_MODE:
+                        print_text(f"Warning: Config for database '{db_name}' not found. Skipping.", style="bold yellow")
+                    continue
+
+                try:
+                    # Check if this source has a complex filter with date conditions
+                    has_date_filter_in_complex = False
+                    if source_conf.get('complex_filter'):
+                        complex_filter = source_conf.get('complex_filter')
+                        if complex_filter.get('type') == 'complex':
+                            for or_clause in complex_filter.get('or_clauses', []):
+                                for condition in or_clause:
+                                    if condition.get('property') in ['created_time', 'last_edited_time']:
+                                        has_date_filter_in_complex = True
+                                        break
+                                if has_date_filter_in_complex:
+                                    break
+
+                    # Don't use days constraint if complex filter already has date conditions
+                    days_to_use = None if has_date_filter_in_complex else source_conf.get('days')
+
+                    pages = read_markdown_files_with_registry(
+                        db_config,
+                        days=days_to_use,
+                        comparison_filters=source_conf.get('comparison_filters', {}),
+                        complex_filter=source_conf.get('complex_filter'),
+                        property_filters=source_conf.get('property_filters', {})
+                    )
+                    # Use qualified name to avoid collisions between workspaces
+                    unique_key = db_config.get_qualified_name()
+                    new_multi_source_data[unique_key] = pages
+                    new_total_pages_loaded += len(pages)
+
+                    if DEBUG_MODE:
+                        print_text(f"  - Loaded {len(pages)} entries from: {unique_key}", style="green")
+                except Exception as e:
+                    if DEBUG_MODE:
+                        print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
+
+        # Update context state
+        context_state['initial_multi_source_data'] = new_multi_source_data
+        context_state['total_pages_loaded'] = new_total_pages_loaded
+        
+        # Update module-level variables
+        initial_multi_source_data = new_multi_source_data
+        total_pages_loaded = new_total_pages_loaded
+        
+        # Generate new system prompt
+        system_prompt = create_system_prompt(new_multi_source_data)
+        context_state['system_prompt'] = system_prompt
+        
+        # Update query command
+        update_query_command()
+        query_command = context_state['query_command']
+        
+        return True
+
+    async def sync_current_context_databases():
+        """Sync the databases currently in the chat context."""
+        if not context_state['sources']:
+            print_text("No databases in current context to sync.", style="bold yellow")
+            return
+        
+        from promaia.cli.database_commands import sync_database
+        from promaia.config.databases import get_database_manager
+        
+        db_manager = get_database_manager()
+        
+        print_text(f"Syncing {len(context_state['sources'])} database(s) from current context...", style="bold cyan")
+        
+        # Create a mock args object for the sync function
+        class MockArgs:
+            def __init__(self):
+                self.force = False
+                self.days = None
+                self.start_date = None
+                self.end_date = None
+                self.date_range = None
+        
+        mock_args = MockArgs()
+        
+        for source_name in context_state['sources']:
+            try:
+                # Parse the source name to extract just the database name (remove :days part)
+                db_name = source_name.split(':')[0] if ':' in source_name else source_name
+                
+                # Get the database config
+                db_config = db_manager.get_database(db_name)
+                if not db_config:
+                    print_text(f"  ⚠️  Database '{db_name}' not found in configuration", style="bold yellow")
+                    continue
+                
+                # Create source specification
+                source_spec = {
+                    'name': db_name,
+                    'qualified_name': db_config.get_qualified_name(),
+                    'database': db_name
+                }
+                
+                print_text(f"  🔄 Syncing {source_name}...", style="cyan")
+                result = await sync_database(source_spec, mock_args)
+                
+                if result.errors:
+                    print_text(f"  ❌ {source_name}: {len(result.errors)} errors", style="bold red")
+                    for error in result.errors[:2]:  # Show first 2 errors
+                        print_text(f"    - {error}", style="red")
+                else:
+                    print_text(f"  ✅ {source_name}: {result.pages_saved} saved, {result.pages_skipped} skipped", style="bold green")
+                
+            except Exception as e:
+                print_text(f"  ❌ {source_name}: Sync failed - {e}", style="bold red")
+                debug_print(f"Sync error for {source_name}: {e}")
+
+    def edit_context():
+        """CLI-style context editing interface."""
+        print_text("\n🔧 Edit Context", style="bold cyan")
+        print_text("Current command:", style="dim")
+        print_text(f"  {context_state['query_command']}", style="bold")
+        print_text("")
+        print_text("Edit the command below, or enter 'r' for recents:", style="dim")
+        print_text("Press Enter alone to cancel", style="dim")
+        print_text("")
+        
+        # Build the current command arguments (without 'maia chat')
+        current_args = []
+        if context_state['sources']:
+            for source in context_state['sources']:
+                current_args.extend(['-s', source])
+        if context_state['filters']:
+            for filter_expr in context_state['filters']:
+                current_args.extend(['-f', filter_expr])
+        if context_state['workspace']:
+            current_args.extend(['-ws', context_state['workspace']])
+        
+        current_args_str = ' '.join(current_args) if current_args else ''
+        
+        try:
+            # Use prompt_toolkit to show the current command as editable default
+            from prompt_toolkit import prompt
+            user_input = prompt(
+                "maia chat ",
+                default=current_args_str,
+                mouse_support=True
+            ).strip()
+            
+            # Handle different input scenarios
+            if not user_input and not current_args_str:
+                # No input and no current args - cancel
+                print_text("Context edit cancelled.", style="bold yellow")
+                return False
+            elif not user_input and current_args_str:
+                # Empty input but there were current args - user wants to keep current
+                print_text("Keeping current context.", style="bold green")
+                return True
+            elif user_input.lower() == 'r':
+                # Handle recents command
+                return handle_recents_in_edit_context()
+            
+            # Parse the input as CLI arguments
+            import shlex
+            import argparse
+            
+            try:
+                # Split the input into arguments
+                args_list = shlex.split(user_input)
+                
+                # Create a minimal parser for chat arguments
+                parser = argparse.ArgumentParser(description="Chat context editor", add_help=False)
+                parser.add_argument(
+                    "--source", "-s",
+                    action="append", 
+                    dest="sources",
+                    help="Load data from specific database with day filter"
+                )
+                parser.add_argument(
+                    "--filter", "-f",
+                    action="append",
+                    dest="filters",
+                    help="Add property filters"
+                )
+                parser.add_argument(
+                    "--workspace", "-ws",
+                    help="Specify which workspace to use"
+                )
+                
+                # Parse the arguments
+                parsed_args = parser.parse_args(args_list)
+                
+                # Extract the new sources and filters
+                new_sources = getattr(parsed_args, 'sources', []) or []
+                new_filters = getattr(parsed_args, 'filters', []) or []
+                new_workspace = getattr(parsed_args, 'workspace', None)
+                
+                # Update context state
+                context_state['sources'] = new_sources
+                context_state['filters'] = new_filters
+                if new_workspace:
+                    context_state['workspace'] = new_workspace
+                
+                # Always reload context with new settings
+                if reload_context():
+                    print_text("Context updated successfully!", style="bold green")
+                    return True
+                else:
+                    print_text("Failed to reload context with new settings.", style="bold red")
+                    return False
+                
+            except SystemExit:
+                # argparse calls sys.exit on invalid arguments
+                print_text("Invalid command syntax.", style="bold red")
+                print_text("Example: -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                return False
+            except Exception as e:
+                print_text(f"Error parsing command: {e}", style="bold red")
+                print_text("Example: -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                return False
+                
+        except (KeyboardInterrupt, EOFError):
+            print_text("\nContext edit cancelled.", style="bold yellow")
+            return False
+    
+    def handle_recents_in_edit_context():
+        """Handle recents selection within edit context."""
+        from promaia.chat.recents_interface import RecentsSelector
+        
+        try:
+            selector = RecentsSelector()
+            action, selected_query = selector.select_query()
+            
+            if action == 'quit' or not selected_query:
+                print_text("No recent selected.", style="bold yellow")
+                return False
+            
+            if action in ['execute', 'edit']:
+                # Extract the command components from the selected query
+                if action == 'edit':
+                    from promaia.chat.recents_interface import edit_query_string
+                    edited_query = edit_query_string(selected_query)
+                    if not edited_query:
+                        print_text("Edit cancelled.", style="bold yellow")
+                        return False
+                    selected_query = edited_query
+                
+                # Update context state with the selected query
+                context_state['sources'] = selected_query.sources or []
+                context_state['filters'] = selected_query.filters or []
+                if selected_query.workspace:
+                    context_state['workspace'] = selected_query.workspace
+                
+                # Reload context with the new settings
+                if reload_context():
+                    query_desc = f"Recent: {selected_query}"
+                    if action == 'edit':
+                        query_desc = f"Edited recent: {selected_query}"
+                    print_text(f"Context updated from {query_desc.lower()}", style="bold green")
+                    return True
+                else:
+                    print_text("Failed to reload context with recent query.", style="bold red")
+                    return False
+            
+        except Exception as e:
+            print_text(f"Error accessing recents: {e}", style="bold red")
+            debug_print(f"Recents error: {e}")
+            return False
+
+    # Declare variables that will be used in the nested function
+    initial_multi_source_data = {}
+    total_pages_loaded = 0
+    system_prompt = None
+
+    # Initial context load
+    if not reload_context():
+        return
 
     # Save debug file if debug mode is enabled
     if DEBUG_MODE:
@@ -396,15 +659,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         except Exception as e:
             debug_print(f"Failed to save debug file: {e}")
 
-    # 6. Display Welcome Message
+    # Display Welcome Message
     print()
     print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
 
-    # 7. Handle Non-interactive Mode
+    # Handle Non-interactive Mode
     if non_interactive:
         return
 
-    # 8. Start Interactive Chat Loop
+    # Start Interactive Chat Loop
     messages = []
 
     while True:
@@ -425,6 +688,31 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(result, style="bold green")
                 except Exception as e:
                     print_text(f"Error pushing to Notion: {e}", style="bold red")
+                continue
+            elif user_input.strip().lower() == '/s':
+                # Sync current context databases
+                try:
+                    asyncio.run(sync_current_context_databases())
+                    print_text("Context databases synced successfully. Reloading context...", style="bold green")
+                    if reload_context():
+                        print_text(f"Context reloaded with {total_pages_loaded} pages.", style="bold green")
+                    else:
+                        print_text("Failed to reload context after sync.", style="bold red")
+                except Exception as e:
+                    print_text(f"Error syncing context databases: {e}", style="bold red")
+                    debug_print(f"Sync error details: {e}")
+                continue
+            elif user_input.strip().lower() == '/e':
+                # Edit context
+                try:
+                    if edit_context():
+                        print_text(f"New context: {context_state['query_command']}", style="dim")
+                        print_text(f"Pages loaded: {total_pages_loaded}", style="dim")
+                    else:
+                        print_text("Context editing cancelled.", style="bold yellow")
+                except Exception as e:
+                    print_text(f"Error editing context: {e}", style="bold red")
+                    debug_print(f"Context edit error: {e}")
                 continue
             elif user_input.strip().lower() == '/help':
                 print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
@@ -616,12 +904,12 @@ def main():
 
     args = parser.parse_args()
 
-    asyncio.run(chat(
+    chat(
         sources=args.sources,
         filters=args.filters,
         workspace=args.workspace,
         non_interactive=args.non_interactive
-    ))
+    )
 
 if __name__ == "__main__":
     main() 
