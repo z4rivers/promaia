@@ -456,15 +456,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     'database': db_name
                 }
                 
-                print_text(f"  🔄 Syncing {source_name}...", style="cyan")
+                print_text(f"🔄 Syncing {source_name}...", style="cyan")
                 result = await sync_database(source_spec, mock_args)
                 
                 if result.errors:
-                    print_text(f"  ❌ {source_name}: {len(result.errors)} errors", style="bold red")
+                    print_text(f"❌ {source_name}: {len(result.errors)} errors", style="bold red")
                     for error in result.errors[:2]:  # Show first 2 errors
-                        print_text(f"    - {error}", style="red")
+                        print_text(f"  - {error}", style="red")
                 else:
-                    print_text(f"  ✅ {source_name}: {result.pages_saved} saved, {result.pages_skipped} skipped", style="bold green")
+                    print_text(f"✅ {source_name}: {result.pages_saved} saved, {result.pages_skipped} skipped", style="bold green")
                 
             except Exception as e:
                 print_text(f"  ❌ {source_name}: Sync failed - {e}", style="bold red")

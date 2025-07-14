@@ -275,7 +275,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
         log_message += f" Filters from config: {db_config.property_filters}."
     logger.debug(log_message)  # Changed from info to debug level
     
-    # Clean user output
+    # Clean user output - start sync
     print(f"🔄 Syncing {qualified_name}...")
     
     try:

@@ -729,9 +729,6 @@ class NotionConnector(BaseConnector):
             
             # OPTIMIZATION: Process pages in batches for improved performance
             if pages:
-                # Show clean progress indicator
-                print(f"📄 Processing {len(pages)} pages...")
-                
                 # Use batch processing for better concurrency
                 batch_results = await self._process_page_batch(
                     pages, storage, db_config, include_properties, force_update, excluded_properties
@@ -760,15 +757,8 @@ class NotionConnector(BaseConnector):
                         result.errors.append(page_result.get("error", "Unknown error"))
                         error_count += 1
                 
-                # Show clean summary instead of individual file paths
-                if saved_count > 0:
-                    print(f"💾 {saved_count} pages saved")
-                if skipped_count > 0:
-                    print(f"⏭️  {skipped_count} pages skipped (up to date)")
-                if error_count > 0:
-                    print(f"❌ {error_count} pages failed")
-            else:
-                print("📭 No pages found to process")
+                # Individual processing messages removed for clean 3-line output per database
+                self.logger.info(f"Batch processing completed: {saved_count} saved, {skipped_count} skipped, {error_count} failed")
         
         except Exception as e:
             self.logger.error(f"Sync failed: {e}")

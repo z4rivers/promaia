@@ -671,10 +671,10 @@ Date: {date_str}
             
             if not email_threads:
                 self.logger.info("No new email threads found from Gmail query.")
-                print("📭 No email threads found to process")
                 return result
             
             self.logger.info(f"Found {len(email_threads)} email threads from Gmail query.")
+            result.pages_fetched = len(email_threads)
             
             pages_to_save = []
             for thread in email_threads:
@@ -684,39 +684,73 @@ Date: {date_str}
             
             if not pages_to_save:
                 self.logger.info("No new or updated threads to save after filtering.")
-                print("📭 No email threads found to process")
                 return result
             
-            # Save pages to storage one by one
+            # Process pages with proper skipping logic  
             saved_count = 0
-            print(f"📧 Processing {len(pages_to_save)} email threads...")
+            skipped_count = 0
             
             try:
                 for page in pages_to_save:
+                    page_id = page['page_id']
+                    title = page['metadata']['title']
+                    
+                    # Check if we should skip this page
+                    should_skip = False
+                    
+                    if not force_update:
+                        # Check if files exist locally
+                        file_status = storage.files_exist_locally(page_id, title, db_config)
+                        
+                        if file_status['markdown']:
+                            # File exists, check timestamps
+                            page_date_str = page['metadata'].get('date')
+                            db_last_sync_time_str = db_config.last_sync_time
+                            
+                            if page_date_str and db_last_sync_time_str:
+                                try:
+                                    from datetime import datetime
+                                    from promaia.utils.timezone_utils import to_utc
+                                    
+                                    # Parse page date (Gmail uses the email date)
+                                    page_dt = datetime.fromisoformat(page_date_str.replace("Z", "+00:00"))
+                                    sync_dt = datetime.fromisoformat(db_last_sync_time_str.replace("Z", "+00:00"))
+                                    
+                                    # Add 1 second tolerance for sync time comparison
+                                    from datetime import timedelta
+                                    if page_dt <= (sync_dt + timedelta(seconds=1)):
+                                        should_skip = True
+                                        self.logger.debug(f"Skipping email thread {page_id} ('{title}'). Exists locally and up-to-date.")
+                                        
+                                except ValueError as ve:
+                                    self.logger.warning(f"Could not parse dates for thread {page_id}: {ve}. Proceeding with sync.")
+                    
+                    if should_skip:
+                        skipped_count += 1
+                        result.pages_skipped += 1
+                        continue
+                    
+                    # Save the page
                     try:
                         # Note: storage.save_content is a synchronous method
                         storage.save_content(
-                            page_id=page['page_id'],
-                            title=page['metadata']['title'],
+                            page_id=page_id,
+                            title=title,
                             content_data=page['metadata'],
                             database_config=db_config,
                             markdown_content=page['content']
                         )
                         saved_count += 1
+                        result.pages_saved += 1
                     except Exception as page_error:
-                        self.logger.error(f"Failed to save page {page['page_id']}: {page_error}")
-                        result.errors.append(f"Failed to save {page['page_id']}: {str(page_error)}")
+                        self.logger.error(f"Failed to save page {page_id}: {page_error}")
+                        result.errors.append(f"Failed to save {page_id}: {str(page_error)}")
+                        result.pages_failed += 1
                 
-                # Update sync result counters
-                result.new_pages = saved_count  # We can't easily distinguish new vs updated without more complex logic
-                result.updated_pages = 0
                 result.success = saved_count > 0
                 
-                self.logger.info(f"Sync completed. {saved_count} email threads saved")
-                if saved_count > 0:
-                    print(f"✨ {saved_count} email threads saved")
-                else:
-                    print("📭 No email threads were saved")
+                self.logger.info(f"Sync completed. {saved_count} email threads saved, {skipped_count} skipped")
+                # Note: Individual processing messages removed for clean 3-line output per database
 
             except Exception as e:
                 self.logger.error(f"Failed during unified sync save: {e}")
