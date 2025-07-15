@@ -23,6 +23,7 @@ from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
 from promaia.utils.display import print_markdown, print_code, print_text
 from promaia.utils.timezone_utils import now_utc
+from promaia.storage.chat_history import ChatHistoryManager
 
 import google.generativeai as genai
 
@@ -130,9 +131,10 @@ def print_welcome_message(query_command, total_pages, model_name=None):
         print_text(f"Pages loaded: {total_pages}", style="dim")
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters)", style="dim")
+    print_text("  /save - Save current conversation to history", style="dim")
     print_text("")
 
 
@@ -168,7 +170,7 @@ def run_non_interactive_chat(messages: List[Dict[str, Any]], system_prompt: str,
     """Handles a single, non-interactive chat exchange."""
     pass
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -181,7 +183,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'initial_multi_source_data': {},
         'total_pages_loaded': 0,
         'system_prompt': None,
-        'query_command': None
+        'query_command': None,
+        'current_thread_id': current_thread_id  # Track if we're continuing a thread
     }
 
     def update_query_command():
@@ -668,7 +671,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         return
 
     # Start Interactive Chat Loop
-    messages = []
+    messages = initial_messages.copy() if initial_messages else []
+    
+    # If loading from history, display the previous conversation
+    if initial_messages:
+        print_text("--- Previous Conversation ---", style="bold yellow")
+        for msg in initial_messages:
+            role = msg.get('role', '')
+            content = msg.get('content', '')
+            if role == 'user':
+                print_text(f"You: {content}", style="bold cyan")
+            elif role == 'assistant':
+                print_markdown(f"**Maia:** {content}")
+        print_text("--- Continuing Conversation ---", style="bold yellow")
+        print()
 
     while True:
         try:
@@ -716,6 +732,81 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 continue
             elif user_input.strip().lower() == '/help':
                 print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
+                continue
+            elif user_input.strip().lower().startswith('/save'):
+                # Save current conversation to history
+                if not messages:
+                    print_text("No conversation to save.", style="bold yellow")
+                    continue
+                
+                try:
+                    history_manager = ChatHistoryManager()
+                    
+                    # Extract custom name if provided: /save "My Custom Name"
+                    input_parts = user_input.strip().split(' ', 1)
+                    custom_name = None
+                    if len(input_parts) > 1:
+                        custom_name = input_parts[1].strip().strip('"\'')
+                    
+                    # Prepare context for saving
+                    thread_context = {
+                        'sources': context_state.get('sources'),
+                        'filters': context_state.get('filters'),
+                        'workspace': context_state.get('workspace'),
+                        'resolved_workspace': context_state.get('resolved_workspace'),
+                        'query_command': context_state.get('query_command')
+                    }
+                    
+                    # Check if we're continuing an existing thread
+                    current_thread_id = context_state.get('current_thread_id')
+                    if current_thread_id:
+                        # Update existing thread
+                        success = history_manager.update_thread(
+                            thread_id=current_thread_id,
+                            messages=messages,
+                            context=thread_context,
+                            thread_name=custom_name
+                        )
+                        
+                        if success:
+                            updated_thread = history_manager.get_thread(current_thread_id)
+                            if updated_thread:
+                                print_text(f"Conversation updated: {updated_thread.name}", style="bold green")
+                            else:
+                                print_text("Conversation updated successfully!", style="bold green")
+                        else:
+                            print_text("Error: Could not find thread to update. Creating new thread instead.", style="bold yellow")
+                            # Fallback to creating new thread
+                            thread_id = history_manager.save_thread(
+                                messages=messages,
+                                context=thread_context,
+                                thread_name=custom_name
+                            )
+                            context_state['current_thread_id'] = thread_id
+                            saved_thread = history_manager.get_thread(thread_id)
+                            if saved_thread:
+                                print_text(f"New conversation saved as: {saved_thread.name}", style="bold green")
+                    else:
+                        # Create new thread
+                        thread_id = history_manager.save_thread(
+                            messages=messages,
+                            context=thread_context,
+                            thread_name=custom_name
+                        )
+                        
+                        # Update context to track this thread for future saves
+                        context_state['current_thread_id'] = thread_id
+                        
+                        # Get the saved thread to show the generated name
+                        saved_thread = history_manager.get_thread(thread_id)
+                        if saved_thread:
+                            print_text(f"Conversation saved as: {saved_thread.name}", style="bold green")
+                        else:
+                            print_text("Conversation saved successfully!", style="bold green")
+                        
+                except Exception as e:
+                    print_text(f"Error saving conversation: {e}", style="bold red")
+                    debug_print(f"Save error details: {e}")
                 continue
 
             if not user_input.strip():

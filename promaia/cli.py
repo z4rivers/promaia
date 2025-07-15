@@ -1080,6 +1080,86 @@ def chat_run_recents(args):
         logging.error(f"An unexpected error occurred in chat_run_recents: {e}", exc_info=True)
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
 
+def history_run(args):
+    """Run the chat history interface."""
+    from promaia.chat.history_interface import HistorySelector
+    from promaia.chat.interface import chat
+    from promaia.config.workspaces import get_workspace_manager
+    from promaia.storage.chat_history import ChatHistoryManager
+    
+    # Handle --clean option
+    if getattr(args, 'clean', False):
+        try:
+            history_manager = ChatHistoryManager()
+            removed_count = history_manager.clean_duplicates()
+            if removed_count > 0:
+                print(f"Cleaned up {removed_count} duplicate thread(s).")
+            else:
+                print("No duplicate threads found.")
+            return
+        except Exception as e:
+            print(f"Error cleaning duplicates: {e}", file=sys.stderr)
+            return
+    
+    try:
+        selector = HistorySelector()
+        action, selected_thread = selector.select_thread()
+        
+        if action == 'quit' or not selected_thread:
+            return
+        
+        if action == 'load':
+            # Update the thread's last_accessed timestamp
+            from promaia.storage.chat_history import ChatHistoryManager
+            history_manager = ChatHistoryManager()
+            history_manager.update_thread_access(selected_thread.id)
+            
+            # Reconstruct the context from the saved thread
+            context = selected_thread.context
+            sources = context.get('sources')
+            filters = context.get('filters')
+            workspace = context.get('workspace')
+            resolved_workspace = context.get('resolved_workspace')
+            
+            print(f"\nLoading conversation: {selected_thread.name}")
+            if context.get('query_command'):
+                print(f"Context: {context['query_command']}")
+            
+            # Show warning if context might be missing
+            if sources:
+                workspace_manager = get_workspace_manager()
+                actual_workspace = resolved_workspace or workspace_manager.get_default_workspace()
+                if actual_workspace:
+                    from promaia.config.databases import get_database_manager
+                    db_manager = get_database_manager()
+                    missing_sources = []
+                    for source in sources:
+                        source_name = source.split(':')[0]  # Handle source:days format
+                        if not db_manager.get_database(source_name):
+                            missing_sources.append(source_name)
+                    
+                    if missing_sources:
+                        print(f"⚠️  Warning: Some sources from this conversation are no longer available: {', '.join(missing_sources)}")
+                        print("Continuing with available context...\n")
+            
+            # Start chat with the saved context and messages
+            chat(
+                sources=sources,
+                filters=filters,
+                workspace=workspace,
+                resolved_workspace=resolved_workspace,
+                non_interactive=False,
+                initial_messages=selected_thread.messages,
+                current_thread_id=selected_thread.id
+            )
+        
+    except ImportError as e:
+        print(f"Error importing history interface: {e}", file=sys.stderr)
+        print("Please check your dependencies.", file=sys.stderr)
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in history_run: {e}", exc_info=True)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+
 async def write_run_async(args):
     """Run the write blog post command."""
     try:
@@ -1241,6 +1321,16 @@ def main():
     )
     r_parser.set_defaults(func=lambda args: chat_run_recents(args))
 
+    # History command
+    history_parser = subparsers.add_parser("history", help="Browse and load saved chat conversations")
+    history_parser.add_argument("--clean", action="store_true", help="Clean up duplicate threads")
+    history_parser.set_defaults(func=history_run)
+    
+    # Add 'h' alias for history
+    h_parser = subparsers.add_parser("h", help="Browse and load saved chat conversations (alias for 'history')")
+    h_parser.add_argument("--clean", action="store_true", help="Clean up duplicate threads")
+    h_parser.set_defaults(func=history_run)
+
     # Write command
     write_parser = subparsers.add_parser("write", help="Generate blog content using AI")
     write_parser.add_argument("--days", type=int, help="Number of past days of journal entries to use as context (0 to skip journal).")
@@ -1389,7 +1479,7 @@ def main():
         return
 
     # Handle commands
-    if args.command in ["chat", "model", "write", "r"]:
+    if args.command in ["chat", "model", "write", "r", "history", "h"]:
         args.func(args)
     elif args.command == "cms":
         if hasattr(args, 'func'):
