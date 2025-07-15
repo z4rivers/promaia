@@ -709,15 +709,11 @@ Date: {date_str}
                             
                             if page_date_str and db_last_sync_time_str:
                                 try:
-                                    from datetime import datetime
-                                    from promaia.utils.timezone_utils import to_utc
-                                    
                                     # Parse page date (Gmail uses the email date)
                                     page_dt = datetime.fromisoformat(page_date_str.replace("Z", "+00:00"))
                                     sync_dt = datetime.fromisoformat(db_last_sync_time_str.replace("Z", "+00:00"))
                                     
                                     # Add 1 second tolerance for sync time comparison
-                                    from datetime import timedelta
                                     if page_dt <= (sync_dt + timedelta(seconds=1)):
                                         should_skip = True
                                         self.logger.debug(f"Skipping email thread {page_id} ('{title}'). Exists locally and up-to-date.")

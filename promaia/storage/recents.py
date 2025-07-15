@@ -1,6 +1,6 @@
 """
 Recent queries management for maia chat command.
-Stores and retrieves the last 10 chat queries for easy re-execution.
+Stores and retrieves the last 20 chat queries for easy re-execution.
 """
 import json
 import os
@@ -53,7 +53,7 @@ class RecentQuery:
 class RecentsManager:
     """Manages recent chat queries."""
     
-    def __init__(self, max_entries: int = 10):
+    def __init__(self, max_entries: int = 20):
         self.max_entries = max_entries
         self.recents_file = os.path.expanduser("~/.maia_recents.json")
     
