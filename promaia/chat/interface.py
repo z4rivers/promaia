@@ -491,7 +491,25 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     async def sync_current_context_databases():
         """Sync the databases currently in the chat context."""
-        if not context_state['sources']:
+        nonlocal initial_multi_source_data
+        
+        # Determine what databases to sync based on current context
+        databases_to_sync = []
+        
+        # Check if we have sources from traditional source specification
+        if context_state['sources']:
+            databases_to_sync = context_state['sources']
+        # Check if we have databases from natural language queries
+        elif context_state.get('natural_language_content'):
+            databases_to_sync = list(context_state['natural_language_content'].keys())
+        # Check if we have databases from initial multi-source data
+        elif context_state.get('initial_multi_source_data'):
+            databases_to_sync = list(context_state['initial_multi_source_data'].keys())
+        # Fallback to global initial_multi_source_data if available
+        elif initial_multi_source_data:
+            databases_to_sync = list(initial_multi_source_data.keys())
+        
+        if not databases_to_sync:
             print_text("No databases in current context to sync.", style="bold yellow")
             return
         
@@ -500,7 +518,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         db_manager = get_database_manager()
         
-        print_text(f"Syncing {len(context_state['sources'])} database(s) from current context...", style="bold cyan")
+        print_text(f"Syncing {len(databases_to_sync)} database(s) from current context...", style="bold cyan")
         
         # Create a mock args object for the sync function
         class MockArgs:
@@ -513,15 +531,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         mock_args = MockArgs()
         
-        for source_name in context_state['sources']:
+        for source_name in databases_to_sync:
             try:
                 # Parse the source name to extract just the database name (remove :days part)
                 db_name = source_name.split(':')[0] if ':' in source_name else source_name
                 
-                # Get the database config
-                db_config = db_manager.get_database(db_name)
+                # Handle workspace.database format for natural language queries
+                workspace_name = None
+                if '.' in db_name:
+                    workspace_name, db_name = db_name.split('.', 1)
+                
+                # Get the database config with workspace awareness
+                db_config = db_manager.get_database(db_name, workspace_name)
                 if not db_config:
-                    print_text(f"  ⚠️  Database '{db_name}' not found in configuration", style="bold yellow")
+                    print_text(f"  ⚠️  Database '{source_name}' not found in configuration", style="bold yellow")
                     continue
                 
                 # Create source specification

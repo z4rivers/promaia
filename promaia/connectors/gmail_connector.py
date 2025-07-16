@@ -65,7 +65,7 @@ class GmailConnector(BaseConnector):
     SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
     
     # Rate limiting and batching configuration
-    MAX_THREADS_PER_BATCH = 25  # Conservative to avoid concurrent request limits
+    MAX_THREADS_PER_BATCH = 10  # More conservative to avoid rate limits and improve reliability
     MAX_RETRY_ATTEMPTS = 5
     BASE_RETRY_DELAY = 1.0  # seconds
     MAX_RETRY_DELAY = 32.0  # seconds
@@ -344,6 +344,7 @@ class GmailConnector(BaseConnector):
         
         try:
             all_email_data = []
+            all_messages = []  # Collect all messages first, then deduplicate threads
             
             # Break large date ranges into smaller chunks
             date_chunks = self._chunk_date_range(date_filter) if date_filter else [None]
@@ -426,43 +427,47 @@ class GmailConnector(BaseConnector):
                 chunk_message_count = len(messages)
                 self.logger.info(f"Found {chunk_message_count} messages in this chunk")
 
-                # Group messages by thread to reduce API calls
+                # Add messages to the overall collection (we'll process all threads at the end)
+                all_messages.extend(messages)
+                
+                # Stop if we've hit the limit
+                if limit and len(all_messages) >= limit:
+                    all_messages = all_messages[:limit]
+                    break
+            
+            # Group ALL messages by thread to reduce API calls and avoid duplicates
             threads = {}
-            for msg in messages:
+            for msg in all_messages:
                 thread_id = msg.get('threadId')
                 if thread_id not in threads:
                     threads[thread_id] = []
                 threads[thread_id].append(msg['id'])
             
-                thread_ids = list(threads.keys())
-                thread_count = len(thread_ids)
-                self.logger.info(f"Processing {thread_count} unique threads from {chunk_message_count} messages")
-                
-                # Process threads in batches to respect rate limits
-                for batch_start in range(0, thread_count, self.max_threads_per_batch):
-                    batch_end = min(batch_start + self.max_threads_per_batch, thread_count)
-                    batch_thread_ids = thread_ids[batch_start:batch_end]
-                    
-                    self.logger.debug(f"Processing thread batch {batch_start // self.max_threads_per_batch + 1} "
-                                    f"({len(batch_thread_ids)} threads)")
-                    
-                    # Get thread data for this batch
-                    batch_threads = await self._get_thread_data_batch(batch_thread_ids)
-                    all_email_data.extend(batch_threads)
+            thread_ids = list(threads.keys())
+            thread_count = len(thread_ids)
             
-                    # Respect limit
-                    if limit and len(all_email_data) >= limit:
-                        all_email_data = all_email_data[:limit]
-                        break
+            # Log deduplication results
+            if len(all_messages) > thread_count:
+                duplicates_removed = len(all_messages) - thread_count
+                self.logger.info(f"Deduplicated {duplicates_removed} duplicate messages across {thread_count} unique threads")
+            
+            self.logger.info(f"Processing {thread_count} unique threads from {len(all_messages)} total messages")
+            
+            # Process threads in batches to respect rate limits
+            for batch_start in range(0, thread_count, self.max_threads_per_batch):
+                batch_end = min(batch_start + self.max_threads_per_batch, thread_count)
+                batch_thread_ids = thread_ids[batch_start:batch_end]
                 
-                # Log progress
-                if total_chunks > 1:
-                    self.logger.info(f"Chunk {chunk_idx + 1}/{total_chunks} complete. "
-                                   f"Total emails collected: {len(all_email_data)}")
+                self.logger.debug(f"Processing thread batch {batch_start // self.max_threads_per_batch + 1} "
+                                f"({len(batch_thread_ids)} threads)")
                 
-                # Stop if we've hit the limit
+                # Get thread data for this batch
+                batch_threads = await self._get_thread_data_batch(batch_thread_ids)
+                all_email_data.extend(batch_threads)
+        
+                # Respect limit
                 if limit and len(all_email_data) >= limit:
-                    self.logger.info(f"Reached limit of {limit} emails")
+                    all_email_data = all_email_data[:limit]
                     break
             
             self.logger.info(f"Gmail sync complete. Found {len(all_email_data)} total email threads.")
@@ -490,43 +495,26 @@ class GmailConnector(BaseConnector):
             return None
     
     def _extract_thread_conversation(self, messages: List[Dict[str, Any]]) -> str:
-        """Extract conversation text from the latest message in a thread.
+        """Extract complete conversation text from all messages in a thread.
         
-        Gmail threads typically contain the full conversation history in the latest message,
-        so we only need to extract the content from the most recent message to avoid duplication.
+        To ensure we capture the complete conversation history, we extract and format
+        all individual messages in the thread chronologically.
         """
         if not messages:
             return ""
         
-        # Sort messages by date to ensure we get the latest one
+        # Sort messages by date to ensure chronological order (oldest first)
         sorted_messages = sorted(messages, key=lambda m: int(m.get('internalDate', 0)))
-        latest_message = sorted_messages[-1]
         
-        # Extract headers from the latest message
-        headers = {h['name'].lower(): h['value'] 
-                  for h in latest_message.get('payload', {}).get('headers', [])}
-        
-        from_addr = headers.get('from', 'Unknown')
-        date_str = headers.get('date', '')
-        
-        # Extract the complete conversation body from the latest message
-        body = self._extract_message_body(latest_message)
-        
-        # If the latest message is empty, try to build from individual messages
-        if not body.strip():
-            self.logger.debug(f"Latest message empty, building from {len(messages)} individual messages")
-            return self._extract_individual_messages(sorted_messages)
-        
-        # Return the latest message content which should contain the full conversation
-        return f"""
-From: {from_addr}
-Date: {date_str}
-
-{body}
-"""
+        # Always extract all individual messages to ensure complete thread history
+        self.logger.debug(f"Extracting complete conversation from {len(messages)} messages")
+        return self._extract_individual_messages(sorted_messages)
     
     def _extract_individual_messages(self, messages: List[Dict[str, Any]]) -> str:
-        """Fallback method to extract individual messages when latest message is empty."""
+        """Extract and format all individual messages in a thread chronologically."""
+        if not messages:
+            return ""
+            
         conversation_parts = []
         
         for i, message in enumerate(messages):
@@ -534,19 +522,87 @@ Date: {date_str}
                       for h in message.get('payload', {}).get('headers', [])}
             
             from_addr = headers.get('from', 'Unknown')
+            to_addr = headers.get('to', '')
             date_str = headers.get('date', '')
+            subject = headers.get('subject', '')
             
-            # Use body for individual messages now for better context
+            # Extract the message body
             body = self._extract_message_body(message)
             
-            conversation_parts.append(f"""
----
-**Message {i+1}** | From: {from_addr} | Date: {date_str}
+            # Use snippet as fallback if body is empty
+            raw_content = body.strip() if body.strip() else message.get('snippet', '')
+            
+            # Extract only new content (strip quoted/forwarded parts)
+            content = self._extract_new_content(raw_content)
+            
+            # Format the message with clear headers
+            if i == 0:
+                # First message gets full headers including subject
+                conversation_parts.append(f"""From: {from_addr}
+Date: {date_str}
 
-{body if body.strip() else message.get('snippet', '')}
-""")
+{content}""")
+            else:
+                # Subsequent messages get separator and essential headers
+                conversation_parts.append(f"""        
+From: {from_addr}
+Sent: {date_str}
+To: {to_addr}
+Subject: {subject}
+ 
+CAUTION: This email originated from outside of the organisation. Do not click links or open attachments unless you recognise the sender and know the content is safe.
+
+{content}""")
         
         return "\n".join(conversation_parts).strip()
+    
+    def _extract_new_content(self, content: str) -> str:
+        """Extract only the new content from an email, stripping quoted/forwarded parts."""
+        if not content:
+            return ""
+        
+        lines = content.split('\n')
+        new_content_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Skip empty lines at the start
+            if not new_content_lines and not line_stripped:
+                continue
+            
+            # Stop at common quote indicators
+            if (line_stripped.startswith('>') or 
+                line_stripped.startswith('On ') and ('wrote:' in line_stripped or 'sent:' in line_stripped.lower()) or
+                line_stripped.startswith('From:') and '@' in line_stripped or
+                line_stripped.startswith('-----Original Message-----') or
+                line_stripped.startswith('________________________________') or
+                line_stripped.startswith('--- On ') or
+                'Begin forwarded message:' in line_stripped or
+                line_stripped.startswith('Sent from ') or
+                (line_stripped.startswith('*From:*') and '@' in line_stripped)):
+                break
+                
+            # Stop at email signatures (common patterns)
+            if (line_stripped.startswith('--') and len(line_stripped) <= 4 or
+                'unsubscribe' in line_stripped.lower() or
+                'privacy policy' in line_stripped.lower() or
+                'terms and conditions' in line_stripped.lower() or
+                line_stripped.startswith('This e-mail message may contain confidential')):
+                break
+            
+            new_content_lines.append(line)
+        
+        # Clean up the result
+        result = '\n'.join(new_content_lines).strip()
+        
+        # If we stripped everything, return a meaningful fallback
+        if not result and content:
+            # Take first reasonable chunk before any quote indicators
+            first_chunk = content[:500].strip()
+            return first_chunk if first_chunk else "[Message content could not be extracted]"
+        
+        return result
     
     def _extract_message_body(self, message: Dict[str, Any]) -> str:
         """Extract readable text from a Gmail message."""
@@ -761,22 +817,12 @@ Date: {date_str}
             local_date = to_local(date_filter.start_date)
             
             if is_incremental_sync:
-                # For incremental syncs, use newer_than which finds threads with ANY activity
-                # in the last N days, including threads that started earlier but had new messages
-                days_since = (datetime.now().date() - local_date.date()).days
-                if days_since <= 0:
-                    days_since = 1  # Gmail requires at least 1 day
-                
-                # Use newer_than for better thread activity detection
-                query_parts.append(f'newer_than:{days_since}d')
-                
-                # Also add a more inclusive after: search to catch edge cases
-                # Go back a bit further to ensure we don't miss any threads
-                buffer_date = local_date - timedelta(days=2)
-                date_str = buffer_date.strftime('%Y/%m/%d')
+                # For incremental syncs, use after: with the exact date
+                # This is more precise than newer_than and avoids duplicate criteria
+                date_str = local_date.strftime('%Y/%m/%d')
                 query_parts.append(f'after:{date_str}')
                 
-                self.logger.debug(f"Incremental Gmail sync: using newer_than:{days_since}d and after:{date_str}")
+                self.logger.debug(f"Incremental Gmail sync: using after:{date_str}")
             else:
                 # For date range syncs, use standard after: syntax
                 date_str = local_date.strftime('%Y/%m/%d')
