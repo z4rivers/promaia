@@ -768,22 +768,76 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         return False
                     selected_query = edited_query
                 
-                # Update context state with the selected query
-                context_state['sources'] = selected_query.sources or []
-                context_state['filters'] = selected_query.filters or []
-                if selected_query.workspace:
-                    context_state['workspace'] = selected_query.workspace
-                
-                # Reload context with the new settings
-                if reload_context():
-                    query_desc = f"Recent: {selected_query}"
-                    if action == 'edit':
-                        query_desc = f"Edited recent: {selected_query}"
-                    print_text(f"Context updated from {query_desc.lower()}", style="bold green")
-                    return True
+                # Check if this is a natural language query
+                if hasattr(selected_query, 'natural_language_prompt') and selected_query.natural_language_prompt:
+                    # Natural language query - process it
+                    try:
+                        from promaia.storage.unified_query import get_query_interface
+                        
+                        # Determine workspace to use
+                        workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                        if not workspace_to_use:
+                            from promaia.config.workspaces import get_workspace_manager
+                            workspace_manager = get_workspace_manager()
+                            workspace_to_use = workspace_manager.get_default_workspace()
+                        
+                        if not workspace_to_use:
+                            print_text("Error: No workspace available for natural language query.", style="bold red")
+                            return False
+                        
+                        print_text(f"🤖 Processing natural language query from recent: '{selected_query.natural_language_prompt}'", style="dim")
+                        
+                        # Process the natural language query
+                        query_interface = get_query_interface()
+                        natural_language_content = query_interface.natural_language_query(
+                            selected_query.natural_language_prompt, workspace_to_use
+                        )
+                        
+                        if not natural_language_content:
+                            print_text("❌ No content found for natural language query", style="bold red")
+                            return False
+                        
+                        # Update context state for natural language mode
+                        context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = selected_query.natural_language_prompt
+                        context_state['sources'] = []  # Clear regular sources
+                        context_state['filters'] = []  # Clear regular filters
+                        
+                        # Reload with natural language content
+                        if reload_context():
+                            query_desc = f"Recent NL: {selected_query.natural_language_prompt}"
+                            if action == 'edit':
+                                query_desc = f"Edited recent NL: {selected_query.natural_language_prompt}"
+                            print_text(f"Context updated from {query_desc.lower()}", style="bold green")
+                            return True
+                        else:
+                            print_text("Failed to reload context with natural language content.", style="bold red")
+                            return False
+                    
+                    except Exception as e:
+                        print_text(f"Error processing natural language query: {e}", style="bold red")
+                        return False
                 else:
-                    print_text("Failed to reload context with recent query.", style="bold red")
-                    return False
+                    # Traditional query - update context state with the selected query
+                    context_state['sources'] = selected_query.sources or []
+                    context_state['filters'] = selected_query.filters or []
+                    if selected_query.workspace:
+                        context_state['workspace'] = selected_query.workspace
+                    
+                    # Clear natural language state
+                    context_state['natural_language_content'] = None
+                    context_state['natural_language_prompt'] = None
+                    
+                    # Reload context with the new settings
+                    if reload_context():
+                        query_desc = f"Recent: {selected_query}"
+                        if action == 'edit':
+                            query_desc = f"Edited recent: {selected_query}"
+                        print_text(f"Context updated from {query_desc.lower()}", style="bold green")
+                        return True
+                    else:
+                        print_text("Failed to reload context with recent query.", style="bold red")
+                        return False
             
         except Exception as e:
             print_text(f"Error accessing recents: {e}", style="bold red")
@@ -919,7 +973,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         'filters': context_state.get('filters'),
                         'workspace': context_state.get('workspace'),
                         'resolved_workspace': context_state.get('resolved_workspace'),
-                        'query_command': context_state.get('query_command')
+                        'query_command': context_state.get('query_command'),
+                        'natural_language_prompt': context_state.get('natural_language_prompt'),
+                        'natural_language_content': None  # Don't save the actual content, regenerate on restore
                     }
                     
                     # Check if we're continuing an existing thread

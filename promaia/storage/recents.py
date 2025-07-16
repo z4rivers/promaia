@@ -16,6 +16,7 @@ class RecentQuery:
     filters: Optional[List[str]] = None
     workspace: Optional[str] = None
     timestamp: Optional[str] = None
+    natural_language_prompt: Optional[str] = None  # New field for NL queries
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -28,16 +29,21 @@ class RecentQuery:
     
     def __str__(self) -> str:
         """Human-readable representation of the query."""
-        parts = []
-        if self.sources:
-            parts.append(f"-s {' '.join(self.sources)}")
-        if self.filters:
-            for filter_expr in self.filters:
-                parts.append(f"-f '{filter_expr}'")
-        if self.workspace:
-            parts.append(f"-ws {self.workspace}")
-        
-        command_str = f"maia chat {' '.join(parts)}" if parts else "maia chat"
+        # If this is a natural language query, show it differently
+        if self.natural_language_prompt:
+            command_str = f"maia chat -nl {self.natural_language_prompt}"
+        else:
+            # Traditional query format
+            parts = []
+            if self.sources:
+                parts.append(f"-s {' '.join(self.sources)}")
+            if self.filters:
+                for filter_expr in self.filters:
+                    parts.append(f"-f '{filter_expr}'")
+            if self.workspace:
+                parts.append(f"-ws {self.workspace}")
+            
+            command_str = f"maia chat {' '.join(parts)}" if parts else "maia chat"
         
         # Add timestamp for display
         if self.timestamp:
@@ -80,14 +86,16 @@ class RecentsManager:
     
     def add_query(self, sources: Optional[List[str]] = None, 
                   filters: Optional[List[str]] = None, 
-                  workspace: Optional[str] = None) -> None:
+                  workspace: Optional[str] = None,
+                  natural_language_prompt: Optional[str] = None) -> None:
         """Add a new query to recents."""
         new_query = RecentQuery(
             command="chat",
             sources=sources,
             filters=filters,
             workspace=workspace,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
+            natural_language_prompt=natural_language_prompt
         )
         
         recents = self._load_recents()
@@ -105,6 +113,16 @@ class RecentsManager:
     
     def _queries_equal(self, q1: RecentQuery, q2: RecentQuery) -> bool:
         """Check if two queries are equal (ignoring timestamp)."""
+        # If both are natural language queries, compare prompts
+        if q1.natural_language_prompt and q2.natural_language_prompt:
+            return (q1.natural_language_prompt == q2.natural_language_prompt and
+                    q1.workspace == q2.workspace)
+        
+        # If one is NL and one is traditional, they're different
+        if q1.natural_language_prompt or q2.natural_language_prompt:
+            return False
+        
+        # Both are traditional queries
         return (q1.sources == q2.sources and 
                 q1.filters == q2.filters and 
                 q1.workspace == q2.workspace)

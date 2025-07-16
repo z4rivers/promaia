@@ -1060,11 +1060,16 @@ def chat_run(args):
                     print("No workspace specified and no default workspace configured.", file=sys.stderr)
                     return
         
-        # Save query to recents before executing (only if there are meaningful parameters)
-        if sources or filters or original_workspace:
+        # Save query to recents before executing (for both traditional and NL queries)
+        if sources or filters or original_workspace or nl_prompt:
             from promaia.storage.recents import RecentsManager
             recents_manager = RecentsManager()
-            recents_manager.add_query(sources=sources, filters=filters, workspace=original_workspace)
+            recents_manager.add_query(
+                sources=sources, 
+                filters=filters, 
+                workspace=original_workspace,
+                natural_language_prompt=nl_prompt
+            )
         
         # The `chat` function will now need to handle the main loop
         non_interactive = getattr(args, 'non_interactive', False) or not sys.stdout.isatty()
@@ -1104,11 +1109,16 @@ def chat_run_recents(args):
                 self.filters = query.filters
                 self.workspace = query.workspace or getattr(args, 'workspace', None)
                 self.recent = False  # Prevent infinite recursion
+                # Add natural language support
+                if hasattr(query, 'natural_language_prompt') and query.natural_language_prompt:
+                    self.natural_language = [query.natural_language_prompt]
+                else:
+                    self.natural_language = None
         
         query_args = QueryArgs(selected_query)
         
         # Execute the selected query
-        print(f"\nExecuting: maia chat {str(selected_query).replace(f'maia chat ', '').split(' (')[0]}")
+        print(f"\nExecuting: {str(selected_query).split(' (')[0]}")
         chat_run(query_args)
         
     except ImportError as e:
@@ -1154,42 +1164,96 @@ def history_run(args):
             
             # Reconstruct the context from the saved thread
             context = selected_thread.context
-            sources = context.get('sources')
-            filters = context.get('filters')
-            workspace = context.get('workspace')
-            resolved_workspace = context.get('resolved_workspace')
+            
+            # Check if this is a natural language thread
+            nl_prompt = context.get('natural_language_prompt')
             
             print(f"\nLoading conversation: {selected_thread.name}")
-            if context.get('query_command'):
-                print(f"Context: {context['query_command']}")
             
-            # Show warning if context might be missing
-            if sources:
-                workspace_manager = get_workspace_manager()
-                actual_workspace = resolved_workspace or workspace_manager.get_default_workspace()
-                if actual_workspace:
-                    from promaia.config.databases import get_database_manager
-                    db_manager = get_database_manager()
-                    missing_sources = []
-                    for source in sources:
-                        source_name = source.split(':')[0]  # Handle source:days format
-                        if not db_manager.get_database(source_name):
-                            missing_sources.append(source_name)
+            if nl_prompt:
+                # This is a natural language thread - restore using NL query
+                print(f"Context: maia chat -nl {nl_prompt}")
+                
+                # Process the natural language query to regenerate content
+                try:
+                    from promaia.storage.unified_query import get_query_interface
                     
-                    if missing_sources:
-                        print(f"⚠️  Warning: Some sources from this conversation are no longer available: {', '.join(missing_sources)}")
-                        print("Continuing with available context...\n")
-            
-            # Start chat with the saved context and messages
-            chat(
-                sources=sources,
-                filters=filters,
-                workspace=workspace,
-                resolved_workspace=resolved_workspace,
-                non_interactive=False,
-                initial_messages=selected_thread.messages,
-                current_thread_id=selected_thread.id
-            )
+                    workspace_manager = get_workspace_manager()
+                    workspace = context.get('workspace')
+                    resolved_workspace = context.get('resolved_workspace')
+                    actual_workspace = resolved_workspace or workspace or workspace_manager.get_default_workspace()
+                    
+                    if actual_workspace:
+                        print(f"🤖 Regenerating context from natural language query...")
+                        query_interface = get_query_interface()
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace)
+                        
+                        # Start chat with natural language content
+                        chat(
+                            sources=None,
+                            filters=None,
+                            workspace=workspace,
+                            resolved_workspace=resolved_workspace,
+                            non_interactive=False,
+                            initial_messages=selected_thread.messages,
+                            current_thread_id=selected_thread.id,
+                            natural_language_content=natural_language_content,
+                            natural_language_prompt=nl_prompt
+                        )
+                    else:
+                        print("❌ No workspace available to regenerate natural language context")
+                        return
+                        
+                except Exception as e:
+                    print(f"❌ Error regenerating natural language context: {e}")
+                    print("Falling back to empty context...")
+                    # Fall back to basic chat without context
+                    chat(
+                        sources=None,
+                        filters=None,
+                        workspace=context.get('workspace'),
+                        resolved_workspace=context.get('resolved_workspace'),
+                        non_interactive=False,
+                        initial_messages=selected_thread.messages,
+                        current_thread_id=selected_thread.id
+                    )
+            else:
+                # Traditional sources/filters thread
+                sources = context.get('sources')
+                filters = context.get('filters')
+                workspace = context.get('workspace')
+                resolved_workspace = context.get('resolved_workspace')
+                
+                if context.get('query_command'):
+                    print(f"Context: {context['query_command']}")
+                
+                # Show warning if context might be missing
+                if sources:
+                    workspace_manager = get_workspace_manager()
+                    actual_workspace = resolved_workspace or workspace_manager.get_default_workspace()
+                    if actual_workspace:
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        missing_sources = []
+                        for source in sources:
+                            source_name = source.split(':')[0]  # Handle source:days format
+                            if not db_manager.get_database(source_name):
+                                missing_sources.append(source_name)
+                        
+                        if missing_sources:
+                            print(f"⚠️  Warning: Some sources from this conversation are no longer available: {', '.join(missing_sources)}")
+                            print("Continuing with available context...\n")
+                
+                # Start chat with the saved context and messages
+                chat(
+                    sources=sources,
+                    filters=filters,
+                    workspace=workspace,
+                    resolved_workspace=resolved_workspace,
+                    non_interactive=False,
+                    initial_messages=selected_thread.messages,
+                    current_thread_id=selected_thread.id
+                )
         
     except ImportError as e:
         print(f"Error importing history interface: {e}", file=sys.stderr)

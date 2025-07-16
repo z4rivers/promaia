@@ -172,18 +172,22 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
     Returns:
         Modified query or None if cancelled
     """
-    # Create the command string for editing
-    parts = []
-    if query.sources:
-        for source in query.sources:
-            parts.extend(['-s', source])
-    if query.filters:
-        for filter_expr in query.filters:
-            parts.extend(['-f', filter_expr])
-    if query.workspace:
-        parts.extend(['-ws', query.workspace])
-    
-    current_command = ' '.join(parts) if parts else ''
+    # Handle natural language queries differently
+    if hasattr(query, 'natural_language_prompt') and query.natural_language_prompt:
+        current_command = f"-nl {query.natural_language_prompt}"
+    else:
+        # Create the command string for editing (traditional format)
+        parts = []
+        if query.sources:
+            for source in query.sources:
+                parts.extend(['-s', source])
+        if query.filters:
+            for filter_expr in query.filters:
+                parts.extend(['-f', filter_expr])
+        if query.workspace:
+            parts.extend(['-ws', query.workspace])
+        
+        current_command = ' '.join(parts) if parts else ''
     
     try:
         print(f"\nCurrent command: maia chat {current_command}")
@@ -213,7 +217,20 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         else:
             args = []
         
-        # Parse arguments manually (simple parsing)
+        # Check if this is a natural language query
+        if args and args[0] in ['-nl', '--natural-language']:
+            # Natural language query
+            if len(args) < 2:
+                print("Error: Natural language prompt is required after -nl")
+                return None
+            
+            nl_prompt = ' '.join(args[1:])
+            return RecentQuery(
+                command="chat",
+                natural_language_prompt=nl_prompt
+            )
+        
+        # Parse arguments manually (traditional format)
         sources = []
         filters = []
         workspace = None
