@@ -1000,7 +1000,7 @@ def chat_run(args):
         print(f"🤖 Processing natural language query: '{nl_prompt}'")
         
         try:
-            from promaia.ai.natural_query import process_natural_language_to_content
+            from promaia.storage.unified_query import get_query_interface
             
             # Resolve workspace first for natural language processing
             workspace_manager = get_workspace_manager()
@@ -1015,8 +1015,9 @@ def chat_run(args):
                     print("No workspace specified and no default workspace configured.", file=sys.stderr)
                     return
             
-            # Process natural language to get content directly
-            natural_language_content = process_natural_language_to_content(nl_prompt, resolved_workspace)
+            # Process natural language using hybrid query interface
+            query_interface = get_query_interface()
+            natural_language_content = query_interface.natural_language_query(nl_prompt, resolved_workspace)
             
             if not natural_language_content:
                 print("❌ No content found for natural language query")
@@ -1307,6 +1308,15 @@ def main():
     mig_parser = subparsers.add_parser('mig', help='Data migration commands (alias for migration)')
     mig_subparsers = mig_parser.add_subparsers(dest='migration_command', help='Migration commands')
     add_migration_commands_to_existing_parser(mig_parser, mig_subparsers)
+    
+    # Add hybrid architecture commands
+    from promaia.cli.hybrid_commands import add_hybrid_commands, add_hybrid_commands_to_existing_parser
+    add_hybrid_commands(subparsers)
+    
+    # Add 'hyb' alias for hybrid commands
+    hyb_parser = subparsers.add_parser('hyb', help='Hybrid architecture commands (alias for hybrid)')
+    hyb_subparsers = hyb_parser.add_subparsers(dest='hybrid_command', help='Hybrid commands')
+    add_hybrid_commands_to_existing_parser(hyb_parser, hyb_subparsers)
 
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
@@ -1574,6 +1584,15 @@ def main():
                 print(f"No function assigned to migration command: {args.migration_command}")
         else:
             print("Migration command requires a subcommand. Use 'maia migration --help' for options.")
+    elif args.command in ["hybrid", "hyb"]:
+        # Handle hybrid architecture commands
+        if hasattr(args, 'hybrid_command') and args.hybrid_command:
+            if hasattr(args, 'func'):
+                args.func(args)
+            else:
+                print(f"No function assigned to hybrid command: {args.hybrid_command}")
+        else:
+            print("Hybrid command requires a subcommand. Use 'maia hybrid --help' for options.")
     elif args.command == "sync":
         # Handle top-level sync command (alias for database sync)
         asyncio.run(handle_database_sync(args))

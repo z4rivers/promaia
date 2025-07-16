@@ -7,12 +7,13 @@ Promaia provides a comprehensive CLI interface and Python API for syncing Notion
 ## ✨ Features
 
 - **Multi-Workspace Management**: Handle multiple Notion workspaces and databases
+- **Hybrid Storage Architecture**: Optimized separate tables for each content type (Gmail, Notion databases, etc.)
 - **Intelligent Syncing**: Smart synchronization with timestamp tracking and conflict resolution
 - **Content Processing**: Convert between Markdown, JSON, and structured formats
 - **AI Integration**: Chat interface with context from your Notion content
 - **Newsletter Automation**: Sync and distribute content via email
 - **CMS Integration**: Manage content workflows between Notion and other platforms
-- **Flexible Storage**: Support for both JSON and Markdown-only workflows
+- **Natural Language Queries**: Advanced AI-powered content filtering and search
 
 ## 🚀 Quick Start
 
@@ -82,6 +83,11 @@ maia write --prompt "Write a blog post about productivity"
 - `maia chat` - Interactive AI chat with context from synced content
 - `maia write` - AI-powered content generation
 - `maia model` - Configure AI model preferences
+
+### Hybrid Architecture
+- `maia hybrid status` - Show hybrid storage architecture status
+- `maia hybrid migrate` - One-time migration from legacy to hybrid (if needed)
+- `maia hybrid analyze` - Analyze content structure and optimization tips
 
 ### Advanced Filtering
 - **Complex date filtering** for journaling analysis (first week of every month, seasonal patterns, etc.)

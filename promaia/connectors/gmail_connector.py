@@ -313,7 +313,7 @@ class GmailConnector(BaseConnector):
             current_start = chunk_end
         
         return chunks
-
+    
     async def get_database_schema(self) -> Dict[str, Any]:
         """Get the schema/properties for Gmail emails."""
         return {
@@ -402,11 +402,11 @@ class GmailConnector(BaseConnector):
                             
                             result = await self._retry_with_backoff(
                                 lambda: self.service.users().messages().list(
-                                    userId='me',
-                                    q=simple_query,
-                                    maxResults=100,
-                                    pageToken=page_token
-                                ).execute()
+                                userId='me',
+                                q=simple_query,
+                                maxResults=100,
+                                pageToken=page_token
+                            ).execute()
                             )
                             
                             batch_messages = result.get('messages', [])
@@ -425,15 +425,15 @@ class GmailConnector(BaseConnector):
                 
                 chunk_message_count = len(messages)
                 self.logger.info(f"Found {chunk_message_count} messages in this chunk")
-                
+
                 # Group messages by thread to reduce API calls
-                threads = {}
-                for msg in messages:
-                    thread_id = msg.get('threadId')
-                    if thread_id not in threads:
-                        threads[thread_id] = []
-                    threads[thread_id].append(msg['id'])
-                
+            threads = {}
+            for msg in messages:
+                thread_id = msg.get('threadId')
+                if thread_id not in threads:
+                    threads[thread_id] = []
+                threads[thread_id].append(msg['id'])
+            
                 thread_ids = list(threads.keys())
                 thread_count = len(thread_ids)
                 self.logger.info(f"Processing {thread_count} unique threads from {chunk_message_count} messages")
@@ -449,7 +449,7 @@ class GmailConnector(BaseConnector):
                     # Get thread data for this batch
                     batch_threads = await self._get_thread_data_batch(batch_thread_ids)
                     all_email_data.extend(batch_threads)
-                    
+            
                     # Respect limit
                     if limit and len(all_email_data) >= limit:
                         all_email_data = all_email_data[:limit]

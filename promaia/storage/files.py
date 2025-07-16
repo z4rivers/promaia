@@ -1058,13 +1058,13 @@ def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str
                     # Check if this looks like Gmail data by checking for common Gmail properties
                     if 'from' in properties or 'to' in properties:
                         prop_name = 'title'
-                
-                # Get the actual property value from the page
-                prop_data = properties.get(prop_name, {})
-                actual_value = extract_property_value(prop_data)
-                
-                # Apply the condition
-                condition_result = evaluate_condition(actual_value, operator, expected_value)
+            
+            # Get the actual property value from the page
+            prop_data = properties.get(prop_name, {})
+            actual_value = extract_property_value(prop_data)
+            
+            # Apply the condition
+            condition_result = evaluate_condition(actual_value, operator, expected_value)
             
             if not condition_result:
                 and_result = False

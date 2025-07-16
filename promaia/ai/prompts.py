@@ -47,7 +47,11 @@ def create_system_prompt(
             base_prompt += "No entries found for this database.\n"
         else:
             for page in pages:
-                page_filename = page.get('filename', 'Unknown File')
+                # Try multiple title sources for compatibility
+                page_filename = (page.get('filename') or 
+                               page.get('title') or 
+                               page.get('name') or 
+                               'Unknown File')
                 page_content = page.get('content', '')
                 base_prompt += f"\n**{database_name}** entry (File: `{page_filename}`):\n{page_content}\n"
 

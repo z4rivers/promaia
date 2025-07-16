@@ -2,6 +2,8 @@
 
 Maia is your personal AI assistant manager with powerful database synchronization, multi-source chat, and content generation capabilities.
 
+**Note**: Maia now uses a hybrid storage architecture with optimized separate tables for each content type, providing faster queries and better natural language processing.
+
 ## Core Commands
 
 ### Database Management (Primary Interface)

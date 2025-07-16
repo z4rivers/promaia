@@ -156,7 +156,7 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
-    print_text("  /e - Edit context (sources, filters)", style="dim")
+    print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("")
 
@@ -557,14 +557,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Build the current command arguments (without 'maia chat')
         current_args = []
-        if context_state['sources']:
-            for source in context_state['sources']:
-                current_args.extend(['-s', source])
-        if context_state['filters']:
-            for filter_expr in context_state['filters']:
-                current_args.extend(['-f', filter_expr])
-        if context_state['workspace']:
-            current_args.extend(['-ws', context_state['workspace']])
+        
+        # Check if we're in natural language mode
+        if context_state.get('natural_language_prompt'):
+            current_args.extend(['-nl', context_state['natural_language_prompt']])
+        else:
+            # Regular mode with sources and filters
+            if context_state['sources']:
+                for source in context_state['sources']:
+                    current_args.extend(['-s', source])
+            if context_state['filters']:
+                for filter_expr in context_state['filters']:
+                    current_args.extend(['-f', filter_expr])
+            if context_state['workspace']:
+                current_args.extend(['-ws', context_state['workspace']])
         
         current_args_str = ' '.join(current_args) if current_args else ''
         
@@ -616,37 +622,101 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     "--workspace", "-ws",
                     help="Specify which workspace to use"
                 )
+                parser.add_argument(
+                    "--natural-language", "-nl",
+                    nargs="*",
+                    help="Use natural language to specify what content to load for chat context"
+                )
                 
                 # Parse the arguments
                 parsed_args = parser.parse_args(args_list)
                 
-                # Extract the new sources and filters
-                new_sources = getattr(parsed_args, 'sources', []) or []
-                new_filters = getattr(parsed_args, 'filters', []) or []
-                new_workspace = getattr(parsed_args, 'workspace', None)
+                # Check if natural language mode is being used
+                natural_language_args = getattr(parsed_args, 'natural_language', None)
                 
-                # Update context state
-                context_state['sources'] = new_sources
-                context_state['filters'] = new_filters
-                if new_workspace:
-                    context_state['workspace'] = new_workspace
-                
-                # Always reload context with new settings
-                if reload_context():
-                    print_text("Context updated successfully!", style="bold green")
-                    return True
+                if natural_language_args is not None:
+                    # Natural language mode
+                    nl_prompt = " ".join(natural_language_args) if natural_language_args else ""
+                    if not nl_prompt:
+                        print_text("Error: Natural language prompt is empty.", style="bold red")
+                        return False
+                    
+                    # Process natural language query
+                    try:
+                        from promaia.storage.unified_query import get_query_interface
+                        
+                        # Get workspace
+                        new_workspace = getattr(parsed_args, 'workspace', None)
+                        if new_workspace:
+                            context_state['workspace'] = new_workspace
+                        
+                        # Determine workspace to use
+                        workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                        if not workspace_to_use:
+                            print_text("Error: No workspace available for natural language query.", style="bold red")
+                            return False
+                        
+                        print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
+                        
+                        # Process the natural language query
+                        query_interface = get_query_interface()
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, workspace_to_use)
+                        
+                        if not natural_language_content:
+                            print_text("❌ No content found for natural language query", style="bold red")
+                            return False
+                        
+                        # Update context state for natural language mode
+                        context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = nl_prompt
+                        context_state['sources'] = []  # Clear regular sources
+                        context_state['filters'] = []  # Clear regular filters
+                        
+                        # Reload with natural language content
+                        if reload_context():
+                            print_text("Context updated successfully!", style="bold green")
+                            return True
+                        else:
+                            print_text("Failed to reload context with natural language content.", style="bold red")
+                            return False
+                            
+                    except Exception as e:
+                        print_text(f"Error processing natural language query: {e}", style="bold red")
+                        return False
                 else:
-                    print_text("Failed to reload context with new settings.", style="bold red")
-                    return False
-                
+                    # Regular mode with sources and filters
+                    new_sources = getattr(parsed_args, 'sources', []) or []
+                    new_filters = getattr(parsed_args, 'filters', []) or []
+                    new_workspace = getattr(parsed_args, 'workspace', None)
+                    
+                    # Update context state
+                    context_state['sources'] = new_sources
+                    context_state['filters'] = new_filters
+                    context_state['natural_language_content'] = None  # Clear NL content
+                    context_state['natural_language_prompt'] = None   # Clear NL prompt
+                    if new_workspace:
+                        context_state['workspace'] = new_workspace
+                    
+                    # Always reload context with new settings
+                    if reload_context():
+                        print_text("Context updated successfully!", style="bold green")
+                        return True
+                    else:
+                        print_text("Failed to reload context with new settings.", style="bold red")
+                        return False
+                    
             except SystemExit:
                 # argparse calls sys.exit on invalid arguments
                 print_text("Invalid command syntax.", style="bold red")
-                print_text("Example: -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                print_text("Examples:", style="dim")
+                print_text("  -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                print_text("  -nl emails from last week about project updates", style="dim")
                 return False
             except Exception as e:
                 print_text(f"Error parsing command: {e}", style="bold red")
-                print_text("Example: -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                print_text("Examples:", style="dim")
+                print_text("  -s journal:5 -s gmail:10 -f 'last week'", style="dim")
+                print_text("  -nl emails from last week about project updates", style="dim")
                 return False
                 
         except (KeyboardInterrupt, EOFError):
