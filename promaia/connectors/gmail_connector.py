@@ -9,6 +9,8 @@ import json
 import base64
 import logging
 import pickle
+import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
@@ -31,10 +33,44 @@ from .base import BaseConnector, QueryFilter, DateRangeFilter, SyncResult
 logger = logging.getLogger(__name__)
 
 class GmailConnector(BaseConnector):
-    """Gmail API connector for email synchronization."""
+    """Gmail API connector for email synchronization.
+    
+    Enhanced Features:
+    - Intelligent date range chunking for large syncs
+    - Batch processing with rate limit protection  
+    - Exponential backoff retry logic for reliability
+    - Removes artificial sync limits (was capped at 100 emails)
+    - Complete email coverage for specified date ranges
+    
+    Configuration Options:
+    - max_threads_per_batch (default: 25): Number of threads to process per batch
+    - chunk_size_days (default: 15): Days per chunk for large date ranges
+    - max_retry_attempts (default: 5): Maximum retry attempts for failed requests
+    
+    Usage Examples:
+    # Sync all emails from March 1st to June 30th, 2025:
+    maia database sync --source trass.gmail --start-date 2025-03-01 --end-date 2025-06-30
+    
+    # Sync last 30 days (no artificial limits):
+    maia database sync --source trass.gmail --days 30
+    
+    # For very large date ranges, the system automatically:
+    # 1. Breaks the range into 15-day chunks (configurable)
+    # 2. Processes threads in batches of 25 (configurable)  
+    # 3. Handles rate limits with exponential backoff
+    # 4. Provides progress reporting
+    """
     
     # Gmail API scopes
     SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+    
+    # Rate limiting and batching configuration
+    MAX_THREADS_PER_BATCH = 25  # Conservative to avoid concurrent request limits
+    MAX_RETRY_ATTEMPTS = 5
+    BASE_RETRY_DELAY = 1.0  # seconds
+    MAX_RETRY_DELAY = 32.0  # seconds
+    RATE_LIMIT_RETRY_DELAY = 2.0  # seconds for 429 errors
+    CHUNK_SIZE_DAYS = 15  # Break large date ranges into smaller chunks
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -49,6 +85,11 @@ class GmailConnector(BaseConnector):
         
         # Ensure credentials directory exists
         os.makedirs(self.credentials_dir, exist_ok=True)
+        
+        # Override default batching configuration from config if provided
+        self.max_threads_per_batch = config.get("max_threads_per_batch", self.MAX_THREADS_PER_BATCH)
+        self.chunk_size_days = config.get("chunk_size_days", self.CHUNK_SIZE_DAYS)
+        self.max_retry_attempts = config.get("max_retry_attempts", self.MAX_RETRY_ATTEMPTS)
         
         self.service = None
         
@@ -116,123 +157,76 @@ class GmailConnector(BaseConnector):
         
         return build('gmail', 'v1', credentials=creds)
     
-    async def get_database_schema(self) -> Dict[str, Any]:
-        """Get the schema/properties for Gmail emails."""
-        return {
-            "from": {"type": "email", "description": "Sender email address"},
-            "to": {"type": "email", "description": "Recipient email addresses"},
-            "subject": {"type": "text", "description": "Email subject"},
-            "date": {"type": "date", "description": "Email date"},
-            "labels": {"type": "multi_select", "description": "Gmail labels"},
-            "thread_id": {"type": "text", "description": "Gmail thread ID"},
-            "message_id": {"type": "text", "description": "Gmail message ID"},
-            "has_attachments": {"type": "checkbox", "description": "Has attachments"},
-            "is_unread": {"type": "checkbox", "description": "Is unread"},
-            "body_snippet": {"type": "text", "description": "Email body preview"},
-            "snippet": latest_message.get('snippet', ''),
-            "messages": messages,  # Store full message data for detailed processing
-            "body_html": self._get_latest_html_body(messages)
-        }
-    
-    async def query_pages(self, 
-                         filters: Optional[List[QueryFilter]] = None,
-                         date_filter: Optional[DateRangeFilter] = None,
-                         sort_by: Optional[str] = None,
-                         sort_direction: str = "desc",
-                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Query emails from Gmail."""
-        if not self.service:
-            await self.connect()
-        
-        try:
-            # Build Gmail search query
-            query = self._build_gmail_query(filters, date_filter)
-            
-            self.logger.info(f"Gmail query: {query}")
-            
-            # Search for messages with pagination
-            messages = []
-            page_token = None
-            
-            while True:
-                try:
-                    result = self.service.users().messages().list(
-                        userId='me',
-                        q=query,
-                        maxResults=100, # Max allowed by API
-                        pageToken=page_token
-                    ).execute()
-                    
-                    messages.extend(result.get('messages', []))
-                    page_token = result.get('nextPageToken')
-                    
-                    if not page_token or (limit and len(messages) >= limit):
-                        break
-                        
-                except HttpError as e:
-                    if e.resp.status == 500:
-                        # Gmail backend error - try simplified query
-                        self.logger.warning(f"Gmail API 500 error with query: {query}")
-                        self.logger.info("Trying simplified query without category filters...")
-                        
-                        # Fallback to basic query
-                        simple_query = self._build_simple_gmail_query(date_filter)
-                        self.logger.info(f"Simplified Gmail query: {simple_query}")
-                        
-                        result = self.service.users().messages().list(
-                            userId='me',
-                            q=simple_query,
-                            maxResults=100,
-                            pageToken=page_token
-                        ).execute()
-                        
-                        messages.extend(result.get('messages', []))
-                        page_token = result.get('nextPageToken')
-                        
-                        if not page_token or (limit and len(messages) >= limit):
-                            break
+    async def _retry_with_backoff(self, func, *args, **kwargs):
+        """Execute a function with exponential backoff retry logic for rate limits."""
+        for attempt in range(self.max_retry_attempts):
+            try:
+                return func(*args, **kwargs)
+            except HttpError as e:
+                if e.resp.status == 429:  # Rate limit exceeded
+                    if attempt < self.max_retry_attempts - 1:
+                        delay = min(self.RATE_LIMIT_RETRY_DELAY * (2 ** attempt), self.MAX_RETRY_DELAY)
+                        self.logger.warning(f"Rate limit hit, retrying in {delay:.1f}s (attempt {attempt + 1}/{self.max_retry_attempts})")
+                        await asyncio.sleep(delay)
+                        continue
                     else:
+                        self.logger.error(f"Rate limit exceeded, max retries reached")
                         raise
-            
-            if limit:
-                messages = messages[:limit]
-
-            self.logger.info(f"Found {len(messages)} total messages.")
-
-            # Get detailed message info - group by thread to reduce API calls
-            threads = {}
-            for msg in messages:
-                thread_id = msg.get('threadId')
-                if thread_id not in threads:
-                    threads[thread_id] = []
-                threads[thread_id].append(msg['id'])
-            
-            # Process threads (this will group emails by conversation)
-            email_data = []
-            for thread_id, message_ids in threads.items():
-                thread_data = await self._get_thread_data(thread_id, message_ids)
-                if thread_data:
-                    email_data.append(thread_data)
-            
-            return email_data
-            
-        except Exception as e:
-            self.logger.error(f"Failed to query Gmail messages: {e}")
-            return []
+                elif e.resp.status >= 500:  # Server errors
+                    if attempt < self.max_retry_attempts - 1:
+                        delay = min(self.BASE_RETRY_DELAY * (2 ** attempt), self.MAX_RETRY_DELAY)
+                        self.logger.warning(f"Server error {e.resp.status}, retrying in {delay:.1f}s (attempt {attempt + 1}/{self.max_retry_attempts})")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        self.logger.error(f"Server error {e.resp.status}, max retries reached")
+                        raise
+                else:
+                    # Other HTTP errors, don't retry
+                    raise
+            except Exception as e:
+                # Non-HTTP errors, don't retry
+                raise
+        
+        # Should never reach here, but just in case
+        raise Exception("Unexpected retry loop exit")
     
-    async def _get_thread_data(self, thread_id: str, message_ids: List[str]) -> Optional[Dict[str, Any]]:
-        """Get full thread data including all messages in the conversation."""
+    async def _get_thread_data_batch(self, thread_ids: List[str]) -> List[Optional[Dict[str, Any]]]:
+        """Get thread data in batches with rate limiting."""
+        results = []
+        
+        for thread_id in thread_ids:
+            try:
+                thread_data = await self._retry_with_backoff(
+                    lambda: self.service.users().threads().get(
+                        userId='me', 
+                        id=thread_id,
+                        format='full'
+                    ).execute()
+                )
+                
+                if thread_data:
+                    processed_data = self._process_thread_data(thread_data)
+                    if processed_data:
+                        results.append(processed_data)
+                
+                # Small delay between individual thread requests to be respectful
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to get thread data for {thread_id}: {e}")
+                results.append(None)
+        
+        return [r for r in results if r is not None]
+    
+    def _process_thread_data(self, thread: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Process raw thread data from Gmail API into standardized format."""
         try:
-            # Get thread details
-            thread = self.service.users().threads().get(
-                userId='me', 
-                id=thread_id,
-                format='full'
-            ).execute()
-            
             messages = thread.get('messages', [])
             if not messages:
                 return None
+            
+            thread_id = thread.get('id')
             
             # Sort messages by date (oldest first for conversation flow)
             messages.sort(key=lambda m: int(m.get('internalDate', 0)))
@@ -294,8 +288,195 @@ class GmailConnector(BaseConnector):
             }
             
         except Exception as e:
-            self.logger.error(f"Failed to get thread data for {thread_id}: {e}")
+            self.logger.error(f"Failed to process thread data: {e}")
             return None
+    
+    def _chunk_date_range(self, date_filter: DateRangeFilter) -> List[DateRangeFilter]:
+        """Break large date ranges into smaller chunks to avoid API timeouts."""
+        if not date_filter or not date_filter.start_date:
+            return [date_filter] if date_filter else []
+        
+        chunks = []
+        current_start = date_filter.start_date
+        end_date = date_filter.end_date or datetime.now(timezone.utc)
+        
+        while current_start < end_date:
+            chunk_end = min(current_start + timedelta(days=self.chunk_size_days), end_date)
+            
+            chunk_filter = DateRangeFilter(
+                property_name=date_filter.property_name,
+                start_date=current_start,
+                end_date=chunk_end
+            )
+            chunks.append(chunk_filter)
+            
+            current_start = chunk_end
+        
+        return chunks
+
+    async def get_database_schema(self) -> Dict[str, Any]:
+        """Get the schema/properties for Gmail emails."""
+        return {
+            "from": {"type": "email", "description": "Sender email address"},
+            "to": {"type": "email", "description": "Recipient email addresses"},
+            "subject": {"type": "text", "description": "Email subject"},
+            "date": {"type": "date", "description": "Email date"},
+            "labels": {"type": "multi_select", "description": "Gmail labels"},
+            "thread_id": {"type": "text", "description": "Gmail thread ID"},
+            "message_id": {"type": "text", "description": "Gmail message ID"},
+            "has_attachments": {"type": "checkbox", "description": "Has attachments"},
+            "is_unread": {"type": "checkbox", "description": "Is unread"},
+            "body_snippet": {"type": "text", "description": "Email body preview"},
+            "snippet": latest_message.get('snippet', ''),
+            "messages": messages,  # Store full message data for detailed processing
+            "body_html": self._get_latest_html_body(messages)
+        }
+    
+    async def query_pages(self, 
+                         filters: Optional[List[QueryFilter]] = None,
+                         date_filter: Optional[DateRangeFilter] = None,
+                         sort_by: Optional[str] = None,
+                         sort_direction: str = "desc",
+                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Query emails from Gmail with intelligent chunking and batching."""
+        if not self.service:
+            await self.connect()
+        
+        try:
+            all_email_data = []
+            
+            # Break large date ranges into smaller chunks
+            date_chunks = self._chunk_date_range(date_filter) if date_filter else [None]
+            
+            total_chunks = len(date_chunks)
+            if total_chunks > 1:
+                self.logger.info(f"Breaking sync into {total_chunks} date chunks for better reliability")
+            
+            for chunk_idx, chunk_filter in enumerate(date_chunks):
+                if total_chunks > 1:
+                    if chunk_filter and chunk_filter.start_date and chunk_filter.end_date:
+                        start_str = chunk_filter.start_date.strftime('%Y-%m-%d')
+                        end_str = chunk_filter.end_date.strftime('%Y-%m-%d')
+                        self.logger.info(f"Processing chunk {chunk_idx + 1}/{total_chunks}: {start_str} to {end_str}")
+                
+                # Build Gmail search query for this chunk
+                query = self._build_gmail_query(filters, chunk_filter)
+                self.logger.info(f"Gmail query: {query}")
+                
+                # Search for messages with pagination and retry logic
+                messages = []
+                page_token = None
+                
+                while True:
+                    try:
+                        result = await self._retry_with_backoff(
+                            lambda: self.service.users().messages().list(
+                                userId='me',
+                                q=query,
+                                maxResults=100,  # Max allowed by API
+                                pageToken=page_token
+                            ).execute()
+                        )
+                        
+                        batch_messages = result.get('messages', [])
+                        messages.extend(batch_messages)
+                        page_token = result.get('nextPageToken')
+                        
+                        if not page_token:
+                            break
+                            
+                        # Respect limit across all chunks
+                        if limit and len(all_email_data) + len(messages) >= limit:
+                            messages = messages[:limit - len(all_email_data)]
+                            break
+                            
+                    except HttpError as e:
+                        if e.resp.status == 500:
+                            # Gmail backend error - try simplified query
+                            self.logger.warning(f"Gmail API 500 error with query: {query}")
+                            self.logger.info("Trying simplified query without category filters...")
+                            
+                            # Fallback to basic query
+                            simple_query = self._build_simple_gmail_query(chunk_filter)
+                            self.logger.info(f"Simplified Gmail query: {simple_query}")
+                            
+                            result = await self._retry_with_backoff(
+                                lambda: self.service.users().messages().list(
+                                    userId='me',
+                                    q=simple_query,
+                                    maxResults=100,
+                                    pageToken=page_token
+                                ).execute()
+                            )
+                            
+                            batch_messages = result.get('messages', [])
+                            messages.extend(batch_messages)
+                            page_token = result.get('nextPageToken')
+                            
+                            if not page_token:
+                                break
+                        else:
+                            raise
+                
+                if not messages:
+                    if total_chunks > 1:
+                        self.logger.info(f"No messages found in chunk {chunk_idx + 1}/{total_chunks}")
+                    continue
+                
+                chunk_message_count = len(messages)
+                self.logger.info(f"Found {chunk_message_count} messages in this chunk")
+                
+                # Group messages by thread to reduce API calls
+                threads = {}
+                for msg in messages:
+                    thread_id = msg.get('threadId')
+                    if thread_id not in threads:
+                        threads[thread_id] = []
+                    threads[thread_id].append(msg['id'])
+                
+                thread_ids = list(threads.keys())
+                thread_count = len(thread_ids)
+                self.logger.info(f"Processing {thread_count} unique threads from {chunk_message_count} messages")
+                
+                # Process threads in batches to respect rate limits
+                for batch_start in range(0, thread_count, self.max_threads_per_batch):
+                    batch_end = min(batch_start + self.max_threads_per_batch, thread_count)
+                    batch_thread_ids = thread_ids[batch_start:batch_end]
+                    
+                    self.logger.debug(f"Processing thread batch {batch_start // self.max_threads_per_batch + 1} "
+                                    f"({len(batch_thread_ids)} threads)")
+                    
+                    # Get thread data for this batch
+                    batch_threads = await self._get_thread_data_batch(batch_thread_ids)
+                    all_email_data.extend(batch_threads)
+                    
+                    # Respect limit
+                    if limit and len(all_email_data) >= limit:
+                        all_email_data = all_email_data[:limit]
+                        break
+                
+                # Log progress
+                if total_chunks > 1:
+                    self.logger.info(f"Chunk {chunk_idx + 1}/{total_chunks} complete. "
+                                   f"Total emails collected: {len(all_email_data)}")
+                
+                # Stop if we've hit the limit
+                if limit and len(all_email_data) >= limit:
+                    self.logger.info(f"Reached limit of {limit} emails")
+                    break
+            
+            self.logger.info(f"Gmail sync complete. Found {len(all_email_data)} total email threads.")
+            return all_email_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to query Gmail messages: {e}")
+            return []
+    
+    async def _get_thread_data(self, thread_id: str, message_ids: List[str]) -> Optional[Dict[str, Any]]:
+        """DEPRECATED: Use _get_thread_data_batch instead. Kept for backward compatibility."""
+        self.logger.warning("_get_thread_data is deprecated, use batch processing instead")
+        batch_result = await self._get_thread_data_batch([thread_id])
+        return batch_result[0] if batch_result else None
     
     def _get_latest_html_body(self, messages: List[Dict[str, Any]]) -> Optional[str]:
         """Extracts the HTML body from the latest message."""
@@ -552,6 +733,10 @@ Date: {date_str}
             return 'is:unread' if value else 'is:read'
         elif prop_name == 'has_attachments' and operator == 'eq':
             return 'has:attachment' if value else '-has:attachment'
+        elif operator == 'contains':
+            # Generic contains operator for full email content search
+            # Use Gmail's quoted search syntax to search body, subject, and other content
+            return f'"{value}"'
         
         return None
     
@@ -613,8 +798,8 @@ Date: {date_str}
         thread_id = page_id.replace('thread_', '')
         
         try:
-            thread_data = await self._get_thread_data(thread_id, [])
-            return thread_data or {}
+            thread_data = await self._get_thread_data_batch([thread_id])
+            return thread_data[0] if thread_data else {}
         except Exception as e:
             self.logger.error(f"Failed to get email thread content for {page_id}: {e}")
             return {}
@@ -659,14 +844,11 @@ Date: {date_str}
         result.start_time = datetime.now()
         
         try:
-            limit = self.config.get("sync_limit", 100)
-            
             # Query Gmail for recent threads
             self.logger.info(f"Querying Gmail with date_filter: {date_filter}")
             email_threads = await self.query_pages(
                 filters=filters, 
-                date_filter=date_filter,
-                limit=limit
+                date_filter=date_filter
             )
             
             if not email_threads:

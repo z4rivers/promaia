@@ -951,11 +951,13 @@ def apply_custom_property_filters(pages: List[Dict[str, Any]], complex_filter: O
             properties = metadata_dict.get('properties', {})
             
             # Check if page matches the complex filter
-            if evaluate_complex_filter(properties, complex_filter):
+            page_content = page.get('content', '')
+            matches = evaluate_complex_filter(properties, complex_filter, page_content)
+            
+            if matches:
                 filtered_pages.append(page)
                 
         except (json.JSONDecodeError, TypeError) as e:
-            print(f"Warning: Could not parse metadata for page {page.get('page_id', 'unknown')}: {e}")
             continue
     
     return filtered_pages
@@ -1008,13 +1010,14 @@ def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters:
     return filtered_pages
 
 
-def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str, Any]) -> bool:
+def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str, Any], page_content: str = "") -> bool:
     """
     Evaluate a complex filter expression against page properties.
     
     Args:
-        properties: Dictionary of page properties from Notion
+        properties: Dictionary of page properties from Notion/Gmail
         complex_filter: Complex filter expression
+        page_content: Full page content for content-based searches (e.g., contains operator)
         
     Returns:
         True if the properties match the filter, False otherwise
@@ -1025,27 +1028,55 @@ def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str
     or_clauses = complex_filter.get('or_clauses', [])
     
     # Evaluate each OR clause
-    for and_conditions in or_clauses:
+    for i, and_conditions in enumerate(or_clauses):
         # All conditions in an AND clause must be true
         and_result = True
+        has_non_date_conditions = False
         
         for condition in and_conditions:
             prop_name = condition.get('property', '')
             operator = condition.get('operator', '=')
             expected_value = condition.get('value', '')
             
-            # Skip date properties as they are handled at SQL level
+            # Date properties are handled at SQL level, but we need to mark that we had conditions
+            # to avoid empty AND clauses defaulting to True
             if prop_name in ['created_time', 'last_edited_time']:
+                # For complex expressions, we assume date filtering was already applied at SQL level
+                # So we treat date conditions as satisfied but don't count them as processed conditions
                 continue
             
-            # Get the actual property value from the page
-            prop_data = properties.get(prop_name, {})
-            actual_value = extract_property_value(prop_data)
+            has_non_date_conditions = True
             
-            # Apply the condition
-            if not evaluate_condition(actual_value, operator, expected_value):
+            # Handle special 'contains' operator for full content search
+            if operator == 'contains':
+                # Search the full page content instead of properties
+                condition_result = evaluate_condition(page_content, operator, expected_value)
+            else:
+                # Gmail property mapping: 'subject' -> 'title'
+                # Gmail stores email subjects in the 'title' property, not 'subject'
+                if prop_name == 'subject':
+                    # Check if this looks like Gmail data by checking for common Gmail properties
+                    if 'from' in properties or 'to' in properties:
+                        prop_name = 'title'
+                
+                # Get the actual property value from the page
+                prop_data = properties.get(prop_name, {})
+                actual_value = extract_property_value(prop_data)
+                
+                # Apply the condition
+                condition_result = evaluate_condition(actual_value, operator, expected_value)
+            
+            if not condition_result:
                 and_result = False
                 break
+        
+        # If we had only date conditions in this AND clause, we need to be more careful
+        # An AND clause with only date conditions should not automatically be True
+        if not has_non_date_conditions:
+            # This AND clause only had date conditions, which are handled at SQL level
+            # We assume the SQL filtering already applied these correctly, so we skip this clause
+            # rather than defaulting it to True
+            continue
         
         # If any OR clause is satisfied, return True
         if and_result:
@@ -1057,10 +1088,14 @@ def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str
 
 def extract_property_value(prop_data: Dict[str, Any]) -> Any:
     """
-    Extract the actual value from a Notion property data structure.
+    Extract the actual value from a property data structure.
+    
+    Handles both:
+    - Notion-style properties: {"type": "email", "email": "value"}  
+    - Gmail-style properties: "value" (simple values)
     
     Args:
-        prop_data: Property data from Notion
+        prop_data: Property data from Notion or Gmail
         
     Returns:
         The actual value of the property
@@ -1068,6 +1103,17 @@ def extract_property_value(prop_data: Dict[str, Any]) -> Any:
     if not prop_data:
         return None
     
+    # Handle Gmail-style simple values (string, number, boolean, list)
+    if not isinstance(prop_data, dict):
+        return prop_data
+    
+    # Check if this is a Notion-style property with a "type" field
+    if 'type' not in prop_data:
+        # This is a Gmail-style simple property stored as a dict
+        # or a malformed property, return the whole thing
+        return prop_data
+    
+    # Handle Notion-style typed properties
     prop_type = prop_data.get('type')
     
     if prop_type == 'checkbox':
@@ -1140,7 +1186,16 @@ def evaluate_condition(actual_value: Any, operator: str, expected_value: str) ->
     
     # Apply the operator
     if operator == '=':
+        # For Gmail email filtering, support partial matching (contains)
+        # This allows "from=avask" to match "someone@avask.com" 
+        if isinstance(actual_value, str) and isinstance(expected_value, str):
+            return expected_value.lower() in actual_value.lower()
         return actual_value == expected_value
+    elif operator == 'contains':
+        # Full content search for contains operator
+        if isinstance(actual_value, str) and isinstance(expected_value, str):
+            return expected_value.lower() in actual_value.lower()
+        return False
     elif operator == '>':
         return actual_value > expected_value
     elif operator == '<':

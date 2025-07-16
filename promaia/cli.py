@@ -45,13 +45,6 @@ from promaia.cli.migration_commands import (
     add_migration_commands, add_migration_commands_to_existing_parser
 )
 
-# Import Gmail commands (optional)
-try:
-    from promaia.cli.gmail_commands import add_gmail_commands
-    gmail_commands_available = True
-except ImportError:
-    gmail_commands_available = False
-
 # Load environment variables
 load_environment()
 
@@ -528,7 +521,7 @@ async def handle_journal_pull(args):
                     logger.warning(f"Invalid format for --days: '{days_arg}'. Using default.")
                     days_to_process = get_sync_days_setting()
         elif isinstance(days_arg, int):
-            if days_arg < 0:
+            if days_to_process < 0:
                 logger.warning(f"Invalid value for --days ('{days_arg}'). Using default.")
                 days_to_process = get_sync_days_setting()
             else:
@@ -998,6 +991,49 @@ def chat_run(args):
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
     original_workspace = getattr(args, 'workspace', None)  # Keep original for display
+    nl_prompt = None
+    
+    # Handle natural language processing
+    if hasattr(args, 'natural_language') and args.natural_language:
+        # Join all the natural language arguments into a single prompt
+        nl_prompt = ' '.join(args.natural_language)
+        print(f"🤖 Processing natural language query: '{nl_prompt}'")
+        
+        try:
+            from promaia.ai.natural_query import process_natural_language_to_content
+            
+            # Resolve workspace first for natural language processing
+            workspace_manager = get_workspace_manager()
+            if original_workspace:
+                if not workspace_manager.validate_workspace(original_workspace):
+                    print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
+                    return
+                resolved_workspace = original_workspace
+            else:
+                resolved_workspace = workspace_manager.get_default_workspace()
+                if not resolved_workspace:
+                    print("No workspace specified and no default workspace configured.", file=sys.stderr)
+                    return
+            
+            # Process natural language to get content directly
+            natural_language_content = process_natural_language_to_content(nl_prompt, resolved_workspace)
+            
+            if not natural_language_content:
+                print("❌ No content found for natural language query")
+                return
+            
+            # Clear sources and filters since we're using natural language content
+            sources = None
+            filters = None
+            
+        except ImportError as e:
+            print(f"Error importing natural language processor: {e}", file=sys.stderr)
+            return
+        except Exception as e:
+            print(f"Error processing natural language query: {e}", file=sys.stderr)
+            return
+    else:
+        natural_language_content = None
     
     # Non-interactive mode for the desktop app
     if not sys.stdout.isatty():
@@ -1008,19 +1044,20 @@ def chat_run(args):
         logging.info("Running in non-interactive mode.")
 
     try:
-        # Resolve the actual workspace to use
+        # Resolve the actual workspace to use (if not already resolved above)
         workspace_manager = get_workspace_manager()
-        if original_workspace:
-            if not workspace_manager.validate_workspace(original_workspace):
-                print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
-                return
-            resolved_workspace = original_workspace
-        else:
-            # Use default workspace for functionality, but don't show in query display
-            resolved_workspace = workspace_manager.get_default_workspace()
-            if not resolved_workspace:
-                print("No workspace specified and no default workspace configured.", file=sys.stderr)
-                return
+        if not hasattr(locals(), 'resolved_workspace'):
+            if original_workspace:
+                if not workspace_manager.validate_workspace(original_workspace):
+                    print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
+                    return
+                resolved_workspace = original_workspace
+            else:
+                # Use default workspace for functionality, but don't show in query display
+                resolved_workspace = workspace_manager.get_default_workspace()
+                if not resolved_workspace:
+                    print("No workspace specified and no default workspace configured.", file=sys.stderr)
+                    return
         
         # Save query to recents before executing (only if there are meaningful parameters)
         if sources or filters or original_workspace:
@@ -1030,7 +1067,7 @@ def chat_run(args):
         
         # The `chat` function will now need to handle the main loop
         non_interactive = getattr(args, 'non_interactive', False) or not sys.stdout.isatty()
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive)
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt)
 
     except ImportError as e:
         print(f"Error importing chat interface: {e}", file=sys.stderr)
@@ -1279,9 +1316,7 @@ def main():
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
     sync_parser.set_defaults(func=handle_database_sync)
 
-    # Gmail commands (optional)
-    if gmail_commands_available:
-        add_gmail_commands(subparsers)
+
 
     # Chat command
     chat_parser = subparsers.add_parser("chat", help="Interactive chat with multi-source support")
@@ -1310,6 +1345,11 @@ def main():
         "--non-interactive",
         action="store_true",
         help="Run in non-interactive mode for testing"
+    )
+    chat_parser.add_argument(
+        "--natural-language", "-nl",
+        nargs="*",
+        help="Use natural language to specify what content to load for chat context. Everything after -nl becomes the prompt. Example: maia chat -nl emails from last week about avask"
     )
     chat_parser.set_defaults(func=chat_run)
     

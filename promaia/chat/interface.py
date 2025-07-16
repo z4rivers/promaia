@@ -123,18 +123,59 @@ def display_message_with_timestamp(role, content):
     else:
         print_text(content, style="yellow")
 
-def print_welcome_message(query_command, total_pages, model_name=None):
-    """Prints the welcome message for the chat interface."""
+def generate_source_breakdown(multi_source_data):
+    """Generate a dictionary of source names to page counts."""
+    if not multi_source_data:
+        return None
+    
+    breakdown = {}
+    for source_key, pages in multi_source_data.items():
+        # Extract the actual source name (remove workspace prefix if present)
+        if '.' in source_key:
+            source_name = source_key.split('.', 1)[1]  # Get part after first dot
+        else:
+            source_name = source_key
+        breakdown[source_name] = len(pages)
+    
+    return breakdown
+
+
+def print_help_message(query_command, total_pages, model_name=None, source_breakdown=None):
+    """Prints the detailed help message with command explanations."""
     print_text("🐙 maia chat", style="bold magenta")
     print_text(f"Query: {query_command}", style="dim")
     if total_pages > 0:
         print_text(f"Pages loaded: {total_pages}", style="dim")
+        
+        # Show breakdown by source if available
+        if source_breakdown:
+            for source_name, page_count in source_breakdown.items():
+                print_text(f"{source_name}: {page_count}", style="dim")
+                
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
+    print_text("")
+
+
+def print_welcome_message(query_command, total_pages, model_name=None, source_breakdown=None):
+    """Prints the welcome message for the chat interface."""
+    print_text("🐙 maia chat", style="bold magenta")
+    print_text(f"Query: {query_command}", style="dim")
+    if total_pages > 0:
+        print_text(f"Pages loaded: {total_pages}", style="dim")
+        
+        # Show breakdown by source if available
+        if source_breakdown:
+            for source_name, page_count in source_breakdown.items():
+                print_text(f"{source_name}: {page_count}", style="dim")
+                
+    if model_name:
+        print_text(f"Model: {model_name}", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
     print_text("")
 
 
@@ -170,7 +211,7 @@ def run_non_interactive_chat(messages: List[Dict[str, Any]], system_prompt: str,
     """Handles a single, non-interactive chat exchange."""
     pass
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -184,7 +225,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'total_pages_loaded': 0,
         'system_prompt': None,
         'query_command': None,
-        'current_thread_id': current_thread_id  # Track if we're continuing a thread
+        'current_thread_id': current_thread_id,  # Track if we're continuing a thread
+        'natural_language_content': natural_language_content,  # Track if using natural language
+        'natural_language_prompt': natural_language_prompt  # Store the original NL prompt
     }
 
     def update_query_command():
@@ -201,6 +244,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 query_parts.extend(["-f", f'"{filter_expr}"'])
         if context_state['workspace']:  # Only show workspace if explicitly provided by user
             query_parts.extend(["-w", context_state['workspace']])
+        if context_state['natural_language_prompt']:
+            query_parts.extend(["-nl", context_state['natural_language_prompt']])
         context_state['query_command'] = " ".join(query_parts)
 
     # Initial query command setup
@@ -210,6 +255,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     def reload_context():
         """Reload the chat context with current state configuration."""
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command
+        
+        # Check if we have natural language content to use directly
+        if context_state.get('natural_language_content'):
+            print("🤖 Using natural language generated content")
+            new_multi_source_data = context_state['natural_language_content']
+            new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+            
+            # Update context state
+            context_state['initial_multi_source_data'] = new_multi_source_data
+            context_state['total_pages_loaded'] = new_total_pages_loaded
+            
+            # Update module-level variables
+            initial_multi_source_data = new_multi_source_data
+            total_pages_loaded = new_total_pages_loaded
+            
+            # Generate new system prompt
+            system_prompt = create_system_prompt(new_multi_source_data)
+            context_state['system_prompt'] = system_prompt
+            
+            # Update query command to show natural language was used
+            if context_state.get('natural_language_prompt'):
+                context_state['query_command'] = f"maia chat -nl {context_state['natural_language_prompt']}"
+            else:
+                context_state['query_command'] = "maia chat -nl [natural language query]"
+            query_command = context_state['query_command']
+            
+            return True
         
         # Use current state
         current_sources = context_state['sources']
@@ -664,7 +736,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Display Welcome Message
     print()
-    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
+    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
 
     # Handle Non-interactive Mode
     if non_interactive:
@@ -731,7 +803,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     debug_print(f"Context edit error: {e}")
                 continue
             elif user_input.strip().lower() == '/help':
-                print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name())
+                print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
             elif user_input.strip().lower().startswith('/save'):
                 # Save current conversation to history

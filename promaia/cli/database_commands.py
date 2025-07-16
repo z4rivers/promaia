@@ -642,8 +642,9 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
     filter_expr = filter_expr.strip()
     
     # Check for source prefix (source:filter_expression)
+    # But exclude global contains:"..." syntax which doesn't have a source prefix
     source_match = re.match(r'^([a-zA-Z0-9_.-]+):\s*(.+)$', filter_expr)
-    if source_match:
+    if source_match and not (filter_expr.startswith('contains:"') and ':' not in filter_expr[9:]):
         source = source_match.group(1)
         filter_part = source_match.group(2)
         
@@ -651,6 +652,17 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
         if ' or ' in filter_part.lower() or ' and ' in filter_part.lower():
             # Return source-specific complex filter
             return {'source': source, 'filter': f"__COMPLEX_EXPR__{filter_part}"}
+        
+        # Check for contains:"search term" syntax in source-specific filters
+        if filter_part.startswith('contains:"') and filter_part.endswith('"'):
+            # This is a complex filter since it uses the 'contains' operator
+            return {'source': source, 'filter': f"__COMPLEX_EXPR__{filter_part}"}
+        
+        # Check for simplified quoted search syntax: source:"search term"
+        if filter_part.startswith('"') and filter_part.endswith('"') and '=' not in filter_part and '>' not in filter_part and '<' not in filter_part:
+            # Convert to contains syntax: "search term" -> contains:"search term"
+            search_term = filter_part[1:-1]  # Remove quotes
+            return {'source': source, 'filter': f"__COMPLEX_EXPR__contains:\"{search_term}\""}
         
         # Handle simple comparison operators
         if '>' in filter_part:
@@ -664,11 +676,22 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
             converted_filter = filter_part
         else:
             # Invalid format
-            raise ValueError(f"Invalid filter format: '{filter_part}'. Use 'property=value', 'property>value', or 'property<value'")
+            raise ValueError(f"Invalid filter format: '{filter_part}'. Use 'property=value', 'property>value', 'property<value', '\"search term\"', or contains:\"search term\"")
         
         return {'source': source, 'filter': converted_filter}
     
     # No source prefix - handle as before for backward compatibility
+    # Check for contains:"search term" syntax first
+    if filter_expr.startswith('contains:"') and filter_expr.endswith('"'):
+        # This is a complex filter since it uses the 'contains' operator
+        return f"__COMPLEX_EXPR__{filter_expr}"
+    
+    # Check for simplified quoted search syntax: "search term"
+    if filter_expr.startswith('"') and filter_expr.endswith('"') and '=' not in filter_expr and '>' not in filter_expr and '<' not in filter_expr:
+        # Convert to contains syntax: "search term" -> contains:"search term"
+        search_term = filter_expr[1:-1]  # Remove quotes
+        return f"__COMPLEX_EXPR__contains:\"{search_term}\""
+    
     # Check if this is a complex expression with 'or' or 'and'
     if ' or ' in filter_expr.lower() or ' and ' in filter_expr.lower():
         # Return a special marker to indicate this needs complex parsing
@@ -686,7 +709,7 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
         return filter_expr
     else:
         # Invalid format
-        raise ValueError(f"Invalid filter format: '{filter_expr}'. Use 'property=value', 'property>value', 'property<value', or complex expressions with 'and'/'or'")
+        raise ValueError(f"Invalid filter format: '{filter_expr}'. Use 'property=value', 'property>value', 'property<value', '\"search term\"', or complex expressions with 'and'/'or', or contains:\"search term\"")
 
 
 def parse_complex_filter_expression(expr: str) -> Dict[str, Any]:
@@ -729,11 +752,23 @@ def parse_single_condition(condition: str) -> Dict[str, str]:
     """
     Parse a single condition like 'created_time<2024-12-30' or 'status=published'.
     Now supports quoted property names like '"Reference"=true' and '"Blog status"=live'.
+    Also supports contains:"search term" for full content search.
     
     Returns:
         Dictionary with property, operator, and value
     """
     condition = condition.strip()
+    
+    # Handle contains:"search term" syntax for full content search
+    contains_match = re.match(r'^contains:"([^"]*)"$', condition)
+    if contains_match:
+        search_term = contains_match.group(1)
+        return {'property': '_content', 'operator': 'contains', 'value': search_term}
+    
+    # Handle simplified quoted search syntax: "search term"
+    if condition.startswith('"') and condition.endswith('"') and '=' not in condition and '>' not in condition and '<' not in condition:
+        search_term = condition[1:-1]  # Remove quotes
+        return {'property': '_content', 'operator': 'contains', 'value': search_term}
     
     # Handle quoted property names
     # Look for patterns like "Property Name"=value or "Property Name">value
@@ -761,7 +796,7 @@ def parse_single_condition(condition: str) -> Dict[str, str]:
         prop, value = condition.split('=', 1)
         return {'property': prop.strip(), 'operator': '=', 'value': value.strip()}
     else:
-        raise ValueError(f"Invalid condition format: '{condition}'")
+        raise ValueError(f"Invalid condition format: '{condition}'. Use 'property=value', 'property>value', 'property<value', '\"search term\"', or contains:\"search term\"")
 
 
 def build_sql_from_complex_filter(complex_filter: Dict[str, Any], date_filter_prop: str) -> tuple[str, List[str]]:
@@ -929,18 +964,21 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
             logger.warning(f"Invalid date range format '{args.date_range}': {e}")
     
     # Handle individual start/end date arguments (override date_range if both specified)
+    explicit_dates_provided = False
     if hasattr(args, 'start_date') and args.start_date:
         start_date = parse_date_value(args.start_date)
+        explicit_dates_provided = True
         if not date_prop:
             date_prop = "created_time"
     
     if hasattr(args, 'end_date') and args.end_date:
         end_date = parse_date_value(args.end_date)
+        explicit_dates_provided = True
         if not date_prop:
             date_prop = "created_time"
 
-    # Case 2: Source-specific days (e.g., journal:30)
-    if source_spec.get("days") is not None:
+    # Case 2: Source-specific days (e.g., journal:30) - but only if no explicit dates provided
+    if source_spec.get("days") is not None and not explicit_dates_provided:
         source_days = source_spec.get("days")
         if source_days == 'all':
             # Sync all for this source
@@ -961,8 +999,8 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
             logger.debug(f"Using source days ({days_to_sync}). Date prop: {date_prop}. Start: {start_date}, End: {end_date}")
             return DateRangeFilter(property_name=date_prop or "last_edited_time", start_date=start_date, end_date=end_date)
 
-    # Case 3: --days argument is provided
-    if hasattr(args, 'days') and args.days is not None:
+    # Case 3: --days argument is provided - but only if no explicit dates provided
+    if hasattr(args, 'days') and args.days is not None and not explicit_dates_provided:
         days_to_sync = args.days if isinstance(args.days, int) else db_config.default_days
         # If --force, use created_time to get all items within the --days range
         # If not --force, it will effectively get items *created* within --days 
