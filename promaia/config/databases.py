@@ -207,7 +207,8 @@ class DatabaseManager:
             "markdown_base_directory": "data/md",
             "registry_db": "data/metadata.db",
             "enable_ai_editing": True,
-            "ai_edit_safety_mode": True
+            "ai_edit_safety_mode": True,
+            "savecontexts": True
         }
         
         # Migrate existing environment variables to new config

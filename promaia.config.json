@@ -6,6 +6,7 @@
     "registry_db": "data/metadata.db",
     "enable_ai_editing": true,
     "ai_edit_safety_mode": true,
+    "savecontexts": true,
     "display": {
       "plain_output": false,
       "copy_friendly_mode": true
@@ -29,7 +30,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-16T17:26:02.618022+00:00",
+      "last_sync_time": "2025-07-16T22:18:37.167471+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -78,7 +79,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-16T17:25:55.277333+00:00",
+      "last_sync_time": "2025-07-16T22:18:37.531950+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -221,7 +222,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-16T19:32:37.810894+00:00",
+      "last_sync_time": "2025-07-16T22:18:36.235479+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -246,7 +247,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-16T19:32:04.459494+00:00",
+      "last_sync_time": "2025-07-16T23:20:08.684322+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -269,7 +270,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-16T17:25:29.403012+00:00",
+      "last_sync_time": "2025-07-16T22:18:40.348130+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},

@@ -79,70 +79,84 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
     # Use provided schema info or default hybrid schema
     if schema_info is None:
         schema_info = f"""
-HYBRID ARCHITECTURE - Optimized separate tables for each content type:
+UNIFIED DATABASE ARCHITECTURE:
 
-IMPORTANT: This system uses the 'unified_content' view for all queries.
+IMPORTANT: This system uses ONE unified database with a 'unified_content' view for all queries.
+ALL content from different sources is stored in the same database but organized by content type.
 DEFAULT BEHAVIOR: Query across ALL workspaces unless specifically mentioned.
 
-OPTIMIZED TABLES BY CONTENT TYPE:
+CONTENT TYPES AVAILABLE:
 
-1. GMAIL (gmail_content table):
-   Direct columns: subject, sender_email, sender_name, recipient_emails, gmail_labels,
-                  thread_id, message_id, has_attachments, is_unread, body_snippet, email_date
-   Examples:
-   - "emails from john": WHERE sender_email LIKE '%john%' OR sender_name LIKE '%john%'
-   - "unread emails": WHERE is_unread = 1
-   - "emails with attachments": WHERE has_attachments = 1
-   - "emails from last week": WHERE datetime(email_date) >= datetime('now', '-7 days')
-
-2. NOTION JOURNAL (notion_journal table):
-   Direct columns: title, status, date_value, tags, featured, author_name
-   Examples:
-   - "published journal entries": WHERE status = 'Published'
-   - "featured journal entries": WHERE featured = 1
-   - "entries by author": WHERE author_name = 'Koii Benvenutto'
+1. GMAIL (database_name = 'gmail'):
+   Content from Gmail API - email threads and messages
+   Special columns: sender_email, sender_name, has_attachments, is_unread, thread_id
    
-3. NOTION STORIES (notion_stories table):
-   Direct columns: title, status, epic_relation, author_name, story_points, priority, labels
    Examples:
-   - "completed stories": WHERE status = 'Done'
-   - "high priority stories": WHERE priority = 'High'
-   - "stories with 5 points": WHERE story_points = 5
-   
-4. NOTION CMS (notion_cms table):
-   Direct columns: title, status, category, featured, author_name, slug, tags, publish_date
-   Examples:
-   - "published blog posts": WHERE status = 'Published'
-   - "featured content": WHERE featured = 1
-   - "posts in tech category": WHERE category = 'Tech'
+   - "emails from john": WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')
+   - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
+   - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
+   - "emails from last week": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-7 days')
+   - "last 15 days of trass emails": WHERE workspace = 'trass' AND database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-15 days')
 
-5. GENERIC CONTENT (generic_content table):
-   For unknown content types, use metadata JSON extraction
+2. NOTION JOURNAL (database_name = 'journal'):
+   Personal journal entries from Notion
+   Special columns: status, featured, author_name
+   Examples:
+   - "published journal entries": WHERE database_name = 'journal' AND status = 'Published'
+   - "featured journal entries": WHERE database_name = 'journal' AND featured = 1
+
+3. NOTION STORIES (database_name = 'stories'):
+   Project stories and tasks from Notion
+   Special columns: status, priority, story_points
+   Examples:
+   - "completed stories": WHERE database_name = 'stories' AND status = 'Done'
+   - "high priority stories": WHERE database_name = 'stories' AND priority = 'High'
+
+4. NOTION CMS (database_name = 'cms'):
+   Blog posts and content management from Notion
+   Special columns: status, category, featured, publish_date
+   Examples:
+   - "published blog posts": WHERE database_name = 'cms' AND status = 'Published'
+   - "featured content": WHERE database_name = 'cms' AND featured = 1
+
+5. OTHER CONTENT TYPES:
+   Other databases like 'awakenings', 'cpj', etc. use generic fields
 
 UNIFIED VIEW SCHEMA:
-The unified_content view provides these direct columns for fast access:
+The unified_content view provides these columns for ALL content types:
 
-Core columns (all content types):
+Core columns (available for all content):
 - page_id, workspace, database_name, content_type, file_path, title
 - created_time, last_edited_time, synced_time, file_size, checksum
 
-Direct filterable columns:
+Content-specific columns (only populated for relevant content types):
 - status (TEXT): Content status - 'Published', 'Draft', 'Done', 'In Progress', etc.
 - featured (INTEGER): 1 for featured content, 0 for normal, NULL if not applicable
 - priority (TEXT): Priority level - 'High', 'Medium', 'Low', etc.
-- category (TEXT): Content category 
-- sender_email (TEXT): Email sender for Gmail content
-- sender_name (TEXT): Sender name for Gmail content  
-- has_attachments (INTEGER): 1 if Gmail has attachments, 0 if not
-- is_unread (INTEGER): 1 if Gmail is unread, 0 if read
+- category (TEXT): Content category (mainly for CMS)
+- sender_email (TEXT): Email sender (only for Gmail content)
+- sender_name (TEXT): Sender name (only for Gmail content)
+- has_attachments (INTEGER): 1 if email has attachments (only for Gmail)
+- is_unread (INTEGER): 1 if email is unread (only for Gmail)
+
+DATE FILTERING RULES:
+- For Gmail content: Use last_edited_time for date filtering (aligns with sync behavior)
+- For Notion content (journal, stories, cms): Use created_time for date filtering
+- created_time contains the original creation date; last_edited_time contains the last sync/modification date
+- Examples:
+  - "last 5 days of emails": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-5 days')
+  - "recent journal entries": WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-7 days')
 
 SEARCH STRATEGY:
 - For text search: Always use content_filters, never try to search file content in SQL
 - For property searches: Use direct columns when available (status, featured, priority, etc.)
 - For date ranges: Use datetime() functions on created_time or last_edited_time
-- For Gmail: Use direct columns like sender_email, has_attachments, is_unread
+- Cross-workspace queries enabled - query any combination of workspaces and databases
 
-Cross-workspace queries enabled - query any combination of workspaces and databases.
+WORKSPACE ORGANIZATION:
+- Multiple workspaces can exist (e.g., 'koii', 'trass')
+- Each workspace can have multiple databases (gmail, journal, stories, cms, etc.)
+- Query across all workspaces by default unless specific workspace mentioned
 """
 
     # Get current date and time for temporal context
@@ -155,7 +169,14 @@ Cross-workspace queries enabled - query any combination of workspaces and databa
     current_month_num = current_datetime.month
 
     # Create AI prompt for generating SQL - ENHANCED for multiple queries
-    system_prompt = f"""You are an expert SQL query generator for a hybrid content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
+    system_prompt = f"""You are an expert SQL query generator for a unified content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
+
+DATE FILTERING RULE: 
+- For Gmail content: Use last_edited_time for date filtering (aligns with sync behavior)
+- For Notion content (journal, stories, cms): Use created_time for date filtering
+Examples:
+- Gmail: WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-5 days')
+- Notion: WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-5 days')
 
 CURRENT DATE AND TIME CONTEXT:
 - Current Date: {current_date_str}

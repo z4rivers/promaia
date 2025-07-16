@@ -15,6 +15,7 @@ from pathlib import Path
 
 from promaia.config.databases import DatabaseConfig, get_database_manager
 from promaia.storage.json_registry import get_json_registry
+from promaia.storage.hybrid_storage import get_hybrid_registry
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class UnifiedStorage:
         self.config_file = config_file
         self.db_manager = get_database_manager()
         self.json_registry = get_json_registry()
+        self.hybrid_registry = get_hybrid_registry()  # Add hybrid storage
         
     def save_content(self, 
                     page_id: str,
@@ -67,6 +69,30 @@ class UnifiedStorage:
         
         if md_path:
             saved_files['markdown'] = md_path
+            
+            # Also save to hybrid storage for optimized querying
+            try:
+                # Prepare content data for hybrid storage
+                hybrid_content_data = {
+                    'page_id': page_id,
+                    'workspace': database_config.workspace,
+                    'database_name': database_config.nickname,
+                    'file_path': md_path,
+                    'title': title,
+                    'created_time': content_data.get('created_time'),
+                    'last_edited_time': content_data.get('last_edited_time'),
+                    'synced_time': datetime.now().isoformat(),
+                    'file_size': os.path.getsize(md_path) if os.path.exists(md_path) else 0,
+                    'checksum': None,  # Can be added later if needed
+                    'metadata': content_data  # Pass the full content_data as metadata
+                }
+                
+                # Save to hybrid storage
+                self.hybrid_registry.add_content(hybrid_content_data)
+                logger.debug(f"Saved content to hybrid storage: {page_id}")
+                
+            except Exception as e:
+                logger.error(f"Error saving to hybrid storage for {page_id}: {e}")
         
         return saved_files
     

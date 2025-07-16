@@ -853,17 +853,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     if not reload_context():
         return
 
-    # Save debug file if debug mode is enabled
-    if DEBUG_MODE:
+    # Save context file if savecontexts is enabled in config
+    should_save_context = False
+    try:
+        from promaia.config.databases import get_database_manager
+        db_manager = get_database_manager()
+        should_save_context = db_manager.global_settings.get("savecontexts", True)
+    except Exception as e:
+        debug_print(f"Could not load savecontexts config, defaulting to True: {e}")
+        should_save_context = True
+    
+    if should_save_context:
         try:
             timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
-            debug_filename = f"debug/{timestamp}_session_init_prompt.txt"
+            context_filename = f"context logs/{timestamp}_session_init_prompt.txt"
 
-            # Ensure debug directory exists
-            os.makedirs("debug", exist_ok=True)
+            # Ensure context logs directory exists
+            os.makedirs("context logs", exist_ok=True)
 
-            # Write debug file with session info
-            with open(debug_filename, 'w', encoding='utf-8') as f:
+            # Write context file with session info
+            with open(context_filename, 'w', encoding='utf-8') as f:
                 f.write("=== MAIA CHAT SESSION INITIALIZATION ===\n")
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"API Type: {current_api}\n")
@@ -877,9 +886,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 f.write("="*50 + "\n")
                 f.write(system_prompt)
 
-            debug_print(f"Debug file saved: {debug_filename}")
+            debug_print(f"Context file saved: {context_filename}")
         except Exception as e:
-            debug_print(f"Failed to save debug file: {e}")
+            debug_print(f"Failed to save context file: {e}")
 
     # Display Welcome Message
     print()

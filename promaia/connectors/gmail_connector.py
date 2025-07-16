@@ -41,11 +41,15 @@ class GmailConnector(BaseConnector):
     - Exponential backoff retry logic for reliability
     - Removes artificial sync limits (was capped at 100 emails)
     - Complete email coverage for specified date ranges
+    - Smart content extraction with concise mode (default)
     
     Configuration Options:
-    - max_threads_per_batch (default: 25): Number of threads to process per batch
+    - max_threads_per_batch (default: 10): Number of threads to process per batch
     - chunk_size_days (default: 15): Days per chunk for large date ranges
     - max_retry_attempts (default: 5): Maximum retry attempts for failed requests
+    - gmail_content_mode (default: "latest_only"): Content extraction mode
+        * "latest_only": Only latest message (much more concise, recommended)
+        * "full_thread": All messages (legacy behavior, can be very verbose)
     
     Usage Examples:
     # Sync all emails from March 1st to June 30th, 2025:
@@ -54,11 +58,15 @@ class GmailConnector(BaseConnector):
     # Sync last 30 days (no artificial limits):
     maia database sync --source trass.gmail --days 30
     
+    # Enable full thread mode for complete email history (verbose):
+    Configure gmail_content_mode: "full_thread" in database config
+    
     # For very large date ranges, the system automatically:
     # 1. Breaks the range into 15-day chunks (configurable)
-    # 2. Processes threads in batches of 25 (configurable)  
+    # 2. Processes threads in batches of 10 (configurable)  
     # 3. Handles rate limits with exponential backoff
     # 4. Provides progress reporting
+    # 5. Uses concise content extraction to reduce token usage
     """
     
     # Gmail API scopes
@@ -71,6 +79,11 @@ class GmailConnector(BaseConnector):
     MAX_RETRY_DELAY = 32.0  # seconds
     RATE_LIMIT_RETRY_DELAY = 2.0  # seconds for 429 errors
     CHUNK_SIZE_DAYS = 15  # Break large date ranges into smaller chunks
+
+    # Content extraction configuration
+    GMAIL_CONTENT_MODE_LATEST_ONLY = "latest_only"  # Only latest message content
+    GMAIL_CONTENT_MODE_FULL_THREAD = "full_thread"  # All messages (old behavior)
+    DEFAULT_CONTENT_MODE = GMAIL_CONTENT_MODE_LATEST_ONLY  # Default to concise mode
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -495,10 +508,11 @@ class GmailConnector(BaseConnector):
             return None
     
     def _extract_thread_conversation(self, messages: List[Dict[str, Any]]) -> str:
-        """Extract complete conversation text from all messages in a thread.
+        """Extract conversation text from messages in a thread.
         
-        To ensure we capture the complete conversation history, we extract and format
-        all individual messages in the thread chronologically.
+        Supports two modes:
+        - latest_only: Only the latest message (default, much more concise)
+        - full_thread: All messages (legacy behavior, can be very verbose)
         """
         if not messages:
             return ""
@@ -506,9 +520,59 @@ class GmailConnector(BaseConnector):
         # Sort messages by date to ensure chronological order (oldest first)
         sorted_messages = sorted(messages, key=lambda m: int(m.get('internalDate', 0)))
         
-        # Always extract all individual messages to ensure complete thread history
-        self.logger.debug(f"Extracting complete conversation from {len(messages)} messages")
-        return self._extract_individual_messages(sorted_messages)
+        # Get content mode from config
+        content_mode = self.config.get('gmail_content_mode', self.DEFAULT_CONTENT_MODE)
+        
+        if content_mode == self.GMAIL_CONTENT_MODE_LATEST_ONLY:
+            # Only extract the latest message for concise output
+            self.logger.debug(f"Extracting latest message only from {len(messages)} messages (concise mode)")
+            return self._extract_latest_message_only(sorted_messages)
+        else:
+            # Legacy behavior: extract all messages (can be very verbose)
+            self.logger.debug(f"Extracting complete conversation from {len(messages)} messages (full thread mode)")
+            return self._extract_individual_messages(sorted_messages)
+    
+    def _extract_latest_message_only(self, messages: List[Dict[str, Any]]) -> str:
+        """Extract only the latest message content for concise email threads."""
+        if not messages:
+            return ""
+        
+        # Get the latest message
+        latest_message = messages[-1]
+        
+        headers = {h['name'].lower(): h['value'] 
+                  for h in latest_message.get('payload', {}).get('headers', [])}
+        
+        from_addr = headers.get('from', 'Unknown')
+        to_addr = headers.get('to', '')
+        date_str = headers.get('date', '')
+        subject = headers.get('subject', '')
+        
+        # Extract the message body
+        body = self._extract_message_body(latest_message)
+        
+        # Use snippet as fallback if body is empty
+        raw_content = body.strip() if body.strip() else latest_message.get('snippet', '')
+        
+        # Extract only new content (strip quoted/forwarded parts)
+        content = self._extract_new_content(raw_content)
+        
+        # If we have multiple messages, add a summary header
+        message_count = len(messages)
+        if message_count > 1:
+            thread_summary = f"**Thread Summary:** {message_count} messages in this conversation. Showing latest message only.\n\n"
+        else:
+            thread_summary = ""
+        
+        # Format with essential headers
+        formatted_message = f"""{thread_summary}From: {from_addr}
+Sent: {date_str}
+To: {to_addr}
+Subject: {subject}
+
+{content}"""
+        
+        return formatted_message.strip()
     
     def _extract_individual_messages(self, messages: List[Dict[str, Any]]) -> str:
         """Extract and format all individual messages in a thread chronologically."""
@@ -571,7 +635,7 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             if not new_content_lines and not line_stripped:
                 continue
             
-            # Stop at common quote indicators
+            # Enhanced quote indicators - be more aggressive at stopping
             if (line_stripped.startswith('>') or 
                 line_stripped.startswith('On ') and ('wrote:' in line_stripped or 'sent:' in line_stripped.lower()) or
                 line_stripped.startswith('From:') and '@' in line_stripped or
@@ -580,7 +644,18 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                 line_stripped.startswith('--- On ') or
                 'Begin forwarded message:' in line_stripped or
                 line_stripped.startswith('Sent from ') or
-                (line_stripped.startswith('*From:*') and '@' in line_stripped)):
+                (line_stripped.startswith('*From:*') and '@' in line_stripped) or
+                # Additional aggressive patterns for Gmail threads
+                'EXTERNAL EMAIL' in line_stripped or
+                'This email was sent by a person from outside your organization' in line_stripped or
+                'Exercise caution when clicking links' in line_stripped or
+                (line_stripped.startswith('To:') and '@' in line_stripped and len(new_content_lines) > 2) or
+                (line_stripped.startswith('Sent:') and ('AM' in line_stripped or 'PM' in line_stripped)) or
+                line_stripped.startswith('Subject: Re:') or
+                line_stripped.startswith('Subject: Fwd:') or
+                # Stop at quoted content patterns
+                line_stripped.startswith('< ') or  # Some email clients use this
+                (len(line_stripped) > 0 and line_stripped[0] in '|' and line_stripped.count('|') > 2)):
                 break
                 
             # Stop at email signatures (common patterns)
@@ -588,13 +663,23 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                 'unsubscribe' in line_stripped.lower() or
                 'privacy policy' in line_stripped.lower() or
                 'terms and conditions' in line_stripped.lower() or
-                line_stripped.startswith('This e-mail message may contain confidential')):
+                line_stripped.startswith('This e-mail message may contain confidential') or
+                'confidential and proprietary' in line_stripped.lower() or
+                'Best regards,' in line_stripped or
+                'Thanks,' in line_stripped and len(line_stripped) < 10):
                 break
             
             new_content_lines.append(line)
         
         # Clean up the result
         result = '\n'.join(new_content_lines).strip()
+        
+        # Additional cleanup: remove excessive whitespace and empty lines at the end
+        result_lines = result.split('\n')
+        # Remove trailing empty lines
+        while result_lines and not result_lines[-1].strip():
+            result_lines.pop()
+        result = '\n'.join(result_lines)
         
         # If we stripped everything, return a meaningful fallback
         if not result and content:
@@ -885,6 +970,29 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                                    include_properties: bool = True,
                                    force_update: bool = False,
                                    excluded_properties: List[str] = None) -> SyncResult:
+        """Sync Gmail threads to local storage using unified storage system with message-level appending."""
+        # Check if we're in message-level mode (new appending strategy)
+        content_mode = self.config.get('gmail_content_mode', 'latest_only')
+        
+        if content_mode == 'latest_only':
+            # Use new message-level appending strategy
+            return await self._sync_messages_with_appending(
+                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties
+            )
+        else:
+            # Use legacy thread-level sync (full thread replacement)
+            return await self._sync_threads_legacy(
+                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties
+            )
+    
+    async def _sync_threads_legacy(self, 
+                                   storage,
+                                   db_config,
+                                   filters: Optional[List[QueryFilter]] = None,
+                                   date_filter: Optional[DateRangeFilter] = None,
+                                   include_properties: bool = True,
+                                   force_update: bool = False,
+                                   excluded_properties: List[str] = None) -> SyncResult:
         """Sync Gmail threads to local storage using unified storage system."""
         result = SyncResult()
         result.start_time = datetime.now()
@@ -989,6 +1097,112 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             self.logger.error(f"Gmail sync failed: {e}")
             return result
     
+    async def _sync_messages_with_appending(self, 
+                                           storage,
+                                           db_config,
+                                           filters: Optional[List[QueryFilter]] = None,
+                                           date_filter: Optional[DateRangeFilter] = None,
+                                           include_properties: bool = True,
+                                           force_update: bool = False,
+                                           excluded_properties: List[str] = None) -> SyncResult:
+        """Sync Gmail using message-level appending strategy to avoid content duplication."""
+        result = SyncResult()
+        result.start_time = datetime.now()
+        
+        try:
+            # Get hybrid storage registry for message-level operations
+            from promaia.storage.hybrid_storage import get_hybrid_registry
+            hybrid_registry = get_hybrid_registry()
+            
+            # Query Gmail for recent threads
+            self.logger.info(f"Querying Gmail with date_filter: {date_filter}")
+            email_threads = await self.query_pages(
+                filters=filters, 
+                date_filter=date_filter
+            )
+            
+            if not email_threads:
+                self.logger.info("No new email threads found from Gmail query.")
+                return result
+            
+            self.logger.info(f"Found {len(email_threads)} email threads from Gmail query.")
+            result.pages_fetched = len(email_threads)
+            
+            # Process each thread and extract individual messages
+            messages_to_save = []
+            for thread in email_threads:
+                thread_id = thread.get('id')
+                messages = thread.get('messages', [])
+                
+                if not messages:
+                    continue
+                
+                # Get existing message IDs for this thread to avoid duplicates
+                existing_message_ids = hybrid_registry.get_existing_message_ids_for_thread(
+                    thread_id, db_config.workspace
+                )
+                
+                # Process each message in the thread
+                for i, message in enumerate(messages):
+                    message_id = message.get('id')
+                    
+                    # Skip if message already exists
+                    if message_id in existing_message_ids:
+                        self.logger.debug(f"Skipping existing message {message_id} in thread {thread_id}")
+                        continue
+                    
+                    # Prepare message data for storage
+                    message_data = self._prepare_message_for_storage(
+                        message, thread, i, len(messages), db_config, excluded_properties
+                    )
+                    messages_to_save.append(message_data)
+            
+            if not messages_to_save:
+                self.logger.info("No new messages to save after filtering.")
+                return result
+            
+            # Save individual messages
+            saved_count = 0
+            
+            for message_data in messages_to_save:
+                try:
+                    # Save message to storage
+                    storage.save_content(
+                        page_id=message_data['page_id'],
+                        title=message_data['metadata']['title'],
+                        content_data=message_data['metadata'],
+                        database_config=db_config,
+                        markdown_content=message_data['content']
+                    )
+                    
+                    # Update latest message flags if this is the latest message in its thread
+                    if message_data['metadata'].get('is_latest_in_thread'):
+                        hybrid_registry.update_latest_message_flags(
+                            message_data['metadata']['thread_id'],
+                            message_data['metadata']['message_id'],
+                            db_config.workspace
+                        )
+                    
+                    saved_count += 1
+                    result.pages_saved += 1
+                    
+                except Exception as page_error:
+                    self.logger.error(f"Failed to save message {message_data['page_id']}: {page_error}")
+                    result.errors.append(f"Failed to save {message_data['page_id']}: {str(page_error)}")
+                    result.pages_failed += 1
+            
+            result.success = saved_count > 0
+            self.logger.info(f"Message-level sync completed. {saved_count} messages saved")
+            
+        except Exception as e:
+            result.end_time = datetime.now()
+            result.errors.append(f"Gmail message-level sync failed: {str(e)}")
+            self.logger.error(f"Gmail message-level sync failed: {e}")
+            return result
+        
+        result.end_time = datetime.now()
+        return result
+    
     def _prepare_page_for_storage(self, thread: Dict[str, Any], db_config, excluded_properties: List[str] = None) -> Dict[str, Any]:
         """Prepare thread data for the unified storage format."""
         
@@ -1014,6 +1228,7 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             "title": thread.get('subject', 'No Subject'),
             "created_time": thread.get('date'),
             "last_edited_time": thread.get('date'),
+            "email_date": thread.get('date'),  # Add email_date for hybrid storage
             "synced_time": datetime.now(timezone.utc).isoformat(),
             "source_id": thread.get('thread_id'),
             "data_source": "gmail",
@@ -1064,4 +1279,77 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if has_attachments:
             attachment_note = "\n\n---\n**Note:** This email thread contains attachments. Attachment details are stored in the JSON data but files are not downloaded.\n"
         
-        return header + conversation + attachment_note 
+        return header + conversation + attachment_note
+    
+    def _prepare_message_for_storage(self, message: Dict[str, Any], thread: Dict[str, Any], 
+                                   message_index: int, total_messages: int, db_config, 
+                                   excluded_properties: List[str] = None) -> Dict[str, Any]:
+        """Prepare individual message data for storage with thread context."""
+        
+        # Extract message headers
+        headers = {h['name'].lower(): h['value'] 
+                  for h in message.get('payload', {}).get('headers', [])}
+        
+        message_id = message.get('id')
+        thread_id = thread.get('id')
+        subject = headers.get('subject', 'No Subject')
+        from_addr = headers.get('from', 'Unknown')
+        to_addr = headers.get('to', '')
+        date_str = headers.get('date', '')
+        
+        # Create unique page_id for this individual message
+        page_id = f"msg_{message_id}"
+        
+        # Extract clean message content (no quoted history)
+        body = self._extract_message_body(message)
+        raw_content = body.strip() if body.strip() else message.get('snippet', '')
+        clean_content = self._extract_new_content(raw_content)
+        
+        # Determine if this is the latest message in the thread
+        is_latest = message_index == (total_messages - 1)
+        
+        # Create markdown content for individual message
+        markdown_content = f"""# Email Message: {subject}
+
+**From:** {from_addr}  
+**To:** {to_addr}  
+**Date:** {date_str}  
+**Thread:** {thread_id}  
+**Position:** {message_index + 1} of {total_messages}  
+**Is Latest:** {'Yes' if is_latest else 'No'}  
+
+---
+
+{clean_content}
+
+---
+**Thread Context:** This is message {message_index + 1} of {total_messages} in thread {thread_id}
+"""
+        
+        # Prepare metadata for storage
+        metadata = {
+            "page_id": page_id,
+            "title": f"{subject} (Message {message_index + 1})",
+            "created_time": date_str,
+            "last_edited_time": thread.get('date'),  # Thread's latest message date
+            "thread_id": thread_id,
+            "message_id": message_id,
+            "subject": subject,
+            "sender_email": from_addr,
+            "sender_name": from_addr.split('<')[0].strip() if '<' in from_addr else from_addr,
+            "recipient_emails": [to_addr] if to_addr else [],
+            "labels": thread.get('labels', []),
+            "has_attachments": thread.get('has_attachments', False),
+            "is_unread": thread.get('is_unread', False),
+            "body_snippet": message.get('snippet', ''),
+            "message_content": clean_content,
+            "thread_position": message_index,
+            "is_latest_in_thread": is_latest,
+            "email_date": date_str
+        }
+        
+        return {
+            'page_id': page_id,
+            'content': markdown_content,
+            'metadata': metadata
+        } 

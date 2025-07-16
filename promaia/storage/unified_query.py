@@ -198,68 +198,68 @@ class HybridQueryInterface:
         # For cross-workspace queries, we don't need specific workspace context
         # The AI will handle workspace filtering in the SQL when specifically mentioned
         
-        # Enhanced schema info for hybrid architecture
+        # Enhanced schema info for unified architecture
         schema_info = f"""
-        HYBRID ARCHITECTURE - Optimized separate tables for each content type:
+        UNIFIED DATABASE ARCHITECTURE - All content in one database with optimized views:
         
-        IMPORTANT: In this hybrid architecture, you MUST use the 'unified_content' view for all queries.
+        IMPORTANT: This system uses the 'unified_content' view for all queries.
         
-        OPTIMIZED TABLES BY CONTENT TYPE:
+        CONTENT TYPES AVAILABLE:
         
-        1. GMAIL (gmail_content table):
-           Direct columns: subject, sender_email, sender_name, recipient_emails, gmail_labels,
-                          thread_id, message_id, has_attachments, is_unread, body_snippet, email_date
+        1. GMAIL (database_name = 'gmail'):
+           Special columns: sender_email, sender_name, has_attachments, is_unread, thread_id
            Examples:
-           - "emails from john": WHERE sender_email LIKE '%john%' OR sender_name LIKE '%john%'
-           - "unread emails": WHERE is_unread = 1
-           - "emails with attachments": WHERE has_attachments = 1
-           - "emails from last week": WHERE datetime(email_date) >= datetime('now', '-7 days')
+           - "emails from john": WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')
+           - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
+           - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
+           - "emails from last week": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-7 days')
         
-        2. NOTION JOURNAL (notion_journal table):
-           Direct columns: title, status, date_value, tags, featured, author_name
+        2. NOTION JOURNAL (database_name = 'journal'):
+           Special columns: status, featured, author_name
            Examples:
-           - "published journal entries": WHERE status = 'Published'
-           - "featured journal entries": WHERE featured = 1
-           - "entries by author": WHERE author_name = 'Koii Benvenutto'
+           - "published journal entries": WHERE database_name = 'journal' AND status = 'Published'
+           - "featured journal entries": WHERE database_name = 'journal' AND featured = 1
            
-        3. NOTION STORIES (notion_stories table):
-           Direct columns: title, status, epic_relation, author_name, story_points, priority, labels
+        3. NOTION STORIES (database_name = 'stories'):
+           Special columns: status, priority, story_points
            Examples:
-           - "completed stories": WHERE status = 'Done'
-           - "high priority stories": WHERE priority = 'High'
-           - "stories with 5 points": WHERE story_points = 5
+           - "completed stories": WHERE database_name = 'stories' AND status = 'Done'
+           - "high priority stories": WHERE database_name = 'stories' AND priority = 'High'
            
-        4. NOTION CMS (notion_cms table):
-           Direct columns: title, status, category, featured, author_name, slug, tags, publish_date
+        4. NOTION CMS (database_name = 'cms'):
+           Special columns: status, category, featured, publish_date
            Examples:
-           - "published blog posts": WHERE status = 'Published'
-           - "featured content": WHERE featured = 1
-           - "posts in tech category": WHERE category = 'Tech'
+           - "published blog posts": WHERE database_name = 'cms' AND status = 'Published'
+           - "featured content": WHERE database_name = 'cms' AND featured = 1
         
-        5. GENERIC CONTENT (generic_content table):
-           For unknown content types, use metadata JSON extraction
+        5. OTHER CONTENT TYPES:
+           Other databases use generic fields and metadata JSON extraction
         
         UNIFIED VIEW SCHEMA:
-        The unified_content view provides these direct columns for fast access:
+        The unified_content view provides these columns for ALL content types:
         
-        Core columns (all content types):
+        Core columns (available for all content):
         - page_id, workspace, database_name, content_type, file_path, title
         - created_time, last_edited_time, synced_time, file_size, checksum
         
-        Direct filterable columns:
+        Content-specific columns (only populated for relevant content types):
         - status (TEXT): Content status - 'Published', 'Draft', 'Done', 'In Progress', etc.
         - featured (INTEGER): 1 for featured content, 0 for normal, NULL if not applicable
         - priority (TEXT): Priority level - 'High', 'Medium', 'Low', etc.
-        - category (TEXT): Content category 
-        - sender_email (TEXT): Email sender for Gmail content
-        - sender_name (TEXT): Sender name for Gmail content  
-        - has_attachments (INTEGER): 1 if Gmail has attachments, 0 if not
-        - is_unread (INTEGER): 1 if Gmail is unread, 0 if read
+        - category (TEXT): Content category (mainly for CMS)
+        - sender_email (TEXT): Email sender (only for Gmail content)
+        - sender_name (TEXT): Sender name (only for Gmail content)
+        - has_attachments (INTEGER): 1 if email has attachments (only for Gmail)
+        - is_unread (INTEGER): 1 if email is unread (only for Gmail)
+        
+        DATE FILTERING:
+        - For ALL content types including Gmail: Use created_time for date filtering
+        - created_time contains the original date (email date for Gmail, page creation for Notion)
         
         QUERY PATTERNS:
         SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name 
         FROM unified_content 
-        WHERE [your conditions using direct columns - workspace filters only when specified]
+        WHERE [conditions using database_name and direct columns]
         
         Cross-workspace queries enabled - query any combination of workspaces and databases.
         """

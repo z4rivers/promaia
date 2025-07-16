@@ -30,37 +30,43 @@ class HybridContentRegistry:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            # Create Gmail-specific table with optimized schema
+            # Create Gmail-specific table with optimized schema for individual messages
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS gmail_content (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
+                    page_id TEXT UNIQUE NOT NULL,  -- Individual message ID
                     workspace TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     
-                    -- Gmail-specific fields
+                    -- Gmail-specific fields for individual messages
                     subject TEXT,
                     sender_email TEXT,
                     sender_name TEXT,
                     recipient_emails TEXT, -- JSON array
                     gmail_labels TEXT, -- JSON array
-                    thread_id TEXT,
-                    message_id TEXT,
+                    thread_id TEXT NOT NULL,  -- Links messages in same conversation
+                    message_id TEXT UNIQUE NOT NULL,  -- Gmail's unique message identifier
                     has_attachments BOOLEAN DEFAULT FALSE,
                     is_unread BOOLEAN DEFAULT FALSE,
                     body_snippet TEXT,
+                    message_content TEXT,  -- Full message content (extracted, not quoted)
+                    
+                    -- Message position in thread
+                    thread_position INTEGER DEFAULT 0,  -- 0 = first message, 1 = second, etc.
+                    is_latest_in_thread BOOLEAN DEFAULT FALSE,  -- TRUE for the most recent message in thread
                     
                     -- Common timestamp fields (properly typed)
-                    email_date TEXT, -- Gmail's original date
+                    email_date TEXT, -- Gmail's original message date
                     created_time TEXT,
-                    last_edited_time TEXT,
+                    last_edited_time TEXT,  -- For threads, this is the latest message date
                     synced_time TEXT NOT NULL,
                     
                     -- File metadata
                     file_size INTEGER,
                     checksum TEXT,
                     
-                    UNIQUE(page_id)
+                    UNIQUE(page_id),
+                    UNIQUE(message_id)
                 )
             """)
             
@@ -212,6 +218,7 @@ class HybridContentRegistry:
                     NULL as featured,
                     NULL as priority,
                     NULL as category,
+                    email_date,  -- Add email_date as direct column for Gmail queries
                     -- Metadata for complex fields
                     json_object(
                         'subject', subject,
@@ -248,6 +255,7 @@ class HybridContentRegistry:
                     featured,
                     NULL as priority,
                     NULL as category,
+                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
                     -- Metadata for complex fields
                     json_object(
                         'status', status,
@@ -281,6 +289,7 @@ class HybridContentRegistry:
                     NULL as featured,
                     priority,
                     NULL as category,
+                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
                     -- Metadata for complex fields
                     json_object(
                         'status', status,
@@ -315,6 +324,7 @@ class HybridContentRegistry:
                     featured,
                     NULL as priority,
                     category,
+                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
                     -- Metadata for complex fields
                     json_object(
                         'status', status,
@@ -350,6 +360,7 @@ class HybridContentRegistry:
                     CAST(json_extract(metadata, '$.featured') AS INTEGER) as featured,
                     json_extract(metadata, '$.priority') as priority,
                     json_extract(metadata, '$.category') as category,
+                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
                     metadata
                 FROM generic_content
             """)
@@ -362,11 +373,15 @@ class HybridContentRegistry:
     
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
-        # Gmail indexes
+        # Gmail indexes for message-level storage
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_workspace ON gmail_content (workspace)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_sender ON gmail_content (sender_email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_date ON gmail_content (email_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels ON gmail_content (gmail_labels)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_id ON gmail_content (thread_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_message_id ON gmail_content (message_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_position ON gmail_content (thread_id, thread_position)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_latest_in_thread ON gmail_content (thread_id, is_latest_in_thread)")
         
         # Journal indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_journal_workspace ON notion_journal (workspace, database_name)")
@@ -403,9 +418,10 @@ class HybridContentRegistry:
                     INSERT OR REPLACE INTO gmail_content (
                         page_id, workspace, file_path, subject, sender_email, sender_name,
                         recipient_emails, gmail_labels, thread_id, message_id, 
-                        has_attachments, is_unread, body_snippet, email_date,
+                        has_attachments, is_unread, body_snippet, message_content,
+                        thread_position, is_latest_in_thread, email_date,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -420,6 +436,9 @@ class HybridContentRegistry:
                     metadata.get('has_attachments', False),
                     metadata.get('is_unread', False),
                     metadata.get('body_snippet'),
+                    metadata.get('message_content', ''),
+                    metadata.get('thread_position', 0),
+                    metadata.get('is_latest_in_thread', False),
                     metadata.get('email_date'),
                     content_data.get('created_time'),
                     content_data.get('last_edited_time'),
@@ -434,6 +453,58 @@ class HybridContentRegistry:
         except Exception as e:
             logger.error(f"Error adding Gmail content: {e}")
             return False
+    
+    def get_existing_message_ids_for_thread(self, thread_id: str, workspace: str = None) -> set:
+        """Get existing message IDs for a thread to avoid duplicates."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                query = "SELECT message_id FROM gmail_content WHERE thread_id = ?"
+                params = [thread_id]
+                
+                if workspace:
+                    query += " AND workspace = ?"
+                    params.append(workspace)
+                
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+                
+                return {row[0] for row in results if row[0]}
+                
+        except Exception as e:
+            logger.error(f"Error getting existing message IDs for thread {thread_id}: {e}")
+            return set()
+    
+    def update_latest_message_flags(self, thread_id: str, latest_message_id: str, workspace: str = None):
+        """Update is_latest_in_thread flags for a thread."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # First, set all messages in thread to not latest
+                query = "UPDATE gmail_content SET is_latest_in_thread = FALSE WHERE thread_id = ?"
+                params = [thread_id]
+                
+                if workspace:
+                    query += " AND workspace = ?"
+                    params.append(workspace)
+                
+                cursor.execute(query, params)
+                
+                # Then set the latest message to TRUE
+                query = "UPDATE gmail_content SET is_latest_in_thread = TRUE WHERE message_id = ?"
+                params = [latest_message_id]
+                
+                if workspace:
+                    query += " AND workspace = ?"
+                    params.append(workspace)
+                
+                cursor.execute(query, params)
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Error updating latest message flags for thread {thread_id}: {e}")
     
     def add_notion_journal(self, content_data: Dict[str, Any]) -> bool:
         """Add Notion journal content with optimized schema."""
