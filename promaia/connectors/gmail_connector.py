@@ -625,6 +625,18 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if not content:
             return ""
         
+        # First, try to split inline quotes using regex patterns
+        # Pattern for "On [date] at [time] [sender] <email> wrote:"
+        inline_quote_pattern = r'\s+On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d+,\s+202\d\s+at\s+\d+:\d+\s+(AM|PM)\s+[^<]+<[^>]+>\s+wrote:'
+        
+        match = re.search(inline_quote_pattern, content)
+        if match:
+            # Split at the quote and return only the part before it
+            clean_content = content[:match.start()].strip()
+            self.logger.debug(f"Inline quote detected and removed at position {match.start()}")
+            return clean_content
+        
+        # Fallback to line-by-line processing for other quote formats
         lines = content.split('\n')
         new_content_lines = []
         
@@ -636,26 +648,42 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                 continue
             
             # Enhanced quote indicators - be more aggressive at stopping
+            line_lower = line_stripped.lower()
+            
             if (line_stripped.startswith('>') or 
-                line_stripped.startswith('On ') and ('wrote:' in line_stripped or 'sent:' in line_stripped.lower()) or
+                # Gmail quote patterns - more comprehensive
+                (line_stripped.startswith('On ') and (
+                    'wrote:' in line_stripped or 'sent:' in line_lower or 
+                    ('at ' in line_stripped and ('AM' in line_stripped or 'PM' in line_stripped) and '<' in line_stripped)
+                )) or
                 line_stripped.startswith('From:') and '@' in line_stripped or
                 line_stripped.startswith('-----Original Message-----') or
                 line_stripped.startswith('________________________________') or
-                line_stripped.startswith('--- On ') or
+                # More flexible dash patterns for quoted content
+                (line_stripped.startswith('---') and (' on ' in line_lower or ' On ' in line_stripped)) or
+                (line_stripped.startswith('----') and (' on ' in line_lower or ' On ' in line_stripped)) or
+                # Common email quote patterns
                 'Begin forwarded message:' in line_stripped or
                 line_stripped.startswith('Sent from ') or
                 (line_stripped.startswith('*From:*') and '@' in line_stripped) or
-                # Additional aggressive patterns for Gmail threads
+                # Gmail-specific patterns
                 'EXTERNAL EMAIL' in line_stripped or
                 'This email was sent by a person from outside your organization' in line_stripped or
                 'Exercise caution when clicking links' in line_stripped or
-                (line_stripped.startswith('To:') and '@' in line_stripped and len(new_content_lines) > 2) or
-                (line_stripped.startswith('Sent:') and ('AM' in line_stripped or 'PM' in line_stripped)) or
-                line_stripped.startswith('Subject: Re:') or
-                line_stripped.startswith('Subject: Fwd:') or
+                'CAUTION: This email originated from outside' in line_stripped or
+                # Email header patterns (be careful not to catch legitimate headers at start)
+                (line_stripped.startswith('To:') and '@' in line_stripped and len(new_content_lines) > 3) or
+                (line_stripped.startswith('Sent:') and ('AM' in line_stripped or 'PM' in line_stripped) and len(new_content_lines) > 2) or
+                (line_stripped.startswith('Subject: Re:') and len(new_content_lines) > 2) or
+                (line_stripped.startswith('Subject: Fwd:') and len(new_content_lines) > 2) or
                 # Stop at quoted content patterns
                 line_stripped.startswith('< ') or  # Some email clients use this
-                (len(line_stripped) > 0 and line_stripped[0] in '|' and line_stripped.count('|') > 2)):
+                (len(line_stripped) > 0 and line_stripped[0] in '|' and line_stripped.count('|') > 2) or
+                # More aggressive email thread patterns
+                (' wrote:' in line_lower and '@' in line_stripped) or
+                (' said:' in line_lower and '@' in line_stripped) or
+                # Additional Gmail quote patterns
+                ('On ' in line_stripped and ', 202' in line_stripped and ' at ' in line_stripped and ('AM' in line_stripped or 'PM' in line_stripped) and len(new_content_lines) > 2)):
                 break
                 
             # Stop at email signatures (common patterns)
