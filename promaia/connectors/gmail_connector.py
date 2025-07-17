@@ -625,16 +625,27 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if not content:
             return ""
         
-        # First, try to split inline quotes using regex patterns
-        # Pattern for "On [date] at [time] [sender] <email> wrote:"
-        inline_quote_pattern = r'\s+On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d+,\s+202\d\s+at\s+\d+:\d+\s+(AM|PM)\s+[^<]+<[^>]+>\s+wrote:'
+        # First, try to split inline quotes using multiple regex patterns
+        inline_quote_patterns = [
+            # Gmail format: "On [date] at [time] [sender] <email> wrote:"
+            r'\s+On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d+,\s+202\d\s+at\s+\d+:\d+\s+(AM|PM)\s+[^<]+<[^>]+>\s+wrote:',
+            # Outlook format: "From: [sender] Sent: [date] To: [recipient]"
+            r'\s+From:\s+[^<\n]+<[^>]+>\s+Sent:\s+[A-Za-z]+\s+\d+,\s+202\d',
+            # Simple Outlook: "From: [sender] Sent:"
+            r'\s+From:\s+[^\n]+\s+Sent:\s+[A-Za-z]',
+            # Original message marker
+            r'\s+-----Original Message-----',
+            # Generic "From:" header in quotes
+            r'\s+From:\s+[^\n]*@[^\n]*\s+(Sent|Date):',
+        ]
         
-        match = re.search(inline_quote_pattern, content)
-        if match:
-            # Split at the quote and return only the part before it
-            clean_content = content[:match.start()].strip()
-            self.logger.debug(f"Inline quote detected and removed at position {match.start()}")
-            return clean_content
+        for pattern in inline_quote_patterns:
+            match = re.search(pattern, content)
+            if match:
+                # Split at the quote and return only the part before it
+                clean_content = content[:match.start()].strip()
+                self.logger.debug(f"Inline quote detected and removed at position {match.start()} using pattern")
+                return clean_content
         
         # Fallback to line-by-line processing for other quote formats
         lines = content.split('\n')
