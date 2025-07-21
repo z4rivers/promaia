@@ -5,7 +5,13 @@
 
 # If we're already in the promaia directory, run the CLI instead
 if [[ -f "promaia.config.json" ]] && [[ -d "promaia" ]]; then
-    python3 -m promaia "$@"
+    # Activate virtual environment and run CLI
+    if [ -d "venv" ]; then
+        source "venv/bin/activate"
+        python -m promaia "$@"
+    else
+        python3 -m promaia "$@"
+    fi
     exit $?
 fi
 
