@@ -3,6 +3,9 @@ JSON Content Registry - SQLite database for tracking JSON content files.
 
 This module provides a registry system for managing JSON content files in a flat structure,
 making them easily accessible without requiring a navigable directory hierarchy.
+
+DEPRECATED: This module is deprecated in favor of the hybrid storage architecture.
+Use HybridContentRegistry from promaia.storage.hybrid_storage instead.
 """
 import sqlite3
 import os
@@ -15,9 +18,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class JSONContentRegistry:
-    """SQLite-based registry for tracking JSON content files."""
+    """SQLite-based registry for tracking JSON content files.
     
-    def __init__(self, db_path: str = "data/metadata.db"):
+    DEPRECATED: Use HybridContentRegistry instead for new functionality.
+    """
+    
+    def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         self.db_path = db_path
         self.init_database()
     
@@ -32,41 +38,41 @@ class JSONContentRegistry:
             # Create content registry table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS content_registry (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
+                    page_id TEXT PRIMARY KEY,
                     workspace TEXT NOT NULL,
                     database_name TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     title TEXT,
                     created_time TEXT,
                     last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-                    content_type TEXT DEFAULT 'page',
+                    synced_time TEXT DEFAULT CURRENT_TIMESTAMP,
                     file_size INTEGER,
                     checksum TEXT,
-                    metadata TEXT,  -- JSON string for additional metadata
-                    UNIQUE(page_id)
+                    metadata TEXT,
+                    sync_status TEXT DEFAULT 'synced',
+                    last_synced TEXT
                 )
             """)
             
-            # Create indexes for better query performance
+            # Create indexes for faster queries
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_workspace_database 
-                ON content_registry (workspace, database_name)
+                CREATE INDEX IF NOT EXISTS idx_workspace_db 
+                ON content_registry(workspace, database_name)
             """)
             
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_page_id 
-                ON content_registry (page_id)
+                CREATE INDEX IF NOT EXISTS idx_last_edited 
+                ON content_registry(last_edited_time)
             """)
             
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_synced_time 
-                ON content_registry (synced_time)
+                CREATE INDEX IF NOT EXISTS idx_sync_status 
+                ON content_registry(sync_status)
             """)
             
             conn.commit()
-            logger.info(f"Initialized JSON content registry at {self.db_path}")
+            logger.debug(f"Initialized JSON content registry at {self.db_path}")
     
     def register_content(self, 
                         page_id: str, 
@@ -367,5 +373,5 @@ def get_json_registry(db_path: Optional[str] = None) -> JSONContentRegistry:
     """Get the global JSON content registry instance."""
     global _registry_instance
     if _registry_instance is None or (db_path and db_path != _registry_instance.db_path):
-        _registry_instance = JSONContentRegistry(db_path or "data/metadata.db")
+        _registry_instance = JSONContentRegistry(db_path or "data/hybrid_metadata.db")
     return _registry_instance 

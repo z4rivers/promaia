@@ -7,7 +7,7 @@ from typing import Dict, Any
 from pathlib import Path
 
 from promaia.storage.unified_storage import get_unified_storage
-from promaia.storage.json_registry import get_json_registry
+from promaia.storage.hybrid_storage import get_hybrid_registry
 
 def handle_migration_migrate(args):
     """
@@ -59,7 +59,7 @@ def handle_migration_migrate(args):
             print(f"✅ Migration complete: {total_migrations} files migrated successfully")
             
             # Show registry stats after migration
-            registry_stats = get_json_registry().get_stats()
+            registry_stats = get_hybrid_registry().get_stats()
             print(f"📊 JSON registry now contains {registry_stats['total_content']} entries")
         
     except Exception as e:
@@ -113,13 +113,13 @@ def handle_migration_show_target(args):
     print("│           └── stories/")
     print("├── json/")
     print("│   └── [flat structure with all JSON files]")
-    print("└── metadata.db")
-    print("    └── [SQLite registry for JSON content]")
+    print("└── hybrid_metadata.db")
+    print("    └── [SQLite hybrid registry with optimized tables]")
 
 def handle_migration_registry_stats(args):
     """Show JSON content registry statistics."""
     try:
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         stats = registry.get_stats()
         
         print("📊 JSON Content Registry Statistics:")
@@ -149,7 +149,7 @@ def handle_migration_registry_stats(args):
 def handle_migration_list_content(args):
     """List content from the JSON registry."""
     try:
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         content_list = registry.list_content(
             workspace=args.workspace,
             database_name=args.database,
@@ -178,7 +178,7 @@ def handle_migration_list_content(args):
 def handle_migration_cleanup(args):
     """Clean up orphaned entries in the JSON registry."""
     try:
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         removed_count = registry.cleanup_orphaned_entries()
         
         if removed_count > 0:
@@ -197,7 +197,7 @@ def handle_file_rename_migration(args):
     from datetime import datetime
     from pathlib import Path
     from promaia.config.databases import get_database_manager
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     
     print("🔄 File Rename Migration: Adding date prefixes to markdown files")
     print()
@@ -209,7 +209,7 @@ def handle_file_rename_migration(args):
     
     try:
         db_manager = get_database_manager()
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         
         renamed_count = 0
         skipped_count = 0

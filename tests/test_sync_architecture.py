@@ -162,7 +162,7 @@ class TestSyncArchitecture(unittest.TestCase):
             self.assertFalse(forbidden_path.exists(), f"Forbidden old-style trass directory {forbidden_dir} was created")
         
         # Verify JSON registry is working
-        registry_db = self.project_root / "data/metadata.db"
+        registry_db = self.project_root / "data/hybrid_metadata.db"
         if registry_db.exists():
             conn = sqlite3.connect(registry_db)
             cursor = conn.cursor()

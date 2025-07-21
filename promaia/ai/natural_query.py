@@ -22,16 +22,98 @@ load_environment()
 
 
 def get_ai_client():
-    """Get an available AI client, preferring Anthropic, then Gemini, then OpenAI."""
+    """Get an available AI client, preferring Anthropic, then Gemini, then Local Llama, then OpenAI."""
     if os.getenv("ANTHROPIC_API_KEY"):
         return Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     elif os.getenv("GOOGLE_API_KEY"):
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
         return genai
+    elif os.getenv("LLAMA_BASE_URL"):
+        # Try to initialize local Llama client
+        try:
+            import requests
+            llama_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+            test_url = f"{llama_url.rstrip('/')}/api/tags" if "ollama" in llama_url or ":11434" in llama_url else f"{llama_url.rstrip('/')}/v1/models"
+            response = requests.get(test_url, timeout=2)
+            if response.status_code == 200:
+                return OpenAI(
+                    base_url=f"{llama_url.rstrip('/')}/v1",
+                    api_key=os.getenv("LLAMA_API_KEY", "local-llama")
+                )
+        except Exception:
+            pass
     elif os.getenv("OPENAI_API_KEY"):
         return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     else:
-        raise ValueError("No AI API key configured. Please set ANTHROPIC_API_KEY, GOOGLE_API_KEY, or OPENAI_API_KEY")
+        raise ValueError("No AI API key configured. Please set ANTHROPIC_API_KEY, GOOGLE_API_KEY, LLAMA_BASE_URL, or OPENAI_API_KEY")
+
+
+def extract_json_from_response(text: str) -> Dict[str, Any]:
+    """
+    Extract JSON from AI response that may contain conversational text.
+    
+    This function handles cases where the AI includes explanatory text
+    before or after the JSON response.
+    """
+    # Try to find JSON blocks using multiple approaches
+    
+    # Method 1: Look for balanced braces with proper nesting
+    brace_count = 0
+    start_idx = -1
+    
+    for i, char in enumerate(text):
+        if char == '{':
+            if brace_count == 0:
+                start_idx = i
+            brace_count += 1
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0 and start_idx != -1:
+                # Found a complete JSON block
+                json_candidate = text[start_idx:i+1]
+                try:
+                    return json.loads(json_candidate)
+                except json.JSONDecodeError:
+                    # Continue looking for other JSON blocks
+                    continue
+    
+    # Method 2: Look for content between markdown code blocks
+    code_block_patterns = [
+        r'```json\s*\n(.*?)\n```',
+        r'```\s*\n(.*?)\n```',
+        r'`(.*?)`'
+    ]
+    
+    for pattern in code_block_patterns:
+        matches = re.findall(pattern, text, re.DOTALL)
+        for match in matches:
+            try:
+                return json.loads(match.strip())
+            except json.JSONDecodeError:
+                continue
+    
+    # Method 3: Try to parse the entire text as JSON (fallback)
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+    
+    # Method 4: Look for lines that start with { and try to parse from there
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if line.strip().startswith('{'):
+            # Try to parse from this line to the end
+            remaining_text = '\n'.join(lines[i:])
+            try:
+                return json.loads(remaining_text)
+            except json.JSONDecodeError:
+                # Try just this line
+                try:
+                    return json.loads(line.strip())
+                except json.JSONDecodeError:
+                    continue
+    
+    return {}
 
 
 def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, List[Dict[str, Any]]]:
@@ -53,19 +135,27 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
     
     # For cross-workspace queries, we don't need specific workspace context
     # We'll use a default workspace just to establish database connection
-    workspace_for_db = workspace or "koii"  # Use any available workspace for DB connection
+    # Use the provided workspace, or find an available one
+    workspace_for_db = workspace
+    if not workspace_for_db:
+        from promaia.config.workspaces import get_workspace_manager
+        workspace_manager = get_workspace_manager()
+        available_workspaces = workspace_manager.list_workspaces()
+        workspace_for_db = available_workspaces[0] if available_workspaces else "koii"
     
     try:
-        db_context = query_interface.get_database_context(workspace_for_db)
+        # For cross-workspace queries, check if ANY workspace has content
+        from promaia.config.workspaces import get_workspace_manager
+        workspace_manager = get_workspace_manager()
+        available_workspaces = workspace_manager.list_workspaces()
         
-        if not db_context:
-            # Try to find any available workspace
-            from promaia.config.workspaces import get_workspace_manager
-            workspace_manager = get_workspace_manager()
-            available_workspaces = workspace_manager.list_workspaces()
-            if available_workspaces:
-                workspace_for_db = available_workspaces[0]
-                db_context = query_interface.get_database_context(workspace_for_db)
+        db_context = None
+        for ws in available_workspaces:
+            test_context = query_interface.get_database_context(ws)
+            if test_context:
+                db_context = test_context
+                workspace_for_db = ws
+                break
             
         if not db_context:
             raise ValueError("No databases found in any workspace")
@@ -83,7 +173,9 @@ UNIFIED DATABASE ARCHITECTURE:
 
 IMPORTANT: This system uses ONE unified database with a 'unified_content' view for all queries.
 ALL content from different sources is stored in the same database but organized by content type.
-DEFAULT BEHAVIOR: Query across ALL workspaces unless specifically mentioned.
+DEFAULT BEHAVIOR: Query across ALL workspaces - DO NOT add workspace filters unless explicitly requested.
+
+CRITICAL RULE: When users mention workspace names like "trass", "koii", etc. in casual queries, they are just describing the content type, NOT requesting workspace filtering. Only add workspace filters if the user explicitly asks to "filter by workspace" or "only from X workspace".
 
 CONTENT TYPES AVAILABLE:
 
@@ -96,7 +188,7 @@ CONTENT TYPES AVAILABLE:
    - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
    - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
    - "emails from last week": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-7 days')
-   - "last 15 days of trass emails": WHERE workspace = 'trass' AND database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-15 days')
+   - "trass gmail 3 days": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-3 days')
 
 2. NOTION JOURNAL (database_name = 'journal'):
    Personal journal entries from Notion
@@ -292,9 +384,15 @@ User request: "{nl_prompt}"
                 temperature=0.1
             )
             ai_response = response.content[0].text
-        elif hasattr(client, 'chat'):  # OpenAI
+        elif hasattr(client, 'chat'):  # OpenAI or Local Llama
+            # Determine if this is local Llama or OpenAI
+            if hasattr(client, 'base_url') and client.base_url and 'localhost' in str(client.base_url):
+                model_name = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
+            else:
+                model_name = "gpt-4o-mini"
+            
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model_name,
                 messages=[{"role": "user", "content": system_prompt}],
                 max_tokens=2000,
                 temperature=0.1
@@ -312,17 +410,17 @@ User request: "{nl_prompt}"
         
         # Parse JSON response
         try:
-            # Clean up response to extract JSON
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_response, re.DOTALL)
-            if json_match:
-                parsed_response = json.loads(json_match.group())
-            else:
-                # Fallback parsing
-                parsed_response = json.loads(ai_response)
-        except json.JSONDecodeError:
+            # Extract JSON from potentially conversational AI response
+            parsed_response = extract_json_from_response(ai_response)
+            if not parsed_response:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to parse AI response as JSON: {ai_response}")
+                return {}
+        except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to parse AI response as JSON: {ai_response}")
+            logger.error(f"Error parsing AI response: {e}")
             return {}
         
         # Handle both single and multiple query responses
@@ -418,13 +516,22 @@ def execute_single_query(sql_query: str, content_filters: List[str], workspace: 
             
             for row in results:
                 # Assume columns: page_id, title, created_time, last_edited_time, file_path, metadata, database_name
+                # Safely parse metadata JSON
+                metadata = {}
+                if row[5] and row[5].strip():
+                    try:
+                        metadata = json.loads(row[5])
+                    except (json.JSONDecodeError, ValueError):
+                        # If JSON parsing fails, keep as empty dict
+                        metadata = {}
+                
                 page_data = {
                     'page_id': row[0],
                     'title': row[1],
                     'created_time': row[2],
                     'last_edited_time': row[3],
                     'file_path': row[4],
-                    'metadata': json.loads(row[5]) if row[5] else {},
+                    'metadata': metadata,
                     'database_name': row[6]
                 }
                 

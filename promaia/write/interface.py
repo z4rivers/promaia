@@ -16,13 +16,13 @@ from prompt_toolkit.formatted_text import HTML
 
 from promaia.storage.files import read_markdown_files, get_existing_page_ids
 from promaia.utils.config import get_chat_days_setting, set_chat_days_setting, load_environment
-from promaia.chat.interface import get_api_preference, create_system_prompt, format_message, display_message_with_timestamp
+from promaia.chat.interface import get_api_preference, create_system_prompt, display_message_with_timestamp
 from promaia.notion.client import notion_client
 from promaia.notion.pages import get_sync_pages, get_pages_by_properties, get_page_title, get_block_content, clear_block_cache
 from promaia.markdown.converter import page_to_markdown
 from promaia.storage.files import save_page_to_file
 from promaia.utils.config_loader import get_notion_database_id
-from promaia.ai.models import GOOGLE_MODELS
+from promaia.ai.models import GOOGLE_MODELS, LLAMA_MODELS
 
 # Load environment variables
 load_environment()
@@ -158,6 +158,56 @@ My specific instructions for *this* blog post are:
         )
         
         # Join the parts into the final prompt string for Gemini
+        base_prompt = "\n".join(prompt_parts)
+    elif for_api == "llama": # Local Llama models - similar to Gemini approach
+        # Local Llama models typically have good context windows, use limited_journal_pages directly
+        # (which respects the --max-entries flag if provided)
+        
+        # Start with core instructions and custom prompt
+        prompt_parts = [
+            f"""You are me. Write in my voice.
+Today's date is {today_str}.
+
+My specific instructions for *this* blog post are:
+{custom_prompt}
+
+--- GENERAL BLOG WRITING GUIDELINES ---
+1. Compelling title
+2. Engaging introduction
+3. Clear structure with headings
+4. Well-written and engaging style (match reference posts)
+5. Strong conclusion
+6. **Important:** Use single spaces after periods, matching the style of the STYLE REFERENCE POSTS.
+"""
+        ]
+
+        # Add Journal Entries section
+        journal_section = "\n\n--- REFERENCE MATERIAL: JOURNAL ENTRIES ---\nUse the following journal entries for stylistic reference and additional context. Do NOT copy or reuse their content in the new post unless specifically directed to in 'My specific instructions'.\n"
+        if limited_journal_pages:
+            for page in limited_journal_pages:
+                # Basic XML-like tag for clarity
+                journal_section += f"\n<journal_entry filename=\"{page['filename']}\">\n{page['content']}\n</journal_entry>\n"
+        else:
+            # Adjusted message for potentially being intentionally excluded
+            journal_section += "\nNo journal entries provided or requested for reference.\n"
+        prompt_parts.append(journal_section)
+
+        # Add Reference Blog Posts section
+        reference_section = "\n\n--- STYLE REFERENCE: PREVIOUS BLOG POSTS ---\nUse the following blog posts for stylistic reference and additional context. Do NOT copy or reuse their content in the new post unless specifically directed to in 'My specific instructions'.\n"
+        if webflow_pages:
+            for page in webflow_pages:
+                # Basic XML-like tag for clarity
+                reference_section += f"\n<reference_post filename=\"{page['filename']}\">\n{page['content']}\n</reference_post>\n"
+        else:
+            reference_section += "\nNo previous blog posts available for style reference.\n"
+        prompt_parts.append(reference_section)
+
+        # Add final instruction
+        prompt_parts.append(
+            """\n\n--- FINAL INSTRUCTION ---\nGenerate the complete blog post in Markdown format based on 'My specific instructions', using the REFERENCE MATERIAL and STYLE REFERENCE sections for context and style guidance only, unless explicitly told otherwise in the instructions."""
+        )
+        
+        # Join the parts into the final prompt string for Local Llama
         base_prompt = "\n".join(prompt_parts)
     else: # Fallback for any unknown API type
         print(f"WARNING: Unknown API type '{for_api}' for prompt generation. Using generic entry handling.")
@@ -473,6 +523,55 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
             with open(os.path.join(debug_dir, f"write_response_{timestamp}.json"), "w", encoding="utf-8") as f:
                 f.write(json.dumps({
                     "model": GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06"),
+                    "content": blog_content
+                }, indent=2))
+        elif api_type == "llama":
+            # Local Llama client using OpenAI-compatible interface
+            from openai import OpenAI
+            
+            # Configure Local Llama client
+            llama_base_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+            llama_api_key = os.getenv("LLAMA_API_KEY", "local-llama")
+            
+            if not llama_base_url:
+                console.print("[error]LLAMA_BASE_URL environment variable not set.[/error]")
+                return
+            
+            try:
+                # Test if local Llama server is available
+                import requests
+                test_url = f"{llama_base_url.rstrip('/')}/api/tags" if "ollama" in llama_base_url or ":11434" in llama_base_url else f"{llama_base_url.rstrip('/')}/v1/models"
+                response = requests.get(test_url, timeout=2)
+                if response.status_code != 200:
+                    console.print(f"[error]Local Llama server not responding at {llama_base_url}[/error]")
+                    return
+            except Exception as e:
+                console.print(f"[error]Could not connect to local Llama server: {e}[/error]")
+                return
+            
+            client = OpenAI(
+                base_url=f"{llama_base_url.rstrip('/')}/v1",
+                api_key=llama_api_key
+            )
+            
+            model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
+            
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "Please write a blog post based on the journal entries and content provided."}
+                ],
+                max_tokens=4000,
+                temperature=0.7
+            )
+            
+            blog_content = response.choices[0].message.content
+            
+            # Save the response to a file without output
+            with open(os.path.join(debug_dir, f"write_response_{timestamp}.json"), "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "model": model_name,
                     "content": blog_content
                 }, indent=2))
         else:  # OpenAI

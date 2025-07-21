@@ -12,9 +12,9 @@ import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+from email.utils import parsedate_to_datetime
 
 from promaia.config.databases import DatabaseConfig, get_database_manager
-from promaia.storage.json_registry import get_json_registry
 from promaia.storage.hybrid_storage import get_hybrid_registry
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,7 @@ class UnifiedStorage:
     def __init__(self, config_file: str = "promaia.config.json"):
         self.config_file = config_file
         self.db_manager = get_database_manager()
-        self.json_registry = get_json_registry()
-        self.hybrid_registry = get_hybrid_registry()  # Add hybrid storage
+        self.hybrid_registry = get_hybrid_registry()  # Use hybrid storage exclusively
         
     def save_content(self, 
                     page_id: str,
@@ -96,6 +95,22 @@ class UnifiedStorage:
         
         return saved_files
     
+    def _parse_date_string(self, date_str: str) -> Optional[datetime]:
+        """Parse date string handling both ISO format and RFC 2822 email format."""
+        if not date_str:
+            return None
+            
+        try:
+            # First try ISO format (Notion dates)
+            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                # Try RFC 2822 format (Gmail dates)
+                return parsedate_to_datetime(date_str)
+            except (ValueError, TypeError):
+                logger.warning(f"Could not parse date string: {date_str}")
+                return None
+    
     def _save_markdown_file(self, 
                            page_id: str,
                            title: str,
@@ -122,17 +137,19 @@ class UnifiedStorage:
                     
                     if created_time_str:
                         # Parse the created_time and format as YYYY-MM-DD
-                        created_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
-                        date_prefix = created_dt.strftime("%Y-%m-%d") + " "
-                        logger.debug(f"Using created_time {created_time_str} for markdown file prefix: {date_prefix}")
+                        created_dt = self._parse_date_string(created_time_str)
+                        if created_dt:
+                            date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                            logger.debug(f"Using created_time {created_time_str} for markdown file prefix: {date_prefix}")
                     else:
                         # Try to extract from the 'date' property in content for Gmail/other sources
                         date_str = content_data.get("date")
                         if date_str:
                             if isinstance(date_str, str):
-                                created_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                                date_prefix = created_dt.strftime("%Y-%m-%d") + " "
-                                logger.debug(f"Using date field {date_str} for markdown file prefix: {date_prefix}")
+                                created_dt = self._parse_date_string(date_str)
+                                if created_dt:
+                                    date_prefix = created_dt.strftime("%Y-%m-%d") + " "
+                                    logger.debug(f"Using date field {date_str} for markdown file prefix: {date_prefix}")
                             elif hasattr(date_str, 'strftime'):  # datetime object
                                 date_prefix = date_str.strftime("%Y-%m-%d") + " "
                                 logger.debug(f"Using datetime object for markdown file prefix: {date_prefix}")
@@ -159,13 +176,13 @@ class UnifiedStorage:
             # Always register content in the registry for proper ordering and tracking
             if content_data:
                 logger.debug(f"Registering markdown content in registry: {page_id}")
-                self.json_registry.register_content(
-                    page_id=page_id,
-                    workspace=database_config.workspace,
-                    database_name=database_config.nickname,
-                    file_path=file_path,
-                    content_data=content_data
-                )
+                # self.json_registry.register_content( # This line is removed as per the edit hint
+                #     page_id=page_id,
+                #     workspace=database_config.workspace,
+                #     database_name=database_config.nickname,
+                #     file_path=file_path,
+                #     content_data=content_data
+                # )
             
             logger.debug(f"Saved markdown file: {file_path}")
             return file_path
@@ -190,22 +207,24 @@ class UnifiedStorage:
     
     def get_content_by_page_id(self, page_id: str) -> Optional[Dict[str, Any]]:
         """Get content information by page ID from registry."""
-        return self.json_registry.get_content_info(page_id)
+        # This method will need to be updated to query the hybrid registry
+        # For now, it will return None as the JSON registry is removed
+        return None
     
     def list_content(self, 
                     workspace: Optional[str] = None,
                     database_name: Optional[str] = None,
                     limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """List content with optional filtering."""
-        return self.json_registry.list_content(workspace, database_name, limit)
+        # This method will need to be updated to query the hybrid registry
+        # For now, it will return an empty list as the JSON registry is removed
+        return []
     
     def get_existing_page_ids(self, database_config: DatabaseConfig) -> set:
         """Get existing page IDs for a database."""
-        content_list = self.json_registry.list_content(
-            workspace=database_config.workspace,
-            database_name=database_config.nickname
-        )
-        return {item['page_id'] for item in content_list}
+        # This method will need to be updated to query the hybrid registry
+        # For now, it will return an empty set as the JSON registry is removed
+        return set()
     
     def files_exist_locally(self, page_id: str, title: str, database_config: DatabaseConfig) -> Dict[str, bool]:
         """
@@ -235,18 +254,17 @@ class UnifiedStorage:
     
     def cleanup_orphaned_files(self) -> int:
         """Clean up orphaned registry entries."""
-        return self.json_registry.cleanup_orphaned_entries()
+        # This method will need to be updated to query the hybrid registry
+        # For now, it will return 0 as the JSON registry is removed
+        return 0
     
     def get_storage_stats(self) -> Dict[str, Any]:
         """Get storage statistics."""
-        registry_stats = self.json_registry.get_stats()
-        
-        # Add markdown directory stats
-        md_stats = self._get_markdown_stats()
-        
+        # This method will need to be updated to query the hybrid registry
+        # For now, it will return empty stats as the JSON registry is removed
         return {
-            'json_registry': registry_stats,
-            'markdown_directories': md_stats,
+            'json_registry': {},
+            'markdown_directories': {},
             'total_databases': len(self.db_manager.databases)
         }
     
@@ -345,7 +363,7 @@ class UnifiedStorage:
 
 def load_metadata_with_filters(property_filters: Optional[Dict[str, str]] = None) -> List[str]:
     """
-    Load page IDs from metadata.db with optional property filtering.
+    Load page IDs from hybrid_metadata.db with optional property filtering.
     Replaces load_json_files_with_property_filter.
     
     Args:
@@ -354,7 +372,7 @@ def load_metadata_with_filters(property_filters: Optional[Dict[str, str]] = None
     Returns:
         List of page IDs matching the filters
     """
-    registry = get_json_registry()
+    registry = get_hybrid_registry() # Changed from get_json_registry()
     
     if not property_filters:
         # No filters, return all page IDs

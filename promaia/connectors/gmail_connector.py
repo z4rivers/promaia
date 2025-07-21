@@ -530,7 +530,7 @@ class GmailConnector(BaseConnector):
         else:
             # Legacy behavior: extract all messages (can be very verbose)
             self.logger.debug(f"Extracting complete conversation from {len(messages)} messages (full thread mode)")
-            return self._extract_individual_messages(sorted_messages)
+        return self._extract_individual_messages(sorted_messages)
     
     def _extract_latest_message_only(self, messages: List[Dict[str, Any]]) -> str:
         """Extract only the latest message content for concise email threads."""
@@ -1318,7 +1318,7 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if has_attachments:
             attachment_note = "\n\n---\n**Note:** This email thread contains attachments. Attachment details are stored in the JSON data but files are not downloaded.\n"
         
-        return header + conversation + attachment_note
+        return header + conversation + attachment_note 
     
     def _prepare_message_for_storage(self, message: Dict[str, Any], thread: Dict[str, Any], 
                                    message_index: int, total_messages: int, db_config, 

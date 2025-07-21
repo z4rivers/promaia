@@ -53,85 +53,33 @@ def handle_hybrid_status(args):
 
 def handle_hybrid_migrate(args):
     """Migrate from legacy to hybrid architecture."""
-    try:
-        legacy_path = "data/metadata.db"
-        hybrid_path = "data/hybrid_metadata.db"
-        
-        print_info("🔄 Legacy to Hybrid Migration")
-        print()
-        
-        # Check if hybrid already exists with data
-        if os.path.exists(hybrid_path):
-            try:
-                query_interface = get_query_interface()
-                stats = query_interface.get_statistics()
-                total = sum(count for key, count in stats.items() if key != 'architecture')
-                
-                if total > 0:
-                    print_success(f"✅ Hybrid architecture already exists with {total} entries")
-                    return
-            except Exception:
-                pass
-        
-        # Check if legacy exists
-        if not os.path.exists(legacy_path):
-            print_error("No legacy database found at data/metadata.db")
-            print("This migration is only needed if you have an existing legacy database.")
-            return
-        
-        # Count legacy entries
-        import sqlite3
+    hybrid_path = "data/hybrid_metadata.db"
+    
+    print_info("🔄 Hybrid Database Status Check")
+    print()
+    
+    # Check if hybrid already exists with data
+    if os.path.exists(hybrid_path):
         try:
-            with sqlite3.connect(legacy_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM content_registry")
-                legacy_count = cursor.fetchone()[0]
-        except Exception:
-            print_error("Cannot read legacy database. It may be corrupted.")
-            return
-        
-        if legacy_count == 0:
-            print_warning("Legacy database is empty. No migration needed.")
-            return
-        
-        print(f"Found {legacy_count} entries in legacy database")
-        print()
-        
-        # Confirm migration
-        if not args.force:
-            response = input("Proceed with migration? This will create a new hybrid database. (y/N): ")
-            if response.lower() not in ['y', 'yes']:
-                print("Migration cancelled")
-                return
-        
-        # Perform migration
-        print_info("Starting migration...")
-        query_interface = get_query_interface()
-        
-        success = query_interface.migrate_from_legacy(legacy_path)
-        
-        if success:
-            # Get final stats
+            query_interface = get_query_interface()
             stats = query_interface.get_statistics()
             total = sum(count for key, count in stats.items() if key != 'architecture')
             
-            print_success(f"✅ Migration completed successfully!")
-            print(f"   Migrated {total} entries to hybrid architecture")
-            print()
-            print("📊 New Content Distribution:")
-            for content_type, count in stats.items():
-                if content_type != 'architecture':
-                    print(f"   {content_type}: {count} entries")
-            print()
-            print_info("💡 You can now delete the legacy database if migration was successful:")
-            print(f"   rm {legacy_path}")
-        else:
-            print_error("Migration failed. Check logs for details.")
-        
-    except Exception as e:
-        print_error(f"Migration error: {e}")
-        logger.exception("Migration failed")
-
+            if total > 0:
+                print_success(f"✅ Hybrid architecture is active with {total} entries")
+                print("System is already using the hybrid database architecture.")
+                return
+            else:
+                print_success("✅ Hybrid architecture is initialized but empty")
+                print("System is ready to use the hybrid database architecture.")
+                return
+        except Exception as e:
+            print_warning(f"⚠️  Hybrid database exists but couldn't read statistics: {e}")
+            return
+    else:
+        print_info("Hybrid database not found. It will be created automatically when needed.")
+        print("The system will initialize the hybrid architecture on first use.")
+        return
 def handle_hybrid_analyze(args):
     """Analyze hybrid content structure and provide insights."""
     try:

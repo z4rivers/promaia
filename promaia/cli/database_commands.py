@@ -1250,9 +1250,11 @@ async def handle_database_push(args):
                             json.dump(page_data, f, indent=2, ensure_ascii=False)
                         
                         # Update registry sync status
-                        from promaia.storage.json_registry import get_json_registry
-                        registry = get_json_registry()
-                        registry.update_sync_status(response['id'], 'synced')
+                        from promaia.storage.hybrid_storage import get_hybrid_registry
+                        registry = get_hybrid_registry()
+                        # Note: sync status tracking will be implemented in hybrid registry if needed
+                        # For now, just log the successful creation
+                        logger.info(f"Page {response['id']} created successfully")
                         
                         print(f"✅ Created successfully: {response['id']}")
                         total_pushed += 1
@@ -1290,9 +1292,11 @@ async def handle_database_push(args):
                         json.dump(page_data, f, indent=2, ensure_ascii=False)
                     
                     # Update registry sync status
-                    from promaia.storage.json_registry import get_json_registry
-                    registry = get_json_registry()
-                    registry.update_sync_status(page_data['page_id'], 'synced')
+                    from promaia.storage.hybrid_storage import get_hybrid_registry
+                    registry = get_hybrid_registry()
+                    # Note: sync status tracking will be implemented in hybrid registry if needed
+                    # For now, just log the successful update
+                    logger.info(f"Page {page_data['page_id']} updated successfully")
                     
                     print(f"✅ Updated successfully")
                     total_pushed += 1
@@ -1363,11 +1367,11 @@ def extract_content_for_creation(page_data: Dict[str, Any]) -> str:
 
 async def handle_database_status(args):
     """Handle 'maia database status' command - show what needs to be synced."""
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     from promaia.config.databases import get_database_manager
     
     target = getattr(args, 'target', 'all')
-    registry = get_json_registry()
+    registry = get_hybrid_registry()
     db_manager = get_database_manager()
     
     if target == 'all':
@@ -1383,7 +1387,7 @@ async def handle_database_status(args):
     for content_type in content_types:
         print(f"\n=== {content_type} ===")
         
-        # Get pages from metadata.db for this content type
+        # Get pages from hybrid_metadata.db for this content type
         content_list = registry.list_content(database_name=content_type)
         
         if not content_list:
@@ -1501,11 +1505,11 @@ async def handle_register_markdown_files(args):
     """Handle 'maia database register-markdown-files' command."""
     import glob
     from datetime import datetime
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     
     try:
         db_manager = get_database_manager()
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         
         # Get databases to process
         databases_to_process = []
@@ -1535,7 +1539,7 @@ async def handle_register_markdown_files(args):
                 continue
             
             # Get existing registry entries for this database
-            existing_entries = registry.list_content(
+            existing_entries = registry.query_content(
                 workspace=db_config.workspace,
                 database_name=db_config.nickname
             )

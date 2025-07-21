@@ -815,10 +815,11 @@ class NotionConnector(BaseConnector):
                         try:
                             page_dt = datetime.fromisoformat(page_last_edited_time_str.replace("Z", "+00:00"))
                             sync_dt = datetime.fromisoformat(db_last_sync_time_str.replace("Z", "+00:00"))
-                            should_update = page_dt > sync_dt
+                            # Use same 1-second buffer as date filter to avoid inconsistency
+                            should_update = page_dt > (sync_dt + timedelta(seconds=1))
                             
                             if not should_update:
-                                self.logger.debug(f"Page {page_id} ('{title_for_filename}') exists locally and has not been modified since last sync. Skipping.")
+                                self.logger.debug(f"Page {page_id} ('{title_for_filename}') exists locally and has not been modified since last sync (with 1s buffer). Skipping.")
                                 return {"status": "skipped", "page_id": page_id, "title": title_for_filename}
                         except ValueError as ve:
                             self.logger.warning(f"Could not parse times for page {page_id}: {ve}. Proceeding with sync.")

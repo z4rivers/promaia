@@ -1023,9 +1023,8 @@ def chat_run(args):
                 print("❌ No content found for natural language query")
                 return
             
-            # Clear sources and filters since we're using natural language content
-            sources = None
-            filters = None
+            # Keep both regular sources and natural language content
+            # The chat interface will combine them
             
         except ImportError as e:
             print(f"Error importing natural language processor: {e}", file=sys.stderr)
@@ -1045,20 +1044,31 @@ def chat_run(args):
         logging.info("Running in non-interactive mode.")
 
     try:
-        # Resolve the actual workspace to use (if not already resolved above)
+        # Resolve the actual workspace to use
         workspace_manager = get_workspace_manager()
-        if not hasattr(locals(), 'resolved_workspace'):
-            if original_workspace:
-                if not workspace_manager.validate_workspace(original_workspace):
-                    print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
-                    return
-                resolved_workspace = original_workspace
-            else:
-                # Use default workspace for functionality, but don't show in query display
-                resolved_workspace = workspace_manager.get_default_workspace()
-                if not resolved_workspace:
-                    print("No workspace specified and no default workspace configured.", file=sys.stderr)
-                    return
+        resolved_workspace = original_workspace
+        
+        # If no workspace is explicitly provided, try to infer from sources
+        if not resolved_workspace and sources:
+            for source in sources:
+                if '.' in source:
+                    inferred_workspace = source.split('.')[0]
+                    if workspace_manager.validate_workspace(inferred_workspace):
+                        resolved_workspace = inferred_workspace
+                        print(f"INFO: Inferred workspace '{resolved_workspace}' from source '{source}'.")
+                        break
+        
+        # If still no workspace, use the default
+        if not resolved_workspace:
+            resolved_workspace = workspace_manager.get_default_workspace()
+            if not resolved_workspace:
+                print("No workspace specified, none could be inferred, and no default workspace is configured.", file=sys.stderr)
+                return
+
+        # Validate the final resolved workspace
+        if not workspace_manager.validate_workspace(resolved_workspace):
+            print(f"✗ Workspace '{resolved_workspace}' is not properly configured.", file=sys.stderr)
+            return
         
         # Save query to recents before executing (for both traditional and NL queries)
         if sources or filters or original_workspace or nl_prompt:
@@ -1311,15 +1321,27 @@ def model_run(args):
     current_model = get_api_preference()
     logger.info(f"Current model: {current_model}")
     logger.info("\nAvailable models:")
-    options = {"1": "anthropic", "2": "openai", "3": "gemini"}
+    options = {"1": "anthropic", "2": "openai", "3": "gemini", "4": "llama"}
     api_keys = {
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
-        "gemini": "GOOGLE_API_KEY"
+        "gemini": "GOOGLE_API_KEY",
+        "llama": "LLAMA_BASE_URL"
     }
     
     for key, name in options.items():
-        key_status = "API Key Found" if os.getenv(api_keys[name]) else "API Key Missing"
+        if name == "llama":
+            # Check if local Llama server is available
+            llama_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+            try:
+                import requests
+                test_url = f"{llama_url.rstrip('/')}/api/tags" if "ollama" in llama_url or ":11434" in llama_url else f"{llama_url.rstrip('/')}/v1/models"
+                response = requests.get(test_url, timeout=2)
+                key_status = "Server Available" if response.status_code == 200 else "Server Not Responding"
+            except Exception:
+                key_status = "Server Not Available"
+        else:
+            key_status = "API Key Found" if os.getenv(api_keys[name]) else "API Key Missing"
         logger.info(f"{key}. {name.capitalize()} ({key_status})")
     
     # Create a more descriptive prompt showing actual model names
@@ -1333,7 +1355,20 @@ def model_run(args):
     
     if choice_key in options:
         chosen_model = options[choice_key]
-        if not os.getenv(api_keys[chosen_model]):
+        if chosen_model == "llama":
+            # Check if local Llama server is available
+            llama_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+            try:
+                import requests
+                test_url = f"{llama_url.rstrip('/')}/api/tags" if "ollama" in llama_url or ":11434" in llama_url else f"{llama_url.rstrip('/')}/v1/models"
+                response = requests.get(test_url, timeout=2)
+                if response.status_code != 200:
+                    logger.error(f"ERROR: Cannot switch to Local Llama: Server not responding at {llama_url}")
+                    return
+            except Exception as e:
+                logger.error(f"ERROR: Cannot switch to Local Llama: Server not available at {llama_url} ({e})")
+                return
+        elif not os.getenv(api_keys[chosen_model]):
             logger.error(f"ERROR: Cannot switch to {chosen_model.capitalize()}: {api_keys[chosen_model]} environment variable not set." )
             return
         save_api_preference(chosen_model)
@@ -1579,14 +1614,8 @@ def main():
     else:
         os.environ["MAIA_DEBUG"] = "0"
 
-    # Startup registry validation (only for data operations)
-    data_commands = ["sync", "chat", "database", "db", "cms", "write", "r"]
-    if args.command in data_commands:
-        try:
-            from promaia.config.registry_sync import validate_startup_registry
-            validate_startup_registry(auto_fix=True)
-        except Exception as e:
-            logger.warning(f"Registry validation failed: {e}")
+    # Legacy registry validation disabled - hybrid database system handles this now
+    # The hybrid storage architecture provides all necessary validation and functionality
 
     if args.command is None:
         parser.print_help()

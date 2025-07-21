@@ -21,6 +21,7 @@ from promaia.storage.files import read_markdown_files_with_registry
 from promaia.utils.config import load_environment, get_last_sync_time
 from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
+from promaia.ai.models import LLAMA_MODELS
 from promaia.utils.display import print_markdown, print_code, print_text
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
@@ -47,7 +48,7 @@ def get_api_preference():
         if os.path.exists(API_PREFERENCE_FILE):
             with open(API_PREFERENCE_FILE, 'r') as f:
                 api_type = f.read().strip()
-                if api_type in ["anthropic", "openai", "gemini"]:
+                if api_type in ["anthropic", "openai", "gemini", "llama"]:
                     return api_type
     except Exception as e:
         debug_print(f"Error reading API preference: {str(e)}")
@@ -104,13 +105,41 @@ def debug_print(message):
             pass
         print(f"DEBUG ({timestamp}){caller_name}: {message}")
 
+# Local Llama client initialization (after debug_print is defined)
+def initialize_llama_client():
+    """Initialize local Llama client if available."""
+    global llama_client
+    llama_client = None
+    llama_base_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+    if llama_base_url:
+        try:
+            # Test if local Llama server is available
+            import requests
+            test_url = f"{llama_base_url.rstrip('/')}/api/tags" if "ollama" in llama_base_url or ":11434" in llama_base_url else f"{llama_base_url.rstrip('/')}/v1/models"
+            response = requests.get(test_url, timeout=2)
+            if response.status_code == 200:
+                # Use OpenAI client with custom base URL for local Llama
+                llama_client = OpenAI(
+                    base_url=f"{llama_base_url.rstrip('/')}/v1",
+                    api_key=os.getenv("LLAMA_API_KEY", "local-llama")  # Many local setups don't need real API keys
+                )
+                debug_print(f"Local Llama client initialized at {llama_base_url}")
+            else:
+                debug_print(f"Local Llama server not responding at {llama_base_url}")
+        except Exception as e:
+            debug_print(f"Could not connect to local Llama server: {e}")
+
+# Initialize llama client (will be initialized lazily when needed)
+llama_client = None
+
 def get_current_model_name():
     """Get the display name of the current model based on the current API."""
     global current_api
     model_names = {
         "anthropic": "Claude 3 Sonnet",
         "openai": "GPT-4",
-        "gemini": "Gemini 2.5 Pro"
+        "gemini": "Gemini 2.5 Pro",
+        "llama": f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})"
     }
     return model_names.get(current_api, "Unknown Model")
 
@@ -256,32 +285,56 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         """Reload the chat context with current state configuration."""
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command
         
-        # Check if we have natural language content to use directly
-        if context_state.get('natural_language_content'):
-            print("🤖 Using natural language generated content")
-            new_multi_source_data = context_state['natural_language_content']
-            new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+        # Initialize combined data container
+        combined_multi_source_data = {}
+        
+        # Process natural language query if present
+        natural_language_data = {}
+        if context_state.get('natural_language_prompt'):
+            nl_prompt = context_state['natural_language_prompt']
+            print("🤖 Processing natural language content")
             
-            # Update context state
-            context_state['initial_multi_source_data'] = new_multi_source_data
-            context_state['total_pages_loaded'] = new_total_pages_loaded
-            
-            # Update module-level variables
-            initial_multi_source_data = new_multi_source_data
-            total_pages_loaded = new_total_pages_loaded
-            
-            # Generate new system prompt
-            system_prompt = create_system_prompt(new_multi_source_data)
-            context_state['system_prompt'] = system_prompt
-            
-            # Update query command to show natural language was used
-            if context_state.get('natural_language_prompt'):
-                context_state['query_command'] = f"maia chat -nl {context_state['natural_language_prompt']}"
-            else:
-                context_state['query_command'] = "maia chat -nl [natural language query]"
-            query_command = context_state['query_command']
-            
-            return True
+            try:
+                from promaia.storage.unified_query import get_query_interface
+                
+                # Determine workspace to use - preserve from original context
+                workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                
+                # If no explicit workspace, try to infer from original sources
+                if not workspace_to_use and context_state.get('sources'):
+                    # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
+                    for source in context_state['sources']:
+                        if '.' in source:
+                            potential_workspace = source.split('.')[0]
+                            workspace_to_use = potential_workspace
+                            break
+                
+                # Fall back to default workspace
+                if not workspace_to_use:
+                    from promaia.config.workspaces import get_workspace_manager
+                    workspace_manager = get_workspace_manager()
+                    workspace_to_use = workspace_manager.get_default_workspace()
+                
+                if not workspace_to_use:
+                    print_text("Error: No workspace available for natural language query.", style="bold red")
+                    return False
+                
+                # Process the natural language query fresh
+                query_interface = get_query_interface()
+                natural_language_data = query_interface.natural_language_query(nl_prompt, workspace_to_use)
+                
+                if natural_language_data:
+                    print(f"🤖 Natural language query found {sum(len(pages) for pages in natural_language_data.values())} pages")
+                    # Add to combined data
+                    combined_multi_source_data.update(natural_language_data)
+                    # Update stored NL content
+                    context_state['natural_language_content'] = natural_language_data
+                else:
+                    print_text("⚠️ No content found for natural language query", style="bold yellow")
+                
+            except Exception as e:
+                print_text(f"Error processing natural language content: {e}", style="bold red")
+                # Continue with regular sources even if NL fails
         
         # Use current state
         current_sources = context_state['sources']
@@ -308,8 +361,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         from promaia.cli.database_commands import parse_source_specs, parse_filter_expression
 
         db_manager = get_database_manager()
-        new_multi_source_data = {}
-        new_total_pages_loaded = 0
+        # Use combined data that may already contain natural language results
+        new_multi_source_data = combined_multi_source_data
+        new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
 
         if not current_sources:
             debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
@@ -519,8 +573,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         db_manager = get_database_manager()
         
         print_text(f"Syncing {len(databases_to_sync)} database(s) from current context...", style="bold cyan")
+        print_text("Note: This only syncs databases in your current chat context.", style="dim")
+        print_text("Use 'maia sync' outside chat to sync all enabled databases.", style="dim")
         
         # Create a mock args object for the sync function
+        # Use same logic as standalone maia sync - pure incremental sync
         class MockArgs:
             def __init__(self):
                 self.force = False
@@ -531,28 +588,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         mock_args = MockArgs()
         
-        for source_name in databases_to_sync:
+        # Use the same source parsing logic as standalone sync
+        from promaia.cli.database_commands import parse_source_specs
+        
+        # Parse all sources at once using the same logic as standalone sync
+        parsed_sources = parse_source_specs(databases_to_sync)
+        
+        for source_spec in parsed_sources:
             try:
-                # Parse the source name to extract just the database name (remove :days part)
-                db_name = source_name.split(':')[0] if ':' in source_name else source_name
-                
-                # Handle workspace.database format for natural language queries
-                workspace_name = None
-                if '.' in db_name:
-                    workspace_name, db_name = db_name.split('.', 1)
-                
-                # Get the database config with workspace awareness
-                db_config = db_manager.get_database(db_name, workspace_name)
-                if not db_config:
-                    print_text(f"  ⚠️  Database '{source_name}' not found in configuration", style="bold yellow")
-                    continue
-                
-                # Create source specification
-                source_spec = {
-                    'name': db_name,
-                    'qualified_name': db_config.get_qualified_name(),
-                    'database': db_name
-                }
+                source_name = source_spec.get('qualified_name', source_spec.get('name', 'Unknown'))
                 
                 print_text(f"🔄 Syncing {source_name}...", style="cyan")
                 result = await sync_database(source_spec, mock_args)
@@ -668,13 +712,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     try:
                         from promaia.storage.unified_query import get_query_interface
                         
-                        # Get workspace
-                        new_workspace = getattr(parsed_args, 'workspace', None)
-                        if new_workspace:
-                            context_state['workspace'] = new_workspace
-                        
                         # Determine workspace to use
                         workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                        
+                        # If no explicit workspace, try to infer from original sources
+                        if not workspace_to_use and context_state.get('sources'):
+                            # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
+                            for source in context_state['sources']:
+                                if '.' in source:
+                                    potential_workspace = source.split('.')[0]
+                                    workspace_to_use = potential_workspace
+                                    break
+                        
+                        # Fall back to default workspace
+                        if not workspace_to_use:
+                            from promaia.config.workspaces import get_workspace_manager
+                            workspace_manager = get_workspace_manager()
+                            workspace_to_use = workspace_manager.get_default_workspace()
+                        
                         if not workspace_to_use:
                             print_text("Error: No workspace available for natural language query.", style="bold red")
                             return False
@@ -692,8 +747,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Update context state for natural language mode
                         context_state['natural_language_content'] = natural_language_content
                         context_state['natural_language_prompt'] = nl_prompt
-                        context_state['sources'] = []  # Clear regular sources
-                        context_state['filters'] = []  # Clear regular filters
+                        # Keep existing regular sources and filters - they'll be combined
                         
                         # Reload with natural language content
                         if reload_context():
@@ -946,6 +1000,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"Error syncing context databases: {e}", style="bold red")
                     debug_print(f"Sync error details: {e}")
                 continue
+
             elif user_input.strip().lower() == '/e':
                 # Edit context
                 try:
@@ -1162,6 +1217,56 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 'text': response_content,
                                 'tokens': None
                             }
+                elif current_api == "llama":
+                    # Ensure llama client is initialized with current environment
+                    if not llama_client:
+                        # Force reload environment to ensure LLAMA_API_KEY is available
+                        from promaia.utils.config import load_environment
+                        load_environment()
+                        initialize_llama_client()
+                    
+                    if llama_client:
+                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                        model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
+                        
+                        try:
+                            response = llama_client.chat.completions.create(
+                                model=model_name,
+                                messages=formatted_messages,
+                                max_tokens=4096,
+                                temperature=0.7
+                            )
+                            if response.choices:
+                                response_text = response.choices[0].message.content
+
+                                # Extract token usage for local Llama if available
+                                if hasattr(response, 'usage') and response.usage:
+                                    prompt_tokens = response.usage.prompt_tokens
+                                    completion_tokens = response.usage.completion_tokens
+                                    total_tokens = response.usage.total_tokens
+
+                                    debug_print(f"Token usage: {prompt_tokens:,} prompt + {completion_tokens:,} completion = {total_tokens:,} total")
+
+                                    response_content = {
+                                        'text': response_text,
+                                        'tokens': {
+                                            'prompt_tokens': prompt_tokens,
+                                            'response_tokens': completion_tokens,
+                                            'total_tokens': total_tokens,
+                                            'cost': 0.0,  # Local models are free
+                                            'model': f'Local Llama ({model_name})'
+                                        }
+                                    }
+                                else:
+                                    response_content = {
+                                        'text': response_text,
+                                        'tokens': None
+                                    }
+                        except Exception as e:
+                            debug_print(f"Error calling local Llama: {e}")
+                            response_content = f"Error calling local Llama: {e}"
+                    else:
+                        response_content = "Local Llama client not available. Check server connection."
                 else:
                     print_text(f"Error: {current_api} API client not available.", style="bold red")
                     continue

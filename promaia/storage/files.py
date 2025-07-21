@@ -710,13 +710,13 @@ def read_markdown_files_with_registry(
     Returns:
         List of page data dictionaries ordered by the configured date property (last_edited_time by default)
     """
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     
     pages = []
     
     try:
         # Get registry entries for this database, ordered by date property
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         
         # Query registry for files in this database
         with sqlite3.connect(registry.db_path) as conn:
@@ -735,10 +735,10 @@ def read_markdown_files_with_registry(
                 print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'created_time' for query.")
                 date_filter_prop = "created_time"
             
-            # Build query with optional date filtering
+            # Build query with optional date filtering using unified_content view
             base_query = f"""
                 SELECT page_id, title, created_time, synced_time, file_path, metadata
-                FROM content_registry 
+                FROM unified_content 
                 WHERE workspace = ? AND database_name = ?
                 AND {date_filter_prop} IS NOT NULL AND {date_filter_prop} != ''
             """

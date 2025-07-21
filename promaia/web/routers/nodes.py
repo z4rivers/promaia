@@ -12,7 +12,7 @@ import google.generativeai as genai
 # Maia specific imports
 from promaia.storage.unified_reader import read_database_content
 from promaia.ai.prompts import create_system_prompt
-from promaia.chat.interface import ANTHROPIC_MODELS, GOOGLE_MODELS
+from promaia.ai.models import ANTHROPIC_MODELS, GOOGLE_MODELS
 from promaia.config.workspaces import get_workspace_manager
 from promaia.config.databases import get_database_manager
 
@@ -63,6 +63,25 @@ if os.getenv("GOOGLE_API_KEY"):
     # The model is initialized later with the system prompt
     gemini_client = "configured" # Placeholder to indicate it's ready
 
+# Local Llama client (using OpenAI-compatible endpoint)
+llama_client = None
+llama_base_url = os.getenv("LLAMA_BASE_URL", "http://localhost:11434")
+if llama_base_url:
+    try:
+        import requests
+        test_url = f"{llama_base_url.rstrip('/')}/api/tags" if "ollama" in llama_base_url or ":11434" in llama_base_url else f"{llama_base_url.rstrip('/')}/v1/models"
+        response = requests.get(test_url, timeout=2)
+        if response.status_code == 200:
+            llama_client = OpenAI(
+                base_url=f"{llama_base_url.rstrip('/')}/v1",
+                api_key=os.getenv("LLAMA_API_KEY", "local-llama")
+            )
+            logger.info(f"Local Llama client initialized at {llama_base_url}")
+        else:
+            logger.warning(f"Local Llama server not responding at {llama_base_url}")
+    except Exception as e:
+        logger.warning(f"Could not connect to local Llama server: {e}")
+
 
 # --- Helper Functions ---
 
@@ -105,7 +124,7 @@ def _parse_workflow(workflow: WorkflowRequest) -> Tuple[List[Dict[str, Any]], Op
             }
             sources.append(source_info)
         
-        elif current_node.type in ['gemini', 'claude', 'openai']:
+        elif current_node.type in ['gemini', 'claude', 'openai', 'llama']:
             model_node = current_node
         
         for parent_id in adj.get(current_id, []):
@@ -163,6 +182,22 @@ def _call_gemini(system_prompt: str, user_message: str, model_data: Dict) -> str
 
     response = model.generate_content(user_message)
     return response.text
+
+def _call_llama(system_prompt: str, user_message: str, model_data: Dict) -> str:
+    """Calls the Local Llama API using OpenAI-compatible interface."""
+    if not llama_client:
+        raise ValueError("Local Llama client not initialized. Check LLAMA_BASE_URL.")
+        
+    response = llama_client.chat.completions.create(
+        model=model_data.get("model", os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")),
+        max_tokens=model_data.get("max_tokens", 4096),
+        temperature=model_data.get("temperature", 0.7),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+    )
+    return response.choices[0].message.content
 
 
 # --- API Endpoints ---
@@ -224,6 +259,8 @@ async def execute_workflow(workflow: WorkflowRequest):
             ai_response = _call_openai(system_prompt, user_message, model_data)
         elif model_type == 'gemini':
             ai_response = _call_gemini(system_prompt, user_message, model_data)
+        elif model_type == 'llama':
+            ai_response = _call_llama(system_prompt, user_message, model_data)
         else:
             raise ValueError(f"Unsupported AI model type: '{model_type}'")
 

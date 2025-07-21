@@ -148,7 +148,7 @@ class TestCMSRealContent:
         # Verify unified storage structure
         json_dir = Path("data/json")
         md_dir = Path("data/md/notion/koii/cms")
-        registry_db = Path("data/metadata.db")
+        registry_db = Path("data/hybrid_metadata.db")
         
         assert json_dir.exists(), "JSON directory not created"
         assert md_dir.exists(), "Markdown directory not created"

@@ -200,15 +200,23 @@ class DatabaseManager:
             logger.error(f"Error saving configuration: {e}")
     
     def create_default_config(self):
-        """Create default configuration with existing databases."""
-        self.global_settings = {
+        """Create a default configuration file."""
+        default_config = {
+            "global": {
             "default_sync_days": 7,
             "default_output_directory": "data",
             "markdown_base_directory": "data/md",
-            "registry_db": "data/metadata.db",
+                "json_base_directory": "data/json",
+                "json_registry_db": "data/maia_content.db",
+                "registry_db": "data/hybrid_metadata.db",
+                "vector_db_enabled": False,
+                "vector_db_type": "chroma",
+                "vector_db_path": "vector_db",
+                "storage_format": "json",
             "enable_ai_editing": True,
-            "ai_edit_safety_mode": True,
-            "savecontexts": True
+                "ai_edit_safety_mode": True
+            },
+            "databases": {}
         }
         
         # Migrate existing environment variables to new config

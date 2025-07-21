@@ -296,13 +296,9 @@ class HybridQueryInterface:
         return stats
     
     def migrate_from_legacy(self, legacy_db_path: str = "data/metadata.db") -> bool:
-        """Migrate from legacy architecture to hybrid."""
-        if not os.path.exists(legacy_db_path):
-            logger.error("Legacy database not found")
-            return False
-        
-        return self.registry.migrate_from_legacy(legacy_db_path)
-
+        """Migrate from legacy architecture to hybrid - DEPRECATED."""
+        logger.warning("Legacy migration is deprecated. System now uses hybrid architecture exclusively.")
+        return False
 
 # Global instance
 _query_interface = None
@@ -318,5 +314,8 @@ def get_query_interface(db_path: str = "data/hybrid_metadata.db") -> HybridQuery
 def get_unified_query(legacy_db_path: str = "data/metadata.db",
                      hybrid_db_path: str = "data/hybrid_metadata.db",
                      prefer_hybrid: bool = True) -> HybridQueryInterface:
-    """Get the hybrid query interface instance (legacy compatibility function)."""
+    """Get the hybrid query interface instance (legacy compatibility function).
+    
+    DEPRECATED: Use get_query_interface() directly instead.
+    """
     return get_query_interface(hybrid_db_path) 

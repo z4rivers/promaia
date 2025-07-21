@@ -838,47 +838,14 @@ class HybridContentRegistry:
             return {}
     
     def migrate_from_legacy(self, legacy_db_path: str = "data/metadata.db") -> bool:
-        """Migrate data from legacy single-table structure to hybrid architecture."""
-        try:
-            with sqlite3.connect(legacy_db_path) as legacy_conn:
-                legacy_cursor = legacy_conn.cursor()
-                
-                # Get all content from legacy database
-                legacy_cursor.execute("""
-                    SELECT page_id, workspace, database_name, file_path, title,
-                           created_time, last_edited_time, synced_time, content_type,
-                           file_size, checksum, metadata
-                    FROM content_registry
-                """)
-                
-                legacy_results = legacy_cursor.fetchall()
-                
-                migrated_count = 0
-                for row in legacy_results:
-                    content_data = {
-                        'page_id': row[0],
-                        'workspace': row[1],
-                        'database_name': row[2],
-                        'file_path': row[3],
-                        'title': row[4],
-                        'created_time': row[5],
-                        'last_edited_time': row[6],
-                        'synced_time': row[7],
-                        'content_type': row[8],
-                        'file_size': row[9],
-                        'checksum': row[10],
-                        'metadata': json.loads(row[11]) if row[11] else {}
-                    }
-                    
-                    if self.add_content(content_data):
-                        migrated_count += 1
-                
-                logger.info(f"Migrated {migrated_count} records from legacy database")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error migrating from legacy database: {e}")
-            return False
+        """Migrate data from legacy single-table structure to hybrid architecture.
+        
+        DEPRECATED: Legacy migration is no longer supported.
+        The system now uses hybrid architecture exclusively.
+        """
+        logger.warning("Legacy migration is deprecated. System uses hybrid architecture exclusively.")
+        logger.info("If you need to import data, use the database sync commands instead.")
+        return False
     
     def _extract_notion_property(self, properties: Dict[str, Any], 
                                 prop_name: str, prop_type: str, 

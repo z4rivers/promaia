@@ -2,7 +2,7 @@
 Config-driven registry synchronization for Maia.
 
 This module provides automatic synchronization between the configuration file
-and the metadata database registry, ensuring the registry is always the 
+and the hybrid metadata database registry, ensuring the registry is always the 
 authoritative source for file locations.
 """
 import os
@@ -14,17 +14,17 @@ from datetime import datetime
 from pathlib import Path
 
 from promaia.config.databases import get_database_manager, DatabaseConfig
-from promaia.storage.json_registry import get_json_registry
+from promaia.storage.hybrid_storage import get_hybrid_registry
 
 logger = logging.getLogger(__name__)
 
 class ConfigRegistrySync:
-    """Manages synchronization between config file and metadata registry."""
+    """Manages synchronization between config file and hybrid metadata registry."""
     
     def __init__(self, config_file: str = "promaia.config.json"):
         self.config_file = config_file
         self.db_manager = get_database_manager()
-        self.registry = get_json_registry()
+        self.registry = get_hybrid_registry()
         self._last_config_hash = None
         
     def get_config_hash(self) -> Optional[str]:
@@ -50,7 +50,7 @@ class ConfigRegistrySync:
     
     def validate_registry_sync(self) -> Dict[str, Any]:
         """
-        Validate that registry is in sync with config.
+        Validate that hybrid registry is in sync with config.
         
         Returns:
             Dict with validation results and recommended actions
@@ -78,8 +78,8 @@ class ConfigRegistrySync:
                 if not os.path.exists(md_dir):
                     continue
                 
-                # Get registry entries for this database
-                registry_entries = self.registry.list_content(
+                # Get registry entries for this database from hybrid storage
+                registry_entries = self.registry.query_content(
                     workspace=db_config.workspace,
                     database_name=db_config.nickname
                 )
@@ -146,7 +146,7 @@ class ConfigRegistrySync:
     
     def auto_register_missing_files(self, dry_run: bool = False) -> Dict[str, Any]:
         """
-        Automatically register missing markdown files.
+        Automatically register missing markdown files in hybrid storage.
         
         Args:
             dry_run: If True, only report what would be done
@@ -179,7 +179,7 @@ class ConfigRegistrySync:
                 results['databases_processed'].append(db_name)
                 registered_in_db = 0
                 
-                # Register each missing file
+                # Register each missing file in hybrid storage
                 for page_id in page_ids:
                     try:
                         # Find the markdown file
@@ -198,7 +198,7 @@ class ConfigRegistrySync:
                             registered_in_db += 1
                             continue
                         
-                        # Extract metadata from filename (handle both UUID and Gmail thread ID formats)
+                        # Extract metadata from filename
                         import re
                         title_match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(.+?)\s+(?:[a-f0-9-]{36}|thread_[a-f0-9]{16})\.md$', filename)
                         if title_match:
@@ -210,22 +210,22 @@ class ConfigRegistrySync:
                             file_mtime = datetime.fromtimestamp(os.path.getmtime(md_file))
                             created_time = file_mtime.isoformat() + "Z"
                         
-                        # Register the content
+                        # Prepare content data for hybrid storage
                         content_data = {
+                            'page_id': page_id,
+                            'workspace': db_config.workspace,
+                            'database_name': db_config.nickname,
+                            'file_path': md_file,
                             'title': title,
                             'created_time': created_time,
                             'last_edited_time': created_time,
-                            'page_id': page_id,
-                            'source': 'auto_registration'
+                            'synced_time': datetime.now().isoformat(),
+                            'file_size': os.path.getsize(md_file) if os.path.exists(md_file) else 0,
+                            'metadata': {'source': 'auto_registration'}
                         }
                         
-                        success = self.registry.register_content(
-                            page_id=page_id,
-                            workspace=db_config.workspace,
-                            database_name=db_config.nickname,
-                            file_path=md_file,
-                            content_data=content_data
-                        )
+                        # Register in hybrid storage
+                        success = self.registry.add_content(content_data)
                         
                         if success:
                             registered_in_db += 1
