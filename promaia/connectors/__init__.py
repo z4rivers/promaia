@@ -15,6 +15,14 @@ try:
 except ImportError:
     gmail_available = False
 
+# Try to import Discord connector (optional dependency)
+try:
+    from .discord_connector import DiscordConnector
+    ConnectorRegistry.register("discord", DiscordConnector)
+    discord_available = True
+except ImportError:
+    discord_available = False
+
 # Register available connectors
 ConnectorRegistry.register("notion", NotionConnector)
 
@@ -25,4 +33,7 @@ __all__ = [
 ]
 
 if gmail_available:
-    __all__.append('GmailConnector') 
+    __all__.append('GmailConnector')
+
+if discord_available:
+    __all__.append('DiscordConnector') 

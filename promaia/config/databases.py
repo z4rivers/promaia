@@ -43,16 +43,17 @@ class DatabaseConfig:
         self.property_filters = config_data.get("property_filters", {})
         self.date_filters = config_data.get("date_filters", {})
 
-        # Storage settings - markdown only
-        if config_data.get("source_type") == "gmail":
-            # For Gmail, use data/md/gmail/{username} structure
-            # Extract username from email database_id (e.g., koii.create@gmail.com -> koiicreate)
-            email = config_data.get("database_id", "")
-            username = email.split("@")[0].replace(".", "") if "@" in email else "unknown"
-            default_md_dir = f"data/md/gmail/{username}"
+        # Storage settings - new generalized structure: data/{app}/{workspace}/
+        source_type = config_data.get("source_type", "notion")
+        if source_type == "gmail":
+            # For Gmail, use data/gmail/{workspace}/ structure
+            default_md_dir = f"data/gmail/{self.workspace}"
+        elif source_type == "discord":
+            # For Discord, use data/discord/{workspace}/ structure  
+            default_md_dir = f"data/discord/{self.workspace}"
         else:
-            # For other sources (Notion), use data/md/notion/{workspace}/{database}
-            default_md_dir = f"data/md/notion/{self.workspace}/{self.nickname}"
+            # For other sources (Notion), use data/notion/{workspace}/
+            default_md_dir = f"data/notion/{self.workspace}"
         
         self.markdown_directory = config_data.get("markdown_directory", default_md_dir)
         
@@ -205,7 +206,7 @@ class DatabaseManager:
             "global": {
             "default_sync_days": 7,
             "default_output_directory": "data",
-            "markdown_base_directory": "data/md",
+            "markdown_base_directory": "data",  # Updated to new structure
                 "json_base_directory": "data/json",
                 "json_registry_db": "data/maia_content.db",
                 "registry_db": "data/hybrid_metadata.db",

@@ -1534,6 +1534,13 @@ def main():
 
     # Add conversion commands
     add_conversion_commands(subparsers)
+    
+    # Add Discord commands (optional)
+    try:
+        from promaia.cli.discord_commands import setup_discord_commands
+        setup_discord_commands(subparsers)
+    except ImportError:
+        pass  # Discord commands not available
 
     # Add edit command group
     edit_parser = subparsers.add_parser("edit", help="Commands for editing local JSON files and syncing with Notion")
@@ -1710,6 +1717,15 @@ def main():
                 print(f"No function assigned to gmail command: {args.gmail_command}")
         else:
             print("Gmail command requires a subcommand. Use 'maia gmail --help' for options.")
+    elif args.command == "discord":
+        # Handle Discord commands
+        if hasattr(args, 'discord_command') and args.discord_command:
+            if hasattr(args, 'func'):
+                asyncio.run(args.func(args))
+            else:
+                print(f"No function assigned to discord command: {args.discord_command}")
+        else:
+            print("Discord command requires a subcommand. Use 'maia discord --help' for options.")
     else:
         parser.print_help()
 
