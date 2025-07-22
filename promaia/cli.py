@@ -849,15 +849,33 @@ async def pull_cms_filtered(database_config, output_dir, property_filters, days,
     
     logger.info(f"Saving {description} to: {full_output_dir}")
     
-    # Get workspace-specific API key
-    api_key = get_workspace_api_key(database_config.workspace)
-    if not api_key:
-        logger.error(f"No API key configured for workspace '{database_config.workspace}'")
-        return
-    
-    # Configure connector
+    # Configure connector with appropriate credentials
     connector_config = database_config.to_dict()
-    connector_config['api_key'] = api_key
+    
+    if database_config.source_type == 'discord':
+        # Load Discord bot token from credentials file
+        config_dir = os.path.join("credentials", database_config.workspace)
+        credentials_file = os.path.join(config_dir, "discord_credentials.json")
+        
+        if not os.path.exists(credentials_file):
+            logger.error(f"Discord credentials not found for workspace '{database_config.workspace}'")
+            logger.error(f"Please run: maia workspace discord-setup {database_config.workspace}")
+            return
+        
+        try:
+            with open(credentials_file, 'r') as f:
+                creds_data = json.load(f)
+            connector_config['bot_token'] = creds_data.get("bot_token")
+        except Exception as e:
+            logger.error(f"Failed to load Discord credentials: {e}")
+            return
+    else:
+        # Get workspace-specific API key for other services (Notion, etc.)
+        api_key = get_workspace_api_key(database_config.workspace)
+        if not api_key:
+            logger.error(f"No API key configured for workspace '{database_config.workspace}'")
+            return
+        connector_config['api_key'] = api_key
     
     connector = ConnectorRegistry.get_connector(database_config.source_type, connector_config)
     if not connector:
@@ -1534,7 +1552,7 @@ def main():
 
     # Add conversion commands
     add_conversion_commands(subparsers)
-    
+
     # Add Discord commands (optional)
     try:
         from promaia.cli.discord_commands import setup_discord_commands

@@ -15,6 +15,42 @@ from prompt_toolkit.styles import Style
 
 from promaia.storage.recents import RecentsManager, RecentQuery
 
+
+def safe_split_command(user_input):
+    """
+    Safely split command arguments, handling natural language queries with apostrophes.
+    """
+    # Clean up whitespace first
+    cleaned = ' '.join(user_input.split())
+    
+    # For natural language queries, handle them specially
+    if '-nl' in cleaned:
+        # Split on -nl and handle the parts separately
+        parts = cleaned.split('-nl', 1)
+        if len(parts) == 2:
+            pre_nl, post_nl = parts
+            
+            # Parse the pre-nl part normally (should be safe)
+            try:
+                pre_args = shlex.split(pre_nl.strip()) if pre_nl.strip() else []
+            except ValueError:
+                # If even the pre-nl part fails, fall back to simple split
+                pre_args = pre_nl.strip().split() if pre_nl.strip() else []
+            
+            # For the post-nl part (natural language), just strip and keep as-is
+            nl_prompt = post_nl.strip()
+            
+            # Combine them
+            return pre_args + ['-nl'] + nl_prompt.split()
+    
+    # For non-natural language commands, try normal shlex first
+    try:
+        return shlex.split(cleaned)
+    except ValueError:
+        # Fall back to simple split if shlex fails
+        return cleaned.split()
+
+
 class RecentsSelector:
     """Interactive selector for recent chat queries."""
     
@@ -210,7 +246,8 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         # Parse the edited command
         if edited_command:
             try:
-                args = shlex.split(edited_command)
+                # Use safe parsing that handles natural language queries with apostrophes
+                args = safe_split_command(edited_command)
             except ValueError as e:
                 print(f"Error parsing command: {e}")
                 return None
@@ -246,6 +283,20 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
             elif args[i] in ['-ws', '--workspace'] and i + 1 < len(args):
                 workspace = args[i + 1]
                 i += 2
+            elif args[i] in ['-nl', '--natural-language']:
+                # Handle natural language query mixed with other arguments
+                if i + 1 < len(args):
+                    nl_prompt = ' '.join(args[i + 1:])
+                    return RecentQuery(
+                        command="chat",
+                        natural_language_prompt=nl_prompt,
+                        sources=sources if sources else None,
+                        filters=filters if filters else None,
+                        workspace=workspace
+                    )
+                else:
+                    print("Error: Natural language prompt is required after -nl")
+                    return None
             else:
                 print(f"Unknown argument: {args[i]}")
                 return None

@@ -285,6 +285,31 @@
       "required_properties": [],
       "excluded_properties": [],
       "auth": {}
+    },
+    "discord_general": {
+      "source_type": "discord",
+      "database_id": "1291943271509135412",
+      "nickname": "discord_general",
+      "description": "",
+      "workspace": "koii",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 7,
+      "last_sync_time": "2025-07-22T02:50:43.622938+00:00",
+      "filters": {},
+      "property_filters": {
+        "channel_id": "1291943271509135415"
+      },
+      "date_filters": {},
+      "markdown_directory": "data/discord/koii",
+      "primary_format": "markdown",
+      "save_markdown": true,
+      "sync_subpages": false,
+      "property_mapping": {},
+      "required_properties": [],
+      "excluded_properties": [],
+      "auth": {}
     }
   },
   "workspaces": {

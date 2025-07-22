@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import json
+import shlex
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.history import FileHistory
@@ -239,6 +240,91 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
 def run_non_interactive_chat(messages: List[Dict[str, Any]], system_prompt: str, for_api: str):
     """Handles a single, non-interactive chat exchange."""
     pass
+
+def safe_split_command(user_input):
+    """
+    Safely split command arguments, handling natural language queries with apostrophes.
+    """
+    # Clean up whitespace first
+    cleaned = ' '.join(user_input.split())
+    
+    # For natural language queries, handle them specially
+    if '-nl' in cleaned:
+        # Split on -nl and handle the parts separately
+        parts = cleaned.split('-nl', 1)
+        if len(parts) == 2:
+            pre_nl, post_nl = parts
+            
+            # Parse the pre-nl part normally (should be safe)
+            try:
+                pre_args = shlex.split(pre_nl.strip()) if pre_nl.strip() else []
+            except ValueError:
+                # If even the pre-nl part fails, fall back to simple split
+                pre_args = pre_nl.strip().split() if pre_nl.strip() else []
+            
+            # For the post-nl part (natural language), just strip and keep as-is
+            nl_prompt = post_nl.strip()
+            
+            # Combine them
+            return pre_args + ['-nl'] + nl_prompt.split()
+    
+    # For non-natural language commands, try normal shlex first
+    try:
+        return shlex.split(cleaned)
+    except ValueError:
+        # Fall back to simple split if shlex fails
+        return cleaned.split()
+
+def save_context_log(context_state, system_prompt, total_pages_loaded, current_api, log_type="session_init"):
+    """Save a context log file with current session information."""
+    try:
+        from promaia.config.databases import get_database_manager
+        db_manager = get_database_manager()
+        should_save_context = db_manager.global_settings.get("savecontexts", True)
+    except Exception as e:
+        debug_print(f"Could not load savecontexts config, defaulting to True: {e}")
+        should_save_context = True
+    
+    if not should_save_context:
+        return
+    
+    try:
+        timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
+        context_filename = f"context logs/{timestamp}_{log_type}_prompt.txt"
+
+        # Ensure context logs directory exists
+        os.makedirs("context logs", exist_ok=True)
+
+        # Write context file with session info
+        with open(context_filename, 'w', encoding='utf-8') as f:
+            if log_type == "session_init":
+                f.write("=== MAIA CHAT SESSION INITIALIZATION ===\n")
+            elif log_type == "context_update":
+                f.write("=== MAIA CHAT CONTEXT UPDATE ===\n")
+            else:
+                f.write(f"=== MAIA CHAT {log_type.upper()} ===\n")
+                
+            f.write(f"Timestamp: {timestamp}\n")
+            f.write(f"API Type: {current_api}\n")
+            f.write(f"Workspace: {context_state.get('workspace')}\n")
+            f.write(f"Resolved Workspace: {context_state.get('resolved_workspace')}\n")
+            f.write(f"Sources: {context_state.get('sources')}\n")
+            f.write(f"Filters: {context_state.get('filters')}\n")
+            f.write(f"Natural Language Prompt: {context_state.get('natural_language_prompt')}\n")
+            f.write(f"Query Command: {context_state.get('query_command')}\n")
+            f.write(f"Total Pages Loaded: {total_pages_loaded}\n")
+            f.write(f"System Prompt Length: {len(system_prompt)} characters\n")
+            f.write("\n" + "="*50 + "\n")
+            f.write("SYSTEM PROMPT:\n")
+            f.write("="*50 + "\n")
+            f.write(system_prompt)
+
+        debug_print(f"Context log saved: {context_filename}")
+        return context_filename
+    except Exception as e:
+        debug_print(f"Failed to save context log: {e}")
+        return None
+
 
 def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None):
     """Main chat function with simplified, unified logic."""
@@ -537,6 +623,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         system_prompt = create_system_prompt(new_multi_source_data)
         context_state['system_prompt'] = system_prompt
         
+        # Debug: Log context reload details
+        if DEBUG_MODE:
+            debug_print(f"Context Reload: {len(new_multi_source_data)} data sources loaded")
+            debug_print(f"Context Reload: {new_total_pages_loaded} total pages")
+            debug_print(f"Context Reload: System prompt length: {len(system_prompt)}")
+            debug_print(f"Context Reload: Data sources: {list(new_multi_source_data.keys())}")
+            debug_print(f"Context Reload: Updated context_state sources: {context_state.get('sources')}")
+        
         # Update query command
         update_query_command()
         query_command = context_state['query_command']
@@ -668,8 +762,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             import argparse
             
             try:
-                # Split the input into arguments
-                args_list = shlex.split(user_input)
+                # Use safe parsing that handles natural language queries with apostrophes
+                args_list = safe_split_command(user_input)
                 
                 # Create a minimal parser for chat arguments
                 parser = argparse.ArgumentParser(description="Chat context editor", add_help=False)
@@ -907,42 +1001,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     if not reload_context():
         return
 
-    # Save context file if savecontexts is enabled in config
-    should_save_context = False
-    try:
-        from promaia.config.databases import get_database_manager
-        db_manager = get_database_manager()
-        should_save_context = db_manager.global_settings.get("savecontexts", True)
-    except Exception as e:
-        debug_print(f"Could not load savecontexts config, defaulting to True: {e}")
-        should_save_context = True
-    
-    if should_save_context:
-        try:
-            timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
-            context_filename = f"context logs/{timestamp}_session_init_prompt.txt"
-
-            # Ensure context logs directory exists
-            os.makedirs("context logs", exist_ok=True)
-
-            # Write context file with session info
-            with open(context_filename, 'w', encoding='utf-8') as f:
-                f.write("=== MAIA CHAT SESSION INITIALIZATION ===\n")
-                f.write(f"Timestamp: {timestamp}\n")
-                f.write(f"API Type: {current_api}\n")
-                f.write(f"Workspace: {workspace}\n")
-                f.write(f"Sources: {sources}\n")
-                f.write(f"Filters: {filters}\n")
-                f.write(f"Total Pages Loaded: {total_pages_loaded}\n")
-                f.write(f"System Prompt Length: {len(system_prompt)} characters\n")
-                f.write("\n" + "="*50 + "\n")
-                f.write("SYSTEM PROMPT:\n")
-                f.write("="*50 + "\n")
-                f.write(system_prompt)
-
-            debug_print(f"Context file saved: {context_filename}")
-        except Exception as e:
-            debug_print(f"Failed to save context file: {e}")
+    # Save initial context log
+    save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "session_init")
 
     # Display Welcome Message
     print()
@@ -993,7 +1053,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     asyncio.run(sync_current_context_databases())
                     print_text("Context databases synced successfully. Reloading context...", style="bold green")
                     if reload_context():
-                        print_text(f"Context reloaded with {total_pages_loaded} pages.", style="bold green")
+                        print_text("Context reloaded successfully!", style="bold green")
+                        print()
+                        # Show the same detailed breakdown as when starting a new chat
+                        print_welcome_message(
+                            query_command=context_state['query_command'], 
+                            total_pages=total_pages_loaded, 
+                            model_name=get_current_model_name(), 
+                            source_breakdown=generate_source_breakdown(initial_multi_source_data)
+                        )
+                        # Save context log for sync-triggered update
+                        save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "context_sync")
                     else:
                         print_text("Failed to reload context after sync.", style="bold red")
                 except Exception as e:
@@ -1005,8 +1075,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Edit context
                 try:
                     if edit_context():
-                        print_text(f"New context: {context_state['query_command']}", style="dim")
-                        print_text(f"Pages loaded: {total_pages_loaded}", style="dim")
+                        print_text("Context updated successfully!", style="bold green")
+                        print()
+                        # Show the same detailed breakdown as when starting a new chat
+                        print_welcome_message(
+                            query_command=context_state['query_command'], 
+                            total_pages=total_pages_loaded, 
+                            model_name=get_current_model_name(), 
+                            source_breakdown=generate_source_breakdown(initial_multi_source_data)
+                        )
+                        # Save context log for edit-triggered update
+                        save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "context_edit")
+                        # Keep debug info if needed
+                        if DEBUG_MODE:
+                            print_text(f"Debug: System prompt length: {len(system_prompt)}", style="dim")
+                            print_text(f"Debug: Sources in context_state: {context_state.get('sources')}", style="dim")
+                            print_text(f"Debug: Multi-source data keys: {list(initial_multi_source_data.keys())}", style="dim")
                     else:
                         print_text("Context editing cancelled.", style="bold yellow")
                 except Exception as e:
@@ -1102,6 +1186,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Call the appropriate API
             response_content = None
             try:
+                # Debug: Log system prompt info before AI call
+                if DEBUG_MODE:
+                    debug_print(f"AI Call Debug: System prompt length: {len(system_prompt)}")
+                    debug_print(f"AI Call Debug: Total pages in context: {total_pages_loaded}")
+                    debug_print(f"AI Call Debug: Context sources: {context_state.get('sources')}")
+                
                 if current_api == "anthropic" and anthropic_client:
                     response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
                     if response and response.content:

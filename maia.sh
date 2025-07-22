@@ -10,7 +10,7 @@ if [[ -f "promaia.config.json" ]] && [[ -d "promaia" ]]; then
         source "venv/bin/activate"
         python -m promaia "$@"
     else
-        python3 -m promaia "$@"
+    python3 -m promaia "$@"
     fi
     exit $?
 fi

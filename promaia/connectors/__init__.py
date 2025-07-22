@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 if gmail_available:
-    __all__.append('GmailConnector')
+    __all__.append('GmailConnector') 
 
 if discord_available:
     __all__.append('DiscordConnector') 

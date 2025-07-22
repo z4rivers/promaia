@@ -165,20 +165,24 @@ async def handle_discord_list_channels(args):
             print("❌ Failed to connect to Discord")
             return
         
-        print(f"📋 Channels in server '{connector.guild.name}':")
+        # Get guild data using the new method
+        guild_data = await connector._get_guild_data()
+        
+        if not guild_data:
+            print("❌ Failed to fetch guild data")
+            return
+        
+        print(f"📋 Channels in server '{guild_data['name']}':")
         print()
         
-        # List text channels
-        text_channels = [ch for ch in connector.guild.channels if hasattr(ch, 'send')]
+        text_channels = [ch for ch in guild_data['channels'] if ch['type'] == 'text']
         
         if not text_channels:
             print("No accessible text channels found.")
             return
         
         for channel in text_channels:
-            print(f"  #{channel.name} (ID: {channel.id})")
-            if hasattr(channel, 'category') and channel.category:
-                print(f"    Category: {channel.category.name}")
+            print(f"  #{channel['name']} (ID: {channel['id']})")
             print()
         
         print(f"Total: {len(text_channels)} text channels")

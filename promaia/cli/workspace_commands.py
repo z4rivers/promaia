@@ -202,7 +202,7 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
         from promaia.cli.gmail_commands import add_workspace_gmail_commands
         add_workspace_gmail_commands(subparsers)
     except ImportError:
-        pass  # Gmail commands not available
+        pass  # Gmail commands not available 
     
     # Discord setup (optional)
     try:

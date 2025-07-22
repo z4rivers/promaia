@@ -279,24 +279,58 @@ async def sync_database(source_spec: Dict[str, Any], args):
     print(f"🔄 Syncing {qualified_name}...")
     
     try:
-        # Get workspace-specific API key
-        from promaia.config.workspaces import get_workspace_api_key
-        api_key = get_workspace_api_key(db_config.workspace)
-        
-        if not api_key:
-            print(f"✗ {qualified_name}: No API key configured for workspace '{db_config.workspace}'")
-            # Return a synthetic result for API key errors
-            from promaia.connectors.base import SyncResult
-            result = SyncResult()
-            result.database_name = qualified_name
-            result.errors = [f"No API key configured for workspace '{db_config.workspace}'"]
-            result.start_time = datetime.now()
-            result.end_time = datetime.now()
-            return result
-        
-        # Create connector with workspace-specific configuration
+        # Create connector with appropriate credentials
         connector_config = db_config.to_dict()
-        connector_config['api_key'] = api_key
+        
+        if db_config.source_type == 'discord':
+            # Load Discord bot token from credentials file
+            import os
+            import json
+            config_dir = os.path.join("credentials", db_config.workspace)
+            credentials_file = os.path.join(config_dir, "discord_credentials.json")
+            
+            if not os.path.exists(credentials_file):
+                print(f"✗ {qualified_name}: Discord credentials not found for workspace '{db_config.workspace}'")
+                print(f"Please run: maia workspace discord-setup {db_config.workspace}")
+                # Return a synthetic result for credential errors
+                from promaia.connectors.base import SyncResult
+                result = SyncResult()
+                result.database_name = qualified_name
+                result.errors = [f"Discord credentials not found for workspace '{db_config.workspace}'"]
+                result.start_time = datetime.now()
+                result.end_time = datetime.now()
+                return result
+            
+            try:
+                with open(credentials_file, 'r') as f:
+                    creds_data = json.load(f)
+                connector_config['bot_token'] = creds_data.get("bot_token")
+            except Exception as e:
+                print(f"✗ {qualified_name}: Failed to load Discord credentials: {e}")
+                from promaia.connectors.base import SyncResult
+                result = SyncResult()
+                result.database_name = qualified_name
+                result.errors = [f"Failed to load Discord credentials: {e}"]
+                result.start_time = datetime.now()
+                result.end_time = datetime.now()
+                return result
+        else:
+            # Get workspace-specific API key for other services (Notion, etc.)
+            from promaia.config.workspaces import get_workspace_api_key
+            api_key = get_workspace_api_key(db_config.workspace)
+            
+            if not api_key:
+                print(f"✗ {qualified_name}: No API key configured for workspace '{db_config.workspace}'")
+                # Return a synthetic result for API key errors
+                from promaia.connectors.base import SyncResult
+                result = SyncResult()
+                result.database_name = qualified_name
+                result.errors = [f"No API key configured for workspace '{db_config.workspace}'"]
+                result.start_time = datetime.now()
+                result.end_time = datetime.now()
+                return result
+            
+            connector_config['api_key'] = api_key
         
         connector = ConnectorRegistry.get_connector(db_config.source_type, connector_config)
         if not connector:

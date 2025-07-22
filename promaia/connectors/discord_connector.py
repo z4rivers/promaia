@@ -40,8 +40,9 @@ class DiscordConnector(BaseConnector):
         self.intents.guilds = True
         self.intents.guild_messages = True
         
-        self.bot = None
+        self.client = None
         self.guild = None
+        self._connected = False
         
         # Rate limiting for API compliance (1 request per second for message history)
         self._last_request_time = 0
@@ -64,40 +65,63 @@ class DiscordConnector(BaseConnector):
             if not self.bot_token:
                 raise ValueError("Discord bot token not provided in config")
             
-            # Create bot instance
-            self.bot = commands.Bot(command_prefix='!', intents=self.intents)
+            # For data access, we'll use a temporary client approach
+            # Store connection info for later use
+            self._connected = True
             
-            # Login to Discord
-            await self.bot.login(self.bot_token)
-            
-            # Get the guild (server) if server_id is provided
-            if self.server_id:
-                self.guild = self.bot.get_guild(int(self.server_id))
-                if not self.guild:
-                    # Try fetching the guild if not in cache
-                    self.guild = await self.bot.fetch_guild(int(self.server_id))
-                
-                if not self.guild:
-                    self.logger.error(f"Could not access server with ID {self.server_id}")
-                    return False
-            
-            self.logger.info(f"Connected to Discord as {self.bot.user}")
+            self.logger.info(f"Discord connector initialized for server {self.server_id}")
             return True
             
         except Exception as e:
             self.logger.error(f"Failed to connect to Discord: {e}")
             return False
+    
+    async def _get_guild_data(self):
+        """Get guild data using a temporary client connection."""
+        if not self.bot_token or not self.server_id:
+            return None
+            
+        # Create temporary client for data access
+        client = discord.Client(intents=self.intents)
+        
+        try:
+            await client.login(self.bot_token)
+            
+            # Get guild using HTTP API (no gateway connection needed)
+            guild = await client.fetch_guild(int(self.server_id))
+            channels = await guild.fetch_channels()
+            
+            # Convert to simple data structure
+            guild_data = {
+                'id': guild.id,
+                'name': guild.name,
+                'channels': []
+            }
+            
+            for channel in channels:
+                if hasattr(channel, 'send'):  # Text channel
+                    guild_data['channels'].append({
+                        'id': channel.id,
+                        'name': channel.name,
+                        'type': 'text'
+                    })
+            
+            return guild_data
+            
+        finally:
+            await client.close()
 
     async def test_connection(self) -> bool:
         """Test if the Discord connection is working."""
-        if not self.bot:
+        if not self.client:
             if not await self.connect():
                 return False
         
         try:
             # Test basic API access
             if self.guild:
-                await self.guild.fetch_channels()
+                # Guild channels should be available after connection
+                channels = self.guild.channels
                 self.logger.info(f"Connected to Discord server: {self.guild.name}")
             return True
         except Exception as e:
@@ -131,7 +155,7 @@ class DiscordConnector(BaseConnector):
                          sort_direction: str = "desc",
                          limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Query messages from Discord channels."""
-        if not self.bot or not self.guild:
+        if not self._connected:
             await self.connect()
         
         try:
@@ -141,41 +165,48 @@ class DiscordConnector(BaseConnector):
                 self.logger.error("No channel specified in filters")
                 return []
             
-            channel = self.guild.get_channel(int(channel_id))
-            if not channel:
-                channel = await self.guild.fetch_channel(int(channel_id))
+            # Create temporary client for message fetching
+            client = discord.Client(intents=self.intents)
             
-            if not channel:
-                self.logger.error(f"Could not access channel {channel_id}")
-                return []
-            
-            # Apply rate limiting
-            await self._rate_limit()
-            
-            # Calculate date range for filtering
-            after_date = None
-            before_date = None
-            if date_filter:
-                after_date = date_filter.start_date
-                before_date = date_filter.end_date
-            
-            # Fetch messages with pagination
-            messages = []
-            async for message in channel.history(
-                limit=limit,
-                after=after_date,
-                before=before_date,
-                oldest_first=(sort_direction == "asc")
-            ):
-                message_data = await self._convert_message_to_data(message)
-                messages.append(message_data)
+            try:
+                await client.login(self.bot_token)
+                guild = await client.fetch_guild(int(self.server_id))
+                channel = await guild.fetch_channel(int(channel_id))
                 
-                # Apply rate limiting between message fetches for large syncs
-                if len(messages) % 50 == 0:  # Every 50 messages
-                    await self._rate_limit()
-            
-            self.logger.info(f"Found {len(messages)} messages in channel {channel.name}")
-            return messages
+                if not channel:
+                    self.logger.error(f"Could not access channel {channel_id}")
+                    return []
+                
+                # Apply rate limiting
+                await self._rate_limit()
+                
+                # Calculate date range for filtering
+                after_date = None
+                before_date = None
+                if date_filter:
+                    after_date = date_filter.start_date
+                    before_date = date_filter.end_date
+                
+                # Fetch messages with pagination
+                messages = []
+                async for message in channel.history(
+                    limit=limit,
+                    after=after_date,
+                    before=before_date,
+                    oldest_first=(sort_direction == "asc")
+                ):
+                    message_data = await self._convert_message_to_data(message)
+                    messages.append(message_data)
+                    
+                    # Apply rate limiting between message fetches for large syncs
+                    if len(messages) % 50 == 0:  # Every 50 messages
+                        await self._rate_limit()
+                
+                self.logger.info(f"Found {len(messages)} messages in channel {channel.name}")
+                return messages
+                
+            finally:
+                await client.close()
             
         except Exception as e:
             self.logger.error(f"Failed to query Discord messages: {e}")
@@ -492,6 +523,6 @@ class DiscordConnector(BaseConnector):
         return header + main_content + attachments_section + embeds_section + reactions_section
 
     async def cleanup(self):
-        """Clean up Discord bot connection."""
-        if self.bot:
-            await self.bot.close() 
+        """Clean up Discord connector."""
+        # No persistent connections to clean up with the new approach
+        pass 
