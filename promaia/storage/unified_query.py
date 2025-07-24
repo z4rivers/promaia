@@ -30,9 +30,13 @@ class HybridQueryInterface:
         """Query content for chat interface."""
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row  # Use Row factory for dict-like access
                 cursor = conn.cursor()
+
+                # --- Gmail Thread Logic ---
+                # This logic will now be primary and will handle all cases.
                 
-                # Build WHERE clause
+                # Default WHERE conditions and params
                 where_conditions = ["workspace = ?"]
                 params = [workspace]
                 
@@ -44,65 +48,116 @@ class HybridQueryInterface:
                         params.append(source)
                     where_conditions.append(f"({' OR '.join(source_conditions)})")
                 
-                # Add date filtering
+                # Date filtering cutoff
+                cutoff_date = None
                 if days:
                     cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-                    where_conditions.append("(last_edited_time >= ? OR created_time >= ?)")
-                    params.extend([cutoff_date, cutoff_date])
                 
-                # Add custom filters
+                # Step 1: Find thread_ids of all Gmail messages that meet the date criteria.
+                gmail_thread_ids = set()
+                if 'gmail' in (sources or []) and cutoff_date:
+                    gmail_thread_query = """
+                        SELECT DISTINCT json_extract(metadata, '$.thread_id')
+                        FROM unified_content
+                        WHERE database_name = 'gmail' AND workspace = ? AND (created_time >= ? OR last_edited_time >= ?)
+                    """
+                    cursor.execute(gmail_thread_query, (workspace, cutoff_date, cutoff_date))
+                    gmail_thread_ids.update(row[0] for row in cursor.fetchall() if row[0])
+
+                # Step 2: Build the final query
+                # We will fetch:
+                # - All messages from the identified Gmail threads.
+                # - All non-Gmail content that meets the original filters.
+                
+                final_where_clauses = []
+                final_params = []
+                
+                # A) Clause for non-Gmail content
+                non_gmail_conditions = ["database_name != 'gmail'", "workspace = ?"]
+                non_gmail_params = [workspace]
+                
+                if sources:
+                    other_sources = [s for s in sources if s != 'gmail']
+                    if other_sources:
+                        source_placeholders = ','.join('?' * len(other_sources))
+                        non_gmail_conditions.append(f"database_name IN ({source_placeholders})")
+                        non_gmail_params.extend(other_sources)
+
+                if cutoff_date:
+                    non_gmail_conditions.append("(created_time >= ? OR last_edited_time >= ?)")
+                    non_gmail_params.extend([cutoff_date, cutoff_date])
+                
+                # Add custom filters to non-gmail part
                 if filters:
                     for key, value in filters.items():
-                        if key == 'status':
-                            where_conditions.append("status = ?")
-                            params.append(value)
-                        elif key == 'featured':
-                            where_conditions.append("featured = ?")
-                            params.append(1 if value else 0)
-                        elif key == 'priority':
-                            where_conditions.append("priority = ?")
-                            params.append(value)
-                        elif key == 'category':
-                            where_conditions.append("category = ?")
-                            params.append(value)
-                        elif key.endswith('_time') or key.endswith('_date'):
-                            where_conditions.append(f"{key} >= ?")
-                            params.append(value)
+                        non_gmail_conditions.append(f"{key} = ?") # simplified for now
+                        non_gmail_params.append(value)
                 
-                where_clause = " AND ".join(where_conditions)
+                non_gmail_full_clause = f"({' AND '.join(non_gmail_conditions)})"
                 
+                # B) Clause for Gmail content
+                if gmail_thread_ids:
+                    placeholders = ','.join('?' * len(gmail_thread_ids))
+                    gmail_full_clause = f"(database_name = 'gmail' AND workspace = ? AND json_extract(metadata, '$.thread_id') IN ({placeholders}))"
+                    
+                    # Combine clauses with OR
+                    final_query_clause = f"{non_gmail_full_clause} OR {gmail_full_clause}"
+                    final_params.extend(non_gmail_params)
+                    final_params.append(workspace) # for the gmail part
+                    final_params.extend(list(gmail_thread_ids))
+                else:
+                    # No recent gmail threads, just use the non-gmail clause
+                    # but we also need to include gmail if it was in sources and no date filter was applied
+                    if 'gmail' in (sources or []) and not cutoff_date:
+                         # This case should fetch all gmail content if no date filter
+                         final_query_clause = f"{non_gmail_full_clause} OR (database_name = 'gmail' AND workspace = ?)"
+                         final_params.extend(non_gmail_params)
+                         final_params.append(workspace)
+                    else:
+                         final_query_clause = non_gmail_full_clause
+                         final_params = non_gmail_params
+
+
+                # Construct and execute the final query
                 query = f"""
-                    SELECT page_id, workspace, database_name, content_type, file_path, title,
-                           created_time, last_edited_time, synced_time, metadata
+                    SELECT *
                     FROM unified_content 
-                    WHERE {where_clause}
+                    WHERE {final_query_clause}
                     ORDER BY last_edited_time DESC NULLS LAST, created_time DESC NULLS LAST
                 """
                 
-                cursor.execute(query, params)
+                # Temporary fix for when no sources are provided, which would lead to an empty `other_sources` list and invalid SQL
+                if not sources:
+                    # If no sources, we should query everything respecting the date filter if present
+                    base_conditions = ["workspace = ?"]
+                    base_params = [workspace]
+                    if cutoff_date:
+                        base_conditions.append("(created_time >= ? OR last_edited_time >= ?)")
+                        base_params.extend([cutoff_date, cutoff_date])
+                    
+                    final_query_clause = ' AND '.join(base_conditions)
+                    final_params = base_params
+
+                    query = f"""
+                        SELECT *
+                        FROM unified_content 
+                        WHERE {final_query_clause}
+                        ORDER BY last_edited_time DESC NULLS LAST, created_time DESC NULLS LAST
+                    """
+
+
+                cursor.execute(query, final_params)
                 results = cursor.fetchall()
                 
                 # Convert to format expected by chat interface
                 content_list = []
                 for row in results:
-                    content_dict = {
-                        'page_id': row[0],
-                        'workspace': row[1],
-                        'database_name': row[2],
-                        'content_type': row[3],
-                        'file_path': row[4],
-                        'title': row[5],
-                        'created_time': row[6],
-                        'last_edited_time': row[7],
-                        'synced_time': row[8],
-                        'metadata': json.loads(row[9]) if row[9] else {}
-                    }
-                    content_list.append(content_dict)
+                    content_list.append(dict(row))
                 
                 return content_list
                 
         except Exception as e:
-            logger.error(f"Error querying hybrid content: {e}")
+            print(f"Error querying content: {e}")
             return []
     
     def get_content_by_id(self, page_id: str) -> Optional[Dict[str, Any]]:

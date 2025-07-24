@@ -185,6 +185,11 @@ async def handle_database_test(args):
 
 async def handle_database_sync(args):
     """Handle 'maia database sync' command."""
+    # Check if browse mode is requested
+    if hasattr(args, 'browse') and args.browse is not None:
+        await handle_database_sync_with_browse(args)
+        return
+    
     # MONITORING: Track overall sync performance
     overall_start_time = datetime.now()
     
@@ -315,7 +320,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
                 result.end_time = datetime.now()
                 return result
         else:
-            # Get workspace-specific API key for other services (Notion, etc.)
+            # This block handles non-Discord connectors by fetching the API key.
             from promaia.config.workspaces import get_workspace_api_key
             api_key = get_workspace_api_key(db_config.workspace)
             
@@ -331,6 +336,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
                 return result
             
             connector_config['api_key'] = api_key
+            
         
         connector = ConnectorRegistry.get_connector(db_config.source_type, connector_config)
         if not connector:
@@ -518,6 +524,157 @@ def display_sync_summary(sync_results: List, overall_duration: float):
     print(f"   {rate_emoji} {len(successful_results)}/{total_databases} databases synced ({success_rate:.1f}%) • ⏱️ {overall_duration:.1f}s")
     print("─" * 30)
 
+
+async def handle_database_sync_with_browse(args):
+    """Handle database sync with Discord channel browser (combining regular sources with Discord selection)."""
+    import asyncio
+    import sys
+    from promaia.cli.discord_commands import handle_discord_browse_filtered
+    from promaia.config.workspaces import get_workspace_manager
+    
+    try:
+        # Get workspace
+        workspace_manager = get_workspace_manager()
+        original_workspace = getattr(args, 'workspace', None)
+        
+        # Resolve workspace (same logic as chat)
+        resolved_workspace = original_workspace
+        sources = getattr(args, 'sources', None) or []
+        
+        # Get browse databases
+        browse_databases = getattr(args, 'browse', [])
+        
+        # Workspace inference logic (same as chat)
+        if not resolved_workspace and sources:
+            for source in sources:
+                if '.' in source:
+                    inferred_workspace = source.split('.')[0]
+                    if workspace_manager.validate_workspace(inferred_workspace):
+                        resolved_workspace = inferred_workspace
+                        print(f"INFO: Inferred workspace '{resolved_workspace}' from source '{source}'.")
+                        break
+        
+        # If still no workspace from sources, try to infer from browse databases
+        if not resolved_workspace and browse_databases:
+            for browse_db in browse_databases:
+                # Extract database name from potential database:days format
+                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                if '.' in db_name:
+                    inferred_workspace = db_name.split('.')[0]
+                    if workspace_manager.validate_workspace(inferred_workspace):
+                        resolved_workspace = inferred_workspace
+                        print(f"INFO: Inferred workspace '{resolved_workspace}' from browse database '{browse_db}'.")
+                        break
+        
+        # If still no workspace, use the default
+        if not resolved_workspace:
+            resolved_workspace = workspace_manager.get_default_workspace()
+            if not resolved_workspace:
+                print("No workspace specified, none could be inferred, and no default workspace is configured.", file=sys.stderr)
+                return
+        
+        # Validate workspace
+        if not workspace_manager.validate_workspace(resolved_workspace):
+            print(f"✗ Workspace '{resolved_workspace}' is not properly configured.", file=sys.stderr)
+            return
+        
+        # Parse browse databases to extract database names and day specifications
+        parsed_browse_databases = []
+        database_days = {}  # Map database -> days
+        
+        if browse_databases:
+            for browse_spec in browse_databases:
+                if ':' in browse_spec:
+                    # Format: database:days
+                    db_name, days_str = browse_spec.rsplit(':', 1)
+                    try:
+                        days = int(days_str)
+                        parsed_browse_databases.append(db_name)
+                        database_days[db_name] = days
+                    except ValueError:
+                        # If days_str is not a number, treat whole thing as database name
+                        parsed_browse_databases.append(browse_spec)
+                else:
+                    # Just database name, no days specified
+                    parsed_browse_databases.append(browse_spec)
+        
+        # Create args for Discord browse
+        class BrowseArgs:
+            def __init__(self, workspace, databases=None, database_days=None):
+                self.workspace = workspace
+                self.databases = databases  # Specific databases to browse, or None for all
+                self.database_days = database_days or {}  # Map of database -> days
+        
+        browse_args = BrowseArgs(resolved_workspace, parsed_browse_databases if parsed_browse_databases else None, database_days)
+        
+        # Show what we're browsing
+        if parsed_browse_databases:
+            db_display = []
+            for db in parsed_browse_databases:
+                if db in database_days:
+                    db_display.append(f"{db}:{database_days[db]}")
+                else:
+                    db_display.append(db)
+            print(f"🎮 Launching Discord channel browser for sync - databases: {', '.join(db_display)}...")
+        else:
+            print(f"🎮 Launching Discord channel browser for sync - workspace '{resolved_workspace}'...")
+        
+        # Run the Discord browser and get selected channels
+        selected_channels = await handle_discord_browse_filtered(browse_args)
+        
+        if not selected_channels:
+            print("ℹ️  No channels selected. Proceeding with regular sources only.")
+            # Continue with just the regular sources
+            sync_sources = sources
+        else:
+            print(f"✅ Selected {len(selected_channels)} Discord channels for sync:")
+            
+            # Convert selected channels to sync source format
+            discord_sources = []
+            
+            # Process each channel individually with its specific days
+            for db_name, channel_id, channel_name, days in selected_channels:
+                # Create individual source with channel-specific days and channel name filter
+                current_source = f"{db_name}:{days}.channel_name={channel_name}"
+                discord_sources.append(current_source)
+                
+                # Show what was selected
+                print(f"   • {db_name}:{days} → #{channel_name}")
+            
+            # Combine regular sources with Discord sources
+            sync_sources = sources + discord_sources
+        
+        if sync_sources:
+            print(f"\n🚀 Starting sync with combined sources:")
+            print(f"   Regular sources: {sources if sources else 'None'}")
+            if 'discord_sources' in locals() and discord_sources:
+                print(f"   Discord sources: {discord_sources}")
+            else:
+                print(f"   Discord sources: None")
+        
+        # Create modified args for sync (without browse to avoid recursion)
+        class SyncArgs:
+            def __init__(self, sources, original_args):
+                self.sources = sources
+                self.workspace = original_workspace
+                self.days = getattr(original_args, 'days', None)
+                self.force = getattr(original_args, 'force', False)
+                self.start_date = getattr(original_args, 'start_date', None)
+                self.end_date = getattr(original_args, 'end_date', None)
+                self.date_range = getattr(original_args, 'date_range', None)
+                self.browse = None  # Clear browse to avoid recursion
+        
+        sync_args = SyncArgs(sync_sources, args)
+        
+        # Start sync with combined sources
+        await handle_database_sync(sync_args)
+        
+    except Exception as e:
+        print(f"❌ Error in sync with browse: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+
+
 def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
     """
     Parse source specifications with support for property filtering.
@@ -595,6 +752,11 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                             prop_name = prop_name.strip()
                             prop_value = prop_value.strip()
                             
+                            # Handle quoted property names and values
+                            if prop_name.startswith('"') and prop_value.endswith('"'):
+                                prop_name = prop_name[1:]  # Remove leading quote
+                                prop_value = prop_value[:-1]  # Remove trailing quote
+                            
                             # Handle comparison filters (_after, _before)
                             if prop_name.endswith('_after') or prop_name.endswith('_before'):
                                 # Store multiple values for the same filter key in a list
@@ -611,8 +773,9 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                                 elif prop_value.isdigit():
                                     prop_value = int(prop_value)
                                 else:
-                                    # Special case: don't convert underscores for page_id
-                                    if prop_name != 'page_id':
+                                    # Special case: don't convert underscores for page_id and Discord properties
+                                    discord_properties = ['channel_name', 'data_source', 'page_id']
+                                    if prop_name not in discord_properties:
                                         prop_name = prop_name.replace('_', ' ')
                                 property_filters[prop_name] = prop_value
                         else:
@@ -677,7 +840,8 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
     
     # Check for source prefix (source:filter_expression)
     # But exclude global contains:"..." syntax which doesn't have a source prefix
-    source_match = re.match(r'^([a-zA-Z0-9_.-]+):\s*(.+)$', filter_expr)
+    # Updated regex to handle day specifications in source names (e.g., trass.yeeps_discord:30)
+    source_match = re.match(r'^([a-zA-Z0-9_.-]+(?::[0-9]+)?):\s*(.+)$', filter_expr)
     if source_match and not (filter_expr.startswith('contains:"') and ':' not in filter_expr[9:]):
         source = source_match.group(1)
         filter_part = source_match.group(2)
@@ -930,8 +1094,8 @@ def build_filters(source_spec: Dict[str, Any], db_config) -> List[QueryFilter]:
     filters = []
     
     # Add filters from source specification
-    logger.debug(f"Source spec filters: {source_spec.get('filters', {})}")
-    for key, value in source_spec.get("filters", {}).items():
+    logger.debug(f"Source spec property_filters: {source_spec.get('property_filters', {})}")
+    for key, value in source_spec.get("property_filters", {}).items():
         if not key.endswith(('_after', '_before')):  # Skip date filters
             logger.debug(f"Adding source filter: {key} = {value}")
             filters.append(QueryFilter(key, "eq", value))
@@ -1707,6 +1871,7 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     # Sync databases
     sync_parser = subparsers.add_parser('sync', help='Sync databases')
     sync_parser.add_argument('--source', '-s', action='append', dest='sources', help='Source specifications (e.g., journal:30, trass.stories:7). Can be used multiple times.')
+    sync_parser.add_argument('--browse', '-b', nargs='*', help='Browse and select Discord channels to sync. Optionally specify databases (e.g., -b trass.discord trass.yeeps_discord)')
     sync_parser.add_argument('--days', type=int, help='Number of days to sync')
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
     

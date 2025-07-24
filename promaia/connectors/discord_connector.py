@@ -160,8 +160,8 @@ class DiscordConnector(BaseConnector):
         
         try:
             # Get channel to sync (for now, sync one channel at a time)
-            channel_id = self._extract_channel_filter(filters)
-            if not channel_id:
+            channel_identifier = self._extract_channel_filter(filters)
+            if not channel_identifier:
                 self.logger.error("No channel specified in filters")
                 return []
             
@@ -171,7 +171,32 @@ class DiscordConnector(BaseConnector):
             try:
                 await client.login(self.bot_token)
                 guild = await client.fetch_guild(int(self.server_id))
-                channel = await guild.fetch_channel(int(channel_id))
+                
+                # Fetch the channels for this guild
+                guild_channels = await guild.fetch_channels()
+                
+                # Handle both channel ID and channel name
+                if channel_identifier.startswith("name:"):
+                    # Channel name filter - find channel by name (with sanitized name mapping)
+                    sanitized_channel_name = channel_identifier[5:]  # Remove "name:" prefix
+                    channel = None
+                    
+                    # First try exact match
+                    for ch in guild_channels:
+                        if hasattr(ch, 'send') and ch.name == sanitized_channel_name:
+                            channel = ch
+                            break
+                    
+                    # If no exact match, try reverse sanitization lookup
+                    if not channel:
+                        channel = self._find_channel_by_sanitized_name(guild_channels, sanitized_channel_name)
+                    
+                    if not channel:
+                        self.logger.error(f"Channel '{sanitized_channel_name}' not found in server")
+                        return []
+                else:
+                    # Channel ID filter - fetch by ID
+                    channel = await guild.fetch_channel(int(channel_identifier))
                 
                 if not channel:
                     self.logger.error(f"Could not access channel {channel_id}")
@@ -310,12 +335,29 @@ class DiscordConnector(BaseConnector):
             
             for page_data in pages_to_save:
                 try:
-                    # Save using unified storage (JSON format)
+                    # For Discord, create channel-specific subdirectories
+                    channel_name = page_data.get("channel_name", "unknown")
+                    
+                    # Create a safe channel directory name
+                    safe_channel_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in channel_name)
+                    safe_channel_name = safe_channel_name.strip("_").replace(" ", "_")
+                    
+                    # Create modified database config with channel-specific directory
+                    import copy
+                    discord_db_config = copy.deepcopy(db_config)
+                    original_md_dir = discord_db_config.markdown_directory
+                    channel_md_dir = os.path.join(original_md_dir, safe_channel_name)
+                    discord_db_config.markdown_directory = channel_md_dir
+                    
+                    # Ensure channel directory exists
+                    os.makedirs(channel_md_dir, exist_ok=True)
+                    
+                    # Save using unified storage with channel-specific directory
                     saved_files = storage.save_content(
                         page_id=page_data["page_id"],
                         title=page_data["metadata"]["title"],
                         content_data=page_data["metadata"],
-                        database_config=db_config,
+                        database_config=discord_db_config,
                         markdown_content=page_data["content"]
                     )
                     
@@ -342,13 +384,34 @@ class DiscordConnector(BaseConnector):
             return result
 
     def _extract_channel_filter(self, filters: Optional[List[QueryFilter]]) -> Optional[str]:
-        """Extract channel ID from filters."""
+        """Extract channel identifier from filters (supports both channel_id and channel_name)."""
         if not filters:
             return None
         
+        # First, try to find channel_id filter (returns actual channel ID)
         for filter_obj in filters:
             if filter_obj.property_name == "channel_id" and filter_obj.operator == "eq":
                 return filter_obj.value
+        
+        # If no channel_id filter, try channel_name filter (return the name, we'll handle it differently)
+        for filter_obj in filters:
+            if filter_obj.property_name == "channel_name" and filter_obj.operator == "eq":
+                # Return the channel name prefixed to indicate it's a name, not ID
+                return f"name:{filter_obj.value}"
+        
+        return None
+    
+    def _find_channel_by_sanitized_name(self, channels, sanitized_name: str):
+        """Find a Discord channel by its sanitized name (reverse lookup)."""
+        for channel in channels:
+            if hasattr(channel, 'send'):  # Text channel
+                # Apply the same sanitization logic used when saving files
+                safe_channel_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in channel.name)
+                safe_channel_name = safe_channel_name.strip("_").replace(" ", "_")
+                
+                if safe_channel_name == sanitized_name:
+                    self.logger.info(f"Mapped sanitized name '{sanitized_name}' to Discord channel '{channel.name}'")
+                    return channel
         
         return None
 
@@ -434,12 +497,17 @@ class DiscordConnector(BaseConnector):
         page_id = message['id']
         markdown_content = self._message_to_markdown(message)
         
+        # Extract channel information for Discord-specific organization
+        channel_name = message.get('channel_name', 'unknown')
+        channel_id = message.get('channel_id', 'unknown')
+        
         # Extract properties from message data
         properties = {
             "title": f"{message.get('author_name', 'Unknown')}: {message.get('content', '')[:50]}...",
             "author_id": message.get('author_id'),
             "author_name": message.get('author_name'),
-            "channel_name": message.get('channel_name'),
+            "channel_name": channel_name,
+            "channel_id": channel_id,
             "timestamp": message.get('timestamp'),
             "has_attachments": message.get('has_attachments', False),
             "content": message.get('content', ''),
@@ -456,13 +524,21 @@ class DiscordConnector(BaseConnector):
             "data_source": "discord",
             "content_type": "message",
             "properties": properties,
-            "raw_message_data": message
+            "raw_message_data": message,
+            # Add Discord-specific channel information
+            "discord_channel_name": channel_name,
+            "discord_channel_id": channel_id,
+            "discord_server_id": message.get('server_id'),
+            "discord_server_name": message.get('server_name')
         }
         
         return {
             "page_id": page_id,
             "content": markdown_content,
-            "metadata": metadata
+            "metadata": metadata,
+            # Add channel info for storage path organization
+            "channel_name": channel_name,
+            "channel_id": channel_id
         }
 
     def _message_to_markdown(self, message: Dict[str, Any]) -> str:
@@ -521,6 +597,135 @@ class DiscordConnector(BaseConnector):
                 reactions_section += f"{reaction.get('emoji', '?')} x{reaction.get('count', 0)}  "
         
         return header + main_content + attachments_section + embeds_section + reactions_section
+
+    async def list_server_channels(self):
+        """Debug method to list all channels in the Discord server."""
+        if not self.bot_token or not self.server_id:
+            self.logger.error("Bot token or server ID not available")
+            return []
+            
+        # Create temporary client for data access
+        client = discord.Client(intents=self.intents)
+        
+        try:
+            await client.login(self.bot_token)
+            guild = await client.fetch_guild(int(self.server_id))
+            
+            print(f'🎮 Discord Server: {guild.name} (ID: {guild.id})')
+            print('📢 Available Channels:')
+            
+            channels = await guild.fetch_channels()
+            text_channels = []
+            
+            for channel in channels:
+                if hasattr(channel, 'send'):  # Text channel
+                    print(f'  #{channel.name} (ID: {channel.id})')
+                    text_channels.append({
+                        'name': channel.name,
+                        'id': str(channel.id)
+                    })
+                    
+            return text_channels
+            
+        except Exception as e:
+            self.logger.error(f"Error listing Discord channels: {e}")
+            return []
+        finally:
+            await client.close()
+
+    async def test_channel_access(self, channel) -> bool:
+        """Test if the bot has read access to a specific channel."""
+        try:
+            # Try to fetch 1 message to test read access
+            async for _ in channel.history(limit=1):
+                return True
+            # If no messages but no error, we have access to empty channel
+            return True
+        except discord.Forbidden:
+            return False
+        except Exception as e:
+            self.logger.debug(f"Error testing channel access for {channel.name}: {e}")
+            return False
+
+    async def discover_accessible_channels(self) -> Dict[str, Any]:
+        """Discover all channels the bot has read access to."""
+        if not self.bot_token or not self.server_id:
+            self.logger.error("Bot token or server ID not available")
+            return {"server_name": "Unknown", "channels": []}
+            
+        # Create temporary client for data access
+        client = discord.Client(intents=self.intents)
+        
+        try:
+            await client.login(self.bot_token)
+            guild = await client.fetch_guild(int(self.server_id))
+            channels = await guild.fetch_channels()
+            
+            accessible_channels = []
+            
+            for channel in channels:
+                if hasattr(channel, 'send'):  # Text channel
+                    if await self.test_channel_access(channel):
+                        accessible_channels.append({
+                            'name': channel.name,
+                            'id': str(channel.id),
+                            'discovered_at': datetime.now().isoformat()
+                        })
+                    # Small delay to be polite to Discord API
+                    await asyncio.sleep(0.1)
+                    
+            return {
+                "server_name": guild.name,
+                "server_id": str(guild.id),
+                "channels": accessible_channels,
+                "discovered_at": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error discovering accessible channels: {e}")
+            return {"server_name": "Unknown", "channels": []}
+        finally:
+            await client.close()
+
+    def get_cache_file_path(self) -> Path:
+        """Get the path for the channel cache file."""
+        cache_dir = Path.home() / ".promaia" / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / f"discord_channels_{self.workspace}_{self.server_id}.json"
+
+    async def get_cached_accessible_channels(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """Get cached accessible channels, discovering them if cache doesn't exist."""
+        cache_file = self.get_cache_file_path()
+        
+        # Check if we need to discover/refresh
+        if force_refresh or not cache_file.exists():
+            self.logger.info(f"Discovering accessible channels for server {self.server_id}")
+            channel_data = await self.discover_accessible_channels()
+            
+            # Cache the results
+            try:
+                with open(cache_file, 'w') as f:
+                    json.dump(channel_data, f, indent=2)
+                self.logger.info(f"Cached {len(channel_data.get('channels', []))} accessible channels")
+            except Exception as e:
+                self.logger.error(f"Error caching channel data: {e}")
+            
+            return channel_data
+        
+        # Load from cache
+        try:
+            with open(cache_file, 'r') as f:
+                channel_data = json.load(f)
+            self.logger.debug(f"Loaded {len(channel_data.get('channels', []))} channels from cache")
+            return channel_data
+        except Exception as e:
+            self.logger.error(f"Error loading cached channels: {e}")
+            # Fall back to discovery
+            return await self.discover_accessible_channels()
+
+    async def refresh_channel_cache(self):
+        """Refresh the channel access cache."""
+        return await self.get_cached_accessible_channels(force_refresh=True)
 
     async def cleanup(self):
         """Clean up Discord connector."""

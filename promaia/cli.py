@@ -870,6 +870,7 @@ async def pull_cms_filtered(database_config, output_dir, property_filters, days,
             logger.error(f"Failed to load Discord credentials: {e}")
             return
     else:
+        # This block handles non-Discord connectors
         # Get workspace-specific API key for other services (Notion, etc.)
         api_key = get_workspace_api_key(database_config.workspace)
         if not api_key:
@@ -1005,6 +1006,16 @@ def chat_run(args):
     # Handle recents option
     if getattr(args, 'recent', False):
         return chat_run_recents(args)
+    
+    # Handle browse option for Discord channel selection
+    browse_args = getattr(args, 'browse', None)
+    if browse_args is not None:
+        # If browse is provided without other sources, use standalone browse
+        if not getattr(args, 'sources', None) and not browse_args:
+            return chat_run_browse(args)
+        # Otherwise, handle inline browse functionality
+        elif browse_args is not None:  # browse_args could be empty list or list with databases
+            return chat_run_inline_browse(args)
     
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
@@ -1155,6 +1166,264 @@ def chat_run_recents(args):
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run_recents: {e}", exc_info=True)
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
+
+def chat_run_browse(args):
+    """Run the chat interface with Discord channel browser."""
+    import asyncio
+    from promaia.cli.discord_commands import handle_discord_browse
+    from promaia.config.workspaces import get_workspace_manager
+    from promaia.chat.interface import chat
+    
+    try:
+        # Get workspace
+        workspace_manager = get_workspace_manager()
+        workspace = getattr(args, 'workspace', None)
+        
+        if not workspace:
+            workspace = workspace_manager.get_default_workspace()
+            if not workspace:
+                print("No workspace specified and no default workspace configured.", file=sys.stderr)
+                return
+        
+        # Validate workspace
+        if not workspace_manager.validate_workspace(workspace):
+            print(f"✗ Workspace '{workspace}' is not properly configured.", file=sys.stderr)
+            return
+        
+        # Create args for Discord browse
+        class BrowseArgs:
+            def __init__(self, workspace):
+                self.workspace = workspace
+        
+        browse_args = BrowseArgs(workspace)
+        
+        # Run the Discord browser and get selected channels
+        print(f"🎮 Launching Discord channel browser for workspace '{workspace}'...")
+        
+        # Run the async Discord browse function
+        async def run_browse():
+            from promaia.cli.discord_commands import handle_discord_browse
+            return await handle_discord_browse(browse_args)
+        
+        selected_channels = asyncio.run(run_browse())
+        
+        if not selected_channels:
+            print("ℹ️  No channels selected for chat.")
+            return
+        
+        # Convert selected channels to chat sources format
+        sources = []
+        filters = []
+        
+        # Group channels by database
+        db_channels = {}
+        for db_name, channel_id, channel_name in selected_channels:
+            if db_name not in db_channels:
+                db_channels[db_name] = []
+            db_channels[db_name].append(channel_name)
+        
+        # Create sources and filters
+        for db_name, channels in db_channels.items():
+            sources.append(db_name)  # Just the database name
+            
+            # Create source-prefixed channel filter for this database
+            if len(channels) == 1:
+                filters.append(f'{db_name}:"channel_name={channels[0]}"')
+            else:
+                # Multiple channels - use OR filter within the source
+                channel_filter = " OR ".join([f"channel_name={ch}" for ch in channels])
+                filters.append(f'{db_name}:"({channel_filter})"')
+        
+        print(f"✅ Selected {len(selected_channels)} Discord channels for chat:")
+        for db_name, channels in db_channels.items():
+            for channel in channels:
+                print(f"   • {db_name} → #{channel}")
+        
+        # Create modified args for chat
+        class ChatArgs:
+            def __init__(self, sources, filters, workspace):
+                self.sources = sources
+                self.workspace = workspace
+                self.filters = filters
+                self.recent = False
+                self.browse = False
+                self.non_interactive = False
+                self.natural_language = None
+        
+        chat_args = ChatArgs(sources, filters, workspace)
+        
+        # Start chat with selected sources
+        print(f"\n💬 Starting chat with selected Discord channels...")
+        chat_run(chat_args)
+        
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in chat_run_browse: {e}", exc_info=True)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+
+
+def chat_run_inline_browse(args):
+    """Run the chat interface with inline Discord channel browser (combining regular sources with Discord selection)."""
+    import asyncio
+    from promaia.cli.discord_commands import handle_discord_browse_filtered
+    from promaia.config.workspaces import get_workspace_manager
+    from promaia.chat.interface import chat
+    
+    try:
+        # Get workspace
+        workspace_manager = get_workspace_manager()
+        original_workspace = getattr(args, 'workspace', None)
+        
+        # Resolve workspace (same logic as regular chat_run)
+        resolved_workspace = original_workspace
+        sources = getattr(args, 'sources', None) or []
+        
+        # Get browse databases (could be empty list or list with specific databases)
+        browse_databases = getattr(args, 'browse', [])
+        
+        # If no workspace is explicitly provided, try to infer from sources
+        if not resolved_workspace and sources:
+            for source in sources:
+                if '.' in source:
+                    inferred_workspace = source.split('.')[0]
+                    if workspace_manager.validate_workspace(inferred_workspace):
+                        resolved_workspace = inferred_workspace
+                        print(f"INFO: Inferred workspace '{resolved_workspace}' from source '{source}'.")
+                        break
+        
+        # If still no workspace from sources, try to infer from browse databases
+        if not resolved_workspace and browse_databases:
+            for browse_db in browse_databases:
+                # Extract database name from potential database:days format
+                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                if '.' in db_name:
+                    inferred_workspace = db_name.split('.')[0]
+                    if workspace_manager.validate_workspace(inferred_workspace):
+                        resolved_workspace = inferred_workspace
+                        print(f"INFO: Inferred workspace '{resolved_workspace}' from browse database '{browse_db}'.")
+                        break
+        
+        # If still no workspace, use the default
+        if not resolved_workspace:
+            resolved_workspace = workspace_manager.get_default_workspace()
+            if not resolved_workspace:
+                print("No workspace specified, none could be inferred, and no default workspace is configured.", file=sys.stderr)
+                return
+        
+        # Validate workspace
+        if not workspace_manager.validate_workspace(resolved_workspace):
+            print(f"✗ Workspace '{resolved_workspace}' is not properly configured.", file=sys.stderr)
+            return
+        
+        # Parse browse databases to extract database names and day specifications
+        parsed_browse_databases = []
+        database_days = {}  # Map database -> days
+        
+        if browse_databases:
+            for browse_spec in browse_databases:
+                if ':' in browse_spec:
+                    # Format: database:days
+                    db_name, days_str = browse_spec.rsplit(':', 1)
+                    try:
+                        days = int(days_str)
+                        parsed_browse_databases.append(db_name)
+                        database_days[db_name] = days
+                    except ValueError:
+                        # If days_str is not a number, treat whole thing as database name
+                        parsed_browse_databases.append(browse_spec)
+                else:
+                    # Just database name, no days specified
+                    parsed_browse_databases.append(browse_spec)
+        
+        # Create args for Discord browse
+        class BrowseArgs:
+            def __init__(self, workspace, databases=None, database_days=None):
+                self.workspace = workspace
+                self.databases = databases  # Specific databases to browse, or None for all
+                self.database_days = database_days or {}  # Map of database -> days
+        
+        browse_args = BrowseArgs(resolved_workspace, parsed_browse_databases if parsed_browse_databases else None, database_days)
+        
+        # Show what we're browsing
+        if parsed_browse_databases:
+            db_display = []
+            for db in parsed_browse_databases:
+                if db in database_days:
+                    db_display.append(f"{db}:{database_days[db]}")
+                else:
+                    db_display.append(db)
+            print(f"🎮 Launching Discord channel browser for databases: {', '.join(db_display)}...")
+        else:
+            print(f"🎮 Launching Discord channel browser for workspace '{resolved_workspace}'...")
+        
+        # Run the Discord browser and get selected channels
+        async def run_browse():
+            return await handle_discord_browse_filtered(browse_args)
+        
+        selected_channels = asyncio.run(run_browse())
+        
+        if not selected_channels:
+            print("ℹ️  No channels selected. Continuing with regular sources only.")
+            # Continue with just the regular sources
+            discord_sources = []
+            discord_filters = []
+        else:
+            print(f"✅ Selected {len(selected_channels)} Discord channels:")
+            
+            # Convert selected channels to chat sources format
+            discord_sources = []
+            discord_filters = []
+            
+            # Process each channel individually with its specific days
+            for db_name, channel_id, channel_name, days in selected_channels:
+                # Create individual source with channel-specific days
+                current_source = f"{db_name}:{days}"
+                discord_sources.append(current_source)
+                
+                # Create filter for this specific channel
+                discord_filters.append(f'{current_source}:"channel_name={channel_name}"')
+                
+                # Show what was selected
+                print(f"   • {db_name}:{days} → #{channel_name}")
+        
+        # Combine regular sources with Discord sources
+        all_sources = sources + discord_sources
+        all_filters = (getattr(args, 'filters', None) or []) + discord_filters
+        
+        if all_sources:
+            print(f"\n💬 Starting chat with combined sources:")
+            print(f"   Regular sources: {sources if sources else 'None'}")
+            print(f"   Discord sources: {discord_sources if discord_sources else 'None'}")
+        
+        # Create modified args for chat
+        class ChatArgs:
+            def __init__(self, sources, filters, workspace, original_args):
+                self.sources = sources
+                self.workspace = workspace
+                self.filters = filters
+                self.recent = getattr(original_args, 'recent', False)
+                self.browse = None  # Clear browse to avoid recursion
+                self.non_interactive = getattr(original_args, 'non_interactive', False)
+                self.natural_language = getattr(original_args, 'natural_language', None)
+        
+        chat_args = ChatArgs(all_sources, all_filters, original_workspace, args)
+        
+        # Save combined query to recents
+        if all_sources or all_filters or original_workspace:
+            from promaia.storage.recents import RecentsManager
+            recents_manager = RecentsManager()
+            recents_manager.add_query(
+                sources=all_sources, 
+                filters=all_filters, 
+                workspace=original_workspace
+            )
+        
+        # Start chat with combined sources
+        chat_run(chat_args)
+        
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in chat_run_inline_browse: {e}", exc_info=True)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+
 
 def history_run(args):
     """Run the chat history interface."""
@@ -1439,6 +1708,7 @@ def main():
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
     sync_parser.add_argument('--source', '-s', dest='sources', action='append',
                             help='Source specifications (e.g., journal:30, trass.stories:7). Can be used multiple times.')
+    sync_parser.add_argument('--browse', '-b', nargs='*', help='Browse and select Discord channels to sync. Optionally specify databases (e.g., -b trass.discord trass.yeeps_discord)')
     sync_parser.add_argument('--days', type=int, help='Number of days to sync')
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
     sync_parser.set_defaults(func=handle_database_sync)
@@ -1467,6 +1737,11 @@ def main():
         "--recent", "-r",
         action="store_true",
         help="Show recent queries for selection and re-execution"
+    )
+    chat_parser.add_argument(
+        "--browse", "-b",
+        nargs="*",
+        help="Launch interactive channel browser to select Discord channels. Optionally specify database names to browse only those (e.g., -b trass.yp). Without arguments, shows all Discord databases."
     )
     chat_parser.add_argument(
         "--non-interactive",

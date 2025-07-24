@@ -30,18 +30,86 @@ maia database info journal --schema                  # Include schema details
 maia database remove old-database
 ```
 
-### Multi-Source Chat
+### 🎮 Discord Integration
+
+#### Setup & Configuration
+```bash
+# Configure Discord for a workspace
+maia workspace discord-setup myworkspace --server-id YOUR_DISCORD_SERVER_ID
+
+# Add Discord database
+maia database add discord --type discord --id YOUR_SERVER_ID --workspace myworkspace
+
+# Test Discord connectivity
+maia discord debug-channels --workspace myworkspace
+maia discord list-channels myworkspace
+
+# Test sync with specific channel
+maia database sync -s myworkspace.discord:1.channel_name=general
+```
+
+#### Interactive Browse Mode
+```bash
+# Browse Discord channels with visual TUI
+maia sync -b workspace.discord                      # Interactive sync
+maia chat -b workspace.discord                      # Interactive chat
+
+# Browse multiple Discord databases
+maia sync -b workspace.discord workspace.community_discord
+maia chat -b workspace.discord workspace.yeeps_discord
+
+# Browse with day specifications
+maia sync -b workspace.discord:30                   # 30-day default filter
+maia chat -b workspace.discord:7 workspace.yeeps_discord:14
+```
+
+#### Browser Controls
+```
+🎮 Discord Channel Browser
+
+📂 My Team Server (workspace.discord)
+    ☑ #📢・announcements (30 days)    # ← Selected with ☑
+>>> ☐ #💬・general (7 days)          # ← Highlighted with >>>
+    ☐ #🗞️・release-notes (14 days)
+
+↑↓ Navigate  SPACE Toggle  D Cycle Days  ENTER Confirm  ESC Cancel
+```
+
+#### Direct Discord Sync
+```bash
+# Sync specific Discord channels
+maia sync -s workspace.discord:7.channel_name=announcements
+maia sync -s workspace.discord:30.author_name=admin
+
+# Combined Discord and Notion sync
+maia sync -s journal:5 -s workspace.discord:14.channel_name=general
+```
+
+### Multi-Source Chat & Sync
 ```bash
 # Start chat with default settings
 maia chat
 
 # Chat with specific data sources
-maia chat --source journal:7 --source awakenings:all
-maia chat --source journal:30 --source cms:14
+maia chat -s journal:7 -s awakenings:all
+maia chat -s journal:30 -s cms:14
+
+# Interactive Discord browse mode (NEW)
+maia chat -b workspace.discord                      # Browse Discord channels
+maia chat -b workspace.discord workspace.yeeps_discord # Multiple Discord databases
+maia sync -b workspace.discord:30                   # Browse for sync with day filter
+
+# Combined sources with Discord browse
+maia chat -s journal:7 -b workspace.discord:14     # Mix Notion with Discord
+maia sync -s journal:5 -b workspace.discord:30     # Combined sync
+
+# Direct Discord specifications
+maia chat -s workspace.discord:7.channel_name=announcements
+maia sync -s workspace.discord:14.channel_name=general
 
 # Advanced filtering (see docs/ENHANCED_FILTERING.md for complete guide)
 maia chat -s journal -f 'journal:created_time>2025-01-01'
-maia chat -s journal -f 'journal:created_time>2024-12-01 and created_time<2024-12-08 or created_time>2025-07-01 and created_time<2025-07-08'
+maia chat -s workspace.discord:7 -f 'workspace.discord:author_name=admin'
 
 # Available in chat:
 # /pull        - Sync all databases and reload context
@@ -153,9 +221,19 @@ export MAIA_DEBUG="1"                               # Enable debug mode
 ### Basic Source Specifications
 ```bash
 # Format: database_name:days
---source journal:7              # Last 7 days from journal
---source awakenings:all         # All entries from awakenings
---source cms:30                 # Last 30 days from CMS
+-s journal:7                    # Last 7 days from journal
+-s awakenings:all              # All entries from awakenings
+-s cms:30                      # Last 30 days from CMS
+
+# Discord sources
+-s workspace.discord:7         # Last 7 days from Discord
+-s workspace.discord:30.channel_name=announcements # Specific channel
+-s workspace.yeeps_discord:14.author_name=admin    # Author filter
+
+# Browse mode (interactive TUI)
+-b workspace.discord           # Browse Discord channels
+-b workspace.discord:30        # Browse with 30-day default
+-b discord yeeps_discord       # Browse multiple databases
 ```
 
 ### Advanced Filtering (Database Sync)
@@ -171,25 +249,50 @@ maia database sync --sources stories[team=plush]     # Multiple filters supporte
 
 ## Common Workflows
 
-### Daily Journal Sync
+### Daily Journal & Team Sync
 ```bash
 maia database sync journal                           # Sync journal database
-maia chat --source journal:7                        # Chat with recent entries
+maia chat -s journal:7                             # Chat with recent entries
+
+# Discord team updates
+maia sync -b team.discord:1                        # Sync yesterday's Discord
+maia chat -b team.discord:1                        # Chat with recent team updates
 ```
 
-### Content Creation
+### Team Communication Analysis
 ```bash
-maia database sync                                   # Sync all databases
-maia write --days 14                                # Generate content from context
+# Browse and sync team Discord channels
+maia sync -b team.discord team.dev_discord
+maia chat -s project_notes:14 -b team.discord:7    # Combine project notes with Discord
+
+# Analyze specific channels
+maia chat -s team.discord:7.channel_name=announcements
+```
+
+### Content Creation with Team Context
+```bash
+maia sync -s cms:7 -b team.discord:14              # Sync content and team discussions
+maia write --prompt "Blog post based on recent team discussions"
 maia cms push                                       # Push to CMS
 ```
 
 ### Multi-Source Analysis
 ```bash
-maia chat --source journal:30 --source awakenings:all --source projects:14
+# Traditional multi-source
+maia chat -s journal:30 -s awakenings:all -s projects:14
+
+# With Discord integration
+maia chat -s journal:7 -s projects:14 -b team.discord:7 team.community_discord:14
 ```
 
-### Blog Publishing
+### Weekly Team Retrospective
+```bash
+# Comprehensive team analysis
+maia chat -s team_notes:7 -b team.discord:7 team.dev_discord:7
+# Ask: "What were the key discussions and decisions this week?"
+```
+
+### Blog Publishing Pipeline
 ```bash
 maia cms pull                                       # Pull latest CMS entries
 maia cms sync                                       # Sync to Webflow

@@ -531,8 +531,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Build the source specification
                 if applicable_filters:
                     # Create a source spec with integrated filters
-                    # Format: source_name:all.filter1.filter2... (use 'all' when filters are present)
-                    source_with_filters = f"{source}:all.{'.'.join(applicable_filters)}"
+                    # Check if source already has a day specification (e.g., "trass.discord:30")
+                    if ':' in source:
+                        # Source already has day spec, just append filters
+                        source_with_filters = f"{source}.{'.'.join(applicable_filters)}"
+                    else:
+                        # Source has no day spec, use 'all' for unlimited days
+                        source_with_filters = f"{source}:all.{'.'.join(applicable_filters)}"
                     processed_sources.append(source_with_filters)
                     debug_print(f"Created filtered source spec: {source_with_filters}")
                 else:
@@ -570,7 +575,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             for source_conf in parsed_sources_init:
                 db_name = source_conf['database']
-                db_config = db_manager.get_database(db_name)
+                # Try to get database by qualified name first, then fallback to regular lookup
+                db_config = db_manager.get_database_by_qualified_name(db_name)
+                if not db_config:
+                    db_config = db_manager.get_database(db_name)
                 if not db_config:
                     if DEBUG_MODE:
                         print_text(f"Warning: Config for database '{db_name}' not found. Skipping.", style="bold yellow")

@@ -842,18 +842,22 @@ def read_markdown_files_with_registry(
         
         for page_id, title, created_time, synced_time, file_path, metadata in registry_entries:
             try:
-                # Find the markdown file for this page_id
-                md_files = glob.glob(os.path.join(md_dir, f"*{page_id}*.md"))
-                
-                if not md_files:
-                    print(f"Warning: No markdown file found for page_id {page_id}")
-                    continue
-                
-                # If multiple files exist for the same page_id, use the most recent one
-                if len(md_files) > 1:
-                    md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-                
-                md_file = md_files[0]
+                # Use the file path directly from registry if it exists and is valid
+                if file_path and os.path.exists(file_path):
+                    md_file = file_path
+                else:
+                    # Fallback: try to find the markdown file by page_id (supports subdirectories)
+                    md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
+                    
+                    if not md_files:
+                        print(f"Warning: No markdown file found for page_id {page_id}")
+                        continue
+                    
+                    # If multiple files exist for the same page_id, use the most recent one
+                    if len(md_files) > 1:
+                        md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+                    
+                    md_file = md_files[0]
                 
                 # Read the markdown content
                 with open(md_file, 'r', encoding='utf-8') as f:
@@ -988,11 +992,22 @@ def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters:
             else:
                 metadata_dict = metadata
             
+            # Get Notion-style nested properties
             properties = metadata_dict.get('properties', {})
             
             # Check if page matches all property filters
             matches = True
             for prop_name, expected_value in property_filters.items():
+                
+                # For Discord and other flat metadata, check directly in metadata first
+                if prop_name in metadata_dict:
+                    actual_value = metadata_dict[prop_name]
+                    if not evaluate_condition(actual_value, '=', expected_value):
+                        matches = False
+                        break
+                    continue
+                
+                # For Notion-style nested properties
                 prop_data = properties.get(prop_name, {})
                 actual_value = extract_property_value(prop_data)
                 

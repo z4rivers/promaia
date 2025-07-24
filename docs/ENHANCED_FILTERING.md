@@ -1,8 +1,8 @@
-# Enhanced Filtering for Maia Chat Command
+# Enhanced Filtering for Maia Chat & Sync Commands
 
 ## Overview
 
-The Maia chat command supports advanced filtering to help you select specific content from your databases as context sources. This is particularly powerful for journaling, research, and content analysis where you need precise control over which entries are included in your context.
+The Maia chat and sync commands support advanced filtering to help you select specific content from your databases as context sources. This includes support for Notion databases, Discord channels, Gmail threads, and more. Enhanced filtering is particularly powerful for journaling, research, team communication analysis, and content workflows where you need precise control over which entries are included.
 
 ## Syntax
 
@@ -47,6 +47,113 @@ maia chat -s journal -f 'journal:last_edited_time>2025-01-01'
 **Why this matters for journaling**: 
 - `created_time` = When you originally created the entry
 - `last_edited_time` = When you last modified the entry (better for finding recently active thoughts)
+
+## 🎮 Discord Integration & Browse Mode ⭐ NEW
+
+### Interactive Browse Mode
+
+The new browse functionality (`-b`) provides a visual TUI for selecting Discord channels:
+
+```bash
+# Interactive Discord channel selection
+maia chat -b workspace.discord
+maia sync -b workspace.discord
+
+# Multiple Discord databases
+maia chat -b workspace.discord workspace.yeeps_discord
+maia sync -b workspace.discord workspace.yeeps_discord
+
+# Combined with regular sources
+maia chat -s journal:7 -b workspace.discord:30
+maia sync -s journal:5 -b workspace.discord:14
+```
+
+### Discord Source Specifications
+
+Discord sources support the same filtering syntax as other sources:
+
+```bash
+# Basic Discord source with days
+maia chat -s workspace.discord:7
+maia sync -s workspace.discord:30
+
+# Discord with channel filtering
+maia chat -s workspace.discord:14.channel_name=announcements
+maia sync -s workspace.discord:7.channel_name=general
+
+# Discord with author filtering
+maia chat -s workspace.discord:7.author_name=admin
+maia sync -s workspace.discord:14.author_name=moderator
+
+# Discord with date filtering
+maia chat -s workspace.discord:30 -f 'workspace.discord:created_time>2025-01-01'
+maia sync -s workspace.discord:14 -f 'workspace.discord:timestamp>2025-01-15'
+```
+
+### Discord-Specific Properties
+
+Discord messages support these filterable properties:
+
+| Property | Type | Description | Example |
+|----------|------|-------------|---------|
+| `channel_name` | text | Discord channel name (sanitized) | `channel_name=announcements` |
+| `channel_id` | text | Discord channel ID | `channel_id=1234567890` |
+| `author_name` | text | Message author username | `author_name=admin` |
+| `author_id` | text | Message author user ID | `author_id=123456789` |
+| `content` | text | Message content | `content~announcement` |
+| `timestamp` | date | Message timestamp | `timestamp>2025-01-01` |
+| `server_name` | text | Discord server name | `server_name=My Team` |
+| `has_attachments` | boolean | Has file attachments | `has_attachments=true` |
+| `reaction_count` | number | Number of reactions | `reaction_count>5` |
+
+### Channel Name Handling
+
+Discord channels with emojis and special characters are automatically handled:
+
+```bash
+# Local filesystem uses sanitized names
+data/md/discord/workspace/server/announcements/
+data/md/discord/workspace/server/release-notes/
+data/md/discord/workspace/server/plush-announcements/
+
+# But actual Discord channels have emojis
+📢・announcements
+🗞️・release-notes  
+📣・plush-announcements
+
+# System automatically maps between them:
+maia chat -s workspace.discord:7.channel_name=announcements
+# ↑ Finds Discord channel: 📢・announcements
+```
+
+### Browse Mode Features
+
+The interactive browser provides:
+
+- **Visual Channel Selection**: Navigate with arrow keys, toggle with spacebar
+- **Per-Channel Day Cycling**: Press `D` to cycle days (1→7→14→30→60→90) for individual channels
+- **Real-time Filtering**: Type to filter channels by name
+- **Multi-Server Support**: Browse channels across multiple Discord servers
+- **Workspace Inference**: Automatically detects workspace from database names
+
+```
+🎮 Discord Channel Browser
+
+🔍 Filter: (type to search)
+
+📂 My Team Server (workspace.discord)
+    ☑ #📢・announcements (30 days)
+    ☐ #💬・general (7 days)
+>>> ☑ #🗞️・release-notes (14 days)
+
+📂 Community Server (workspace.community_discord)
+    ☐ #🎮・gaming (30 days)
+    ☑ #📝・feedback (60 days)
+
+📊 Selected: 3 channels
+
+↑↓ Navigate  SPACE Toggle  D Cycle Days  ENTER Confirm  ESC Cancel
+```
 
 ## Filter Syntax Examples
 
