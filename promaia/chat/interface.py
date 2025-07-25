@@ -1157,8 +1157,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             browse_args = BrowseArgs(resolved_workspace, browse_databases, {})
             
-            # Run the Discord browser (no previous selections since user manually edited)
-            selected_channels = asyncio.run(handle_discord_browse_filtered(browse_args))
+            # Check if we can reuse previous Discord selections
+            previous_selections = context_state.get('browse_selections', [])
+            previous_browse_dbs = []
+            if previous_selections:
+                # Extract database names from previous selections
+                previous_browse_dbs = list(set([sel[0] for sel in previous_selections]))
+            
+            # If browse databases haven't changed, reuse previous selections
+            if (previous_selections and 
+                set(browse_databases) == set(previous_browse_dbs)):
+                print_text("ℹ️  Browse databases unchanged - reusing previous Discord channel selections", style="dim cyan")
+                selected_channels = previous_selections
+            else:
+                # Run the Discord browser (databases changed, need new selections)
+                print_text("ℹ️  Browse databases changed - launching Discord channel browser", style="dim yellow")
+                selected_channels = asyncio.run(handle_discord_browse_filtered(browse_args))
             
             if not selected_channels:
                 print_text("ℹ️  No channels selected. Context unchanged.", style="bold yellow")
