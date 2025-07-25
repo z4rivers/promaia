@@ -1147,6 +1147,37 @@ def chat_run_recents(args):
                 return
             selected_query = edited_query
         
+        # Handle special "chat_raw" command type for browse mode and complex commands
+        if hasattr(selected_query, 'command') and selected_query.command == "chat_raw":
+            # Execute the raw command stored in sources[0]
+            raw_command = selected_query.sources[0] if selected_query.sources else ""
+            print(f"\nExecuting: maia chat {raw_command}")
+            
+            # Parse the raw command and execute it
+            try:
+                from promaia.chat.recents_interface import safe_split_command
+                raw_args = safe_split_command(raw_command)
+                
+                # Create a new argument parser and parse the raw command
+                import argparse
+                parser = argparse.ArgumentParser(description="Execute raw chat command")
+                parser.add_argument("--source", "-s", action="append", dest="sources")
+                parser.add_argument("--filter", "-f", action="append", dest="filters")
+                parser.add_argument("--workspace", "-ws", dest="workspace")
+                parser.add_argument("--browse", "-b", nargs="*", dest="browse")
+                parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
+                
+                parsed_args = parser.parse_args(raw_args)
+                parsed_args.recent = False  # Prevent recursion
+                
+                # Execute using the main chat function
+                chat_run(parsed_args)
+                return
+                
+            except Exception as e:
+                print(f"Error executing raw command: {e}")
+                return
+        
         # Create args object for the selected/edited query
         class QueryArgs:
             def __init__(self, query):
@@ -1154,6 +1185,7 @@ def chat_run_recents(args):
                 self.filters = query.filters
                 self.workspace = query.workspace or getattr(args, 'workspace', None)
                 self.recent = False  # Prevent infinite recursion
+                self.browse = None  # No browse mode for regular queries
                 # Add natural language support
                 if hasattr(query, 'natural_language_prompt') and query.natural_language_prompt:
                     self.natural_language = [query.natural_language_prompt]

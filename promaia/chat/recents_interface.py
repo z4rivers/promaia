@@ -243,7 +243,19 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
             # No changes made
             return query
         
-        # Parse the edited command
+        # For simplicity, if the command contains browse mode (-b) or other complex syntax,
+        # just pass it through as a raw command and let the main CLI handle it
+        if edited_command and ('-b ' in edited_command or '--browse ' in edited_command):
+            print(f"Browse mode detected. The command will be executed as: maia chat {edited_command}")
+            # Return a special query that indicates raw command execution
+            return RecentQuery(
+                command="chat_raw",
+                sources=[edited_command],  # Store the raw command in sources for now
+                filters=None,
+                workspace=None
+            )
+        
+        # Parse the edited command for traditional queries
         if edited_command:
             try:
                 # Use safe parsing that handles natural language queries with apostrophes
