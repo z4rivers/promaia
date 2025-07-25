@@ -1083,13 +1083,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             workspace_manager = get_workspace_manager()
             resolved_workspace = workspace
             if browse_databases and not workspace:
-                # Try to infer workspace from browse databases
+                # Try to determine workspace from browse databases
                 for browse_db in browse_databases:
                     if '.' in browse_db:
-                        inferred_workspace = browse_db.split('.')[0]
-                        if workspace_manager.validate_workspace(inferred_workspace):
-                            resolved_workspace = inferred_workspace
-                            print_text(f"INFO: Inferred workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="cyan")
+                        determined_workspace = browse_db.split('.')[0]
+                        if workspace_manager.validate_workspace(determined_workspace):
+                            resolved_workspace = determined_workspace
+                            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="cyan")
                             break
             
             if not resolved_workspace:
@@ -1178,16 +1178,27 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     db_selections[db_name] = {'days': days, 'channels': []}
                 db_selections[db_name]['channels'].append(channel_name)
                 
-                # Create source with day specification
-                source_spec = f"{db_name}:{days}"
-                discord_sources.append(source_spec)
-                
-                # Create filter for the specific channel
-                filter_spec = f'{source_spec}:"channel_name={channel_name}"'
-                discord_filters.append(filter_spec)
-                
                 # Show what was selected
                 print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
+            
+            # Create one source per database with combined channel filter
+            for db_name, selection_info in db_selections.items():
+                source_spec = f"{db_name}:{selection_info['days']}"
+                discord_sources.append(source_spec)
+                
+                # Create combined filter for all channels in this database
+                if len(selection_info['channels']) == 1:
+                    # Single channel - simple filter
+                    filter_spec = f'{source_spec}:"channel_name={selection_info["channels"][0]}"'
+                    discord_filters.append(filter_spec)
+                else:
+                    # Multiple channels - create complex filter with OR logic
+                    channel_conditions = []
+                    for channel_name in selection_info['channels']:
+                        channel_conditions.append(f'channel_name={channel_name}')
+                    combined_filter = ' or '.join(channel_conditions)
+                    filter_spec = f'{source_spec}:"({combined_filter})"'
+                    discord_filters.append(filter_spec)
             
             # Build browse command format for display
             for db_name, selection_info in db_selections.items():
@@ -1314,16 +1325,27 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     db_selections[db_name] = {'days': days, 'channels': []}
                 db_selections[db_name]['channels'].append(channel_name)
                 
-                # Create source with day specification
-                source_spec = f"{db_name}:{days}"
-                discord_sources.append(source_spec)
-                
-                # Create filter for the specific channel
-                filter_spec = f'{source_spec}:"channel_name={channel_name}"'
-                discord_filters.append(filter_spec)
-                
                 # Show what was selected
                 print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
+            
+            # Create one source per database with combined channel filter
+            for db_name, selection_info in db_selections.items():
+                source_spec = f"{db_name}:{selection_info['days']}"
+                discord_sources.append(source_spec)
+                
+                # Create combined filter for all channels in this database
+                if len(selection_info['channels']) == 1:
+                    # Single channel - simple filter
+                    filter_spec = f'{source_spec}:"channel_name={selection_info["channels"][0]}"'
+                    discord_filters.append(filter_spec)
+                else:
+                    # Multiple channels - create complex filter with OR logic
+                    channel_conditions = []
+                    for channel_name in selection_info['channels']:
+                        channel_conditions.append(f'channel_name={channel_name}')
+                    combined_filter = ' or '.join(channel_conditions)
+                    filter_spec = f'{source_spec}:"({combined_filter})"'
+                    discord_filters.append(filter_spec)
             
             # Build browse command format for display
             for db_name, selection_info in db_selections.items():

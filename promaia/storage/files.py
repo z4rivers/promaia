@@ -12,9 +12,11 @@ from pathlib import Path
 import logging
 import sqlite3
 
-# Determine Project Root (assuming this file, files.py, is in maia/storage/)
-# So, two levels up from this file's directory is the project root.
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Import the new centralized path function
+from promaia.config.paths import get_project_root
+
+# Use the centralized function to define PROJECT_ROOT
+PROJECT_ROOT = get_project_root()
 
 # Dynamic path functions that load from config
 def get_journal_directory() -> str:
@@ -687,6 +689,37 @@ def read_markdown_files_by_page_ids(page_ids: List[str], directory_path: str, da
     
     return pages
 
+def create_channel_or_filter(channel_names: List[str]) -> Dict[str, Any]:
+    """
+    Create a complex filter that matches any of the specified Discord channel names.
+    
+    Args:
+        channel_names: List of channel names to match
+        
+    Returns:
+        Complex filter with OR logic for channel names
+    """
+    if not channel_names:
+        return {}
+    
+    if len(channel_names) == 1:
+        # Single channel - return simple filter
+        return {'channel_name': channel_names[0]}
+    
+    # Multiple channels - create complex filter with OR logic
+    or_clauses = []
+    for channel_name in channel_names:
+        or_clauses.append([{
+            'property': 'channel_name',
+            'operator': '=', 
+            'value': channel_name
+        }])
+    
+    return {
+        'type': 'complex',
+        'or_clauses': or_clauses
+    }
+
 def read_markdown_files_with_registry(
     database_config, 
     days: Optional[int] = None,
@@ -722,143 +755,70 @@ def read_markdown_files_with_registry(
         with sqlite3.connect(registry.db_path) as conn:
             cursor = conn.cursor()
             
-            # Determine which date property to use from config, default to last_edited_time
-            date_filter_prop = database_config.date_filters.get("property", "last_edited_time")
+            # Determine which date property to use from config, default to created_time
+            # Use created_time as default since it exists consistently across all content types
+            date_filter_prop = database_config.date_filters.get("property", "created_time")
             
             # Basic sanitization to prevent SQL injection from config values
             # This is a safeguard; config should be trusted but it's good practice
-            allowed_props = ["created_time", "last_edited_time"] # Removed "Date", "received_time" as they are not columns
+            allowed_props = ["created_time", "synced_time"] # Use columns that exist in unified_content view
             if date_filter_prop not in allowed_props:
-                # If the configured property is not a direct column, assume it's a proxy 
-                # for created_time, which should hold the canonical date.
-                # This prevents the "no such column" error.
+                # If the configured property is not a direct column, use created_time as fallback
                 print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'created_time' for query.")
                 date_filter_prop = "created_time"
+
+            # Query the unified_content view for this database
+            # Use database_id for reliable lookup across all database types
+            where_conditions = ["workspace = ?", "database_id = ?"]
+            params = [database_config.workspace, database_config.database_id]
             
-            # Build query with optional date filtering using unified_content view
-            base_query = f"""
+            # Add date filtering if days parameter is provided
+            if days:
+                cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+                where_conditions.append(f"({date_filter_prop} >= ?)")
+                params.append(cutoff_date)
+            
+            where_clause = " AND ".join(where_conditions)
+            query = f"""
                 SELECT page_id, title, created_time, synced_time, file_path, metadata
                 FROM unified_content 
-                WHERE workspace = ? AND database_name = ?
-                AND {date_filter_prop} IS NOT NULL AND {date_filter_prop} != ''
+                WHERE {where_clause}
+                ORDER BY {date_filter_prop} DESC
             """
-            
-            params = [database_config.workspace, database_config.nickname]
-            
-            # Build date filtering clauses
-            filter_clauses = []
-
-            # 1. Handle `days` argument
-            if days is not None:
-                cutoff_date = now_utc() - timedelta(days=days)
-                filter_clauses.append(f"datetime({date_filter_prop}) >= ?")
-                params.append(cutoff_date.isoformat())
-
-            # 2. Handle complex filter expressions
-            if complex_filter:
-                from promaia.cli.database_commands import build_sql_from_complex_filter
-                complex_where, complex_params = build_sql_from_complex_filter(complex_filter, date_filter_prop)
-                if complex_where:
-                    filter_clauses.append(complex_where)
-                    params.extend(complex_params)
-
-            # 3. Handle `comparison_filters` for multiple date ranges (legacy support)
-            elif comparison_filters:
-                # Expecting keys like 'created_time_after', 'created_time_before'
-                # The property name in the filter key (e.g., 'created_time') is ignored, 
-                # we use the one derived from config: `date_filter_prop`.
-                
-                after_dates = []
-                before_dates = []
-
-                for key, values in comparison_filters.items():
-                    if key.endswith('_after'):
-                        after_dates.extend(values)
-                    elif key.endswith('_before'):
-                        before_dates.extend(values)
-
-                # Handle paired date ranges (both after and before dates)
-                if len(after_dates) == len(before_dates) and after_dates:
-                    range_clauses = []
-                    for start, end in zip(after_dates, before_dates):
-                        range_clauses.append(f"(datetime({date_filter_prop}) >= ? AND datetime({date_filter_prop}) <= ?)")
-                        params.extend([start, end])
-                    
-                    if range_clauses:
-                        filter_clauses.append(f"({ ' OR '.join(range_clauses) })")
-                
-                # Handle single after filters (e.g., created_time>2025-01-01)
-                elif after_dates and not before_dates:
-                    after_clauses = []
-                    for start_date in after_dates:
-                        after_clauses.append(f"datetime({date_filter_prop}) >= ?")
-                        params.append(start_date)
-                    
-                    if after_clauses:
-                        filter_clauses.append(f"({ ' OR '.join(after_clauses) })")
-                
-                # Handle single before filters (e.g., created_time<2025-12-30)
-                elif before_dates and not after_dates:
-                    before_clauses = []
-                    for end_date in before_dates:
-                        before_clauses.append(f"datetime({date_filter_prop}) <= ?")
-                        params.append(end_date)
-                    
-                    if before_clauses:
-                        filter_clauses.append(f"({ ' OR '.join(before_clauses) })")
-                
-                # Handle mixed single filters (different numbers of after/before)
-                elif after_dates or before_dates:
-                    mixed_clauses = []
-                    
-                    for start_date in after_dates:
-                        mixed_clauses.append(f"datetime({date_filter_prop}) >= ?")
-                        params.append(start_date)
-                    
-                    for end_date in before_dates:
-                        mixed_clauses.append(f"datetime({date_filter_prop}) <= ?")
-                        params.append(end_date)
-                    
-                    if mixed_clauses:
-                        # Use OR logic for mixed filters (satisfy any condition)
-                        filter_clauses.append(f"({ ' OR '.join(mixed_clauses) })")
-
-            if filter_clauses:
-                base_query += " AND " + " AND ".join(filter_clauses)
-            
-            base_query += f" ORDER BY datetime({date_filter_prop}) DESC"
-            
-            logging.debug(f"Executing registry query: {base_query}")
-            logging.debug(f"Query params: {params}")
-
-            cursor.execute(base_query, params)
+            cursor.execute(query, params)
             registry_entries = cursor.fetchall()
-            
-        # For each registry entry, find and load the corresponding markdown file
+
+        # Correctly get project root
+        project_root = get_project_root()
+        
+        # Get markdown directory for fallback lookups
         md_dir = database_config.markdown_directory
-        if not os.path.exists(md_dir):
-            print(f"Warning: Markdown directory not found: {md_dir}")
-            return []
         
         for page_id, title, created_time, synced_time, file_path, metadata in registry_entries:
             try:
-                # Use the file path directly from registry if it exists and is valid
-                if file_path and os.path.exists(file_path):
-                    md_file = file_path
-                else:
-                    # Fallback: try to find the markdown file by page_id (supports subdirectories)
-                    md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
-                    
-                    if not md_files:
-                        print(f"Warning: No markdown file found for page_id {page_id}")
-                        continue
-                    
-                    # If multiple files exist for the same page_id, use the most recent one
-                    if len(md_files) > 1:
+                # Use the file path directly from registry, ensuring it's absolute
+                if file_path:
+                    # Construct absolute path from project root
+                    abs_file_path = os.path.join(project_root, file_path)
+                    if os.path.exists(abs_file_path):
+                        md_file = abs_file_path
+                    else:
+                        # If absolute path doesn't exist, fallback to glob (legacy support)
+                        md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
+                        if not md_files:
+                            print(f"Warning: No markdown file found for page_id {page_id} (path not found: {abs_file_path})")
+                            continue
                         md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-                    
+                        md_file = md_files[0]
+                else:
+                    # Fallback for entries without a file_path
+                    md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
+                    if not md_files:
+                        print(f"Warning: No markdown file found for page_id {page_id} (no path in registry)")
+                        continue
+                    md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
                     md_file = md_files[0]
-                
+
                 # Read the markdown content
                 with open(md_file, 'r', encoding='utf-8') as f:
                     content = f.read()

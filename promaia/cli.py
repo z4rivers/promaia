@@ -1077,14 +1077,15 @@ def chat_run(args):
         workspace_manager = get_workspace_manager()
         resolved_workspace = original_workspace
         
-        # If no workspace is explicitly provided, try to infer from sources
+        # If no workspace is explicitly provided, try to determine from sources
         if not resolved_workspace and sources:
             for source in sources:
                 if '.' in source:
-                    inferred_workspace = source.split('.')[0]
-                    if workspace_manager.validate_workspace(inferred_workspace):
-                        resolved_workspace = inferred_workspace
-                        print(f"INFO: Inferred workspace '{resolved_workspace}' from source '{source}'.")
+                    # This is not an inference, but a direct determination from the qualified source name.
+                    determined_workspace = source.split('.')[0]
+                    if workspace_manager.validate_workspace(determined_workspace):
+                        resolved_workspace = determined_workspace
+                        print(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.")
                         break
         
         # If still no workspace, use the default
@@ -1285,26 +1286,26 @@ def chat_run_inline_browse(args):
         # Get browse databases (could be empty list or list with specific databases)
         browse_databases = getattr(args, 'browse', [])
         
-        # If no workspace is explicitly provided, try to infer from sources
+        # If no workspace is explicitly provided, try to determine from sources
         if not resolved_workspace and sources:
             for source in sources:
                 if '.' in source:
-                    inferred_workspace = source.split('.')[0]
-                    if workspace_manager.validate_workspace(inferred_workspace):
-                        resolved_workspace = inferred_workspace
-                        print(f"INFO: Inferred workspace '{resolved_workspace}' from source '{source}'.")
+                    determined_workspace = source.split('.')[0]
+                    if workspace_manager.validate_workspace(determined_workspace):
+                        resolved_workspace = determined_workspace
+                        print(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.")
                         break
         
-        # If still no workspace from sources, try to infer from browse databases
+        # If still no workspace from sources, try to determine from browse databases
         if not resolved_workspace and browse_databases:
             for browse_db in browse_databases:
                 # Extract database name from potential database:days format
                 db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
                 if '.' in db_name:
-                    inferred_workspace = db_name.split('.')[0]
-                    if workspace_manager.validate_workspace(inferred_workspace):
-                        resolved_workspace = inferred_workspace
-                        print(f"INFO: Inferred workspace '{resolved_workspace}' from browse database '{browse_db}'.")
+                    determined_workspace = db_name.split('.')[0]
+                    if workspace_manager.validate_workspace(determined_workspace):
+                        resolved_workspace = determined_workspace
+                        print(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.")
                         break
         
         # If still no workspace, use the default

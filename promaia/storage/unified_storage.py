@@ -75,6 +75,7 @@ class UnifiedStorage:
                 hybrid_content_data = {
                     'page_id': page_id,
                     'workspace': database_config.workspace,
+                    'database_id': database_config.database_id, # Add this line
                     'database_name': database_config.nickname,
                     'file_path': md_path,
                     'title': title,

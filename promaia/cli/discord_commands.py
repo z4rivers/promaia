@@ -1091,6 +1091,16 @@ def setup_discord_commands(subparsers):
     discord_parser = subparsers.add_parser('discord', help='Discord integration commands')
     discord_subparsers = discord_parser.add_subparsers(dest='discord_command', help='Discord commands')
     
+    # Registry sync commands
+    registry_check_parser = discord_subparsers.add_parser('registry-check', help='Check for orphaned registry entries from renamed databases')
+    registry_check_parser.set_defaults(func=handle_discord_registry_check)
+    
+    registry_sync_parser = discord_subparsers.add_parser('registry-sync', help='Sync registry entries when database names change')
+    registry_sync_parser.add_argument('--dry-run', action='store_true', help='Show what would be updated without making changes')
+    registry_sync_parser.set_defaults(func=handle_discord_registry_sync)
+    
+
+    
     # Browse command (new interactive browser)
     browse_parser = discord_subparsers.add_parser('browse', help='Interactive channel browser for Discord')
     browse_parser.add_argument('workspace', help='Workspace name')
@@ -1120,6 +1130,147 @@ def setup_discord_commands(subparsers):
     sync_parser.add_argument('--days', type=int, default=7, help='Number of days to sync back')
     sync_parser.add_argument('--limit', type=int, default=100, help='Maximum number of messages to sync')
     sync_parser.set_defaults(func=handle_discord_sync)
+
+async def handle_discord_registry_check(args):
+    """Handle 'maia discord registry-check' command."""
+    console = Console()
+    
+    try:
+        from promaia.config.database_registry_sync import get_database_registry_sync
+        
+        registry_sync = get_database_registry_sync()
+        orphaned_entries = registry_sync.find_orphaned_registry_entries()
+        
+        if not orphaned_entries:
+            console.print("✅ No orphaned registry entries found", style="bold green")
+            console.print("🎯 All registry entries match current database configurations", style="dim")
+            return
+        
+        console.print(f"📊 Found {len(orphaned_entries)} orphaned database(s) in registry:", style="bold yellow")
+        console.print()
+        
+        # Create table of orphaned entries
+        table = Table(title="Orphaned Registry Entries", box=box.ROUNDED)
+        table.add_column("Old Database Name", style="red")
+        table.add_column("Entry Count", style="yellow")
+        table.add_column("Sample File Paths", style="dim")
+        
+        for db_name, entries in orphaned_entries.items():
+            sample_paths = []
+            for entry in entries[:3]:  # Show first 3 file paths
+                path = entry.get("file_path", "Unknown")
+                if len(path) > 50:
+                    path = "..." + path[-47:]
+                sample_paths.append(path)
+            
+            table.add_row(
+                db_name,
+                str(len(entries)) + ("+" if len(entries) >= 10 else ""),
+                "\n".join(sample_paths)
+            )
+        
+        console.print(table)
+        console.print()
+        
+        # Get suggestions
+        suggestions = registry_sync.suggest_database_mappings(orphaned_entries)
+        
+        if suggestions:
+            console.print("💡 Suggested mappings:", style="bold blue")
+            for old_name, new_name in suggestions.items():
+                console.print(f"  {old_name} → {new_name}")
+            
+            console.print()
+            console.print("💡 Run 'maia discord registry-sync --dry-run' to see what would be updated", style="dim")
+            console.print("💡 Run 'maia discord registry-sync' to apply the mappings", style="dim")
+        else:
+            console.print("⚠️  No automatic mappings found. Manual intervention may be required.", style="yellow")
+        
+    except Exception as e:
+        console.print(f"❌ Error checking registry: {e}", style="bold red")
+        logger.error(f"Discord registry check failed: {e}", exc_info=True)
+
+async def handle_discord_registry_sync(args):
+    """Handle 'maia discord registry-sync' command."""
+    console = Console()
+    
+    try:
+        from promaia.config.database_registry_sync import get_database_registry_sync
+        
+        registry_sync = get_database_registry_sync()
+        dry_run = args.dry_run
+        
+        if dry_run:
+            console.print("🔍 Performing registry sync dry run (no changes will be made)...", style="bold blue")
+        else:
+            console.print("🚀 Starting Discord registry synchronization...", style="bold green")
+        
+        # Find orphaned entries and get suggestions
+        orphaned_entries = registry_sync.find_orphaned_registry_entries()
+        
+        if not orphaned_entries:
+            console.print("✅ No orphaned registry entries found", style="bold green")
+            console.print("🎯 All registry entries match current database configurations", style="dim")
+            return
+        
+        suggestions = registry_sync.suggest_database_mappings(orphaned_entries)
+        
+        if not suggestions:
+            console.print("⚠️  No automatic mappings could be determined", style="bold yellow")
+            console.print("💡 Run 'maia discord registry-check' to see orphaned entries", style="dim")
+            return
+        
+        console.print(f"📊 Found {len(suggestions)} database mapping(s):", style="bold cyan")
+        for old_name, new_name in suggestions.items():
+            console.print(f"  {old_name} → {new_name}")
+        console.print()
+        
+        # Apply the mappings
+        results = registry_sync.sync_all_suggested_mappings(suggestions, dry_run=dry_run)
+        
+        console.print(f"📊 Registry Sync Results ({'' if not dry_run else 'DRY RUN '}Summary):", style="bold cyan")
+        console.print(f"  • Total mappings processed: {results['total_mappings']}")
+        console.print(f"  • Successful updates: {results['successful_updates']}")
+        console.print(f"  • Failed updates: {results['failed_updates']}")
+        console.print(f"  • Total registry entries updated: {results['total_entries_updated']}")
+        
+        # Show detailed results
+        if results["update_results"]:
+            console.print()
+            for update_result in results["update_results"]:
+                if dry_run:
+                    count_key = "entries_would_update"
+                    count_value = update_result.get(count_key, 0)
+                    status = "🔍 WOULD UPDATE" if count_value > 0 else "ℹ️  NO ENTRIES"
+                    console.print(f"{status} {update_result['old_name']} → {update_result['new_name']}")
+                    console.print(f"  • Entries: {count_value}")
+                else:
+                    status = "✅ SUCCESS" if update_result.get("success") else "❌ FAILED"
+                    console.print(f"{status} {update_result['old_name']} → {update_result['new_name']}")
+                    console.print(f"  • Entries updated: {update_result.get('entries_updated', 0)}")
+                    
+                    if update_result.get("error"):
+                        console.print(f"  • Error: {update_result['error']}", style="red")
+                console.print()
+        
+        # Show any general errors
+        if results.get("errors"):
+            console.print("❌ Errors encountered:", style="bold red")
+            for error in results["errors"]:
+                console.print(f"  • {error}", style="red")
+            console.print()
+        
+        if dry_run:
+            console.print("💡 Run without --dry-run to perform the actual registry update", style="dim")
+        elif results["successful_updates"] > 0:
+            console.print("🎉 Registry synchronization completed successfully!", style="bold green")
+            console.print("💡 You can now use renamed Discord databases without registry issues", style="dim")
+        
+    except Exception as e:
+        console.print(f"❌ Error during registry sync: {e}", style="bold red")
+        logger.error(f"Discord registry sync failed: {e}", exc_info=True)
+
+
 
 def add_discord_workspace_commands(workspace_subparsers):
     """Add Discord setup to workspace commands."""

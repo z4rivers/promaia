@@ -49,7 +49,7 @@ class DatabaseConfig:
             # For Gmail, use data/gmail/{workspace}/ structure
             default_md_dir = f"data/gmail/{self.workspace}"
         elif source_type == "discord":
-            # For Discord, use data/discord/{workspace}/ structure  
+            # For Discord, use data/discord/{workspace}/ structure with human-readable names
             default_md_dir = f"data/discord/{self.workspace}"
         else:
             # For other sources (Notion), use data/notion/{workspace}/
@@ -116,6 +116,18 @@ class DatabaseConfig:
                 return self.nickname
             else:
                 return f"{self.workspace}.{self.nickname}"
+    
+    def get_stable_identifier(self) -> str:
+        """Get a stable identifier for this database that doesn't change with nickname updates."""
+        if self.source_type == "discord" and self.database_id:
+            return f"discord_{self.database_id}"
+        return f"{self.workspace}_{self.name}"
+    
+    def get_discord_server_id(self) -> Optional[str]:
+        """Get the Discord server ID for this database."""
+        if self.source_type == "discord":
+            return self.database_id
+        return None
 
 class DatabaseManager:
     """Manages all database configurations."""
@@ -232,6 +244,33 @@ class DatabaseManager:
             # and the generated qualified name (e.g., "trass.journal")
             if db.name == qualified_name or db.get_qualified_name() == qualified_name:
                 return db
+        return None
+    
+    def get_database_by_server_id(self, server_id: str) -> Optional[DatabaseConfig]:
+        """Get a Discord database configuration by its server ID."""
+        for db in self.databases.values():
+            if db.source_type == "discord" and db.database_id == server_id:
+                return db
+        return None
+    
+    def find_database_by_legacy_name(self, legacy_name: str) -> Optional[DatabaseConfig]:
+        """Find a database that might have been renamed, using multiple lookup strategies."""
+        # First try exact match
+        result = self.get_database_by_qualified_name(legacy_name)
+        if result:
+            return result
+        
+        # For Discord databases, try to find by checking if any database points to same directory
+        # This helps when nicknames change but files are still in the same location
+        for db in self.databases.values():
+            if db.source_type == "discord":
+                # Check if the legacy name could be an old nickname for this database
+                if f"{db.workspace}.{legacy_name}" == f"{db.workspace}.{db.nickname}":
+                    return db
+                # Check if legacy name matches the current qualified name pattern
+                if legacy_name in [db.name, db.nickname, f"{db.workspace}.{db.nickname}"]:
+                    return db
+        
         return None
     
     def _migrate_from_env_vars(self):

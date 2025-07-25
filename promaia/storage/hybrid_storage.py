@@ -36,6 +36,7 @@ class HybridContentRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,  -- Individual message ID
                     workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
                     file_path TEXT NOT NULL,
                     
                     -- Gmail-specific fields for individual messages
@@ -76,6 +77,7 @@ class HybridContentRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,
                     workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
                     database_name TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     
@@ -106,6 +108,7 @@ class HybridContentRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,
                     workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
                     database_name TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     
@@ -137,6 +140,7 @@ class HybridContentRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,
                     workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
                     database_name TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     
@@ -170,6 +174,7 @@ class HybridContentRegistry:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,
                     workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
                     database_name TEXT NOT NULL,
                     content_type TEXT NOT NULL, -- 'awakenings', 'cpj', etc.
                     file_path TEXT NOT NULL,
@@ -200,6 +205,7 @@ class HybridContentRegistry:
                 SELECT 
                     page_id,
                     workspace,
+                    database_id,
                     'gmail' as database_name,
                     'gmail' as content_type,
                     file_path,
@@ -237,6 +243,7 @@ class HybridContentRegistry:
                 SELECT 
                     page_id,
                     workspace,
+                    database_id,
                     database_name,
                     'notion_journal' as content_type,
                     file_path,
@@ -271,6 +278,7 @@ class HybridContentRegistry:
                 SELECT 
                     page_id,
                     workspace,
+                    database_id,
                     database_name,
                     'notion_stories' as content_type,
                     file_path,
@@ -306,6 +314,7 @@ class HybridContentRegistry:
                 SELECT 
                     page_id,
                     workspace,
+                    database_id,
                     database_name,
                     'notion_cms' as content_type,
                     file_path,
@@ -342,6 +351,7 @@ class HybridContentRegistry:
                 SELECT 
                     page_id,
                     workspace,
+                    database_id,
                     database_name,
                     content_type,
                     file_path,
@@ -416,15 +426,16 @@ class HybridContentRegistry:
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO gmail_content (
-                        page_id, workspace, file_path, subject, sender_email, sender_name,
+                        page_id, workspace, database_id, file_path, subject, sender_email, sender_name,
                         recipient_emails, gmail_labels, thread_id, message_id, 
                         has_attachments, is_unread, body_snippet, message_content,
                         thread_position, is_latest_in_thread, email_date,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
+                    content_data.get('database_id'),
                     content_data['file_path'],
                     metadata.get('subject', content_data.get('title')),
                     metadata.get('sender_email'),
@@ -531,13 +542,14 @@ class HybridContentRegistry:
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_journal (
-                        page_id, workspace, database_name, file_path, title,
+                        page_id, workspace, database_id, database_name, file_path, title,
                         status, date_value, tags, featured, author_name,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
+                    content_data.get('database_id'),
                     content_data['database_name'],
                     content_data['file_path'],
                     content_data.get('title'),
@@ -592,13 +604,14 @@ class HybridContentRegistry:
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_stories (
-                        page_id, workspace, database_name, file_path, title,
+                        page_id, workspace, database_id, database_name, file_path, title,
                         status, epic_relation, author_name, story_points, priority, labels,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
+                    content_data.get('database_id'),
                     content_data['database_name'],
                     content_data['file_path'],
                     content_data.get('title'),
@@ -650,14 +663,15 @@ class HybridContentRegistry:
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_cms (
-                        page_id, workspace, database_name, file_path, title,
+                        page_id, workspace, database_id, database_name, file_path, title,
                         status, category, featured, author_name, slug, meta_description,
                         tags, publish_date, created_time, last_edited_time, synced_time, 
                         file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
+                    content_data.get('database_id'),
                     content_data['database_name'],
                     content_data['file_path'],
                     content_data.get('title'),
@@ -691,12 +705,13 @@ class HybridContentRegistry:
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO generic_content (
-                        page_id, workspace, database_name, content_type, file_path, title,
+                        page_id, workspace, database_id, database_name, content_type, file_path, title,
                         created_time, last_edited_time, synced_time, file_size, checksum, metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
+                    content_data.get('database_id'),
                     content_data['database_name'],
                     content_data.get('content_type', content_data['database_name']),
                     content_data['file_path'],
@@ -880,6 +895,39 @@ class HybridContentRegistry:
             
         except Exception:
             return None
+
+    def get_content_by_file_path(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a single content entry by its file path."""
+        query = "SELECT * FROM unified_content WHERE file_path = ?"
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(query, (file_path,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except sqlite3.Error as e:
+            print(f"Database error in get_content_by_file_path: {e}")
+            return None
+
+    def clear_generic_content_for_database(self, database_name: str) -> int:
+        """Deletes all entries from the generic_content table for a specific database."""
+        query = "DELETE FROM generic_content WHERE database_name = ?"
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, (database_name,))
+                conn.commit()
+                # Return the number of deleted rows
+                return cursor.rowcount
+        except sqlite3.Error as e:
+            print(f"Database error while clearing generic_content for {database_name}: {e}")
+            return 0
+            
+    def close(self):
+        """Close the database connection."""
+        # The connection is now managed with 'with' statements, so this is less critical
+        # but can be kept for explicit closure if needed elsewhere.
 
 
 # Global instance

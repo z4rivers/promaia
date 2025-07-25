@@ -10,8 +10,10 @@ from promaia.utils.timezone_utils import days_ago_utc, now_local, now_utc, log_t
 import json
 import os
 import re
+from pathlib import Path
 
 from promaia.config.databases import get_database_manager, get_database_config
+from promaia.config.paths import get_project_root
 from promaia.connectors import ConnectorRegistry
 from promaia.connectors.base import QueryFilter, DateRangeFilter
 
@@ -878,8 +880,9 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
         source = source_match.group(1)
         filter_part = source_match.group(2)
         
-        # Check if this is a complex expression with 'or' or 'and'
-        if ' or ' in filter_part.lower() or ' and ' in filter_part.lower():
+        # Check if this is a complex expression with 'or', 'and', or parentheses
+        if (' or ' in filter_part.lower() or ' and ' in filter_part.lower() or 
+            (filter_part.startswith('(') and filter_part.endswith(')'))):
             # Return source-specific complex filter
             return {'source': source, 'filter': f"__COMPLEX_EXPR__{filter_part}"}
         
@@ -950,11 +953,17 @@ def parse_complex_filter_expression(expr: str) -> Dict[str, Any]:
         "created_time<2024-12-30 or created_time>2025-06-30"
         "status=published and created_time>2025-01-01" 
         "created_time<2024-12-30 or created_time>2025-06-30 and status=planned"
+        "(channel_name=announcements or channel_name=release-notes)"
     
     Returns:
         Dictionary with parsed conditions and operators for SQL generation
     """
     from typing import List, Union
+    
+    # Handle parentheses - remove outer parentheses if present
+    expr = expr.strip()
+    if expr.startswith('(') and expr.endswith(')'):
+        expr = expr[1:-1].strip()
     
     # Split on 'or' first (lowest precedence)
     or_clauses = []
@@ -1760,23 +1769,23 @@ async def handle_register_markdown_files(args):
         total_registered = 0
         
         for db_config in databases_to_process:
-            print(f"\nProcessing {db_config.workspace}.{db_config.nickname}...")
+            print(f"\nProcessing {db_config.get_qualified_name()}...")
             
             # Check if markdown directory exists
             md_dir = db_config.markdown_directory
-            if not os.path.exists(md_dir):
-                print(f"  Markdown directory not found: {md_dir}")
+            if not md_dir or not os.path.exists(md_dir):
+                print(f"  Warning: Markdown directory not found or not configured: {md_dir}")
                 continue
             
             # Get existing registry entries for this database
             existing_entries = registry.query_content(
                 workspace=db_config.workspace,
-                database_name=db_config.nickname
+                database_name=db_config.get_qualified_name()
             )
-            existing_page_ids = {entry['page_id'] for entry in existing_entries}
+            existing_page_ids = {entry['page_id'] for entry in existing_entries if entry.get('page_id')}
             
-            # Find markdown files
-            md_files = glob.glob(os.path.join(md_dir, "*.md"))
+            # Find markdown files recursively
+            md_files = glob.glob(os.path.join(md_dir, "**/*.md"), recursive=True)
             print(f"  Found {len(md_files)} markdown files")
             print(f"  Found {len(existing_entries)} existing registry entries")
             
@@ -1784,14 +1793,17 @@ async def handle_register_markdown_files(args):
             
             for md_file in md_files:
                 try:
+                    import re  # Import at the beginning to avoid scope issues
                     filename = os.path.basename(md_file)
                     
-                    # Extract page ID from filename (format: "YYYY-MM-DD title page_id.md")
-                    # Handle both UUID format (36 chars) and Gmail thread format (thread_16chars)
-                    page_id_match = re.search(r'([a-f0-9-]{36}|thread_[a-f0-9]{16})\.md$', filename)
+                    # Extract page ID from filename - supports Notion UUIDs, Gmail threads, and Discord messages
+                    page_id_match = re.search(r'(?:msg_|thread_)?([a-f0-9-]{16,}|[a-f0-9]{32})', filename, re.IGNORECASE)
                     if not page_id_match:
-                        print(f"    Skipping {filename}: No page ID found")
-                        continue
+                        # Fallback for Notion pages with format: Title last-part-of-uuid.md
+                        page_id_match = re.search(r'([a-f0-9]{32})\.md$', filename)
+                        if not page_id_match:
+                            logger.debug(f"Skipping {filename}: No page ID found in standard formats.")
+                            continue
                     
                     page_id = page_id_match.group(1)
                     
@@ -1800,15 +1812,13 @@ async def handle_register_markdown_files(args):
                         continue
                     
                     # Extract title and date from filename
-                    # Pattern: "YYYY-MM-DD title page_id.md" (supports both UUID and thread ID formats)
-                    title_match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(.+?)\s+(?:[a-f0-9-]{36}|thread_[a-f0-9]{16})\.md$', filename)
+                    title_match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(.+?)\s+', filename)
                     if title_match:
                         date_str = title_match.group(1)
-                        title = title_match.group(2)
+                        title = title_match.group(2).strip()
                         created_time = f"{date_str}T00:00:00Z"
                     else:
-                        # Fallback: use file modification time
-                        title = filename.replace('.md', '').replace(page_id, '').strip()
+                        title = re.sub(r'\s+[a-f0-9-]{16,}\.md$', '', filename, flags=re.IGNORECASE).strip()
                         file_mtime = datetime.fromtimestamp(os.path.getmtime(md_file))
                         created_time = file_mtime.isoformat() + "Z"
                     
@@ -1816,35 +1826,79 @@ async def handle_register_markdown_files(args):
                         print(f"    Would register: {title} ({page_id})")
                         registered_count += 1
                     else:
+                        # Extract metadata based on content type
+                        metadata = {}
+                        
+                        # For Discord files, extract channel information
+                        if db_config.source_type == 'discord':
+                            # Extract channel from file path
+                            rel_path = os.path.relpath(md_file, get_project_root())
+                            path_parts = rel_path.split(os.sep)
+                            
+                            # Find channel name in path (usually the parent directory)
+                            channel_name = None
+                            if len(path_parts) >= 2:
+                                channel_name = path_parts[-2]  # Parent directory is usually channel
+                            
+                            # Read file content to extract Discord-specific metadata
+                            try:
+                                with open(md_file, 'r', encoding='utf-8') as f:
+                                    content = f.read()
+                                    
+                                # Extract channel from content if available
+                                channel_match = re.search(r'\*\*Channel:\*\*\s*(#[^*\n]+)', content)
+                                if channel_match:
+                                    channel_name = channel_match.group(1).strip()
+                                
+                                # Extract timestamp 
+                                timestamp_match = re.search(r'\*\*Timestamp:\*\*\s*([^\n]+)', content)
+                                if timestamp_match:
+                                    metadata['timestamp'] = timestamp_match.group(1).strip()
+                                
+                                # Extract author
+                                author_match = re.search(r'\*\*Author:\*\*\s*([^\n]+)', content)
+                                if author_match:
+                                    metadata['author'] = author_match.group(1).strip()
+                                    
+                            except Exception as e:
+                                print(f"Warning: Could not read Discord file {md_file}: {e}")
+                            
+                            if channel_name:
+                                metadata['channel_name'] = channel_name
+                                
                         # Create content data for registration
                         content_data = {
                             'title': title,
                             'created_time': created_time,
                             'last_edited_time': created_time,
+                            'synced_time': datetime.now().isoformat() + "Z",
                             'page_id': page_id,
-                            'source': 'markdown_file_registration'
+                            'source': 'markdown_file_registration',
+                            'workspace': db_config.workspace,
+                            'database_id': db_config.database_id,  # Add immutable database identifier
+                            'database_name': db_config.get_qualified_name(),
+                            'file_path': os.path.relpath(md_file, get_project_root()),
+                            'content_type': db_config.source_type,
+                            'metadata': metadata 
                         }
                         
-                        # Register in database
-                        success = registry.register_content(
-                            page_id=page_id,
-                            workspace=db_config.workspace,
-                            database_name=db_config.nickname,
-                            file_path=md_file,
-                            content_data=content_data
-                        )
+                        # Register in database using generic content table
+                        success = registry.add_generic_content(content_data)
                         
                         if success:
-                            print(f"    Registered: {title} ({page_id})")
+                            # print(f"    Registered: {title} ({page_id})")
                             registered_count += 1
                         else:
                             print(f"    Failed to register: {title} ({page_id})")
                             
                 except Exception as e:
-                    print(f"    Error processing {filename}: {e}")
+                    print(f"    Error processing {md_file}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             
-            print(f"  {'Would register' if args.dry_run else 'Registered'} {registered_count} new files")
+            action = "Would register" if args.dry_run else "Registered"
+            print(f"  {action} {registered_count} new files")
             total_registered += registered_count
         
         action = "Would register" if args.dry_run else "Registered"

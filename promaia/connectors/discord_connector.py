@@ -586,10 +586,25 @@ class DiscordConnector(BaseConnector):
         # Extract channel information for Discord-specific organization
         channel_name = message.get('channel_name', 'unknown')
         channel_id = message.get('channel_id', 'unknown')
+
+        # Format timestamp for filename
+        timestamp_str = "unknown_time"
+        if message.get('timestamp'):
+            try:
+                dt = datetime.fromisoformat(message['timestamp'].replace('Z', '+00:00'))
+                timestamp_str = dt.strftime("%Y-%m-%d_%H-%M-%S")
+            except ValueError:
+                pass
+
+        # Create a filename-safe title
+        author_name = message.get('author_name', 'Unknown')
         
+        # New filename format: YYYY-MM-DD_HH-MM-SS_author_msg_id.md
+        filename_title = f"{timestamp_str}_{author_name}_{page_id}"
+
         # Extract properties from message data
         properties = {
-            "title": f"{message.get('author_name', 'Unknown')}: {message.get('content', '')[:50]}...",
+            "title": filename_title,
             "author_id": message.get('author_id'),
             "author_name": message.get('author_name'),
             "channel_name": channel_name,
@@ -629,28 +644,7 @@ class DiscordConnector(BaseConnector):
 
     def _message_to_markdown(self, message: Dict[str, Any]) -> str:
         """Convert a Discord message dictionary to a markdown string."""
-        author = message.get("author_name", "Unknown")
         content = message.get("content", "")
-        timestamp = message.get("timestamp", "")
-        channel = message.get("channel_name", "unknown")
-        
-        # Parse timestamp for display
-        try:
-            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except:
-            time_str = timestamp
-        
-        # Create header
-        header = f"""# Discord Message
-
-**Author:** {author}  
-**Channel:** #{channel}  
-**Timestamp:** {time_str}  
-
----
-
-"""
         
         # Add main content
         main_content = content if content else "*[No text content]*"
@@ -682,7 +676,7 @@ class DiscordConnector(BaseConnector):
             for reaction in reactions:
                 reactions_section += f"{reaction.get('emoji', '?')} x{reaction.get('count', 0)}  "
         
-        return header + main_content + attachments_section + embeds_section + reactions_section
+        return main_content + attachments_section + embeds_section + reactions_section
 
     async def list_server_channels(self):
         """Debug method to list all channels in the Discord server."""
