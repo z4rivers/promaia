@@ -53,8 +53,23 @@ def create_system_prompt(
                 channels = {}
                 for page in pages:
                     channel_name = "unknown_channel"
-                    if page.get('metadata') and page['metadata'].get('discord_channel_name'):
-                        channel_name = page['metadata']['discord_channel_name']
+                    
+                    # Handle metadata that might be a JSON string or dict
+                    metadata = page.get('metadata')
+                    if metadata:
+                        if isinstance(metadata, str):
+                            try:
+                                import json
+                                metadata = json.loads(metadata)
+                            except (json.JSONDecodeError, TypeError):
+                                metadata = {}
+                        
+                        # Try multiple ways to get channel name
+                        if metadata.get('discord_channel_name'):
+                            channel_name = metadata['discord_channel_name']
+                        elif metadata.get('channel_name'):
+                            # Remove # prefix if present
+                            channel_name = metadata['channel_name'].lstrip('#')
                     
                     if channel_name not in channels:
                         channels[channel_name] = []
