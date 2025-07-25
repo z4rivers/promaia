@@ -160,11 +160,26 @@ def generate_source_breakdown(multi_source_data):
     
     breakdown = {}
     for source_key, pages in multi_source_data.items():
-        # Extract the actual source name (remove workspace prefix if present)
+        # Create a display name that avoids collisions
         if '.' in source_key:
-            source_name = source_key.split('.', 1)[1]  # Get part after first dot
+            workspace, source = source_key.split('.', 1)
+            # Check if we need to include workspace to avoid collision
+            base_source = source
+            potential_collision = any(
+                other_key != source_key and 
+                (other_key.endswith('.' + source) or other_key == source)
+                for other_key in multi_source_data.keys()
+            )
+            
+            if potential_collision:
+                # Include workspace prefix to disambiguate
+                source_name = f"{workspace}.{source}"
+            else:
+                # No collision, use just the source name
+                source_name = source
         else:
             source_name = source_key
+            
         breakdown[source_name] = len(pages)
     
     return breakdown
@@ -326,7 +341,7 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
         return None
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -342,11 +357,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'query_command': None,
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
         'natural_language_content': natural_language_content,  # Track if using natural language
-        'natural_language_prompt': natural_language_prompt  # Store the original NL prompt
+        'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
+        'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
+        'browse_selections': browse_selections,  # Store original browse selections for re-editing
+        'original_query_format': original_browse_command  # Store the original query format for display
     }
 
     def update_query_command():
         """Update the query command display based on current context state."""
+        # If we have an original query format (like -b), prefer showing that
+        if context_state.get('original_query_format'):
+            context_state['query_command'] = context_state['original_query_format']
+            return
+        
+        # Otherwise, build the command from current state
         query_parts = ["maia", "chat"]
         if context_state['sources']:
             if len(context_state['sources']) == 1:
@@ -449,7 +473,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         db_manager = get_database_manager()
         # Use combined data that may already contain natural language results
         new_multi_source_data = combined_multi_source_data
-        new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+        # Don't calculate total here - calculate it from final data to ensure consistency
 
         if not current_sources:
             debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
@@ -611,7 +635,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Use qualified name to avoid collisions between workspaces
                     unique_key = db_config.get_qualified_name()
                     new_multi_source_data[unique_key] = pages
-                    new_total_pages_loaded += len(pages)
+                    # Don't increment total here - calculate from final data to ensure consistency
 
                     if DEBUG_MODE:
                         print_text(f"  - Loaded {len(pages)} entries from: {unique_key}", style="green")
@@ -619,9 +643,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if DEBUG_MODE:
                         print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
 
+        # Calculate total from final data to ensure consistency with breakdown
+        new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+        
         # Update context state
         context_state['initial_multi_source_data'] = new_multi_source_data
         context_state['total_pages_loaded'] = new_total_pages_loaded
+        
+        # Update sources list to reflect only the sources that were actually loaded
+        # This ensures session logs show accurate source information
+        context_state['sources'] = list(new_multi_source_data.keys())
         
         # Update module-level variables
         initial_multi_source_data = new_multi_source_data
@@ -690,11 +721,55 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         mock_args = MockArgs()
         
-        # Use the same source parsing logic as standalone sync
+        # Use the same source parsing logic as standalone sync, but include filters
         from promaia.cli.database_commands import parse_source_specs
+        from promaia.config.databases import get_database_manager
+        
+        db_manager = get_database_manager()
+        current_filters = context_state.get('filters', [])
+        
+        # For Discord sources with browse-mode channel filters, use the filtered specs
+        # For regular sources, use the source as-is
+        sources_to_sync = []
+        
+        for source in databases_to_sync:
+            # Check if this is a Discord source
+            source_name = source.split(':')[0] if ':' in source else source
+            db_config = db_manager.get_database_by_qualified_name(source_name)
+            
+            if db_config and db_config.source_type == "discord":
+                # Check if we have channel-specific filters for this Discord source
+                # Match by database name (not including days) to handle day specification mismatches
+                db_base_name = db_config.name  # Get the full database name (e.g., 'trass.yeeps_discord')
+                
+                # Find filters that match this database (regardless of day specification)
+                discord_filters = []
+                for f in current_filters:
+                    filter_db_name = f.split(':')[0] if ':' in f else f
+                    # Check if this filter belongs to the same database
+                    filter_db_config = db_manager.get_database_by_qualified_name(filter_db_name)
+                    if filter_db_config and filter_db_config.name == db_base_name:
+                        discord_filters.append(f)
+                
+                if discord_filters:
+                    # Use the filtered specifications (one per channel)
+                    sources_to_sync.extend(discord_filters)
+                    print_text(f"📺 Discord source {source}: syncing {len(discord_filters)} selected channels", style="dim cyan")
+                else:
+                    # No channel filters - skip Discord sources without browse selection
+                    print_text(f"⚠️  Discord source {source}: No channels selected. Use browse mode (-b) to select channels first.", style="bold yellow")
+                    continue
+            else:
+                # Regular source - use as-is
+                sources_to_sync.append(source)
+        
+        if not sources_to_sync:
+            print_text("No sources available to sync after filtering.", style="bold yellow")
+            print_text("💡 For Discord sources, use browse mode (-b) to select specific channels first.", style="dim yellow")
+            return
         
         # Parse all sources at once using the same logic as standalone sync
-        parsed_sources = parse_source_specs(databases_to_sync)
+        parsed_sources = parse_source_specs(sources_to_sync)
         
         for source_spec in parsed_sources:
             try:
@@ -717,42 +792,104 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     def edit_context():
         """CLI-style context editing interface."""
         print_text("\n🔧 Edit Context", style="bold cyan")
+        
+        # Show current context summary
         print_text("Current command:", style="dim")
         print_text(f"  {context_state['query_command']}", style="bold")
+        
+        # Show helpful info for Discord contexts
+        if context_state.get('sources') and any('discord' in src.lower() or src.endswith('.ds') for src in context_state['sources']):
+            workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
+            if workspace:
+                print_text(f"  Discord workspace: {workspace}", style="dim cyan")
+            if context_state.get('filters'):
+                channel_count = len([f for f in context_state['filters'] if 'channel_name=' in f])
+                if channel_count > 0:
+                    print_text(f"  Discord channels selected: {channel_count}", style="dim cyan")
+            
+            # Show if this was originally a browse mode session
+            if context_state.get('original_browse_mode'):
+                print_text(f"  Original format: browse mode", style="dim cyan")
+        
         print_text("")
-        print_text("Edit the command below, or enter 'r' for recents:", style="dim")
-        print_text("Press Enter alone to cancel", style="dim")
+        print_text("Options:", style="dim")
+        print_text("  • Edit command manually (shown below)", style="dim")
+        print_text("  • Ctrl+R for recent queries", style="dim")
+        print_text("  • Ctrl+B for Discord browse mode", style="dim")
+        print_text("  • Press Enter alone to cancel", style="dim")
         print_text("")
         
         # Build the current command arguments (without 'maia chat')
         current_args = []
+        current_args_str = ""  # Initialize to ensure it's never None
         
-        # Check if we're in natural language mode
-        if context_state.get('natural_language_prompt'):
-            current_args.extend(['-nl', context_state['natural_language_prompt']])
+        # If we have an original query format, extract args from that
+        if context_state.get('original_query_format'):
+            # Extract everything after "maia chat "
+            original_cmd = context_state['original_query_format']
+            if original_cmd and original_cmd.startswith("maia chat "):
+                current_args_str = original_cmd[10:]  # Remove "maia chat "
+            else:
+                current_args_str = ""
         else:
-            # Regular mode with sources and filters
-            if context_state['sources']:
-                for source in context_state['sources']:
-                    current_args.extend(['-s', source])
-            if context_state['filters']:
-                for filter_expr in context_state['filters']:
-                    current_args.extend(['-f', filter_expr])
-            if context_state['workspace']:
-                current_args.extend(['-ws', context_state['workspace']])
-        
-        current_args_str = ' '.join(current_args) if current_args else ''
+            # Check if we're in natural language mode
+            if context_state.get('natural_language_prompt'):
+                current_args.extend(['-nl', context_state['natural_language_prompt']])
+            else:
+                # Regular mode with sources and filters
+                if context_state['sources']:
+                    for source in context_state['sources']:
+                        current_args.extend(['-s', source])
+                if context_state['filters']:
+                    for filter_expr in context_state['filters']:
+                        current_args.extend(['-f', filter_expr])
+                if context_state['workspace']:
+                    current_args.extend(['-ws', context_state['workspace']])
+            
+            current_args_str = ' '.join(current_args) if current_args else ''
         
         try:
-            # Use prompt_toolkit to show the current command as editable default
+            # Create custom key bindings for Ctrl+R and Ctrl+B
+            from prompt_toolkit.key_binding import KeyBindings
             from prompt_toolkit import prompt
+            
+            bindings = KeyBindings()
+            action_taken = {'type': None}
+            
+            @bindings.add('c-r')  # Ctrl+R
+            def handle_recents(event):
+                action_taken['type'] = 'recents'
+                event.app.exit()
+            
+            @bindings.add('c-b')  # Ctrl+B  
+            def handle_browse(event):
+                action_taken['type'] = 'browse'
+                event.app.exit()
+            
+            # Use prompt_toolkit to show the current command as editable default
             user_input = prompt(
                 "maia chat ",
-                default=current_args_str,
-                mouse_support=True
-            ).strip()
+                default=current_args_str or "",
+                mouse_support=True,
+                key_bindings=bindings
+            )
+            
+            # Ensure user_input is never None
+            if user_input is None:
+                user_input = ""
+            else:
+                user_input = user_input.strip()
+            
+            # Check if a special action was triggered
+            if action_taken['type'] == 'recents':
+                return handle_recents_in_edit_context()
+            elif action_taken['type'] == 'browse':
+                return handle_browse_in_edit_context()
             
             # Handle different input scenarios
+            if DEBUG_MODE:
+                print_text(f"DEBUG: user_input='{user_input}', current_args_str='{current_args_str}'", style="dim yellow")
+            
             if not user_input and not current_args_str:
                 # No input and no current args - cancel
                 print_text("Context edit cancelled.", style="bold yellow")
@@ -761,15 +898,28 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Empty input but there were current args - user wants to keep current
                 print_text("Keeping current context.", style="bold green")
                 return True
-            elif user_input.lower() == 'r':
-                # Handle recents command
-                return handle_recents_in_edit_context()
+            elif user_input == current_args_str:
+                # User didn't change anything - keep current context
+                print_text("No changes made. Keeping current context.", style="bold green")
+                return True
             
             # Parse the input as CLI arguments
             import shlex
             import argparse
             
             try:
+                # Check if this is a browse mode command
+                if '-b' in user_input:
+                    # If user didn't change the browse command, launch browser
+                    if user_input.strip() == current_args_str.strip():
+                        print_text("📝 Launching browser for browse mode command...", style="bold cyan")
+                        return handle_browse_in_edit_context()
+                    else:
+                        # User manually edited a browse command - handle it with CLI logic
+                        print_text("📝 Processing manually edited browse command...", style="bold cyan")
+                        print_text("Note: You'll need to reselect Discord channels after this change.", style="dim yellow")
+                        return handle_manual_browse_edit(user_input)
+                
                 # Use safe parsing that handles natural language queries with apostrophes
                 args_list = safe_split_command(user_input)
                 
@@ -902,6 +1052,339 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             print_text("\nContext edit cancelled.", style="bold yellow")
             return False
     
+    def handle_manual_browse_edit(user_input):
+        """Handle manually edited browse commands."""
+        try:
+            # Import CLI functions we need
+            import argparse
+            import asyncio
+            
+            # Parse the browse command
+            args_list = safe_split_command(user_input)
+            
+            # Create parser that handles browse commands
+            parser = argparse.ArgumentParser(description="Manual browse command editor", add_help=False)
+            parser.add_argument("--source", "-s", action="append", dest="sources")
+            parser.add_argument("--filter", "-f", action="append", dest="filters") 
+            parser.add_argument("--workspace", "-ws", dest="workspace")
+            parser.add_argument("--browse", "-b", nargs="*", dest="browse")
+            parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
+            
+            parsed_args = parser.parse_args(args_list)
+            
+            # Extract components
+            regular_sources = parsed_args.sources or []
+            browse_databases = parsed_args.browse or []
+            original_filters = parsed_args.filters or []
+            workspace = parsed_args.workspace or context_state.get('workspace')
+            
+            # Resolve workspace from browse databases if needed
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            resolved_workspace = workspace
+            if browse_databases and not workspace:
+                # Try to infer workspace from browse databases
+                for browse_db in browse_databases:
+                    if '.' in browse_db:
+                        inferred_workspace = browse_db.split('.')[0]
+                        if workspace_manager.validate_workspace(inferred_workspace):
+                            resolved_workspace = inferred_workspace
+                            print_text(f"INFO: Inferred workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="cyan")
+                            break
+            
+            if not resolved_workspace:
+                resolved_workspace = context_state.get('resolved_workspace')
+            
+            # Validate that the requested databases exist before launching browser
+            from promaia.config.databases import get_database_manager
+            db_manager = get_database_manager()
+            
+            # Check if the browse databases actually exist using proper name resolution
+            invalid_databases = []
+            valid_databases = []
+            for browse_db in browse_databases:
+                # Strip day specification to get database name
+                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                
+                # Use proper database resolution (handles nicknames)
+                db_config = db_manager.get_database_by_qualified_name(db_name)
+                
+                if db_config and db_config.workspace == resolved_workspace and db_config.source_type == "discord":
+                    valid_databases.append(browse_db)
+                else:
+                    invalid_databases.append(db_name)
+            
+            # If there are invalid databases, show helpful error
+            if invalid_databases:
+                print_text(f"❌ Invalid Discord database(s): {', '.join(invalid_databases)}", style="bold red")
+                
+                # Show available databases
+                available_dbs = []
+                for db_name, db_config in db_manager.databases.items():
+                    if db_config.workspace == resolved_workspace and db_config.source_type == "discord":
+                        qualified_name = db_config.get_qualified_name()
+                        # Show both qualified name and full config name if different
+                        if qualified_name != db_name:
+                            available_dbs.append(f"{qualified_name} (or {db_name})")
+                        else:
+                            available_dbs.append(qualified_name)
+                
+                if available_dbs:
+                    print_text(f"📋 Available Discord databases for workspace '{resolved_workspace}':", style="cyan")
+                    for db in available_dbs:
+                        print_text(f"   • {db}", style="dim cyan")
+                    # For suggestion, use the qualified name (which includes nickname)
+                    first_suggestion = available_dbs[0].split(' (or ')[0]  # Get just the qualified name part
+                    suggestion_cmd = f"-s {' '.join(regular_sources)} -b {first_suggestion}:7" if regular_sources else f"-b {first_suggestion}:7"
+                    print_text(f"\n💡 Try: {suggestion_cmd}", style="dim yellow")
+                else:
+                    print_text(f"ℹ️  No Discord databases configured for workspace '{resolved_workspace}'", style="yellow")
+                    print_text(f"💡 Set up Discord integration: maia workspace discord-setup {resolved_workspace}", style="dim yellow")
+                
+                return False
+            
+            # Handle browse mode - import and use the browse logic
+            from promaia.cli.discord_commands import handle_discord_browse_filtered
+            
+            print_text(f"🎮 Launching Discord channel browser for databases: {' '.join(browse_databases)}...", style="cyan")
+            
+            # Create browse args locally (BrowseArgs is defined locally in cli modules)
+            class BrowseArgs:
+                def __init__(self, workspace, databases=None, database_days=None):
+                    self.workspace = workspace
+                    self.databases = databases
+                    self.database_days = database_days or {}
+            
+            browse_args = BrowseArgs(resolved_workspace, browse_databases, {})
+            
+            # Run the Discord browser (no previous selections since user manually edited)
+            selected_channels = asyncio.run(handle_discord_browse_filtered(browse_args))
+            
+            if not selected_channels:
+                print_text("ℹ️  No channels selected. Context unchanged.", style="bold yellow")
+                return False
+            
+            print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="bold green")
+            
+            # Convert selected channels to source specifications
+            discord_sources = []
+            discord_filters = []
+            browse_parts = []
+            
+            # Group selections by database for cleaner browse command
+            db_selections = {}
+            for db_name, channel_id, channel_name, days in selected_channels:
+                if db_name not in db_selections:
+                    db_selections[db_name] = {'days': days, 'channels': []}
+                db_selections[db_name]['channels'].append(channel_name)
+                
+                # Create source with day specification
+                source_spec = f"{db_name}:{days}"
+                discord_sources.append(source_spec)
+                
+                # Create filter for the specific channel
+                filter_spec = f'{source_spec}:"channel_name={channel_name}"'
+                discord_filters.append(filter_spec)
+                
+                # Show what was selected
+                print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
+            
+            # Build browse command format for display
+            for db_name, selection_info in db_selections.items():
+                if selection_info['days'] != 30:  # Only show days if not default
+                    browse_parts.append(f"{db_name}:{selection_info['days']}")
+                else:
+                    browse_parts.append(db_name)
+            
+            # Combine regular sources with Discord sources
+            combined_sources = regular_sources + discord_sources
+            combined_filters = original_filters + discord_filters
+            
+            # Build complete command format
+            command_parts = ["maia", "chat"]
+            
+            # Add regular sources first
+            for reg_source in regular_sources:
+                command_parts.extend(["-s", reg_source])
+            
+            # Add browse part
+            command_parts.extend(["-b"] + browse_parts)
+            
+            # Add any regular filters
+            for reg_filter in original_filters:
+                command_parts.extend(["-f", f'"{reg_filter}"'])
+            
+            # Add workspace if specified
+            if workspace:
+                command_parts.extend(["-w", workspace])
+            
+            complete_command = " ".join(command_parts)
+            
+            # Update context state
+            context_state['sources'] = combined_sources
+            context_state['filters'] = combined_filters
+            context_state['workspace'] = workspace
+            context_state['resolved_workspace'] = resolved_workspace
+            context_state['natural_language_content'] = None
+            context_state['natural_language_prompt'] = None
+            context_state['original_browse_mode'] = True
+            context_state['browse_selections'] = selected_channels
+            context_state['original_query_format'] = complete_command
+            
+            # Update the main query command for logging
+            context_state['query_command'] = complete_command
+            
+            # Reload context with new settings
+            print_text("🔄 Reloading context with new browse selections...", style="bold cyan")
+            return reload_context()
+            
+        except Exception as e:
+            print_text(f"❌ Error processing browse command: {e}", style="bold red")
+            if DEBUG_MODE:
+                import traceback
+                print_text(traceback.format_exc(), style="dim red")
+            return False
+    
+    def handle_browse_in_edit_context():
+        """Handle browse mode selection within edit context."""
+        try:
+            # Import browse functionality
+            from promaia.cli.discord_commands import handle_discord_browse_filtered
+            from promaia.config.databases import get_database_manager
+            
+            # Determine workspace from current context
+            workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+            
+            # If no workspace in context, try to infer from current sources
+            if not workspace_to_use and context_state.get('sources'):
+                for source in context_state['sources']:
+                    if '.' in source:
+                        potential_workspace = source.split('.')[0].split(':')[0]
+                        workspace_to_use = potential_workspace
+                        break
+            
+            # Fall back to default workspace
+            if not workspace_to_use:
+                from promaia.config.workspaces import get_workspace_manager
+                workspace_manager = get_workspace_manager()
+                workspace_to_use = workspace_manager.get_default_workspace()
+            
+            if not workspace_to_use:
+                print_text("Error: No workspace available for browse mode.", style="bold red")
+                return False
+            
+            print_text(f"🎮 Launching Discord channel browser for workspace '{workspace_to_use}'...", style="cyan")
+            
+            # Create browse args locally (BrowseArgs is defined locally in cli modules)
+            class BrowseArgs:
+                def __init__(self, workspace, databases=None, database_days=None):
+                    self.workspace = workspace
+                    self.databases = databases
+                    self.database_days = database_days or {}
+            
+            browse_args = BrowseArgs(workspace_to_use, None, {})  # No specific databases, no day filtering
+            
+            # If we have previous browse selections, we'll need to pass them to the browser
+            # For now, let's use the standard browser and enhance it later
+            previous_selections = context_state.get('browse_selections', [])
+            
+            # Run the Discord browser with previous selections context
+            async def run_browse_with_preselect():
+                if previous_selections:
+                    print_text(f"ℹ️  Pre-populating with {len(previous_selections)} previous channel selections", style="dim cyan")
+                return await handle_discord_browse_filtered(browse_args, previous_selections)
+            
+            selected_channels = asyncio.run(run_browse_with_preselect())
+            
+            if not selected_channels:
+                print_text("ℹ️  No channels selected. Context unchanged.", style="bold yellow")
+                return False
+            
+            print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="bold green")
+            
+            # Convert selected channels to source specifications
+            discord_sources = []
+            discord_filters = []
+            browse_parts = []
+            
+            # Group selections by database for cleaner browse command
+            db_selections = {}
+            for db_name, channel_id, channel_name, days in selected_channels:
+                if db_name not in db_selections:
+                    db_selections[db_name] = {'days': days, 'channels': []}
+                db_selections[db_name]['channels'].append(channel_name)
+                
+                # Create source with day specification
+                source_spec = f"{db_name}:{days}"
+                discord_sources.append(source_spec)
+                
+                # Create filter for the specific channel
+                filter_spec = f'{source_spec}:"channel_name={channel_name}"'
+                discord_filters.append(filter_spec)
+                
+                # Show what was selected
+                print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
+            
+            # Build browse command format for display
+            for db_name, selection_info in db_selections.items():
+                if selection_info['days'] != 30:  # Only show days if not default
+                    browse_parts.append(f"{db_name}:{selection_info['days']}")
+                else:
+                    browse_parts.append(db_name)
+            
+            # PRESERVE existing regular sources and combine with new Discord sources
+            existing_regular_sources = [s for s in context_state.get('sources', []) 
+                                      if not ('discord' in s.lower() or s.endswith('.ds'))]
+            
+            combined_sources = existing_regular_sources + discord_sources
+            
+            # PRESERVE existing non-Discord filters and combine with new Discord filters  
+            existing_regular_filters = [f for f in context_state.get('filters', [])
+                                      if not any(discord_name in f for discord_name in [ds.split(':')[0] for ds in discord_sources])]
+            
+            combined_filters = existing_regular_filters + discord_filters
+            
+            # Build COMPLETE command format including regular sources
+            command_parts = ["maia", "chat"]
+            
+            # Add regular sources first
+            for reg_source in existing_regular_sources:
+                command_parts.extend(["-s", reg_source])
+            
+            # Add browse part
+            command_parts.extend(["-b"] + browse_parts)
+            
+            # Add any regular filters
+            for reg_filter in existing_regular_filters:
+                command_parts.extend(["-f", f'"{reg_filter}"'])
+            
+            complete_command = " ".join(command_parts)
+            
+            # Update context state
+            context_state['sources'] = combined_sources
+            context_state['filters'] = combined_filters
+            context_state['natural_language_content'] = None  # Clear NL content
+            context_state['natural_language_prompt'] = None   # Clear NL prompt
+            context_state['original_browse_mode'] = True      # Mark as browse-originated
+            context_state['browse_selections'] = selected_channels  # Store for re-editing
+            context_state['original_query_format'] = complete_command  # Store complete original format
+            
+            # Reload context with new settings
+            if reload_context():
+                print_text("Context updated successfully from browse selection!", style="bold green")
+                return True
+            else:
+                print_text("Failed to reload context with browse selection.", style="bold red")
+                return False
+                
+        except ImportError as e:
+            print_text(f"Browse mode not available: {e}", style="bold red")
+            return False
+        except Exception as e:
+            print_text(f"Error in browse mode: {e}", style="bold red")
+            debug_print(f"Browse error: {e}")
+            return False
+
     def handle_recents_in_edit_context():
         """Handle recents selection within edit context."""
         from promaia.chat.recents_interface import RecentsSelector
@@ -1211,11 +1694,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             output_tokens = response.usage.output_tokens
                             total_tokens = input_tokens + output_tokens
 
-                            # Calculate cost based on Claude 3 Sonnet pricing
-                            # Input: $3.00/1M tokens, Output: $15.00/1M tokens
-                            input_cost = (input_tokens / 1_000_000) * 3.00
-                            output_cost = (output_tokens / 1_000_000) * 15.00
-                            total_cost = input_cost + output_cost
+                            # Calculate cost using centralized function
+                            from promaia.utils.ai import calculate_ai_cost
+                            cost_data = calculate_ai_cost(input_tokens, output_tokens, "claude-3.5-sonnet")
+                            total_cost = cost_data["total_cost"]
 
                             debug_print(f"Token usage: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
 
@@ -1251,11 +1733,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             completion_tokens = response.usage.completion_tokens
                             total_tokens = response.usage.total_tokens
 
-                            # Calculate cost based on GPT-4 pricing
-                            # Input: $30.00/1M tokens, Output: $60.00/1M tokens
-                            input_cost = (prompt_tokens / 1_000_000) * 30.00
-                            output_cost = (completion_tokens / 1_000_000) * 60.00
-                            total_cost = input_cost + output_cost
+                            # Calculate cost using centralized function
+                            from promaia.utils.ai import calculate_ai_cost
+                            cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, "gpt-4o")
+                            total_cost = cost_data["total_cost"]
 
                             debug_print(f"Token usage: {prompt_tokens:,} prompt + {completion_tokens:,} completion = {total_tokens:,} total")
 
@@ -1290,11 +1771,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             response_tokens = getattr(usage, 'candidates_token_count', 0)
                             total_tokens = getattr(usage, 'total_token_count', 0)
 
-                            # Calculate cost based on Gemini 2.5 Pro pricing
-                            # Input: $2.50/1M tokens, Output: $15.00/1M tokens
-                            input_cost = (prompt_tokens / 1_000_000) * 2.50
-                            output_cost = (response_tokens / 1_000_000) * 15.00
-                            total_cost = input_cost + output_cost
+                            # Calculate cost using centralized function with appropriate model tier
+                            from promaia.utils.ai import calculate_ai_cost
+                            model_tier = "gemini-2.5-pro-short" if prompt_tokens <= 128000 else "gemini-2.5-pro-long"
+                            cost_data = calculate_ai_cost(prompt_tokens, response_tokens, model_tier)
+                            total_cost = cost_data["total_cost"]
 
                             debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
 

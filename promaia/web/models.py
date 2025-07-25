@@ -16,6 +16,8 @@ class TokenUsage(BaseModel):
     prompt_tokens: int
     response_tokens: int
     total_tokens: int
+    cost: Optional[float] = None  # Total cost in USD
+    model: Optional[str] = None  # Model name for cost calculation context
 
 class ChatMessageOutput(BaseModel):
     reply: str

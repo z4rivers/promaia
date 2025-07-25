@@ -241,14 +241,22 @@ async def handle_chat_message(chat_input: ChatMessageInput):
             response_tokens = getattr(usage, 'candidates_token_count', 0)
             total_tokens = getattr(usage, 'total_token_count', 0)
             
+            # Calculate cost using centralized function with appropriate model tier
+            from promaia.utils.ai import calculate_ai_cost
+            model_tier = "gemini-2.5-pro-short" if prompt_tokens <= 128000 else "gemini-2.5-pro-long"
+            cost_data = calculate_ai_cost(prompt_tokens, response_tokens, model_tier)
+            total_cost = cost_data["total_cost"]
+            
             # Import TokenUsage here to avoid circular imports
             from promaia.web.models import TokenUsage
             token_usage_data = TokenUsage(
                 prompt_tokens=prompt_tokens,
                 response_tokens=response_tokens,
-                total_tokens=total_tokens
+                total_tokens=total_tokens,
+                cost=total_cost,
+                model="Gemini 2.5 Pro"
             )
-            debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
+            debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total, cost: ${total_cost:.6f}")
         else:
             debug_print("No usage_metadata found in Gemini response")
 

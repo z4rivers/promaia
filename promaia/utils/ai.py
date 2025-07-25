@@ -57,7 +57,7 @@ def debug_print(message: str):
 def estimate_token_count(text: str, model_type: str = "claude") -> int:
     """
     Estimate the number of tokens in a given text for a specific model type.
-    Uses tiktoken for OpenAI models and a simple character-based heuristic for Claude.
+    Uses tiktoken for OpenAI models and improved estimation for Claude.
     """
     if not text:
         return 0
@@ -66,14 +66,103 @@ def estimate_token_count(text: str, model_type: str = "claude") -> int:
         try:
             encoding = tiktoken.get_encoding("cl100k_base")
             return len(encoding.encode(text))
+        except ImportError:
+            debug_print("Tiktoken not available. Install with: pip install tiktoken")
+            return _improved_token_estimate(text)
         except Exception as e:
-            debug_print(f"Tiktoken error: {e}. Falling back to char count for OpenAI.")
-            return len(text) // 3
+            debug_print(f"Tiktoken error: {e}. Falling back to improved estimation.")
+            return _improved_token_estimate(text)
     elif model_type == "claude":
-        return len(text) // 3 
+        return _improved_token_estimate(text)
+    elif model_type == "gemini":
+        # For Gemini, we should prefer API response token counts when available
+        # This is just for estimation when no API response is available
+        return _improved_token_estimate(text)
     else:
-        debug_print(f"Unknown model type for token estimation: {model_type}. Using char count.")
-        return len(text) // 3
+        debug_print(f"Unknown model type for token estimation: {model_type}. Using improved estimation.")
+        return _improved_token_estimate(text)
+
+def _improved_token_estimate(text: str) -> int:
+    """
+    Improved token estimation that considers word boundaries and common patterns.
+    More accurate than simple character division for most text.
+    """
+    import re
+    
+    # Split on whitespace and common punctuation to get rough word count
+    words = re.findall(r'\b\w+\b', text)
+    word_count = len(words)
+    
+    # Count special characters and punctuation separately
+    special_chars = len(re.findall(r'[^\w\s]', text))
+    
+    # Estimate tokens: roughly 0.75 tokens per word + punctuation
+    # This is more accurate than len(text) // 3 for most text
+    estimated_tokens = int(word_count * 0.75 + special_chars * 0.5)
+    
+    # Ensure we have a reasonable minimum
+    return max(estimated_tokens, len(text) // 4)
+
+def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str = "claude-3.5-sonnet") -> dict:
+    """
+    Calculate cost for AI API usage based on current 2025 pricing.
+    
+    Args:
+        prompt_tokens: Number of input/prompt tokens
+        response_tokens: Number of output/response tokens  
+        model_name: Model identifier for pricing lookup
+    
+    Returns:
+        Dict with input_cost, output_cost, total_cost, and model info
+    """
+    # Current pricing as of January 2025
+    pricing = {
+        "claude-3.5-sonnet": {
+            "input": 3.00,   # per 1M tokens
+            "output": 15.00, # per 1M tokens
+            "name": "Claude 3.5 Sonnet"
+        },
+        "gpt-4o": {
+            "input": 2.50,   # per 1M tokens  
+            "output": 10.00, # per 1M tokens
+            "name": "GPT-4o"
+        },
+        "gemini-2.5-pro-short": {
+            "input": 1.25,   # per 1M tokens (≤128k)
+            "output": 5.00,  # per 1M tokens (≤128k)
+            "name": "Gemini 2.5 Pro"
+        },
+        "gemini-2.5-pro-long": {
+            "input": 2.50,   # per 1M tokens (>128k)
+            "output": 10.00, # per 1M tokens (>128k)  
+            "name": "Gemini 2.5 Pro"
+        },
+        "local-llama": {
+            "input": 0.00,   # Free
+            "output": 0.00,  # Free
+            "name": "Local Llama"
+        }
+    }
+    
+    # Default to Claude if model not found
+    if model_name not in pricing:
+        model_name = "claude-3.5-sonnet"
+        
+    model_pricing = pricing[model_name]
+    
+    input_cost = (prompt_tokens / 1_000_000) * model_pricing["input"]
+    output_cost = (response_tokens / 1_000_000) * model_pricing["output"]
+    total_cost = input_cost + output_cost
+    
+    return {
+        "input_cost": input_cost,
+        "output_cost": output_cost, 
+        "total_cost": total_cost,
+        "model": model_pricing["name"],
+        "prompt_tokens": prompt_tokens,
+        "response_tokens": response_tokens,
+        "total_tokens": prompt_tokens + response_tokens
+    }
 
 def handle_rate_limit_basic():
     """
@@ -184,7 +273,11 @@ async def call_anthropic_with_retry(
 
             assistant_message = response.content[0].text
             
-            response_tokens = estimate_token_count(assistant_message, "claude")
+            # Use actual token count from API response if available, otherwise estimate
+            if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens'):
+                response_tokens = response.usage.output_tokens
+            else:
+                response_tokens = estimate_token_count(assistant_message, "claude")
             total_tokens_for_call = estimated_request_tokens + response_tokens
             ANTHROPIC_TOKEN_USAGE += total_tokens_for_call
             now = time.time()

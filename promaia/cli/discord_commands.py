@@ -401,18 +401,20 @@ async def handle_discord_browse(args):
         logger.error(f"Discord browse error: {e}")
 
 
-async def handle_discord_browse_filtered(args):
+async def handle_discord_browse_filtered(args, previous_selections=None):
     """Handle filtered Discord channel browser - only show specific databases."""
     workspace = args.workspace
     filter_databases = getattr(args, 'databases', None)  # List of database names to filter by
     database_days = getattr(args, 'database_days', {})  # Map of database -> days
+    previous_selections = previous_selections or []  # Previous channel selections for pre-population
+    
+    # Initialize console first so it's available in except blocks
+    console = Console()
     
     try:
         # Import here to handle optional dependencies
         from promaia.connectors.discord_connector import DiscordConnector
         from promaia.config.databases import get_database_manager
-        
-        console = Console()
         
         # Show date filtering info if specified
         if database_days:
@@ -425,18 +427,33 @@ async def handle_discord_browse_filtered(args):
         db_manager = get_database_manager()
         discord_databases = []
         
-        for db_name, db_config in db_manager.databases.items():
-            if db_config.workspace == workspace and db_config.source_type == "discord":
-                qualified_name = db_config.get_qualified_name()
-                # If filter_databases is specified, only include those databases
-                # Check both full database name and qualified name
-                if filter_databases is None or db_name in filter_databases or qualified_name in filter_databases:
+        if filter_databases is None:
+            # No filter - include all Discord databases in workspace
+            for db_name, db_config in db_manager.databases.items():
+                if db_config.workspace == workspace and db_config.source_type == "discord":
+                    days = 30  # Default
+                    discord_databases.append((db_name, db_config, days))
+        else:
+            # Filter specified - resolve each filter name properly
+            for filter_name in filter_databases:
+                # Strip day specification to get just the database name
+                db_name_only = filter_name.split(':')[0] if ':' in filter_name else filter_name
+                
+                # Use proper database resolution (handles nicknames)
+                db_config = db_manager.get_database_by_qualified_name(db_name_only)
+                
+                if db_config and db_config.workspace == workspace and db_config.source_type == "discord":
+                    # Get the actual database key (config name)
+                    db_name = db_config.name
+                    
                     # Determine days for this database for display
                     days = None
-                    if db_name in database_days:
+                    if filter_name in database_days:
+                        days = database_days[filter_name]
+                    elif db_name in database_days:
                         days = database_days[db_name]
-                    elif qualified_name in database_days:
-                        days = database_days[qualified_name]
+                    elif db_config.get_qualified_name() in database_days:
+                        days = database_days[db_config.get_qualified_name()]
                     else:
                         days = 30  # Default
                     
@@ -445,6 +462,28 @@ async def handle_discord_browse_filtered(args):
         if not discord_databases:
             if filter_databases:
                 console.print(f"❌ No Discord databases found matching: {', '.join(filter_databases)}", style="red")
+                
+                # Show available Discord databases to help user
+                all_discord_dbs = []
+                for db_name, db_config in db_manager.databases.items():
+                    if db_config.workspace == workspace and db_config.source_type == "discord":
+                        qualified_name = db_config.get_qualified_name()
+                        # Show both qualified name and full config name if different
+                        if qualified_name != db_name:
+                            all_discord_dbs.append(f"{qualified_name} (or {db_name})")
+                        else:
+                            all_discord_dbs.append(qualified_name)
+                
+                if all_discord_dbs:
+                    console.print(f"📋 Available Discord databases for workspace '{workspace}':", style="cyan")
+                    for db in all_discord_dbs:
+                        console.print(f"   • {db}", style="dim cyan")
+                    # For suggestion, use the qualified name (which includes nickname)
+                    first_suggestion = all_discord_dbs[0].split(' (or ')[0]  # Get just the qualified name part
+                    console.print(f"\n💡 Try: -b {first_suggestion}:7", style="dim yellow")
+                else:
+                    console.print(f"ℹ️  No Discord databases configured for workspace '{workspace}'", style="yellow")
+                    console.print(f"💡 Set up Discord integration: maia workspace discord-setup {workspace}", style="dim yellow")
             else:
                 console.print(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
             return []
@@ -498,7 +537,7 @@ async def handle_discord_browse_filtered(args):
             return []
         
         # Start interactive browser
-        selected_channels, updated_days = await interactive_channel_browser(console, all_channels, workspace)
+        selected_channels, updated_days = await interactive_channel_browser(console, all_channels, workspace, previous_selections)
         
         if selected_channels:
             console.print(f"\n🎉 Selected {len(selected_channels)} channels!")
@@ -634,7 +673,7 @@ async def get_accessible_channels_cached(db_config, bot_token) -> List[Dict]:
         # Fall back to filesystem-only approach
         return get_synced_channels_from_filesystem(db_config)
 
-async def interactive_channel_browser(console: Console, servers: List[Dict], workspace: str) -> Tuple[List[Tuple[str, str, str, int]], Dict[Tuple[str, str], int]]:
+async def interactive_channel_browser(console: Console, servers: List[Dict], workspace: str, previous_selections=None) -> Tuple[List[Tuple[str, str, str, int]], Dict[Tuple[str, str], int]]:
     """Interactive channel browser with real keyboard navigation."""
     from prompt_toolkit import prompt
     from prompt_toolkit.key_binding import KeyBindings
@@ -649,17 +688,36 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
     # Flatten channels for navigation
     nav_items = []
     channel_days = {}  # Track days for each individual channel
+    previous_selections = previous_selections or []
+    
+    # Create lookup set for previous selections for faster matching
+    previous_selection_set = set()
+    previous_days_map = {}
+    for prev_db_name, prev_channel_id, prev_channel_name, prev_days in previous_selections:
+        prev_key = (prev_db_name, prev_channel_name)
+        previous_selection_set.add(prev_key)
+        previous_days_map[prev_key] = prev_days
+    
     for server in servers:
         server_default_days = server.get("days", 30)
         for channel in server["channels"]:
             # Use channel name as part of key since channel["id"] might not be unique
             channel_key = (server["db_name"], channel["name"])
-            channel_days[channel_key] = server_default_days  # Start with server default
+            
+            # Check if this channel was previously selected
+            is_previously_selected = channel_key in previous_selection_set
+            
+            # Use previous days if available, otherwise server default
+            if channel_key in previous_days_map:
+                channel_days[channel_key] = previous_days_map[channel_key]
+            else:
+                channel_days[channel_key] = server_default_days
+            
             nav_items.append({
                 "server_name": server["server_name"],
                 "db_name": server["db_name"],
                 "channel": channel,
-                "selected": False
+                "selected": is_previously_selected
             })
     
     if not nav_items:
@@ -985,9 +1043,13 @@ async def handle_discord_refresh(args):
         
         # Refresh cache for each Discord database
         total_refreshed = 0
+        total_tested = 0
+        
+        import time
+        start_time = time.time()
         
         for db_name, db_config in discord_databases:
-            with console.status(f"[bold blue]Refreshing accessible channels for {db_name}..."):
+            with console.status(f"[bold blue]Testing channel permissions for {db_name}..."):
                 try:
                     connector = DiscordConnector({
                         "database_id": db_config.database_id,
@@ -995,19 +1057,28 @@ async def handle_discord_refresh(args):
                         "bot_token": bot_token
                     })
                     
-                    # Refresh the channel cache
+                    # Refresh the channel cache with improved permission checking
                     channel_data = await connector.refresh_channel_cache()
                     accessible_count = len(channel_data.get('channels', []))
-                    total_refreshed += accessible_count
+                    tested_count = channel_data.get('total_tested', 0)
                     
-                    console.print(f"✅ {db_name}: Found {accessible_count} accessible channels")
+                    total_refreshed += accessible_count
+                    total_tested += tested_count
+                    
+                    console.print(f"✅ {db_name}: {accessible_count}/{tested_count} channels accessible")
                     
                 except Exception as e:
                     console.print(f"❌ Error refreshing {db_name}: {e}", style="red")
         
+        end_time = time.time()
+        duration = end_time - start_time
+        
         console.print()
-        console.print(f"🎉 Refresh complete! Found {total_refreshed} total accessible channels across {len(discord_databases)} Discord server(s).")
-        console.print("💡 You can now use 'maia sync -b' or 'maia chat -b' to browse all accessible channels.")
+        console.print(f"🎉 Refresh complete in {duration:.1f}s!")
+        console.print(f"📊 Results: {total_refreshed}/{total_tested} channels accessible across {len(discord_databases)} Discord server(s)")
+        if total_tested > total_refreshed:
+            console.print(f"ℹ️  {total_tested - total_refreshed} channels visible but not readable (missing permissions)", style="dim")
+        console.print("💡 You can now use 'maia sync -b' or 'maia chat -b' to browse accessible channels only.")
         
     except Exception as e:
         console.print(f"❌ Error refreshing Discord channels: {e}", style="red")

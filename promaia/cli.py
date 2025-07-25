@@ -1112,7 +1112,12 @@ def chat_run(args):
         
         # The `chat` function will now need to handle the main loop
         non_interactive = getattr(args, 'non_interactive', False) or not sys.stdout.isatty()
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt)
+        
+        # Check if this came from browse mode and extract browse information
+        original_browse_command = getattr(args, 'original_browse_command', None)
+        browse_selections = getattr(args, 'browse_selections', None)
+        
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections)
 
     except ImportError as e:
         print(f"Error importing chat interface: {e}", file=sys.stderr)
@@ -1416,6 +1421,41 @@ def chat_run_inline_browse(args):
                 filters=all_filters, 
                 workspace=original_workspace
             )
+        
+        # Build the COMPLETE original command format for display (including regular sources)
+        original_command_parts = ["maia", "chat"]
+        
+        # Add regular sources first
+        if sources:
+            for source in sources:
+                original_command_parts.extend(["-s", source])
+        
+        # Add browse part
+        original_command_parts.append("-b")
+        if browse_databases:
+            for browse_spec in browse_databases:
+                original_command_parts.append(browse_spec)
+        else:
+            # If no specific databases were specified, we browsed the whole workspace
+            original_command_parts.append(resolved_workspace)
+        
+        # Add any original filters that weren't from Discord
+        original_filters = getattr(args, 'filters', None) or []
+        for filter_expr in original_filters:
+            original_command_parts.extend(["-f", f'"{filter_expr}"'])
+        
+        # Add workspace if originally specified
+        if original_workspace:
+            original_command_parts.extend(["-w", original_workspace])
+        
+        original_browse_command = " ".join(original_command_parts)
+        
+        # Store browse selections and original format in the chat args
+        browse_selections = selected_channels if selected_channels else None
+        
+        # Add browse information to chat args
+        chat_args.original_browse_command = original_browse_command
+        chat_args.browse_selections = browse_selections
         
         # Start chat with combined sources
         chat_run(chat_args)

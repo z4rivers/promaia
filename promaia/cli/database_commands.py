@@ -725,19 +725,51 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                 days_and_filters_part = spec_parts[1]
                 days_was_specified = True
                 
-                # Separate days from property filters
-                parts = days_and_filters_part.split('.', 1)
-                days_str = parts[0]
-                
-                if days_str.lower() == 'all':
-                    days = None  # None means all, respecting the existing convention
+                # Handle Discord channel filter format: days:"channel_name=value"
+                if days_and_filters_part.count(':') == 1 and '"' in days_and_filters_part:
+                    # Discord channel filter format: days:"filter"
+                    days_str, filter_part = days_and_filters_part.split(':', 1)
+                    
+                    # Parse days
+                    if days_str.lower() == 'all':
+                        days = None
+                    else:
+                        try:
+                            days = int(days_str)
+                        except ValueError:
+                            logger.warning(f"Invalid days format '{days_str}' in spec '{spec}', using default from config.")
+                            days = db_config.default_days
+                            days_was_specified = False
+                    
+                    # Parse Discord channel filter: "channel_name=value"
+                    if filter_part.startswith('"') and filter_part.endswith('"') and '=' in filter_part:
+                        # Extract content within quotes: "channel_name=value" -> channel_name=value
+                        inner_content = filter_part[1:-1]  # Remove surrounding quotes
+                        if '=' in inner_content:
+                            prop_name, prop_value = inner_content.split('=', 1)
+                            property_filters[prop_name] = prop_value
+                        else:
+                            logger.warning(f"Invalid Discord filter format '{filter_part}' in spec '{spec}' - no = found")
+                    else:
+                        logger.warning(f"Invalid Discord filter format '{filter_part}' in spec '{spec}' - not properly quoted")
+                    
+                    # Set parts to empty for Discord filters (no additional processing needed)
+                    parts = [days_str]  # Single element list so len(parts) == 1
+                        
                 else:
-                    try:
-                        days = int(days_str)
-                    except ValueError:
-                        logger.warning(f"Invalid days format '{days_str}' in spec '{spec}', using default from config.")
-                        days = db_config.default_days
-                        days_was_specified = False # Treat as unspecified if format is bad
+                    # Regular format: days.property=value
+                    parts = days_and_filters_part.split('.', 1)
+                    days_str = parts[0]
+                    
+                    if days_str.lower() == 'all':
+                        days = None  # None means all, respecting the existing convention
+                    else:
+                        try:
+                            days = int(days_str)
+                        except ValueError:
+                            logger.warning(f"Invalid days format '{days_str}' in spec '{spec}', using default from config.")
+                            days = db_config.default_days
+                            days_was_specified = False # Treat as unspecified if format is bad
 
                 if len(parts) > 1:
                     filter_parts_str = parts[1]

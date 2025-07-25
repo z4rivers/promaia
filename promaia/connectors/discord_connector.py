@@ -159,10 +159,13 @@ class DiscordConnector(BaseConnector):
             await self.connect()
         
         try:
-            # Get channel to sync (for now, sync one channel at a time)
+            # Get channel to sync 
             channel_identifier = self._extract_channel_filter(filters)
             if not channel_identifier:
-                self.logger.error("No channel specified in filters")
+                # No specific channel filter - this shouldn't happen in normal usage
+                # Users should use browse mode to select channels first
+                self.logger.warning("No specific channel filter provided for Discord sync")
+                self.logger.info("Use browse mode (-b) to select Discord channels before syncing")
                 return []
             
             # Create temporary client for message fetching
@@ -401,6 +404,89 @@ class DiscordConnector(BaseConnector):
         
         return None
     
+    async def _query_all_accessible_channels(self, 
+                                           date_filter: Optional[DateRangeFilter] = None,
+                                           sort_direction: str = "desc", 
+                                           limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Query messages from all accessible channels in the Discord server."""
+        try:
+            # Create temporary client for message fetching
+            client = discord.Client(intents=self.intents)
+            all_messages = []
+            
+            try:
+                await client.login(self.bot_token)
+                guild = await client.fetch_guild(int(self.server_id))
+                
+                # Get all accessible channels
+                guild_channels = await guild.fetch_channels()
+                text_channels = [ch for ch in guild_channels if hasattr(ch, 'send')]  # Text channels only
+                
+                self.logger.info(f"Found {len(text_channels)} text channels to sync")
+                
+                # Calculate date range for filtering
+                after_date = None
+                before_date = None
+                if date_filter:
+                    after_date = date_filter.start_date
+                    before_date = date_filter.end_date
+                
+                # Query each channel
+                for channel in text_channels:
+                    try:
+                        # Apply rate limiting between channels
+                        await self._rate_limit()
+                        
+                        # Determine per-channel limit
+                        channel_limit = limit // len(text_channels) if limit else 100
+                        if channel_limit < 10:  # Ensure minimum per channel
+                            channel_limit = 10
+                        
+                        channel_messages = []
+                        async for message in channel.history(
+                            limit=channel_limit,
+                            after=after_date,
+                            before=before_date,
+                            oldest_first=(sort_direction == "asc")
+                        ):
+                            message_data = await self._convert_message_to_data(message)
+                            channel_messages.append(message_data)
+                            
+                            # Apply rate limiting for large channel syncs
+                            if len(channel_messages) % 50 == 0:
+                                await self._rate_limit()
+                        
+                        if channel_messages:
+                            self.logger.info(f"Found {len(channel_messages)} messages in channel #{channel.name}")
+                            all_messages.extend(channel_messages)
+                        
+                    except discord.Forbidden:
+                        self.logger.warning(f"No access to channel #{channel.name}")
+                        continue
+                    except Exception as e:
+                        self.logger.warning(f"Error fetching from channel #{channel.name}: {e}")
+                        continue
+                
+                # Sort all messages by timestamp if needed
+                if sort_direction == "desc":
+                    all_messages.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+                else:
+                    all_messages.sort(key=lambda x: x.get('timestamp', ''))
+                
+                # Apply global limit after sorting
+                if limit and len(all_messages) > limit:
+                    all_messages = all_messages[:limit]
+                
+                self.logger.info(f"Total messages collected from all channels: {len(all_messages)}")
+                return all_messages
+                
+            finally:
+                await client.close()
+                
+        except Exception as e:
+            self.logger.error(f"Failed to query all Discord channels: {e}")
+            return []
+    
     def _find_channel_by_sanitized_name(self, channels, sanitized_name: str):
         """Find a Discord channel by its sanitized name (reverse lookup)."""
         for channel in channels:
@@ -633,19 +719,47 @@ class DiscordConnector(BaseConnector):
         finally:
             await client.close()
 
-    async def test_channel_access(self, channel) -> bool:
-        """Test if the bot has read access to a specific channel."""
+    async def test_channel_access(self, channel, guild) -> bool:
+        """Test if the bot has read access to a specific channel using permissions."""
         try:
-            # Try to fetch 1 message to test read access
-            async for _ in channel.history(limit=1):
-                return True
-            # If no messages but no error, we have access to empty channel
-            return True
-        except discord.Forbidden:
-            return False
+            # Get the bot's user ID from the client
+            bot_user_id = guild._state.self_id if hasattr(guild._state, 'self_id') else None
+            if not bot_user_id:
+                # Fallback to current user from guild
+                bot_user_id = guild._state.user.id if hasattr(guild._state, 'user') else None
+            
+            if bot_user_id:
+                # Get bot member object
+                bot_member = guild.get_member(bot_user_id)
+                if not bot_member:
+                    bot_member = await guild.fetch_member(bot_user_id)
+                
+                # Check permissions directly (much faster than reading messages)
+                permissions = channel.permissions_for(bot_member)
+                
+                # Check for all required read permissions
+                has_read_permission = (
+                    permissions.read_messages and 
+                    permissions.read_message_history and 
+                    permissions.view_channel
+                )
+                
+                return has_read_permission
+            else:
+                # If we can't get bot ID, fall back to message test
+                raise Exception("Could not determine bot user ID")
+            
         except Exception as e:
-            self.logger.debug(f"Error testing channel access for {channel.name}: {e}")
-            return False
+            self.logger.debug(f"Error testing channel permissions for {channel.name}: {e}")
+            # Fallback to message reading test if permissions check fails
+            try:
+                async for _ in channel.history(limit=1):
+                    return True
+                return True
+            except discord.Forbidden:
+                return False
+            except Exception:
+                return False
 
     async def discover_accessible_channels(self) -> Dict[str, Any]:
         """Discover all channels the bot has read access to."""
@@ -659,26 +773,59 @@ class DiscordConnector(BaseConnector):
         try:
             await client.login(self.bot_token)
             guild = await client.fetch_guild(int(self.server_id))
+            
+            # Get bot member once for efficiency
+            bot_user_id = client.user.id
+            bot_member = guild.get_member(bot_user_id)
+            if not bot_member:
+                bot_member = await guild.fetch_member(bot_user_id)
+            
             channels = await guild.fetch_channels()
             
             accessible_channels = []
+            tested_count = 0
             
-            for channel in channels:
-                if hasattr(channel, 'send'):  # Text channel
-                    if await self.test_channel_access(channel):
+            # Filter to only text channels first
+            text_channels = [ch for ch in channels if hasattr(ch, 'send')]
+            self.logger.info(f"Testing {len(text_channels)} text channels for read permissions...")
+            
+            for channel in text_channels:
+                tested_count += 1
+                
+                # Fast permission check using pre-fetched bot member
+                try:
+                    permissions = channel.permissions_for(bot_member)
+                    has_read_permission = (
+                        permissions.read_messages and 
+                        permissions.read_message_history and 
+                        permissions.view_channel
+                    )
+                    
+                    if has_read_permission:
                         accessible_channels.append({
                             'name': channel.name,
                             'id': str(channel.id),
                             'discovered_at': datetime.now().isoformat()
                         })
-                    # Small delay to be polite to Discord API
-                    await asyncio.sleep(0.1)
+                        self.logger.debug(f"✓ #{channel.name} - readable")
+                    else:
+                        self.logger.debug(f"✗ #{channel.name} - no read access")
+                        
+                except Exception as e:
+                    self.logger.debug(f"! #{channel.name} - permission check failed: {e}")
+                
+                # Progress indicator for large servers
+                if tested_count % 20 == 0:
+                    self.logger.info(f"Tested {tested_count}/{len(text_channels)} channels...")
+                    
+            self.logger.info(f"Discovery complete: {len(accessible_channels)}/{len(text_channels)} channels accessible")
                     
             return {
                 "server_name": guild.name,
                 "server_id": str(guild.id),
                 "channels": accessible_channels,
-                "discovered_at": datetime.now().isoformat()
+                "discovered_at": datetime.now().isoformat(),
+                "total_tested": len(text_channels)
             }
             
         except Exception as e:
