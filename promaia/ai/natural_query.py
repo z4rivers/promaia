@@ -187,8 +187,8 @@ CONTENT TYPES AVAILABLE:
    - "emails from john": WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')
    - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
    - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
-   - "emails from last week": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-7 days')
-   - "trass gmail 3 days": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-3 days')
+   - "emails from last week": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-7 days')
+   - "trass gmail 3 days": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-3 days')
 
 2. NOTION JOURNAL (database_name = 'journal'):
    Personal journal entries from Notion
@@ -219,7 +219,7 @@ The unified_content view provides these columns for ALL content types:
 
 Core columns (available for all content):
 - page_id, workspace, database_name, content_type, file_path, title
-- created_time, last_edited_time, synced_time, file_size, checksum
+- created_time, synced_time
 
 Content-specific columns (only populated for relevant content types):
 - status (TEXT): Content status - 'Published', 'Draft', 'Done', 'In Progress', etc.
@@ -232,11 +232,10 @@ Content-specific columns (only populated for relevant content types):
 - is_unread (INTEGER): 1 if email is unread (only for Gmail)
 
 DATE FILTERING RULES:
-- For Gmail content: Use last_edited_time for date filtering (aligns with sync behavior)
-- For Notion content (journal, stories, cms): Use created_time for date filtering
-- created_time contains the original creation date; last_edited_time contains the last sync/modification date
+- For all content: Use created_time for date filtering (original creation date)
+- synced_time contains the last sync time but is not used for user queries
 - Examples:
-  - "last 5 days of emails": WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-5 days')
+  - "last 5 days of emails": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-5 days')
   - "recent journal entries": WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-7 days')
 
 SEARCH STRATEGY:
@@ -264,10 +263,9 @@ WORKSPACE ORGANIZATION:
     system_prompt = f"""You are an expert SQL query generator for a unified content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
 
 DATE FILTERING RULE: 
-- For Gmail content: Use last_edited_time for date filtering (aligns with sync behavior)
-- For Notion content (journal, stories, cms): Use created_time for date filtering
+- For all content: Use created_time for date filtering (original creation date)
 Examples:
-- Gmail: WHERE database_name = 'gmail' AND datetime(last_edited_time) >= datetime('now', '-5 days')
+- Gmail: WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-5 days')
 - Notion: WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-5 days')
 
 CURRENT DATE AND TIME CONTEXT:

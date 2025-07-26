@@ -366,6 +366,10 @@ async def handle_discord_browse(args):
                     # Get already synced channels from filesystem (fast)
                     synced_channels = get_synced_channels_from_filesystem(db_config)
                     
+                    # Ensure synced_channels is never None
+                    if synced_channels is None:
+                        synced_channels = []
+                    
                     # Combine server info with synced channels
                     all_channels.append({
                         "db_name": db_name,
@@ -382,7 +386,7 @@ async def handle_discord_browse(args):
             return
         
         # Start interactive browser
-        selected_channels = await interactive_channel_browser(console, all_channels, workspace)
+        selected_channels, _ = await interactive_channel_browser(console, all_channels, workspace)
         
         if selected_channels:
             console.print(f"\n🎉 Selected {len(selected_channels)} channels!")
@@ -519,6 +523,10 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
                     
                     # Get accessible channels from cache (with auto-discovery on first use)
                     accessible_channels = await get_accessible_channels_cached(db_config, bot_token)
+                    
+                    # Ensure accessible_channels is never None
+                    if accessible_channels is None:
+                        accessible_channels = []
                     
                     # Combine server info with accessible channels
                     all_channels.append({
@@ -671,7 +679,8 @@ async def get_accessible_channels_cached(db_config, bot_token) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error getting accessible channels: {e}")
         # Fall back to filesystem-only approach
-        return get_synced_channels_from_filesystem(db_config)
+        fallback_channels = get_synced_channels_from_filesystem(db_config)
+        return fallback_channels if fallback_channels is not None else []
 
 async def interactive_channel_browser(console: Console, servers: List[Dict], workspace: str, previous_selections=None) -> Tuple[List[Tuple[str, str, str, int]], Dict[Tuple[str, str], int]]:
     """Interactive channel browser with real keyboard navigation."""
@@ -688,6 +697,7 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
     # Flatten channels for navigation
     nav_items = []
     channel_days = {}  # Track days for each individual channel
+    # Ensure previous_selections is a list, not None
     previous_selections = previous_selections or []
     
     # Create lookup set for previous selections for faster matching
@@ -700,7 +710,11 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
     
     for server in servers:
         server_default_days = server.get("days", 30)
-        for channel in server["channels"]:
+        # Ensure channels is never None
+        channels = server.get("channels", [])
+        if channels is None:
+            channels = []
+        for channel in channels:
             # Use channel name as part of key since channel["id"] might not be unique
             channel_key = (server["db_name"], channel["name"])
             
@@ -721,7 +735,7 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
             })
     
     if not nav_items:
-        return []
+        return [], {}
     
     current_selection = 0
     filter_text = ""
@@ -735,7 +749,9 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
         return nav_items
     
     def render_content():
-        """Render the browser content."""
+        """Render the browser content with scrolling support."""
+        import shutil
+        
         filtered_items = get_filtered_items()
         
         if not filtered_items:
@@ -747,6 +763,15 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
                 ("class:instruction", "ESC to cancel")
             ])
         
+        # Get terminal height and calculate available space for channels
+        try:
+            terminal_height = shutil.get_terminal_size().lines
+        except:
+            terminal_height = 24  # fallback
+        
+        # Reserve space for header, filter, footer (about 8 lines)
+        available_height = max(5, terminal_height - 8)
+        
         content = []
         content.append(("class:title", "🎮 Discord Channel Browser"))
         content.append(("", "\n\n"))
@@ -756,28 +781,83 @@ async def interactive_channel_browser(console: Console, servers: List[Dict], wor
         content.append(("class:filter", filter_display))
         content.append(("", "\n\n"))
         
-        # Channels
+        # Calculate visible range with scrolling
+        total_lines_needed = 0
+        display_items = []
+        
+        # First pass: build display items and count lines needed
         current_server = None
         current_db = None
         for i, item in enumerate(filtered_items):
-            # Server header
+            # Count server header line
             if current_server != item["server_name"] or current_db != item["db_name"]:
                 current_server = item["server_name"]
                 current_db = item["db_name"]
-                content.append(("class:server", f"📂 {current_server} ({current_db})"))
-                content.append(("", "\n"))
+                display_items.append({
+                    "type": "server_header",
+                    "text": f"📂 {current_server} ({current_db})",
+                    "item_index": None
+                })
+                total_lines_needed += 1
             
-            # Channel line with individual days
+            # Count channel line
             checkbox = "☑" if item["selected"] else "☐"
             channel_name = item["channel"]["name"]
             channel_key = (item["db_name"], item["channel"]["name"])
             days = channel_days.get(channel_key, 30)
             
-            if i == current_selection:
-                content.append(("class:selected", f">>> {checkbox} #{channel_name} ({days} days)"))
+            channel_text = f"    {checkbox} #{channel_name} ({days} days)"
+            display_items.append({
+                "type": "channel",
+                "text": channel_text,
+                "item_index": i,
+                "is_selected": i == current_selection
+            })
+            total_lines_needed += 1
+        
+        # Calculate scroll position to keep current selection visible
+        current_display_line = None
+        for idx, display_item in enumerate(display_items):
+            if display_item["item_index"] == current_selection:
+                current_display_line = idx
+                break
+        
+        if current_display_line is not None:
+            # Ensure current selection is visible
+            if current_display_line < (total_lines_needed - available_height):
+                # Can scroll - center the current selection
+                scroll_start = max(0, current_display_line - available_height // 2)
+                scroll_end = min(len(display_items), scroll_start + available_height)
+                # Adjust if we're near the end
+                if scroll_end == len(display_items):
+                    scroll_start = max(0, scroll_end - available_height)
             else:
-                content.append(("", f"    {checkbox} #{channel_name} ({days} days)"))
+                # Show from the beginning
+                scroll_start = 0
+                scroll_end = min(len(display_items), available_height)
+        else:
+            scroll_start = 0
+            scroll_end = min(len(display_items), available_height)
+        
+        # Render visible items
+        for display_item in display_items[scroll_start:scroll_end]:
+            if display_item["type"] == "server_header":
+                content.append(("class:server", display_item["text"]))
+            elif display_item["type"] == "channel":
+                if display_item["is_selected"]:
+                    content.append(("class:selected", f">>> {display_item['text'][4:]}"))  # Remove initial spaces and add >>>
+                else:
+                    content.append(("", display_item["text"]))
             content.append(("", "\n"))
+        
+        # Show scroll indicator if needed
+        if total_lines_needed > available_height:
+            if scroll_start > 0:
+                content.append(("class:scroll", "▲ More above"))
+                content.append(("", "\n"))
+            if scroll_end < len(display_items):
+                content.append(("class:scroll", "▼ More below"))
+                content.append(("", "\n"))
         
         # Selection info
         selected_count = sum(1 for item in nav_items if item["selected"])

@@ -356,6 +356,9 @@ async def sync_database(source_spec: Dict[str, Any], args):
         filters = build_filters(source_spec, db_config)
         date_filter = build_date_filter(source_spec, db_config, args)
         
+        # Extract complex filter from source spec
+        complex_filter = source_spec.get('complex_filter')
+        
         # Use the new unified storage system instead of old output_directory
         from promaia.storage.unified_storage import get_unified_storage
         storage = get_unified_storage()
@@ -368,7 +371,8 @@ async def sync_database(source_spec: Dict[str, Any], args):
             date_filter=date_filter if date_filter else None,
             include_properties=db_config.include_properties,
             force_update=getattr(args, 'force', False),
-            excluded_properties=db_config.excluded_properties
+            excluded_properties=db_config.excluded_properties,
+            complex_filter=complex_filter
         )
         
         # Ensure database name is set in result
@@ -386,7 +390,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
         duration = result.duration_seconds
         duration_str = f" in {duration:.1f}s" if duration else ""
         
-        print(f"✓ {qualified_name}: {result.pages_saved} saved, {result.pages_skipped} skipped{duration_str}")
+        print(f"✅ {qualified_name}: {result.pages_saved} saved, {result.pages_skipped} skipped{duration_str}")
         # MONITORING: Display performance metrics
         if hasattr(result, 'api_calls_count') and result.api_calls_count > 0:
             print(f"  API calls: {result.api_calls_count}")
@@ -632,16 +636,37 @@ async def handle_database_sync_with_browse(args):
             print(f"✅ Selected {len(selected_channels)} Discord channels for sync:")
             
             # Convert selected channels to sync source format
+            # Group channels by database to avoid redundant syncs
             discord_sources = []
+            channels_by_db = {}
             
-            # Process each channel individually with its specific days
+            # Group channels by database
             for db_name, channel_id, channel_name, days in selected_channels:
-                # Create individual source with channel-specific days and channel name filter
-                current_source = f"{db_name}:{days}.channel_name={channel_name}"
-                discord_sources.append(current_source)
+                if db_name not in channels_by_db:
+                    channels_by_db[db_name] = {'days': days, 'channels': []}
+                channels_by_db[db_name]['channels'].append(channel_name)
                 
                 # Show what was selected
                 print(f"   • {db_name}:{days} → #{channel_name}")
+            
+            # Create consolidated source specs for each database
+            for db_name, info in channels_by_db.items():
+                days = info['days']
+                channels = info['channels']
+                
+                if len(channels) == 1:
+                    # Single channel - simple filter
+                    source_spec = f'{db_name}:{days}:"channel_name={channels[0]}"'
+                    discord_sources.append(source_spec)
+                else:
+                    # Multiple channels - use complex filter format
+                    # Create OR expression for multiple channels
+                    channel_conditions = []
+                    for channel in channels:
+                        channel_conditions.append(f'discord_channel_name={channel}')
+                    complex_expr = ' or '.join(channel_conditions)
+                    source_spec = f'{db_name}:{days}:({complex_expr})'
+                    discord_sources.append(source_spec)
             
             # Combine regular sources with Discord sources
             sync_sources = sources + discord_sources
@@ -727,8 +752,37 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                 days_and_filters_part = spec_parts[1]
                 days_was_specified = True
                 
+                # Handle complex filter format: days:(expression)
+                if days_and_filters_part.count(':') == 1 and days_and_filters_part.endswith(')') and '(' in days_and_filters_part:
+                    # Complex filter format: days:(expression)
+                    days_str, filter_part = days_and_filters_part.split(':', 1)
+                    
+                    # Parse days
+                    if days_str.lower() == 'all':
+                        days = None
+                    else:
+                        try:
+                            days = int(days_str)
+                        except ValueError:
+                            logger.warning(f"Invalid days format '{days_str}' in spec '{spec}', using default from config.")
+                            days = db_config.default_days
+                            days_was_specified = False
+                    
+                    # Parse complex expression: (discord_channel_name=a or discord_channel_name=b)
+                    if filter_part.startswith('(') and filter_part.endswith(')'):
+                        complex_expr = filter_part[1:-1]  # Remove parentheses
+                        from promaia.cli.database_commands import parse_complex_filter_expression
+                        try:
+                            complex_filter = parse_complex_filter_expression(complex_expr)
+                            logger.info(f"Parsed complex filter for '{database}': {complex_filter}")
+                        except Exception as e:
+                            logger.warning(f"Failed to parse complex filter '{complex_expr}' in spec '{spec}': {e}")
+                    
+                    # Set parts to empty for complex filters (no additional processing needed)
+                    parts = [days_str]  # Single element list so len(parts) == 1
+                
                 # Handle Discord channel filter format: days:"channel_name=value"
-                if days_and_filters_part.count(':') == 1 and '"' in days_and_filters_part:
+                elif days_and_filters_part.count(':') == 1 and '"' in days_and_filters_part:
                     # Discord channel filter format: days:"filter"
                     days_str, filter_part = days_and_filters_part.split(':', 1)
                     

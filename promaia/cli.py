@@ -1101,7 +1101,9 @@ def chat_run(args):
             return
         
         # Save query to recents before executing (for both traditional and NL queries)
-        if sources or filters or original_workspace or nl_prompt:
+        # Skip if this is being called from browse mode (which handles its own recents saving)
+        skip_recents = getattr(args, 'skip_recents_save', False)
+        if not skip_recents and (sources or filters or original_workspace or nl_prompt):
             from promaia.storage.recents import RecentsManager
             recents_manager = RecentsManager()
             recents_manager.add_query(
@@ -1442,20 +1444,11 @@ def chat_run_inline_browse(args):
                 self.browse = None  # Clear browse to avoid recursion
                 self.non_interactive = getattr(original_args, 'non_interactive', False)
                 self.natural_language = getattr(original_args, 'natural_language', None)
+                self.skip_recents_save = True  # Prevent double-saving to recents
         
         chat_args = ChatArgs(all_sources, all_filters, original_workspace, args)
         
-        # Save combined query to recents
-        if all_sources or all_filters or original_workspace:
-            from promaia.storage.recents import RecentsManager
-            recents_manager = RecentsManager()
-            recents_manager.add_query(
-                sources=all_sources, 
-                filters=all_filters, 
-                workspace=original_workspace
-            )
-        
-        # Build the COMPLETE original command format for display (including regular sources)
+        # Build the original browse command for display in recents
         original_command_parts = ["maia", "chat"]
         
         # Add regular sources first
@@ -1464,13 +1457,10 @@ def chat_run_inline_browse(args):
                 original_command_parts.extend(["-s", source])
         
         # Add browse part
-        original_command_parts.append("-b")
         if browse_databases:
+            original_command_parts.append("-b")
             for browse_spec in browse_databases:
                 original_command_parts.append(browse_spec)
-        else:
-            # If no specific databases were specified, we browsed the whole workspace
-            original_command_parts.append(resolved_workspace)
         
         # Add any original filters that weren't from Discord
         original_filters = getattr(args, 'filters', None) or []
@@ -1479,9 +1469,23 @@ def chat_run_inline_browse(args):
         
         # Add workspace if originally specified
         if original_workspace:
-            original_command_parts.extend(["-w", original_workspace])
+            original_command_parts.extend(["-ws", original_workspace])
         
         original_browse_command = " ".join(original_command_parts)
+        
+        # Save combined query to recents
+        # For browse commands, always save even if no sources/filters result
+        if all_sources or all_filters or original_workspace or browse_databases:
+            from promaia.storage.recents import RecentsManager
+            recents_manager = RecentsManager()
+            recents_manager.add_query(
+                sources=all_sources, 
+                filters=all_filters, 
+                workspace=original_workspace,
+                original_browse_command=original_browse_command
+            )
+
+
         
         # Store browse selections and original format in the chat args
         browse_selections = selected_channels if selected_channels else None

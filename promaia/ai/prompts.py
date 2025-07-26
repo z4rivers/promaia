@@ -70,6 +70,8 @@ def create_system_prompt(
                         elif metadata.get('channel_name'):
                             # Remove # prefix if present
                             channel_name = metadata['channel_name'].lstrip('#')
+                        elif metadata.get('properties', {}).get('channel_name'):
+                            channel_name = metadata['properties']['channel_name'].lstrip('#')
                     
                     if channel_name not in channels:
                         channels[channel_name] = []
@@ -81,7 +83,37 @@ def create_system_prompt(
                     for page in channel_pages:
                         page_filename = page.get('filename', 'Unknown File')
                         page_content = page.get('content', '')
-                        base_prompt += f"\n**{page_filename}**:\n{page_content}\n"
+                        
+                        # Extract timestamp and author from metadata for minimal format
+                        metadata = page.get('metadata')
+                        timestamp_display = "unknown_time"
+                        author_display = "unknown_author"
+                        
+                        if metadata:
+                            if isinstance(metadata, str):
+                                try:
+                                    import json
+                                    metadata = json.loads(metadata)
+                                except (json.JSONDecodeError, TypeError):
+                                    metadata = {}
+                            
+                            # Get timestamp in readable format
+                            timestamp_str = metadata.get('timestamp') or metadata.get('created_time')
+                            if timestamp_str:
+                                try:
+                                    dt = datetime.datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                    timestamp_display = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                except ValueError:
+                                    pass
+                            
+                            # Get author name (try multiple field names)
+                            author_display = (metadata.get('author_name') or 
+                                            metadata.get('author') or 
+                                            metadata.get('properties', {}).get('author_name') or
+                                            'unknown_author')
+                        
+                        # Use minimal format: **`timestamp author #channel filename`**
+                        base_prompt += f"\n**`{timestamp_display}  {author_display}  #{channel_name}  {page_filename}`**\n\n{page_content}\n"
             else:
                 for page in pages:
                     page_filename = (page.get('filename') or 

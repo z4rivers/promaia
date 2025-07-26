@@ -704,13 +704,13 @@ def create_channel_or_filter(channel_names: List[str]) -> Dict[str, Any]:
     
     if len(channel_names) == 1:
         # Single channel - return simple filter
-        return {'channel_name': channel_names[0]}
+        return {'discord_channel_name': channel_names[0]}
     
     # Multiple channels - create complex filter with OR logic
     or_clauses = []
     for channel_name in channel_names:
         or_clauses.append([{
-            'property': 'channel_name',
+            'property': 'discord_channel_name',
             'operator': '=', 
             'value': channel_name
         }])
@@ -761,7 +761,7 @@ def read_markdown_files_with_registry(
             
             # Basic sanitization to prevent SQL injection from config values
             # This is a safeguard; config should be trusted but it's good practice
-            allowed_props = ["created_time", "synced_time"] # Use columns that exist in unified_content view
+            allowed_props = ["created_time", "last_edited_time", "synced_time"] # Use columns that exist in unified_content view
             if date_filter_prop not in allowed_props:
                 # If the configured property is not a direct column, use created_time as fallback
                 print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'created_time' for query.")
@@ -780,7 +780,7 @@ def read_markdown_files_with_registry(
             
             where_clause = " AND ".join(where_conditions)
             query = f"""
-                SELECT page_id, title, created_time, synced_time, file_path, metadata
+                SELECT page_id, title, created_time, last_edited_time, synced_time, file_path, metadata
                 FROM unified_content 
                 WHERE {where_clause}
                 ORDER BY {date_filter_prop} DESC
@@ -794,30 +794,30 @@ def read_markdown_files_with_registry(
         # Get markdown directory for fallback lookups
         md_dir = database_config.markdown_directory
         
-        for page_id, title, created_time, synced_time, file_path, metadata in registry_entries:
+        for page_id, title, created_time, last_edited_time, synced_time, file_path, metadata in registry_entries:
             try:
-                # Use the file path directly from registry, ensuring it's absolute
-                if file_path:
-                    # Construct absolute path from project root
-                    abs_file_path = os.path.join(project_root, file_path)
-                    if os.path.exists(abs_file_path):
-                        md_file = abs_file_path
-                    else:
-                        # If absolute path doesn't exist, fallback to glob (legacy support)
-                        md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
-                        if not md_files:
-                            print(f"Warning: No markdown file found for page_id {page_id} (path not found: {abs_file_path})")
-                            continue
-                        md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-                        md_file = md_files[0]
-                else:
-                    # Fallback for entries without a file_path
-                    md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
-                    if not md_files:
-                        print(f"Warning: No markdown file found for page_id {page_id} (no path in registry)")
-                        continue
-                    md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-                    md_file = md_files[0]
+                # Simplified approach: Always search by page_id first, ignore registry file paths
+                # This handles filename format changes gracefully
+                md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
+                
+                if not md_files:
+                    # Only warn if we truly can't find the file by page_id
+                    continue  # Skip warning for missing files - they may have been deleted intentionally
+                
+                # Use the most recent file if multiple matches (shouldn't happen but just in case)
+                md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+                md_file = md_files[0]
+                
+                # Update the registry with the correct file path
+                try:
+                    relative_path = os.path.relpath(md_file, project_root)
+                    cursor.execute(
+                        "UPDATE unified_content SET file_path = ? WHERE page_id = ?",
+                        (relative_path, page_id)
+                    )
+                    # Note: connection.commit() is handled by the caller
+                except Exception:
+                    pass  # Silent fail for registry updates
 
                 # Read the markdown content
                 with open(md_file, 'r', encoding='utf-8') as f:
@@ -842,6 +842,7 @@ def read_markdown_files_with_registry(
                     'filename': os.path.basename(md_file),
                     'title': title or "Untitled",
                     'created_time': created_time,
+                    'last_edited_time': last_edited_time,
                     'synced_time': synced_time,
                     'metadata': metadata,  # Include the metadata from the registry!
                     'debug_info': "date from database registry"
@@ -850,6 +851,12 @@ def read_markdown_files_with_registry(
             except Exception as e:
                 print(f"Error processing registry entry {page_id}: {e}")
                 continue
+    
+        # Commit any registry path updates that were made during the loop
+        try:
+            connection.commit()
+        except Exception:
+            pass
     
     except Exception as e:
         print(f"Error reading from registry: {e}")
@@ -916,7 +923,7 @@ def apply_custom_property_filters(pages: List[Dict[str, Any]], complex_filter: O
             
             # Check if page matches the complex filter
             page_content = page.get('content', '')
-            matches = evaluate_complex_filter(properties, complex_filter, page_content)
+            matches = evaluate_complex_filter(properties, complex_filter, page_content, metadata_dict)
             
             if matches:
                 filtered_pages.append(page)
@@ -971,6 +978,10 @@ def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters:
                 prop_data = properties.get(prop_name, {})
                 actual_value = extract_property_value(prop_data)
                 
+                # For Discord and other flat metadata, also check directly in metadata_dict
+                if actual_value is None and prop_name in metadata_dict:
+                    actual_value = metadata_dict[prop_name]
+                
                 # Apply the condition using the existing evaluate_condition function
                 if not evaluate_condition(actual_value, '=', expected_value):
                     matches = False
@@ -985,7 +996,7 @@ def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters:
     return filtered_pages
 
 
-def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str, Any], page_content: str = "") -> bool:
+def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str, Any], page_content: str = "", metadata_dict: Dict[str, Any] = {}) -> bool:
     """
     Evaluate a complex filter expression against page properties.
     
@@ -993,6 +1004,7 @@ def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str
         properties: Dictionary of page properties from Notion/Gmail
         complex_filter: Complex filter expression
         page_content: Full page content for content-based searches (e.g., contains operator)
+        metadata_dict: The full metadata dictionary for Discord compatibility
         
     Returns:
         True if the properties match the filter, False otherwise
@@ -1037,6 +1049,10 @@ def evaluate_complex_filter(properties: Dict[str, Any], complex_filter: Dict[str
             # Get the actual property value from the page
             prop_data = properties.get(prop_name, {})
             actual_value = extract_property_value(prop_data)
+            
+            # For Discord and other flat metadata, also check directly in metadata_dict
+            if actual_value is None and prop_name in metadata_dict:
+                actual_value = metadata_dict[prop_name]
             
             # Apply the condition
             condition_result = evaluate_condition(actual_value, operator, expected_value)

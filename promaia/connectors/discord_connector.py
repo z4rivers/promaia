@@ -44,9 +44,10 @@ class DiscordConnector(BaseConnector):
         self.guild = None
         self._connected = False
         
-        # Rate limiting for API compliance (1 request per second for message history)
+        # Rate limiting for API compliance 
         self._last_request_time = 0
-        self._rate_limit_delay = 1.0  # 1 second between requests
+        self._rate_limit_delay = 1.0  # 1 second between requests (conservative)
+        self._efficient_rate_limit_delay = 0.1  # 100ms for efficient pagination (Discord allows ~50 requests/second)
         
     async def _rate_limit(self):
         """Ensure we don't exceed Discord's rate limits."""
@@ -55,6 +56,17 @@ class DiscordConnector(BaseConnector):
         
         if time_since_last < self._rate_limit_delay:
             sleep_time = self._rate_limit_delay - time_since_last
+            await asyncio.sleep(sleep_time)
+        
+        self._last_request_time = asyncio.get_event_loop().time()
+
+    async def _rate_limit_efficient(self):
+        """Apply efficient rate limiting for pagination (Discord allows ~50 requests/second)."""
+        current_time = asyncio.get_event_loop().time()
+        time_since_last = current_time - self._last_request_time
+        
+        if time_since_last < self._efficient_rate_limit_delay:
+            sleep_time = self._efficient_rate_limit_delay - time_since_last
             await asyncio.sleep(sleep_time)
         
         self._last_request_time = asyncio.get_event_loop().time()
@@ -153,20 +165,28 @@ class DiscordConnector(BaseConnector):
                          date_filter: Optional[DateRangeFilter] = None,
                          sort_by: Optional[str] = None,
                          sort_direction: str = "desc",
-                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
+                         limit: Optional[int] = None,
+                         complex_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Query messages from Discord channels."""
         if not self._connected:
             await self.connect()
         
         try:
-            # Get channel to sync 
-            channel_identifier = self._extract_channel_filter(filters)
-            if not channel_identifier:
-                # No specific channel filter - this shouldn't happen in normal usage
-                # Users should use browse mode to select channels first
-                self.logger.warning("No specific channel filter provided for Discord sync")
-                self.logger.info("Use browse mode (-b) to select Discord channels before syncing")
-                return []
+            # Get channels to sync - support both single and multiple channels
+            channel_identifiers = self._extract_multiple_channel_filters(filters, complex_filter)
+            if not channel_identifiers:
+                # Fallback to old single-channel method for backward compatibility
+                single_channel = self._extract_channel_filter(filters)
+                if single_channel:
+                    channel_identifiers = [single_channel]
+                else:
+                    # No specific channel filter - this shouldn't happen in normal usage
+                    # Users should use browse mode to select channels first
+                    self.logger.warning("No specific channel filter provided for Discord sync")
+                    self.logger.info("Use browse mode (-b) to select Discord channels before syncing")
+                    return []
+            
+            self.logger.info(f"Querying {len(channel_identifiers)} Discord channels: {channel_identifiers}")
             
             # Create temporary client for message fetching
             client = discord.Client(intents=self.intents)
@@ -178,60 +198,138 @@ class DiscordConnector(BaseConnector):
                 # Fetch the channels for this guild
                 guild_channels = await guild.fetch_channels()
                 
-                # Handle both channel ID and channel name
-                if channel_identifier.startswith("name:"):
-                    # Channel name filter - find channel by name (with sanitized name mapping)
-                    sanitized_channel_name = channel_identifier[5:]  # Remove "name:" prefix
-                    channel = None
-                    
-                    # First try exact match
-                    for ch in guild_channels:
-                        if hasattr(ch, 'send') and ch.name == sanitized_channel_name:
-                            channel = ch
-                            break
-                    
-                    # If no exact match, try reverse sanitization lookup
-                    if not channel:
-                        channel = self._find_channel_by_sanitized_name(guild_channels, sanitized_channel_name)
-                    
-                    if not channel:
-                        self.logger.error(f"Channel '{sanitized_channel_name}' not found in server")
-                        return []
-                else:
-                    # Channel ID filter - fetch by ID
-                    channel = await guild.fetch_channel(int(channel_identifier))
-                
-                if not channel:
-                    self.logger.error(f"Could not access channel {channel_id}")
-                    return []
-                
-                # Apply rate limiting
-                await self._rate_limit()
-                
-                # Calculate date range for filtering
+                # Calculate date range for filtering (common for all channels)
                 after_date = None
                 before_date = None
                 if date_filter:
                     after_date = date_filter.start_date
                     before_date = date_filter.end_date
                 
-                # Fetch messages with pagination
-                messages = []
-                async for message in channel.history(
-                    limit=limit,
-                    after=after_date,
-                    before=before_date,
-                    oldest_first=(sort_direction == "asc")
-                ):
-                    message_data = await self._convert_message_to_data(message)
-                    messages.append(message_data)
-                    
-                    # Apply rate limiting between message fetches for large syncs
-                    if len(messages) % 50 == 0:  # Every 50 messages
-                        await self._rate_limit()
+                # Query each channel and collect all messages
+                all_messages = []
                 
-                self.logger.info(f"Found {len(messages)} messages in channel {channel.name}")
-                return messages
+                # For date-based queries, fetch ALL messages per channel within date range
+                # For non-date queries, split the limit across channels
+                if date_filter:
+                    # Date filter active - get ALL messages in range for each channel (no per-channel limit)
+                    per_channel_limit = None
+                    self.logger.info(f"Date-based query: fetching ALL messages per channel within date range")
+                else:
+                    # No date filter - split total limit across channels
+                    per_channel_limit = limit // len(channel_identifiers) if limit and len(channel_identifiers) > 1 else limit
+                    if per_channel_limit and per_channel_limit < 10:  # Ensure minimum per channel
+                        per_channel_limit = 10
+                    self.logger.info(f"Non-date query: using per-channel limit of {per_channel_limit}")
+                
+                for channel_identifier in channel_identifiers:
+                    try:
+                        # Handle both channel ID and channel name
+                        channel = None
+                        if channel_identifier.startswith("name:"):
+                            # Channel name filter - find channel by name (with sanitized name mapping)
+                            sanitized_channel_name = channel_identifier[5:]  # Remove "name:" prefix
+                            
+                            # First try exact match
+                            for ch in guild_channels:
+                                if hasattr(ch, 'send') and ch.name == sanitized_channel_name:
+                                    channel = ch
+                                    break
+                            
+                            # If no exact match, try reverse sanitization lookup
+                            if not channel:
+                                channel = self._find_channel_by_sanitized_name(guild_channels, sanitized_channel_name)
+                            
+                            if not channel:
+                                self.logger.warning(f"Channel '{sanitized_channel_name}' not found in server")
+                                continue
+                        else:
+                            # Channel ID filter - fetch by ID
+                            channel = await guild.fetch_channel(int(channel_identifier))
+                        
+                        if not channel:
+                            self.logger.warning(f"Could not access channel {channel_identifier}")
+                            continue
+                        
+                        # Apply rate limiting between channels
+                        await self._rate_limit()
+                        
+                        # Fetch messages from this channel with proper pagination
+                        channel_messages = []
+                        message_count = 0
+                        
+                        if per_channel_limit is None:
+                            # Date-based query: Get ALL messages in date range with pagination
+                            self.logger.info(f"Fetching ALL messages from #{channel.name} within date range...")
+                            
+                            # Use chunks to handle large date ranges efficiently
+                            chunk_size = 100  # Discord's optimal chunk size
+                            last_message = None
+                            
+                            while True:
+                                # Apply rate limiting between chunks
+                                if message_count > 0:
+                                    await self._rate_limit_efficient()
+                                
+                                # Fetch chunk with proper before parameter for pagination
+                                chunk_messages = []
+                                async for message in channel.history(
+                                    limit=chunk_size,
+                                    after=after_date,
+                                    before=last_message.created_at if last_message else before_date,
+                                    oldest_first=False  # Always newest first for efficient pagination
+                                ):
+                                    chunk_messages.append(message)
+                                
+                                if not chunk_messages:
+                                    break  # No more messages in range
+                                
+                                # Convert messages and add to results
+                                for message in chunk_messages:
+                                    message_data = await self._convert_message_to_data(message)
+                                    channel_messages.append(message_data)
+                                    message_count += 1
+                                
+                                # Update pagination marker
+                                last_message = chunk_messages[-1]
+                                
+                                # If we got fewer than chunk_size, we've reached the end
+                                if len(chunk_messages) < chunk_size:
+                                    break
+                                    
+                                # Safety check to prevent infinite loops
+                                if message_count > 10000:  # Reasonable safety limit
+                                    self.logger.warning(f"Reached safety limit of 10000 messages for channel #{channel.name}")
+                                    break
+                            
+                        else:
+                            # Limited query: Use simple approach with specified limit
+                            async for message in channel.history(
+                                limit=per_channel_limit,
+                                after=after_date,
+                                before=before_date,
+                                oldest_first=(sort_direction == "asc")
+                            ):
+                                # Apply rate limiting every 50 messages
+                                if message_count % 50 == 0 and message_count > 0:
+                                    await self._rate_limit_efficient()
+                                
+                                # Convert Discord message to our format
+                                message_data = await self._convert_message_to_data(message)
+                                channel_messages.append(message_data)
+                                message_count += 1
+                        
+                        if channel_messages:
+                            self.logger.info(f"Found {len(channel_messages)} messages in channel #{channel.name}")
+                            all_messages.extend(channel_messages)
+                        else:
+                            self.logger.info(f"No messages found in channel #{channel.name}")
+                            
+                    except Exception as e:
+                        self.logger.warning(f"Error querying channel {channel_identifier}: {e}")
+                        continue
+                
+                self.logger.info(f"Total messages found across all channels: {len(all_messages)}")
+                return all_messages
                 
             finally:
                 await client.close()
@@ -299,20 +397,29 @@ class DiscordConnector(BaseConnector):
                                    date_filter: Optional[DateRangeFilter] = None,
                                    include_properties: bool = True,
                                    force_update: bool = False,
-                                   excluded_properties: List[str] = None) -> SyncResult:
+                                   excluded_properties: List[str] = None,
+                                   complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Discord messages to local storage using unified storage system."""
         result = SyncResult()
         result.start_time = datetime.now()
         
         try:
-            limit = self.config.get("sync_limit", 100)
+            # For date-based queries, don't use arbitrary limits - get ALL messages in date range
+            # Only use sync_limit as fallback when no date filter is specified
+            limit = None if date_filter else self.config.get("sync_limit", 100)
             
             # Query Discord for recent messages
             self.logger.info(f"Querying Discord with date_filter: {date_filter}")
+            if date_filter:
+                self.logger.info(f"Date filter active - fetching ALL messages in range (no arbitrary limit)")
+            else:
+                self.logger.info(f"No date filter - using sync_limit: {limit}")
+                
             messages = await self.query_pages(
                 filters=filters, 
                 date_filter=date_filter,
-                limit=limit
+                limit=limit,
+                complex_filter=complex_filter
             )
             
             if not messages:
@@ -403,6 +510,36 @@ class DiscordConnector(BaseConnector):
                 return f"name:{filter_obj.value}"
         
         return None
+
+    def _extract_multiple_channel_filters(self, filters: Optional[List[QueryFilter]] = None, complex_filter: Optional[Dict[str, Any]] = None) -> List[str]:
+        """Extract multiple channel identifiers from filters and complex filters."""
+        channel_identifiers = []
+        
+        # Handle simple filters first
+        if filters:
+            for filter_obj in filters:
+                if filter_obj.property_name == "channel_id" and filter_obj.operator == "eq":
+                    channel_identifiers.append(filter_obj.value)
+                elif filter_obj.property_name == "channel_name" and filter_obj.operator == "eq":
+                    channel_identifiers.append(f"name:{filter_obj.value}")
+                elif filter_obj.property_name == "discord_channel_name" and filter_obj.operator == "eq":
+                    channel_identifiers.append(f"name:{filter_obj.value}")
+        
+        # Handle complex filters (multiple channels with OR logic)
+        if complex_filter and complex_filter.get('type') == 'complex':
+            or_clauses = complex_filter.get('or_clauses', [])
+            for and_conditions in or_clauses:
+                for condition in and_conditions:
+                    prop_name = condition.get('property', '')
+                    operator = condition.get('operator', '=')
+                    value = condition.get('value', '')
+                    
+                    if operator == '=' and prop_name in ['discord_channel_name', 'channel_name']:
+                        channel_identifiers.append(f"name:{value}")
+                    elif operator == '=' and prop_name == 'channel_id':
+                        channel_identifiers.append(value)
+        
+        return channel_identifiers
     
     async def _query_all_accessible_channels(self, 
                                            date_filter: Optional[DateRangeFilter] = None,
@@ -437,24 +574,77 @@ class DiscordConnector(BaseConnector):
                         # Apply rate limiting between channels
                         await self._rate_limit()
                         
-                        # Determine per-channel limit
-                        channel_limit = limit // len(text_channels) if limit else 100
-                        if channel_limit < 10:  # Ensure minimum per channel
-                            channel_limit = 10
+                        # For date-based queries, get ALL messages per channel
+                        # For non-date queries, split limit across channels
+                        if date_filter:
+                            channel_limit = None  # Get all messages in date range
+                        else:
+                            channel_limit = limit // len(text_channels) if limit else 100
+                            if channel_limit < 10:  # Ensure minimum per channel
+                                channel_limit = 10
                         
                         channel_messages = []
-                        async for message in channel.history(
-                            limit=channel_limit,
-                            after=after_date,
-                            before=before_date,
-                            oldest_first=(sort_direction == "asc")
-                        ):
-                            message_data = await self._convert_message_to_data(message)
-                            channel_messages.append(message_data)
+                        message_count = 0
+                        
+                        if channel_limit is None:
+                            # Date-based query: Get ALL messages in date range with pagination
+                            self.logger.info(f"Fetching ALL messages from #{channel.name} within date range...")
                             
-                            # Apply rate limiting for large channel syncs
-                            if len(channel_messages) % 50 == 0:
-                                await self._rate_limit()
+                            # Use chunks to handle large date ranges efficiently
+                            chunk_size = 100  # Discord's optimal chunk size
+                            last_message = None
+                            
+                            while True:
+                                # Apply rate limiting between chunks
+                                if message_count > 0:
+                                    await self._rate_limit_efficient()
+                                
+                                # Fetch chunk with proper before parameter for pagination
+                                chunk_messages = []
+                                async for message in channel.history(
+                                    limit=chunk_size,
+                                    after=after_date,
+                                    before=last_message.created_at if last_message else before_date,
+                                    oldest_first=False  # Always newest first for efficient pagination
+                                ):
+                                    chunk_messages.append(message)
+                                
+                                if not chunk_messages:
+                                    break  # No more messages in range
+                                
+                                # Convert messages and add to results
+                                for message in chunk_messages:
+                                    message_data = await self._convert_message_to_data(message)
+                                    channel_messages.append(message_data)
+                                    message_count += 1
+                                
+                                # Update pagination marker
+                                last_message = chunk_messages[-1]
+                                
+                                # If we got fewer than chunk_size, we've reached the end
+                                if len(chunk_messages) < chunk_size:
+                                    break
+                                    
+                                # Safety check to prevent infinite loops
+                                if message_count > 10000:  # Reasonable safety limit
+                                    self.logger.warning(f"Reached safety limit of 10000 messages for channel #{channel.name}")
+                                    break
+                            
+                        else:
+                            # Limited query: Use simple approach with specified limit
+                            async for message in channel.history(
+                                limit=channel_limit,
+                                after=after_date,
+                                before=before_date,
+                                oldest_first=(sort_direction == "asc")
+                            ):
+                                message_data = await self._convert_message_to_data(message)
+                                channel_messages.append(message_data)
+                                message_count += 1
+                                
+                                # Apply rate limiting for large channel syncs
+                                if message_count % 50 == 0:
+                                    await self._rate_limit_efficient()
                         
                         if channel_messages:
                             self.logger.info(f"Found {len(channel_messages)} messages in channel #{channel.name}")
@@ -599,8 +789,18 @@ class DiscordConnector(BaseConnector):
         # Create a filename-safe title
         author_name = message.get('author_name', 'Unknown')
         
-        # New filename format: YYYY-MM-DD_HH-MM-SS_author_msg_id.md
-        filename_title = f"{timestamp_str}_{author_name}_{page_id}"
+        # Get first ~15 characters of content for filename
+        content_snippet = ""
+        content = message.get('content', '')
+        if content:
+            # Clean content for filename use
+            clean_content = "".join(c if c.isalnum() or c in " -_" else "_" for c in content)
+            content_snippet = clean_content[:15].strip("_").strip()
+            if content_snippet:
+                content_snippet = f"_{content_snippet}"
+        
+        # New filename format: YYYY-MM-DD_HH-MM-SS_author_content_msg_id.md
+        filename_title = f"{timestamp_str}_{author_name}{content_snippet}_msg_{page_id}"
 
         # Extract properties from message data
         properties = {
@@ -646,7 +846,7 @@ class DiscordConnector(BaseConnector):
         """Convert a Discord message dictionary to a markdown string."""
         content = message.get("content", "")
         
-        # Add main content
+        # Add main content - no verbose header, just the content
         main_content = content if content else "*[No text content]*"
         
         # Add attachment information

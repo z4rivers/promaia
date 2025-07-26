@@ -199,8 +199,10 @@ class HybridContentRegistry:
             """)
             
             # Create unified view that combines all tables with direct column access
+            # Drop and recreate to ensure latest schema (CREATE VIEW IF NOT EXISTS doesn't update)
+            cursor.execute("DROP VIEW IF EXISTS unified_content")
             cursor.execute("""
-                CREATE VIEW IF NOT EXISTS unified_content AS
+                CREATE VIEW unified_content AS
                 
                 SELECT 
                     page_id,
@@ -424,6 +426,10 @@ class HybridContentRegistry:
                 # Extract Gmail-specific fields from metadata
                 metadata = content_data.get('metadata', {})
                 
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO gmail_content (
                         page_id, workspace, database_id, file_path, subject, sender_email, sender_name,
@@ -451,8 +457,8 @@ class HybridContentRegistry:
                     metadata.get('thread_position', 0),
                     metadata.get('is_latest_in_thread', False),
                     metadata.get('email_date'),
-                    content_data.get('created_time'),
-                    content_data.get('last_edited_time'),
+                    created_time,
+                    last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum')
@@ -540,6 +546,10 @@ class HybridContentRegistry:
                     if tag_prop and tag_prop.get('multi_select'):
                         tags = [tag['name'] for tag in tag_prop['multi_select']]
                 
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_journal (
                         page_id, workspace, database_id, database_name, file_path, title,
@@ -558,8 +568,8 @@ class HybridContentRegistry:
                     json.dumps(tags),
                     featured,
                     author_name,
-                    content_data.get('created_time'),
-                    content_data.get('last_edited_time'),
+                    created_time,
+                    last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum')
@@ -602,6 +612,10 @@ class HybridContentRegistry:
                     if label_prop and label_prop.get('multi_select'):
                         labels = [label['name'] for label in label_prop['multi_select']]
                 
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_stories (
                         page_id, workspace, database_id, database_name, file_path, title,
@@ -621,8 +635,8 @@ class HybridContentRegistry:
                     story_points,
                     priority,
                     json.dumps(labels),
-                    content_data.get('created_time'),
-                    content_data.get('last_edited_time'),
+                    created_time,
+                    last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum')
@@ -661,6 +675,10 @@ class HybridContentRegistry:
                     if tag_prop and tag_prop.get('multi_select'):
                         tags = [tag['name'] for tag in tag_prop['multi_select']]
                 
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO notion_cms (
                         page_id, workspace, database_id, database_name, file_path, title,
@@ -683,8 +701,8 @@ class HybridContentRegistry:
                     meta_description,
                     json.dumps(tags),
                     publish_date,
-                    content_data.get('created_time'),
-                    content_data.get('last_edited_time'),
+                    created_time,
+                    last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum')
@@ -703,6 +721,10 @@ class HybridContentRegistry:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO generic_content (
                         page_id, workspace, database_id, database_name, content_type, file_path, title,
@@ -716,8 +738,8 @@ class HybridContentRegistry:
                     content_data.get('content_type', content_data['database_name']),
                     content_data['file_path'],
                     content_data.get('title'),
-                    content_data.get('created_time'),
-                    content_data.get('last_edited_time'),
+                    created_time,
+                    last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum'),

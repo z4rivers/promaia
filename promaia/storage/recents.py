@@ -17,6 +17,7 @@ class RecentQuery:
     workspace: Optional[str] = None
     timestamp: Optional[str] = None
     natural_language_prompt: Optional[str] = None  # New field for NL queries
+    original_browse_command: Optional[str] = None  # Original browse command for display
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -32,6 +33,9 @@ class RecentQuery:
         # If this is a natural language query, show it differently
         if self.natural_language_prompt:
             command_str = f"maia chat -nl {self.natural_language_prompt}"
+        elif self.original_browse_command:
+            # Use the original browse command for display
+            command_str = self.original_browse_command
         else:
             # Traditional query format
             parts = []
@@ -87,7 +91,8 @@ class RecentsManager:
     def add_query(self, sources: Optional[List[str]] = None, 
                   filters: Optional[List[str]] = None, 
                   workspace: Optional[str] = None,
-                  natural_language_prompt: Optional[str] = None) -> None:
+                  natural_language_prompt: Optional[str] = None,
+                  original_browse_command: Optional[str] = None) -> None:
         """Add a new query to recents."""
         new_query = RecentQuery(
             command="chat",
@@ -95,7 +100,8 @@ class RecentsManager:
             filters=filters,
             workspace=workspace,
             timestamp=datetime.now().isoformat(),
-            natural_language_prompt=natural_language_prompt
+            natural_language_prompt=natural_language_prompt,
+            original_browse_command=original_browse_command
         )
         
         recents = self._load_recents()

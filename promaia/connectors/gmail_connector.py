@@ -1008,7 +1008,8 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                                    date_filter: Optional[DateRangeFilter] = None,
                                    include_properties: bool = True,
                                    force_update: bool = False,
-                                   excluded_properties: List[str] = None) -> SyncResult:
+                                   excluded_properties: List[str] = None,
+                                   complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Gmail threads to local storage using unified storage system with message-level appending."""
         # Check if we're in message-level mode (new appending strategy)
         content_mode = self.config.get('gmail_content_mode', 'latest_only')
@@ -1016,12 +1017,12 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if content_mode == 'latest_only':
             # Use new message-level appending strategy
             return await self._sync_messages_with_appending(
-                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties
+                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties, complex_filter
             )
         else:
             # Use legacy thread-level sync (full thread replacement)
             return await self._sync_threads_legacy(
-                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties
+                storage, db_config, filters, date_filter, include_properties, force_update, excluded_properties, complex_filter
             )
     
     async def _sync_threads_legacy(self, 
@@ -1031,7 +1032,8 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                                    date_filter: Optional[DateRangeFilter] = None,
                                    include_properties: bool = True,
                                    force_update: bool = False,
-                                   excluded_properties: List[str] = None) -> SyncResult:
+                                   excluded_properties: List[str] = None,
+                                   complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Gmail threads to local storage using unified storage system."""
         result = SyncResult()
         result.start_time = datetime.now()
@@ -1137,13 +1139,14 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             return result
     
     async def _sync_messages_with_appending(self, 
-                                           storage,
-                                           db_config,
-                                           filters: Optional[List[QueryFilter]] = None,
-                                           date_filter: Optional[DateRangeFilter] = None,
-                                           include_properties: bool = True,
-                                           force_update: bool = False,
-                                           excluded_properties: List[str] = None) -> SyncResult:
+                                            storage,
+                                            db_config,
+                                            filters: Optional[List[QueryFilter]] = None,
+                                            date_filter: Optional[DateRangeFilter] = None,
+                                            include_properties: bool = True,
+                                            force_update: bool = False,
+                                            excluded_properties: List[str] = None,
+                                            complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Gmail using message-level appending strategy to avoid content duplication."""
         result = SyncResult()
         result.start_time = datetime.now()

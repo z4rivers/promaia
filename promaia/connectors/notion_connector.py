@@ -671,7 +671,8 @@ class NotionConnector(BaseConnector):
                                    date_filter: Optional[DateRangeFilter] = None,
                                    include_properties: bool = True,
                                    force_update: bool = False,
-                                   excluded_properties: List[str] = None) -> SyncResult:
+                                   excluded_properties: List[str] = None,
+                                   complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Notion database content to local storage using the unified storage system."""
         result = SyncResult()
         result.start_time = now_utc()

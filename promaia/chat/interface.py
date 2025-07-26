@@ -384,10 +384,25 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if context_state['workspace']:  # Only show workspace if explicitly provided by user
             query_parts.extend(["-w", context_state['workspace']])
         if context_state['natural_language_prompt']:
-            query_parts.extend(["-nl", context_state['natural_language_prompt']])
+            query_parts.extend(["-nl", f'"{context_state["natural_language_prompt"]}"'])
         context_state['query_command'] = " ".join(query_parts)
 
-    # Initial query command setup
+    # Initial query command setup - capture original format for regular commands too
+    if not context_state.get('original_query_format') and (sources or filters or workspace or natural_language_prompt):
+        # Build and store the original query format for regular commands to preserve day specifications
+        query_parts = ["maia", "chat"]
+        if sources:
+            for source in sources:
+                query_parts.extend(["-s", source])
+        if filters:
+            for filter_expr in filters:
+                query_parts.extend(["-f", f'"{filter_expr}"'])
+        if workspace:
+            query_parts.extend(["-w", workspace])
+        if natural_language_prompt:
+            query_parts.extend(["-nl", natural_language_prompt])
+        context_state['original_query_format'] = " ".join(query_parts)
+    
     update_query_command()
     query_command = context_state['query_command']
 
@@ -488,8 +503,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
         # 3. Process filters and integrate them into source specifications
         processed_sources = []
+        discord_filters = []  # Separate list for complete Discord filters
         source_specific_filters = {}  # Dict of source -> list of filters
-        global_filters = []  # Filters without source prefix (backward compatibility)
+        global_filters = []
 
         # Parse and categorize filters
         if current_filters:
@@ -503,6 +519,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
                         source = parsed_filter['source']
                         filter_spec = parsed_filter['filter']
+
+                        # Check if this is a complete Discord filter specification (includes days and filter)
+                        # Format: trass.discord:7:discord_channel_name=koii-work or trass.discord:7:(discord_channel_name=...)
+                        source_has_days = ':' in source and source.split(':')[-1].isdigit()
+                        filter_is_discord = ('discord_channel_name' in filter_spec or 
+                                           ('(' in filter_spec and 'discord_channel_name' in filter_spec))
+                        
+                        if source_has_days and filter_is_discord:
+                            # This is a complete Discord filter - handle separately
+                            discord_filters.append(filter_expr)
+                            debug_print(f"Added complete Discord filter: {filter_expr}")
+                            continue
 
                         if source not in source_specific_filters:
                             source_specific_filters[source] = []
@@ -592,6 +620,65 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"Warning: Error parsing source specifications: {e}", style="bold yellow")
                 return False
 
+        # 5. Parse Discord filters separately (they need special handling)
+        if discord_filters:
+            try:
+                # Manually construct Discord filter objects to avoid parser warnings
+                for discord_filter in discord_filters:
+                    parsed_filter = parse_filter_expression(discord_filter)
+                    if isinstance(parsed_filter, dict) and 'source' in parsed_filter:
+                        source = parsed_filter['source']
+                        filter_spec = parsed_filter['filter']
+                        
+                        # Extract database and days from source (e.g., "trass.discord:7")
+                        source_parts = source.split(':')
+                        database = source_parts[0]
+                        days = int(source_parts[1]) if len(source_parts) > 1 and source_parts[1].isdigit() else None
+                        
+                        # Get database config for validation
+                        db_config = db_manager.get_database_by_qualified_name(database)
+                        if not db_config:
+                            debug_print(f"Warning: Database config for '{database}' not found. Skipping Discord filter.")
+                            continue
+                        
+                        # Parse the filter specification
+                        property_filters = {}
+                        complex_filter = None
+                        
+                        # Handle complex filters (multiple channels with OR)
+                        if filter_spec.startswith('__COMPLEX_EXPR__'):
+                            # Extract complex expression
+                            complex_expr = filter_spec[16:]  # Remove '__COMPLEX_EXPR__' prefix
+                            # For Discord filters, convert to property filters format
+                            if '(' in complex_expr and 'discord_channel_name=' in complex_expr:
+                                # Extract channel names from (discord_channel_name=a or discord_channel_name=b)
+                                # For now, use the complex filter as-is - the file reader will handle it
+                                from promaia.cli.database_commands import parse_complex_filter_expression
+                                complex_filter = parse_complex_filter_expression(complex_expr)
+                        else:
+                            # Simple single channel filter
+                            if '=' in filter_spec:
+                                prop_name, prop_value = filter_spec.split('=', 1)
+                                property_filters[prop_name] = prop_value
+                        
+                        # Construct parsed source object
+                        discord_parsed_source = {
+                            'name': db_config.get_qualified_name(),
+                            'database': db_config.get_qualified_name(),
+                            'qualified_name': db_config.get_qualified_name(),
+                            'days': days,
+                            'property_filters': property_filters,
+                            'comparison_filters': {},
+                            'complex_filter': complex_filter
+                        }
+                        
+                        parsed_sources_init.append(discord_parsed_source)
+                        debug_print(f"Manually parsed Discord filter: {database}, days: {days}, filters: {property_filters}, complex: {complex_filter}")
+                        
+            except Exception as e:
+                print_text(f"Warning: Error parsing Discord filters: {e}", style="bold yellow")
+                # Continue anyway - don't fail completely on Discord filter errors
+
         # Load content from sources
         if parsed_sources_init:
             if DEBUG_MODE:
@@ -652,7 +739,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Update sources list to reflect only the sources that were actually loaded
         # This ensures session logs show accurate source information
-        context_state['sources'] = list(new_multi_source_data.keys())
+        # However, preserve the original sources format if we have an original_query_format
+        # to maintain day specifications in the query display
+        if not context_state.get('original_query_format'):
+            context_state['sources'] = list(new_multi_source_data.keys())
+        # else: keep the existing sources with their day specifications for display
         
         # Update module-level variables
         initial_multi_source_data = new_multi_source_data
@@ -743,18 +834,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 db_base_name = db_config.name  # Get the full database name (e.g., 'trass.yeeps_discord')
                 
                 # Find filters that match this database (regardless of day specification)
-                discord_filters = []
+                sync_discord_filters = []
                 for f in current_filters:
                     filter_db_name = f.split(':')[0] if ':' in f else f
                     # Check if this filter belongs to the same database
                     filter_db_config = db_manager.get_database_by_qualified_name(filter_db_name)
                     if filter_db_config and filter_db_config.name == db_base_name:
-                        discord_filters.append(f)
+                        sync_discord_filters.append(f)
                 
-                if discord_filters:
+                if sync_discord_filters:
                     # Use the filtered specifications (one per channel)
-                    sources_to_sync.extend(discord_filters)
-                    print_text(f"📺 Discord source {source}: syncing {len(discord_filters)} selected channels", style="dim cyan")
+                    sources_to_sync.extend(sync_discord_filters)
+                    print_text(f"📺 Discord source {source}: syncing {len(sync_discord_filters)} selected channels", style="cyan")
                 else:
                     # No channel filters - skip Discord sources without browse selection
                     print_text(f"⚠️  Discord source {source}: No channels selected. Use browse mode (-b) to select channels first.", style="bold yellow")
@@ -775,15 +866,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             try:
                 source_name = source_spec.get('qualified_name', source_spec.get('name', 'Unknown'))
                 
-                print_text(f"🔄 Syncing {source_name}...", style="cyan")
+                # The sync_database function will print its own "🔄 Syncing..." and result messages
                 result = await sync_database(source_spec, mock_args)
                 
-                if result.errors:
-                    print_text(f"❌ {source_name}: {len(result.errors)} errors", style="bold red")
-                    for error in result.errors[:2]:  # Show first 2 errors
+                # Only show additional error details if needed (sync_database shows the main error)
+                if result.errors and len(result.errors) > 1:
+                    for error in result.errors[1:3]:  # Show additional errors (first one already shown)
                         print_text(f"  - {error}", style="red")
-                else:
-                    print_text(f"✅ {source_name}: {result.pages_saved} saved, {result.pages_skipped} skipped", style="bold green")
                 
             except Exception as e:
                 print_text(f"  ❌ {source_name}: Sync failed - {e}", style="bold red")
@@ -916,8 +1005,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         return handle_browse_in_edit_context()
                     else:
                         # User manually edited a browse command - handle it with CLI logic
-                        print_text("📝 Processing manually edited browse command...", style="bold cyan")
-                        print_text("Note: You'll need to reselect Discord channels after this change.", style="dim yellow")
+                        print_text("📝 Processing manually edited command...", style="bold cyan")
                         return handle_manual_browse_edit(user_input)
                 
                 # Use safe parsing that handles natural language queries with apostrophes
@@ -1023,6 +1111,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     context_state['filters'] = new_filters
                     context_state['natural_language_content'] = None  # Clear NL content
                     context_state['natural_language_prompt'] = None   # Clear NL prompt
+                    context_state['original_query_format'] = None    # Clear original format so query rebuilds
                     if new_workspace:
                         context_state['workspace'] = new_workspace
                     
@@ -1077,6 +1166,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             browse_databases = parsed_args.browse or []
             original_filters = parsed_args.filters or []
             workspace = parsed_args.workspace or context_state.get('workspace')
+            natural_language_parts = parsed_args.natural_language or []
+            
+            # Process natural language query if present
+            nl_prompt = None
+            if natural_language_parts:
+                nl_prompt = ' '.join(natural_language_parts)
+                print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="cyan")
             
             # Resolve workspace from browse databases if needed
             from promaia.config.workspaces import get_workspace_manager
@@ -1148,6 +1244,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             print_text(f"🎮 Launching Discord channel browser for databases: {' '.join(browse_databases)}...", style="cyan")
             
+            # Parse browse databases to extract database names and day specifications
+            parsed_browse_databases = []
+            database_days = {}  # Map database -> days
+            
+            if browse_databases:
+                for browse_spec in browse_databases:
+                    if ':' in browse_spec:
+                        # Format: database:days
+                        db_name, days_str = browse_spec.rsplit(':', 1)
+                        try:
+                            days = int(days_str)
+                            parsed_browse_databases.append(db_name)
+                            database_days[db_name] = days
+                        except ValueError:
+                            # If days_str is not a number, treat whole thing as database name
+                            parsed_browse_databases.append(browse_spec)
+                    else:
+                        # Just database name, no days specified
+                        parsed_browse_databases.append(browse_spec)
+            
             # Create browse args locally (BrowseArgs is defined locally in cli modules)
             class BrowseArgs:
                 def __init__(self, workspace, databases=None, database_days=None):
@@ -1155,7 +1271,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     self.databases = databases
                     self.database_days = database_days or {}
             
-            browse_args = BrowseArgs(resolved_workspace, browse_databases, {})
+            browse_args = BrowseArgs(resolved_workspace, parsed_browse_databases if parsed_browse_databases else None, database_days)
             
             # Check if we can reuse previous Discord selections
             previous_selections = context_state.get('browse_selections', [])
@@ -1164,9 +1280,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Extract database names from previous selections
                 previous_browse_dbs = list(set([sel[0] for sel in previous_selections]))
             
+            # Resolve current browse databases to actual database names for comparison
+            resolved_current_dbs = []
+            for browse_db in browse_databases:
+                # Strip day specification to get database name
+                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                db_config = db_manager.get_database_by_qualified_name(db_name)
+                if db_config:
+                    resolved_current_dbs.append(db_config.name)
+            
             # If browse databases haven't changed, reuse previous selections
             if (previous_selections and 
-                set(browse_databases) == set(previous_browse_dbs)):
+                set(resolved_current_dbs) == set(previous_browse_dbs)):
                 print_text("ℹ️  Browse databases unchanged - reusing previous Discord channel selections", style="dim cyan")
                 selected_channels = previous_selections
             else:
@@ -1182,7 +1307,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             # Convert selected channels to source specifications
             discord_sources = []
-            discord_filters = []
+            discord_filters = []  # Add missing declaration for Discord filters
             browse_parts = []
             
             # Group selections by database for cleaner browse command
@@ -1203,15 +1328,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Create combined filter for all channels in this database
                 if len(selection_info['channels']) == 1:
                     # Single channel - simple filter
-                    filter_spec = f'{source_spec}:"channel_name={selection_info["channels"][0]}"'
+                    filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
                     discord_filters.append(filter_spec)
                 else:
                     # Multiple channels - create complex filter with OR logic
                     channel_conditions = []
                     for channel_name in selection_info['channels']:
-                        channel_conditions.append(f'channel_name={channel_name}')
+                        channel_conditions.append(f'discord_channel_name={channel_name}')
                     combined_filter = ' or '.join(channel_conditions)
-                    filter_spec = f'{source_spec}:"({combined_filter})"'
+                    filter_spec = f'{source_spec}:({combined_filter})'
                     discord_filters.append(filter_spec)
             
             # Build browse command format for display
@@ -1221,8 +1346,44 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 else:
                     browse_parts.append(db_name)
             
-            # Combine regular sources with Discord sources
-            combined_sources = regular_sources + discord_sources
+            # Remove any regular sources that are being handled by browse mode
+            # to avoid duplicate loading with conflicting filters
+            filtered_regular_sources = []
+            for source in regular_sources:
+                # Extract database name from source (remove days specification)
+                source_db = source.split(':')[0] if ':' in source else source
+                
+                # Check if this source is being handled by browse mode
+                is_browse_handled = False
+                for browse_db in browse_databases:
+                    browse_db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                    
+                    # Check both direct name match and qualified name resolution
+                    if source_db == browse_db_name:
+                        is_browse_handled = True
+                        break
+                    
+                    # Also check if they resolve to the same database config
+                    try:
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        source_config = db_manager.get_database_by_qualified_name(source_db)
+                        browse_config = db_manager.get_database_by_qualified_name(browse_db_name)
+                        
+                        if (source_config and browse_config and 
+                            source_config.database_id == browse_config.database_id):
+                            is_browse_handled = True
+                            break
+                    except:
+                        pass
+                
+                if not is_browse_handled:
+                    filtered_regular_sources.append(source)
+                else:
+                    print_text(f"ℹ️  Removing '{source}' from regular sources (handled by browse mode)", style="dim cyan")
+            
+            # Combine filtered regular sources with Discord sources
+            combined_sources = filtered_regular_sources + discord_sources
             combined_filters = original_filters + discord_filters
             
             # Build complete command format
@@ -1243,15 +1404,38 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if workspace:
                 command_parts.extend(["-w", workspace])
             
+            # Add natural language query if specified
+            if nl_prompt:
+                command_parts.extend(["-nl", f'"{nl_prompt}"'])
+            
             complete_command = " ".join(command_parts)
+            
+            # Process natural language query if present
+            natural_language_content = None
+            if nl_prompt:
+                try:
+                    from promaia.storage.unified_query import get_query_interface
+                    print_text(f"🔍 Searching content with: '{nl_prompt}'", style="dim cyan")
+                    
+                    query_interface = get_query_interface()
+                    natural_language_content = query_interface.natural_language_query(nl_prompt, resolved_workspace)
+                    
+                    if natural_language_content:
+                        total_nl_pages = sum(len(pages) for pages in natural_language_content.values())
+                        print_text(f"✅ Found {total_nl_pages} pages matching your query", style="green")
+                    else:
+                        print_text("⚠️  No content found for natural language query", style="yellow")
+                        
+                except Exception as e:
+                    print_text(f"❌ Error processing natural language query: {e}", style="red")
             
             # Update context state
             context_state['sources'] = combined_sources
             context_state['filters'] = combined_filters
             context_state['workspace'] = workspace
             context_state['resolved_workspace'] = resolved_workspace
-            context_state['natural_language_content'] = None
-            context_state['natural_language_prompt'] = None
+            context_state['natural_language_content'] = natural_language_content
+            context_state['natural_language_prompt'] = nl_prompt
             context_state['original_browse_mode'] = True
             context_state['browse_selections'] = selected_channels
             context_state['original_query_format'] = complete_command
@@ -1307,10 +1491,41 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     self.databases = databases
                     self.database_days = database_days or {}
             
-            browse_args = BrowseArgs(workspace_to_use, None, {})  # No specific databases, no day filtering
+            # Extract current browse databases and days from the existing browse command
+            current_browse_databases = []
+            current_database_days = {}
+            
+            # Parse the current original_query_format to extract browse databases and days
+            original_format = context_state.get('original_query_format', '')
+            if '-b ' in original_format:
+                # Extract the browse part from the command
+                parts = original_format.split(' ')
+                in_browse_section = False
+                for i, part in enumerate(parts):
+                    if part == '-b':
+                        in_browse_section = True
+                        continue
+                    elif in_browse_section:
+                        if part.startswith('-'):
+                            # Hit another flag, end of browse section
+                            break
+                        # This is a browse database specification
+                        if ':' in part and part.split(':')[-1].isdigit():
+                            # Format: database:days
+                            db_name, days_str = part.rsplit(':', 1)
+                            try:
+                                days = int(days_str)
+                                current_browse_databases.append(db_name)
+                                current_database_days[db_name] = days
+                            except ValueError:
+                                current_browse_databases.append(part)
+                        else:
+                            # Just database name, no days specified
+                            current_browse_databases.append(part)
+            
+            browse_args = BrowseArgs(workspace_to_use, current_browse_databases if current_browse_databases else None, current_database_days)
             
             # If we have previous browse selections, we'll need to pass them to the browser
-            # For now, let's use the standard browser and enhance it later
             previous_selections = context_state.get('browse_selections', [])
             
             # Run the Discord browser with previous selections context
@@ -1329,7 +1544,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             # Convert selected channels to source specifications
             discord_sources = []
-            discord_filters = []
+            discord_filters = []  # Add missing declaration for Discord filters
             browse_parts = []
             
             # Group selections by database for cleaner browse command
@@ -1350,15 +1565,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Create combined filter for all channels in this database
                 if len(selection_info['channels']) == 1:
                     # Single channel - simple filter
-                    filter_spec = f'{source_spec}:"channel_name={selection_info["channels"][0]}"'
+                    filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
                     discord_filters.append(filter_spec)
                 else:
                     # Multiple channels - create complex filter with OR logic
                     channel_conditions = []
                     for channel_name in selection_info['channels']:
-                        channel_conditions.append(f'channel_name={channel_name}')
+                        channel_conditions.append(f'discord_channel_name={channel_name}')
                     combined_filter = ' or '.join(channel_conditions)
-                    filter_spec = f'{source_spec}:"({combined_filter})"'
+                    filter_spec = f'{source_spec}:({combined_filter})'
                     discord_filters.append(filter_spec)
             
             # Build browse command format for display
@@ -1369,8 +1584,36 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     browse_parts.append(db_name)
             
             # PRESERVE existing regular sources and combine with new Discord sources
-            existing_regular_sources = [s for s in context_state.get('sources', []) 
-                                      if not ('discord' in s.lower() or s.endswith('.ds'))]
+            # Use overlap detection to avoid duplicates between regular sources and Discord sources
+            existing_regular_sources = []
+            current_sources = context_state.get('sources', [])
+            
+            from promaia.config.databases import get_database_manager
+            db_manager = get_database_manager()
+            
+            for source in current_sources:
+                source_db = source.split(':')[0] if ':' in source else source
+                is_discord_handled = False
+                
+                # Check if this source is now handled by Discord selections
+                for db_name, selection_info in db_selections.items():
+                    if source_db == db_name:
+                        is_discord_handled = True
+                        break
+                    try:
+                        source_config = db_manager.get_database_by_qualified_name(source_db)
+                        discord_config = db_manager.get_database_by_qualified_name(db_name)
+                        if (source_config and discord_config and
+                            source_config.database_id == discord_config.database_id):
+                            is_discord_handled = True
+                            break
+                    except:
+                        pass
+                
+                if not is_discord_handled:
+                    existing_regular_sources.append(source)
+                else:
+                    print_text(f"ℹ️  Removing '{source}' from regular sources (now handled by Discord browse)", style="dim cyan")
             
             combined_sources = existing_regular_sources + discord_sources
             
