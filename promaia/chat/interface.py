@@ -486,8 +486,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         from promaia.cli.database_commands import parse_source_specs, parse_filter_expression
 
         db_manager = get_database_manager()
-        # Use combined data that may already contain natural language results
-        new_multi_source_data = combined_multi_source_data
+        # Initialize new data container (don't include natural language yet to avoid duplication)
+        new_multi_source_data = {}
         # Don't calculate total here - calculate it from final data to ensure consistency
 
         # Only auto-load workspace databases if we don't have natural language content
