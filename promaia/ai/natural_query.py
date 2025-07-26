@@ -107,6 +107,25 @@ def extract_json_from_response(text: str) -> Dict[str, Any]:
             try:
                 return json.loads(remaining_text)
             except json.JSONDecodeError:
+                # Try to find the end of the JSON object
+                brace_count = 0
+                json_end = -1
+                for j, char in enumerate(remaining_text):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = j + 1
+                            break
+                
+                if json_end > 0:
+                    json_text = remaining_text[:json_end]
+                    try:
+                        return json.loads(json_text)
+                    except json.JSONDecodeError:
+                        continue
+                
                 # Try just this line
                 try:
                     return json.loads(line.strip())

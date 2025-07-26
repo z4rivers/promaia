@@ -51,7 +51,17 @@ class HybridQueryInterface:
                 # Date filtering cutoff
                 cutoff_date = None
                 if days:
-                    cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+                    # Handle special case for 'all' - no date filtering
+                    if isinstance(days, str) and days.lower() == 'all':
+                        # Skip date filtering for 'all'
+                        pass
+                    else:
+                        try:
+                            days_int = int(days) if isinstance(days, str) else days
+                            cutoff_date = (datetime.now() - timedelta(days=days_int)).isoformat()
+                        except (ValueError, TypeError) as e:
+                            print(f"Warning: Invalid days parameter '{days}': {e}")
+                            # Continue without date filtering if days parameter is invalid
                 
                 # Step 1: Find thread_ids of all Gmail messages that meet the date criteria.
                 gmail_thread_ids = set()

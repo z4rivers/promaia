@@ -774,9 +774,20 @@ def read_markdown_files_with_registry(
             
             # Add date filtering if days parameter is provided
             if days:
-                cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-                where_conditions.append(f"({date_filter_prop} >= ?)")
-                params.append(cutoff_date)
+                # Handle special case for 'all' - no date filtering
+                if isinstance(days, str) and days.lower() == 'all':
+                    # Skip date filtering for 'all'
+                    pass
+                else:
+                    # Ensure days is an integer (handle string input)
+                    try:
+                        days_int = int(days) if isinstance(days, str) else days
+                        cutoff_date = (datetime.now() - timedelta(days=days_int)).isoformat()
+                        where_conditions.append(f"({date_filter_prop} >= ?)")
+                        params.append(cutoff_date)
+                    except (ValueError, TypeError) as e:
+                        print(f"Warning: Invalid days parameter '{days}': {e}")
+                        # Continue without date filtering if days parameter is invalid
             
             where_clause = " AND ".join(where_conditions)
             query = f"""

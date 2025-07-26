@@ -490,13 +490,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         new_multi_source_data = combined_multi_source_data
         # Don't calculate total here - calculate it from final data to ensure consistency
 
-        if not current_sources:
+        # Only auto-load workspace databases if we don't have natural language content
+        if not current_sources and len(combined_multi_source_data) == 0:
             debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
             workspace_databases = db_manager.get_workspace_databases(actual_workspace)
             current_sources = [db.nickname for db in workspace_databases]
             context_state['sources'] = current_sources
             if not current_sources:
                 print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
+        elif not current_sources and len(combined_multi_source_data) > 0:
+            debug_print(f"No regular sources specified, but have natural language content - skipping auto-loading")
 
         if current_filters and current_sources:
             debug_print(f"Applying filters: {current_filters}")
@@ -680,10 +683,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Continue anyway - don't fail completely on Discord filter errors
 
         # Load content from sources
+        sources_loaded_successfully = False
         if parsed_sources_init:
             if DEBUG_MODE:
                 print_text("Loading context from sources...", style="cyan")
-
             for source_conf in parsed_sources_init:
                 db_name = source_conf['database']
                 # Try to get database by qualified name first, then fallback to regular lookup
@@ -724,14 +727,44 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     new_multi_source_data[unique_key] = pages
                     # Don't increment total here - calculate from final data to ensure consistency
 
+                    # Only mark as successful if we actually got pages
+                    if len(pages) > 0:
+                        sources_loaded_successfully = True
                     if DEBUG_MODE:
                         print_text(f"  - Loaded {len(pages)} entries from: {unique_key}", style="green")
                 except Exception as e:
                     if DEBUG_MODE:
                         print_text(f"Error loading data for database {db_config.name}: {e}", style="bold red")
+                    # Continue trying other sources instead of failing completely
+        else:
+            # No regular sources to load, but might have natural language content
+            if len(combined_multi_source_data) > 0:
+                sources_loaded_successfully = True  # We have content from natural language
+                print_text("ℹ️  No regular sources specified, using natural language content only", style="cyan")
 
         # Calculate total from final data to ensure consistency with breakdown
         new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+        
+        # Always merge natural language content if it exists
+        if len(combined_multi_source_data) > 0:
+            # Merge natural language content with regular sources
+            for source_name, pages in combined_multi_source_data.items():
+                if source_name not in new_multi_source_data:
+                    new_multi_source_data[source_name] = pages
+                else:
+                    # If source already exists, combine the pages (shouldn't happen but handle it)
+                    new_multi_source_data[source_name].extend(pages)
+            
+            # Recalculate total after merging
+            new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+            
+            if not sources_loaded_successfully:
+                print_text("ℹ️  Using natural language content (regular sources had no data)", style="cyan")
+        
+        # Check if we have any data at all
+        if new_total_pages_loaded == 0:
+            print_text("❌ No content could be loaded from any source", style="bold red")
+            return False
         
         # Update context state
         context_state['initial_multi_source_data'] = new_multi_source_data
