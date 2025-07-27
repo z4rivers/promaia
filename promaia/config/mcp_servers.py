@@ -6,6 +6,7 @@ that can be integrated into Promaia chat sessions.
 """
 import json
 import os
+import re
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,40 @@ class McpServerConfig:
             self.args = []
         if self.env is None:
             self.env = {}
+    
+    def get_resolved_env(self) -> Dict[str, str]:
+        """Get environment variables with ${VAR_NAME} substitution resolved.
+        
+        Returns:
+            Dictionary with environment variables resolved
+        """
+        resolved_env = {}
+        
+        for key, value in self.env.items():
+            resolved_value = self._substitute_env_vars(value)
+            resolved_env[key] = resolved_value
+            
+        return resolved_env
+    
+    def _substitute_env_vars(self, value: str) -> str:
+        """Substitute environment variables in the format ${VAR_NAME}.
+        
+        Args:
+            value: String that may contain ${VAR_NAME} patterns
+            
+        Returns:
+            String with environment variables substituted
+        """
+        def replace_var(match):
+            var_name = match.group(1)
+            env_value = os.getenv(var_name)
+            if env_value is None:
+                logger.warning(f"Environment variable {var_name} not found, leaving as-is")
+                return match.group(0)  # Return original ${VAR_NAME} if not found
+            return env_value
+        
+        # Replace ${VAR_NAME} patterns with environment variable values
+        return re.sub(r'\$\{([^}]+)\}', replace_var, value)
 
 class McpServerManager:
     """Manages MCP server configurations and connections."""

@@ -62,12 +62,12 @@ class McpClient:
             # Create protocol client
             protocol_client = McpProtocolClient()
             
-            # Connect to the server
+            # Connect to the server with resolved environment variables
             success = await protocol_client.connect(
                 command=config.command,
                 args=config.args,
                 working_dir=config.working_dir,
-                env=config.env
+                env=config.get_resolved_env()
             )
             
             if success:
