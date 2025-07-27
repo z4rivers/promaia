@@ -12,6 +12,7 @@ PROMPT_FILE_PATH = "prompts/prompt.md"
 
 def create_system_prompt(
     multi_source_data: Dict[str, List[Dict[str, Any]]],
+    mcp_tools_info: Optional[str] = None,
 ) -> str:
     """
     Create a system prompt that includes content from multiple data sources.
@@ -122,6 +123,10 @@ def create_system_prompt(
                                    'Unknown File')
                     page_content = page.get('content', '')
                     base_prompt += f"\n**{database_name}** entry (File: `{page_filename}`):\n{page_content}\n"
+
+    # Add MCP tools information if provided
+    if mcp_tools_info:
+        base_prompt += f"\n\n{mcp_tools_info}"
 
     return base_prompt
 

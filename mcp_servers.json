@@ -1,0 +1,39 @@
+{
+  "servers": {
+    "filesystem": {
+      "description": "Access local filesystem for reading and writing files",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-filesystem"
+      ],
+      "args": [
+        "."
+      ],
+      "enabled": true
+    },
+    "git": {
+      "description": "Git repository operations and information",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-git"
+      ],
+      "args": [
+        "--repository",
+        "."
+      ],
+      "enabled": true
+    },
+    "sqlite": {
+      "description": "SQLite database access and queries",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-sqlite"
+      ],
+      "args": [
+        "--db-path",
+        "data/hybrid_metadata.db"
+      ],
+      "enabled": true
+    }
+  }
+}

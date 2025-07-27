@@ -1020,6 +1020,7 @@ def chat_run(args):
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
     original_workspace = getattr(args, 'workspace', None)  # Keep original for display
+    mcp_servers = getattr(args, 'mcp_servers', None)
     nl_prompt = None
     
     # Handle natural language processing
@@ -1120,7 +1121,7 @@ def chat_run(args):
         original_browse_command = getattr(args, 'original_browse_command', None)
         browse_selections = getattr(args, 'browse_selections', None)
         
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections)
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers)
 
     except ImportError as e:
         print(f"Error importing chat interface: {e}", file=sys.stderr)
@@ -1829,6 +1830,12 @@ def main():
         "--natural-language", "-nl",
         nargs="*",
         help="Use natural language to specify what content to load for chat context. Everything after -nl becomes the prompt. Example: maia chat -nl emails from last week about avask"
+    )
+    chat_parser.add_argument(
+        "--mcp", "-mcp",
+        action="append",
+        dest="mcp_servers",
+        help="Include MCP (Model Context Protocol) servers in chat context. Specify server names from mcp_servers.json. Can be used multiple times. Example: maia chat -mcp filesystem -mcp git"
     )
     chat_parser.set_defaults(func=chat_run)
     

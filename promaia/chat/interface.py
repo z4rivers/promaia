@@ -26,6 +26,7 @@ from promaia.ai.models import LLAMA_MODELS
 from promaia.utils.display import print_markdown, print_code, print_text
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
+from promaia.chat.streaming import create_streaming_handler
 
 import google.generativeai as genai
 
@@ -341,7 +342,7 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
         return None
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, mcp_servers=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -358,6 +359,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
         'natural_language_content': natural_language_content,  # Track if using natural language
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
+        'mcp_servers': mcp_servers,  # Store MCP server names to include
+        'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
         'browse_selections': browse_selections,  # Store original browse selections for re-editing
         'original_query_format': original_browse_command  # Store the original query format for display
@@ -385,10 +388,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             query_parts.extend(["-w", context_state['workspace']])
         if context_state['natural_language_prompt']:
             query_parts.extend(["-nl", f'"{context_state["natural_language_prompt"]}"'])
+        if context_state['mcp_servers']:
+            for server in context_state['mcp_servers']:
+                query_parts.extend(["-mcp", server])
         context_state['query_command'] = " ".join(query_parts)
 
     # Initial query command setup - capture original format for regular commands too
-    if not context_state.get('original_query_format') and (sources or filters or workspace or natural_language_prompt):
+    if not context_state.get('original_query_format') and (sources or filters or workspace or natural_language_prompt or mcp_servers):
         # Build and store the original query format for regular commands to preserve day specifications
         query_parts = ["maia", "chat"]
         if sources:
@@ -401,6 +407,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             query_parts.extend(["-w", workspace])
         if natural_language_prompt:
             query_parts.extend(["-nl", natural_language_prompt])
+        if mcp_servers:
+            for server in mcp_servers:
+                query_parts.extend(["-mcp", server])
         context_state['original_query_format'] = " ".join(query_parts)
     
     update_query_command()
@@ -461,6 +470,56 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"Error processing natural language content: {e}", style="bold red")
                 # Continue with regular sources even if NL fails
         
+        # Process MCP servers if present
+        mcp_tools_info = ""
+        if context_state.get('mcp_servers'):
+            try:
+                print("🔧 Connecting to MCP servers...")
+                
+                from promaia.config.mcp_servers import get_mcp_manager
+                from promaia.mcp.client import McpClient
+                from promaia.mcp.execution import McpToolExecutor
+                
+                mcp_manager = get_mcp_manager()
+                mcp_client = McpClient()
+                
+                connected_servers = []
+                for server_name in context_state['mcp_servers']:
+                    server_config = mcp_manager.get_server(server_name)
+                    if server_config:
+                        if server_config.enabled:
+                            print(f"  Connecting to {server_name}...")
+                            # For now, simulate connection - in real implementation this would be async
+                            import asyncio
+                            success = asyncio.run(mcp_client.connect_to_server(server_config))
+                            if success:
+                                connected_servers.append(server_name)
+                                print(f"  ✅ Connected to {server_name}")
+                            else:
+                                print(f"  ❌ Failed to connect to {server_name}")
+                        else:
+                            print(f"  ⚠️ Server {server_name} is disabled in config")
+                    else:
+                        print(f"  ❌ Server {server_name} not found in config")
+                
+                if connected_servers:
+                    # Use compact format if we have other content to avoid prompt issues
+                    has_other_content = bool(sources or natural_language_content)
+                    compact_format = has_other_content
+                    
+                    # Format tools information for the system prompt
+                    mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=compact_format)
+                    context_state['mcp_tools_info'] = mcp_tools_info
+                    context_state['mcp_client'] = mcp_client
+                    context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+                    print(f"🔧 Connected to {len(connected_servers)} MCP server(s): {', '.join(connected_servers)}")
+                else:
+                    print("⚠️ No MCP servers were successfully connected")
+                    
+            except Exception as e:
+                print_text(f"Error processing MCP servers: {e}", style="bold red")
+                # Continue even if MCP fails
+        
         # Use current state
         current_sources = context_state['sources']
         current_filters = context_state['filters']
@@ -490,9 +549,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         new_multi_source_data = {}
         # Don't calculate total here - calculate it from final data to ensure consistency
 
-        # Only auto-load workspace databases if we don't have natural language content
-        if not current_sources and len(combined_multi_source_data) == 0:
-            debug_print(f"No sources provided, loading all databases for workspace '{actual_workspace}'.")
+        # Only auto-load workspace databases if user provided NO arguments at all
+        user_provided_args = bool(sources or filters or natural_language_prompt or browse_selections or mcp_servers)
+        
+        if not current_sources and len(combined_multi_source_data) == 0 and not user_provided_args:
+            debug_print(f"No arguments provided, loading default databases for workspace '{actual_workspace}'.")
             workspace_databases = db_manager.get_workspace_databases(actual_workspace)
             current_sources = [db.nickname for db in workspace_databases]
             context_state['sources'] = current_sources
@@ -500,6 +561,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
         elif not current_sources and len(combined_multi_source_data) > 0:
             debug_print(f"No regular sources specified, but have natural language content - skipping auto-loading")
+        elif user_provided_args and not current_sources and len(combined_multi_source_data) == 0:
+            debug_print(f"User provided arguments but no sources - MCP or other tools will provide context.")
 
         if current_filters and current_sources:
             debug_print(f"Applying filters: {current_filters}")
@@ -783,7 +846,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         total_pages_loaded = new_total_pages_loaded
         
         # Generate new system prompt
-        system_prompt = create_system_prompt(new_multi_source_data)
+        mcp_tools_info = context_state.get('mcp_tools_info')
+        system_prompt = create_system_prompt(new_multi_source_data, mcp_tools_info)
         context_state['system_prompt'] = system_prompt
         
         # Debug: Log context reload details
@@ -1067,6 +1131,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     nargs="*",
                     help="Use natural language to specify what content to load for chat context"
                 )
+                parser.add_argument(
+                    "--mcp", "-mcp",
+                    action="append",
+                    dest="mcp_servers",
+                    help="Include MCP servers in chat context"
+                )
                 
                 # Parse the arguments
                 parsed_args = parser.parse_args(args_list)
@@ -1138,10 +1208,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     new_sources = getattr(parsed_args, 'sources', []) or []
                     new_filters = getattr(parsed_args, 'filters', []) or []
                     new_workspace = getattr(parsed_args, 'workspace', None)
+                    new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
                     
                     # Update context state
                     context_state['sources'] = new_sources
                     context_state['filters'] = new_filters
+                    context_state['mcp_servers'] = new_mcp_servers
                     context_state['natural_language_content'] = None  # Clear NL content
                     context_state['natural_language_prompt'] = None   # Clear NL prompt
                     context_state['original_query_format'] = None    # Clear original format so query rebuilds
@@ -1807,6 +1879,42 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     # Save initial context log
     save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "session_init")
 
+    # MCP Tool Execution Functions
+    async def execute_mcp_tools_in_response(response_text: str) -> str:
+        """Execute any MCP tools found in the AI response and return updated response."""
+        mcp_executor = context_state.get('mcp_executor')
+        
+        if not mcp_executor:
+            return response_text
+        
+        # Check if there are tool calls in the response
+        if not mcp_executor.has_tool_calls(response_text):
+            return response_text
+        
+        try:
+            # Parse tool calls from the response
+            tool_calls = mcp_executor.parse_tool_calls(response_text)
+            
+            if not tool_calls:
+                return response_text
+            
+            print_text(f"🔧 Executing {len(tool_calls)} tool call(s)...", style="bold cyan")
+            
+            # Execute the tools
+            results = await mcp_executor.execute_tool_calls(tool_calls)
+            
+            # Format the results
+            results_text = mcp_executor.format_tool_results(results)
+            
+            # Add results to the response
+            updated_response = response_text + "\n" + results_text
+            
+            return updated_response
+            
+        except Exception as e:
+            error_text = f"\n❌ Error executing MCP tools: {e}"
+            return response_text + error_text
+
     # Display Welcome Message
     print()
     print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
@@ -1995,10 +2103,51 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     debug_print(f"AI Call Debug: Total pages in context: {total_pages_loaded}")
                     debug_print(f"AI Call Debug: Context sources: {context_state.get('sources')}")
                 
-                if current_api == "anthropic" and anthropic_client:
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
-                    if response and response.content:
-                        response_text = response.content[0].text
+                # Use streaming handler for better UX and multi-turn tool execution
+                mcp_executor = context_state.get('mcp_executor')
+                # Enable streaming by default, can be disabled with MAIA_NO_STREAMING=1
+                use_streaming = os.getenv("MAIA_NO_STREAMING", "0") != "1"
+                
+                if use_streaming and mcp_executor:
+                    # Multi-turn streaming with tool feedback
+                    streaming_handler = create_streaming_handler(mcp_executor)
+                    
+                    import asyncio
+                    if current_api == "anthropic" and anthropic_client:
+                        response_text, updated_messages = asyncio.run(
+                            streaming_handler.stream_response_with_tools(
+                                anthropic_client, "anthropic", system_prompt, messages
+                            )
+                        )
+                        messages = updated_messages
+                    elif current_api == "openai" and openai_client:
+                        response_text, updated_messages = asyncio.run(
+                            streaming_handler.stream_response_with_tools(
+                                openai_client, "openai", system_prompt, messages
+                            )
+                        )
+                        messages = updated_messages
+                    elif current_api == "gemini" and gemini_client:
+                        response_text, updated_messages = asyncio.run(
+                            streaming_handler.stream_response_with_tools(
+                                gemini_client, "gemini", system_prompt, messages
+                            )
+                        )
+                        messages = updated_messages
+                    else:
+                        # Fallback to non-streaming
+                        use_streaming = False
+                
+                # Fallback to original non-streaming behavior
+                if not use_streaming:
+                    if current_api == "anthropic" and anthropic_client:
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
+                        if response and response.content:
+                            response_text = response.content[0].text
+
+                            # Execute MCP tools if present
+                            import asyncio
+                            response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
 
                         # Extract token usage for Anthropic
                         if hasattr(response, 'usage'):
@@ -2039,6 +2188,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if response.choices:
                         response_text = response.choices[0].message.content
 
+                        # Execute MCP tools if present
+                        import asyncio
+                        response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+
                         # Extract token usage for OpenAI
                         if hasattr(response, 'usage') and response.usage:
                             prompt_tokens = response.usage.prompt_tokens
@@ -2072,9 +2225,43 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     for msg in messages:
                         formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
 
-                    response = gemini_client.generate_content(formatted_prompt)
-                    if response.text:
-                        response_content = response.text
+                    try:
+                        response = gemini_client.generate_content(formatted_prompt)
+                        if response.text:
+                            response_text = response.text
+
+                            # Execute MCP tools if present
+                            import asyncio
+                            response_text_with_tools = asyncio.run(execute_mcp_tools_in_response(response_text))
+                            
+                            # If the original response was just tool calls and no conversational text,
+                            # the result might be empty after tool execution. Provide a friendly completion message.
+                            if not response_text_with_tools.strip() or response_text_with_tools == response_text:
+                                if "🔧 Tool Execution Results:" in response_text_with_tools:
+                                    # Tools were executed, show completion
+                                    response_text_with_tools = "Task completed successfully.\n" + response_text_with_tools
+                                elif any(tag in response_text for tag in ['<tool_code>', '<execute_tool>']):
+                                    # Had tool calls but no execution results (error case)
+                                    response_text_with_tools = "I attempted to execute your request, but encountered an issue with tool execution."
+                        else:
+                            # Debug: Log the response details
+                            debug_print(f"Gemini response has no text. Response details: {response}")
+                            if hasattr(response, 'candidates') and response.candidates:
+                                for i, candidate in enumerate(response.candidates):
+                                    debug_print(f"Candidate {i}: finish_reason={getattr(candidate, 'finish_reason', 'unknown')}")
+                                    if hasattr(candidate, 'safety_ratings'):
+                                        debug_print(f"Safety ratings: {candidate.safety_ratings}")
+                            
+                            # Handle case where response has no text (safety filter, etc.)
+                            response_text_with_tools = "I apologize, but I couldn't generate a response. This might be due to content filtering or a technical issue. Please try rephrasing your request."
+                    except Exception as gemini_error:
+                        # Handle Gemini API errors (including FinishReason issues)
+                        error_msg = str(gemini_error)
+                        debug_print(f"Gemini API error: {error_msg}")
+                        if "FinishReason enum value" in error_msg or "response.text" in error_msg:
+                            response_text_with_tools = "I encountered a content processing issue with your request. This sometimes happens with complex prompts. Please try a simpler request or rephrase your question."
+                        else:
+                            response_text_with_tools = f"I encountered an error: {error_msg}. Please try again."
 
                         # Extract and display token usage for Gemini
                         if hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -2091,9 +2278,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                             debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
 
-                            # Store token info for display after response
+                            # Store token info for display after response - preserve tool execution results
                             response_content = {
-                                'text': response_content,
+                                'text': response_text_with_tools,
                                 'tokens': {
                                     'prompt_tokens': prompt_tokens,
                                     'response_tokens': response_tokens,
@@ -2105,7 +2292,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         else:
                             # Fallback for when usage metadata is not available
                             response_content = {
-                                'text': response_content,
+                                'text': response_text_with_tools,
                                 'tokens': None
                             }
                 elif current_api == "llama":
@@ -2129,6 +2316,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             )
                             if response.choices:
                                 response_text = response.choices[0].message.content
+
+                                # Execute MCP tools if present
+                                import asyncio
+                                response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
 
                                 # Extract token usage for local Llama if available
                                 if hasattr(response, 'usage') and response.usage:
@@ -2162,8 +2353,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"Error: {current_api} API client not available.", style="bold red")
                     continue
 
-                if response_content:
-                    # Handle different response formats
+                # Handle streaming vs non-streaming responses
+                if use_streaming and 'response_text' in locals():
+                    # Streaming response - already displayed during streaming
+                    timestamp = get_local_timestamp()
+                    print()  # Add spacing after streamed response
+                    print_text(f"{timestamp} Maia", style="dim")
+                    print()
+                    
+                    # Don't append to messages - already handled by streaming handler
+                    
+                elif response_content:
+                    # Non-streaming response handling
                     if isinstance(response_content, dict):
                         # AI response with token data
                         response_text = response_content['text']
