@@ -726,5 +726,12 @@ class WebflowClient:
             print(f"Error uploading asset from URL: {str(e)}")
             return None
 
-# Initialize client on module import
-webflow_client = WebflowClient() 
+# Lazy-loaded client instance
+_webflow_client_instance = None
+
+def get_webflow_client():
+    """Get the webflow client instance, creating it if needed."""
+    global _webflow_client_instance
+    if _webflow_client_instance is None:
+        _webflow_client_instance = WebflowClient()
+    return _webflow_client_instance 

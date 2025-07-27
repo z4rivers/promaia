@@ -25,7 +25,7 @@ from promaia.notion.pages import (
     get_page_property
 )
 from promaia.html_converter.converter import page_to_html
-from promaia.webflow.client import webflow_client, WebflowClient
+from promaia.webflow.client import get_webflow_client, WebflowClient
 from promaia.utils.config import update_last_sync_time, get_last_sync_time
 from promaia.utils.config_loader import get_notion_database_id
 
@@ -127,7 +127,7 @@ def process_html_images(html_content: str, page_id: str) -> str:
             print(f"Processing image: {truncate_url(src)} -> {filename}")
             
             # Upload the image to Webflow
-            result = webflow_client.upload_asset_from_url(src, filename)
+            result = get_webflow_client().upload_asset_from_url(src, filename)
             
             if result and 'url' in result:
                 # Get the new URL from Webflow
@@ -462,7 +462,7 @@ async def sync_to_webflow(notion_database_id: str = None,
 
     print("Getting all current items from Webflow collection...")
     try:
-        webflow_items = webflow_client.get_collection_items(webflow_collection_id) or []
+        webflow_items = get_webflow_client().get_collection_items(webflow_collection_id) or []
         print(f"Found {len(webflow_items)} existing items in Webflow.")
     except Exception as e:
         print(f"Error getting Webflow items: {str(e)}. Proceeding with empty Webflow item list.")
@@ -474,7 +474,7 @@ async def sync_to_webflow(notion_database_id: str = None,
 
     # Get collection schema (required fields)
     try:
-        collection_fields = webflow_client.get_collection_fields(webflow_collection_id) or {}
+        collection_fields = get_webflow_client().get_collection_fields(webflow_collection_id) or {}
         required_fields = [slug for slug, info in collection_fields.items() if info and info.get("required")]
         print(f"Required fields in Webflow collection: {required_fields}")
     except Exception as e:
@@ -513,7 +513,7 @@ async def sync_to_webflow(notion_database_id: str = None,
                 if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
                     print(f"  Attempting to delete Webflow item ID: {stored_webflow_id_on_notion}")
                     try:
-                        delete_success = webflow_client.delete_item(webflow_collection_id, stored_webflow_id_on_notion)
+                        delete_success = get_webflow_client().delete_item(webflow_collection_id, stored_webflow_id_on_notion)
                         if delete_success:
                             print(f"  ✓ Successfully deleted Webflow item: {stored_webflow_id_on_notion}")
                             deleted_count += 1
@@ -555,7 +555,7 @@ async def sync_to_webflow(notion_database_id: str = None,
                     update_payload.pop("slug", None)
                     print(f"  Updating Webflow item: {stored_webflow_id_on_notion}")
                     
-                    response = webflow_client.update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
+                    response = get_webflow_client().update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
                     if response:
                         updated_count += 1
                         processed_webflow_ids_in_this_run.add(stored_webflow_id_on_notion)
@@ -568,7 +568,7 @@ async def sync_to_webflow(notion_database_id: str = None,
                     # CREATE: Include slug in payload
                     print(f"  Creating new Webflow item: {slug}")
                     
-                    response = webflow_client.create_item(webflow_collection_id, webflow_data_payload)
+                    response = get_webflow_client().create_item(webflow_collection_id, webflow_data_payload)
                     if response and response.get("id"):
                         new_webflow_id = response["id"]
                         created_count += 1

@@ -14,7 +14,7 @@ from promaia.notion.pages import get_page_title, get_block_content
 from promaia.html_converter.converter import block_to_html, page_to_html
 from promaia.newsletter.resend_client import get_resend_client
 from promaia.newsletter.template import create_plain_text_newsletter, notion_blocks_to_plain_text
-from promaia.webflow.client import webflow_client
+from promaia.webflow.client import get_webflow_client
 from promaia.utils.config import get_config
 
 # Default database ID (uses the same as Webflow CMS)
@@ -116,7 +116,7 @@ async def check_webflow_published(page: Dict[str, Any]) -> Tuple[bool, Optional[
     
     try:
         # Check if the item exists in Webflow
-        webflow_item = webflow_client.get_item(collection_id, webflow_id)
+        webflow_item = get_webflow_client().get_item(collection_id, webflow_id)
         if webflow_item:
             print(f"   ✅ Found published blog post in Webflow (ID: {webflow_id})")
             return True, webflow_id, slug
@@ -337,7 +337,7 @@ async def get_webflow_hosted_image_url(page: Dict[str, Any], notion_image_url: s
             return None
         
         # Get the Webflow item to check if it has a main image
-        from promaia.webflow.client import webflow_client
+        from promaia.webflow.client import get_webflow_client
         
         try:
             # Get the collection ID from environment
@@ -347,7 +347,7 @@ async def get_webflow_hosted_image_url(page: Dict[str, Any], notion_image_url: s
                 return None
             
             # Get the Webflow item data
-            webflow_item = webflow_client.get_item(collection_id, webflow_id)
+            webflow_item = get_webflow_client().get_item(collection_id, webflow_id)
             
             if webflow_item and "fieldData" in webflow_item:
                 # Check if the main image is available
