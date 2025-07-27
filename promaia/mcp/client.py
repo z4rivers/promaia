@@ -304,8 +304,12 @@ class McpClient:
                     other_names = [tool.name for tool in other_tools]
                     section += f"Other Tools: {', '.join(other_names)}\n\n"
                 
-                section += f"Usage: Use format <tool_code>{server_name}.tool_name(param='value')</tool_code>\n"
-                section += f"Example: <tool_code>{server_name}.create_directory(path='my-folder')</tool_code>\n"
+                # Get first available tool for example
+                example_tool = capabilities.tools[0] if capabilities.tools else None
+                
+                section += f"Usage: Use format <tool_code>{server_name}.ACTUAL_TOOL_NAME(param='value')</tool_code>\n"
+                if example_tool:
+                    section += f"Example: <tool_code>{server_name}.{example_tool.name}(param='value')</tool_code>\n"
             else:
                 section += "No tools available.\n"
             

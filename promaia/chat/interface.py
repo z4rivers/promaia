@@ -476,6 +476,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             try:
                 print("🔧 Connecting to MCP servers...")
                 
+                # Load environment variables for MCP servers
+                from dotenv import load_dotenv
+                load_dotenv()
+                
                 from promaia.config.mcp_servers import get_mcp_manager
                 from promaia.mcp.client import McpClient
                 from promaia.mcp.execution import McpToolExecutor
@@ -504,8 +508,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 
                 if connected_servers:
                     # Use compact format if we have other content to avoid prompt issues
+                    # Also use compact format when we have no content at all to prevent content filtering
                     has_other_content = bool(sources or natural_language_content)
-                    compact_format = has_other_content
+                    compact_format = has_other_content or (not sources and not natural_language_content)
                     
                     # Format tools information for the system prompt
                     mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=compact_format)
@@ -826,8 +831,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Check if we have any data at all
         if new_total_pages_loaded == 0:
-            print_text("❌ No content could be loaded from any source", style="bold red")
-            return False
+            # If we have MCP servers, we can still chat even without content
+            if context_state.get('mcp_servers'):
+                print_text("❌ No content could be loaded from any source", style="bold red")
+                print_text("💡 MCP tools are available for interaction", style="cyan")
+            else:
+                print_text("❌ No content could be loaded from any source", style="bold red")
+                return False
         
         # Update context state
         context_state['initial_multi_source_data'] = new_multi_source_data

@@ -187,17 +187,20 @@ class McpToolExecutor:
         
         try:
             logger.info(f"Executing {server_name}.{tool_name} with args: {arguments}")
+            print(f"🔧 Executing {server_name}.{tool_name}...")
             
             # Execute the tool
             result = await protocol_client.call_tool(tool_name, arguments)
             
             if result:
+                print(f"✅ Tool execution successful: {result}")
                 return {
                     'success': True,
                     'result': result,
                     'tool_call': tool_call
                 }
             else:
+                print(f"❌ Tool execution returned no result")
                 return {
                     'success': False,
                     'error': f"Tool execution returned no result",
@@ -222,8 +225,10 @@ class McpToolExecutor:
             Formatted results string
         """
         if not results:
+            print("🔍 No results to format")
             return ""
         
+        print(f"🔍 Formatting {len(results)} results: {results}")
         formatted = "\n🔧 Tool Execution Results:\n"
         
         for i, result in enumerate(results, 1):
