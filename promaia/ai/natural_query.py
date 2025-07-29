@@ -394,8 +394,9 @@ User request: "{nl_prompt}"
         client = get_ai_client()
         
         if isinstance(client, Anthropic):  # Anthropic
+            from promaia.ai.models import ANTHROPIC_MODELS
             response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
                 max_tokens=2000,
                 messages=[{"role": "user", "content": system_prompt}],
                 temperature=0.1
@@ -416,7 +417,7 @@ User request: "{nl_prompt}"
             )
             ai_response = response.choices[0].message.content
         else:  # Gemini
-            response = client.GenerativeModel('gemini-1.5-flash').generate_content(
+            response = client.GenerativeModel('gemini-2.5-flash').generate_content(
                 system_prompt,
                 generation_config=genai.types.GenerationConfig(
                     max_output_tokens=2000,

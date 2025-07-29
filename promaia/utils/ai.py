@@ -103,62 +103,65 @@ def _improved_token_estimate(text: str) -> int:
     # Ensure we have a reasonable minimum
     return max(estimated_tokens, len(text) // 4)
 
-def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str = "claude-3.5-sonnet") -> dict:
+def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str = "claude-sonnet-4") -> dict:
     """
-    Calculate cost for AI API usage based on current 2025 pricing.
+    Calculate the cost of AI API usage for various models.
     
     Args:
-        prompt_tokens: Number of input/prompt tokens
-        response_tokens: Number of output/response tokens  
-        model_name: Model identifier for pricing lookup
+        prompt_tokens: Number of input tokens
+        response_tokens: Number of output tokens  
+        model_name: Name of the model used
     
     Returns:
-        Dict with input_cost, output_cost, total_cost, and model info
+        Dictionary with cost breakdown
     """
-    # Current pricing as of January 2025
+    # Pricing per 1M tokens (as of 2025)
     pricing = {
+        "claude-sonnet-4": {
+            "input_cost_per_million": 3.00,
+            "output_cost_per_million": 15.00
+        },
+        "claude-opus-4": {
+            "input_cost_per_million": 15.00,
+            "output_cost_per_million": 75.00
+        },
         "claude-3.5-sonnet": {
-            "input": 3.00,   # per 1M tokens
-            "output": 15.00, # per 1M tokens
-            "name": "Claude 3.5 Sonnet"
+            "input_cost_per_million": 3.00,
+            "output_cost_per_million": 15.00
         },
         "gpt-4o": {
-            "input": 2.50,   # per 1M tokens  
-            "output": 10.00, # per 1M tokens
-            "name": "GPT-4o"
+            "input_cost_per_million": 2.50,
+            "output_cost_per_million": 10.00
         },
         "gemini-2.5-pro-short": {
-            "input": 1.25,   # per 1M tokens (≤128k)
-            "output": 5.00,  # per 1M tokens (≤128k)
-            "name": "Gemini 2.5 Pro"
+            "input_cost_per_million": 1.25,
+            "output_cost_per_million": 5.00
         },
         "gemini-2.5-pro-long": {
-            "input": 2.50,   # per 1M tokens (>128k)
-            "output": 10.00, # per 1M tokens (>128k)  
-            "name": "Gemini 2.5 Pro"
+            "input_cost_per_million": 2.50,
+            "output_cost_per_million": 10.00
         },
         "local-llama": {
-            "input": 0.00,   # Free
-            "output": 0.00,  # Free
-            "name": "Local Llama"
+            "input_cost_per_million": 0.00,
+            "output_cost_per_million": 0.00
         }
     }
     
-    # Default to Claude if model not found
+    # Default to Claude Sonnet 4 if model not found
     if model_name not in pricing:
-        model_name = "claude-3.5-sonnet"
+        model_name = "claude-sonnet-4"
         
     model_pricing = pricing[model_name]
     
-    input_cost = (prompt_tokens / 1_000_000) * model_pricing["input"]
-    output_cost = (response_tokens / 1_000_000) * model_pricing["output"]
+    input_cost = (prompt_tokens / 1_000_000) * model_pricing["input_cost_per_million"]
+    output_cost = (response_tokens / 1_000_000) * model_pricing["output_cost_per_million"]
     total_cost = input_cost + output_cost
     
     return {
         "input_cost": input_cost,
         "output_cost": output_cost, 
         "total_cost": total_cost,
-        "model": model_pricing["name"],
+        "model": model_name,
         "prompt_tokens": prompt_tokens,
         "response_tokens": response_tokens,
         "total_tokens": prompt_tokens + response_tokens

@@ -1,1 +1,0 @@
-**Blooble Cookie Recipe**\n\nIngredients:\n- 1 cup of starlight flour\n- 1/2 cup of giggleberries, mashed\n- 2 tablespoons of melted moonbeams\n- A pinch of cosmic sugar\n\nInstructions:\n1. Mix all ingredients in a bowl.\n2. Shape into small, wobbly spheres.\n3. Bake at 350°F (175°C) until they hum softly (about 10 minutes).\n4. Let cool and enjoy the bloobles!

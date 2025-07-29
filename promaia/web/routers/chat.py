@@ -19,7 +19,7 @@ router = APIRouter()
 
 # Initialize Gemini Client (outside the request handler if API key is always available)
 # Ensure GOOGLE_API_KEY is loaded in the environment where Uvicorn runs
-gemini_model_name = GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06")
+gemini_model_name = GOOGLE_MODELS.get("pro", "gemini-2.5-pro")
 gemini_client_initialized = False
 if os.getenv("GOOGLE_API_KEY"):
     try:

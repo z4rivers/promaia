@@ -1,9 +1,9 @@
 {
   "global": {
     "default_sync_days": 7,
-    "default_output_directory": "data",
-    "markdown_base_directory": "data",
-    "registry_db": "data/hybrid_metadata.db",
+    "default_output_directory": "data-dev",
+    "markdown_base_directory": "data-dev",
+    "registry_db": "data-dev/hybrid_metadata_dev.db",
     "enable_ai_editing": true,
     "ai_edit_safety_mode": true,
     "savecontexts": true,

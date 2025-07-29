@@ -466,7 +466,7 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
             from anthropic import Anthropic
             client = Anthropic()
             response = client.messages.create(
-                model="claude-3-opus-20240229",
+                model="claude-sonnet-4-20250514",
                 max_tokens=4000,
                 temperature=0.7,
                 system=system_prompt,

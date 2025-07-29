@@ -22,7 +22,7 @@ from promaia.storage.files import read_markdown_files_with_registry
 from promaia.utils.config import load_environment, get_last_sync_time
 from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
-from promaia.ai.models import LLAMA_MODELS
+from promaia.ai.models import LLAMA_MODELS, ANTHROPIC_MODELS
 from promaia.utils.display import print_markdown, print_code, print_text
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
@@ -138,8 +138,8 @@ def get_current_model_name():
     """Get the display name of the current model based on the current API."""
     global current_api
     model_names = {
-        "anthropic": "Claude 3 Sonnet",
-        "openai": "GPT-4",
+        "anthropic": "Claude Sonnet 4",
+        "openai": "GPT-4o",
         "gemini": "Gemini 2.5 Pro",
         "llama": f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})"
     }
@@ -236,10 +236,12 @@ async def push_chat_to_notion(messages):
 
 def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, temperature=0.7, max_retries=3):
     """Calls the Anthropic API with retry logic."""
+    from promaia.ai.models import ANTHROPIC_MODELS
+    
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
                 system=system_prompt,
                 messages=messages,
                 max_tokens=max_tokens,
@@ -2253,7 +2255,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Calculate cost using centralized function
                             from promaia.utils.ai import calculate_ai_cost
                             debug_print(f"Cost calculation: input_tokens={input_tokens}, output_tokens={output_tokens}")
-                            cost_data = calculate_ai_cost(input_tokens, output_tokens, "claude-3.5-sonnet")
+                            cost_data = calculate_ai_cost(input_tokens, output_tokens, "claude-sonnet-4")
                             total_cost = cost_data["total_cost"]
                             debug_print(f"Calculated cost: ${total_cost:.6f}")
 
@@ -2277,7 +2279,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 elif current_api == "openai" and openai_client:
                     formatted_messages = [{"role": "system", "content": system_prompt}] + messages
                     response = openai_client.chat.completions.create(
-                        model="gpt-4",
+                        model="gpt-4o",
                         messages=formatted_messages,
                         max_tokens=4096,
                         temperature=0.7
@@ -2336,10 +2338,36 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     except Exception as e:
                         error_msg = str(e)
                         debug_print(f"Error calling Gemini API: {error_msg}")
-                        if "blocked" in error_msg.lower():
+                        debug_print(f"Gemini error traceback: {traceback.format_exc()}")
+                        
+                        # Check for specific Gemini error types
+                        if "quota" in error_msg.lower() or "rate" in error_msg.lower():
+                            response_text_with_tools = f"I encountered a rate limit issue with Gemini: {error_msg}. Please try switching to Anthropic with 'maia model' command."
+                        elif "blocked" in error_msg.lower() or "safety" in error_msg.lower():
                             response_text_with_tools = f"I encountered a content filter issue: {error_msg}. Please try rephrasing your question."
+                        elif "api" in error_msg.lower() and "key" in error_msg.lower():
+                            response_text_with_tools = f"I encountered an API key issue: {error_msg}. Please check your GOOGLE_API_KEY environment variable."
+                        elif "model" in error_msg.lower() and ("not found" in error_msg.lower() or "unavailable" in error_msg.lower()):
+                            response_text_with_tools = f"I encountered a model availability issue: {error_msg}. The Gemini model may be temporarily unavailable. Please try switching to Anthropic with 'maia model' command."
+                        elif "500" in error_msg or "internal" in error_msg.lower():
+                            # Try fallback to Anthropic for 500 errors
+                            if anthropic_client:
+                                debug_print("Attempting fallback to Anthropic due to Gemini 500 error")
+                                try:
+                                    fallback_messages = [{"role": "user", "content": formatted_prompt}]
+                                    fallback_response = call_anthropic_with_retry(anthropic_client, "", fallback_messages)
+                                    if fallback_response and fallback_response.content and len(fallback_response.content) > 0:
+                                        response_text_with_tools = fallback_response.content[0].text
+                                        debug_print("Successfully fell back to Anthropic")
+                                    else:
+                                        response_text_with_tools = f"I encountered a server error with Gemini: {error_msg}. Fallback to Anthropic also failed. Please try again or switch models with 'maia model' command."
+                                except Exception as fallback_error:
+                                    debug_print(f"Fallback to Anthropic failed: {fallback_error}")
+                                    response_text_with_tools = f"I encountered a server error with Gemini: {error_msg}. Fallback to Anthropic also failed. Please try again or switch models with 'maia model' command."
+                            else:
+                                response_text_with_tools = f"I encountered a server error with Gemini: {error_msg}. Please try switching to Anthropic with 'maia model' command."
                         else:
-                            response_text_with_tools = f"I encountered an error: {error_msg}. Please try again."
+                            response_text_with_tools = f"I encountered an error with Gemini: {error_msg}. Please try again, or switch to Anthropic with 'maia model' command."
                     
                     if response_text_with_tools:
                         response_content = {

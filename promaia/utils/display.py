@@ -131,6 +131,7 @@ class CopyFriendlyConsole:
     def _render_markdown_copy_friendly(self, content: str) -> None:
         """
         Render markdown content without any box characters or problematic formatting.
+        Headings are rendered as plain text to preserve copyability.
         """
         lines = content.strip().split('\n')
         
@@ -142,47 +143,46 @@ class CopyFriendlyConsole:
                 self.console.print()
                 continue
             
-            # Headers
+            # Headers - render as plain text to preserve markdown format when copied
             if line.startswith('### '):
-                self.console.print(line[4:], style="bold green")
+                # Keep the ### prefix for proper markdown copying
+                self.console.print(line)  # Plain text, no styling
             elif line.startswith('## '):
-                self.console.print(line[3:], style="bold cyan")
+                # Keep the ## prefix for proper markdown copying
+                self.console.print(line)  # Plain text, no styling
             elif line.startswith('# '):
-                self.console.print(line[2:], style="bold blue")
+                # Keep the # prefix for proper markdown copying
+                self.console.print(line)  # Plain text, no styling
             
             # Code blocks
             elif line.startswith('```'):
-                if line == '```':
-                    continue  # Skip code block delimiters
-                continue  # Skip language specification
+                # Don't skip, just print code block markers as-is for copy-friendly output
+                self.console.print(line)
             
-            # Lists
+            # Lists - use simple hyphens for copy-friendly bullet points
             elif line.startswith('- ') or line.startswith('* '):
                 indent = len(line) - len(line.lstrip())
-                marker = line.lstrip()[:2]  # Preserve original marker ('- ' or '* ')
-                content_text = line[indent + 2:]  # Remove '- ' or '* '
-                # Process inline formatting in list items
+                content_text = line[indent + 2:]  # Remove original marker
+                # Always use hyphen for copy-friendly lists
                 formatted_text = self._process_inline_formatting(content_text)
                 spaces = " " * indent
-                self.console.print(f"{spaces}{marker}", style="#c0c0c0", end="")
-                self.console.print(formatted_text, style="#c0c0c0", markup=True)
+                self.console.print(f"{spaces}- {formatted_text}", style="white", markup=True)
             
             # Numbered lists  
             elif line.strip() and line.lstrip()[0].isdigit() and '. ' in line:
                 formatted_line = self._process_inline_formatting(line)
-                self.console.print(formatted_line, style="#c0c0c0", markup=True)
+                self.console.print(formatted_line, style="white", markup=True)
             
             # Blockquotes
             elif line.startswith('> '):
                 quote_text = line[2:]
                 formatted_quote = self._process_inline_formatting(quote_text)
-                self.console.print(f"  ", end="")
-                self.console.print(formatted_quote, style="italic yellow", markup=True)
+                self.console.print(f"  {formatted_quote}", style="italic yellow", markup=True)
             
-            # Regular paragraphs with inline formatting
+            # Regular paragraphs with inline formatting - styled in medium grey for readability
             else:
                 formatted_line = self._process_inline_formatting(line)
-                self.console.print(formatted_line, style="#c0c0c0", markup=True)
+                self.console.print(formatted_line, style="white", markup=True)
     
     def _process_inline_formatting(self, text: str) -> str:
         """
