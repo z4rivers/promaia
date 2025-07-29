@@ -35,13 +35,13 @@ class McpToolExecutor:
         tool_calls = []
         
         # Pattern 1: <execute_tool>server.tool(args)</execute_tool>
-        pattern1 = r'<execute_tool>\s*(\w+)\.(\w+)\s*\((.*?)\)\s*</execute_tool>'
+        pattern1 = r'<execute_tool>\s*(\w+)\.([\w-]+)\s*\((.*?)\)\s*</execute_tool>'
         
         # Pattern 2: <tool_code>print(server.tool(args))</tool_code>
-        pattern2 = r'<tool_code>\s*print\((\w+)\.(\w+)\s*\((.*?)\)\)\s*</tool_code>'
+        pattern2 = r'<tool_code>\s*print\((\w+)\.([\w-]+)\s*\((.*?)\)\)\s*</tool_code>'
         
         # Pattern 3: <tool_code>server.tool(args)</tool_code>
-        pattern3 = r'<tool_code>\s*(\w+)\.(\w+)\s*\((.*?)\)\s*</tool_code>'
+        pattern3 = r'<tool_code>\s*(\w+)\.([\w-]+)\s*\((.*?)\)\s*</tool_code>'
         
         # Try all patterns
         for pattern in [pattern1, pattern2, pattern3]:

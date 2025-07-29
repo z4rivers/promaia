@@ -898,9 +898,17 @@ def read_markdown_files_with_registry(
     
     # Registry-first: if no results, that's the authoritative answer
     if len(pages) == 0:
-        print(f"No entries found in registry for {database_config.workspace}.{database_config.nickname}")
+        # Use database_id for the error message since that's what we actually queried
+        print(f"No entries found in registry for {database_config.workspace}.{database_config.nickname} (database_id: {database_config.database_id})")
         print(f"Registry is the authoritative source - if files exist but aren't registered:")
         print(f"  Run 'maia database register-markdown-files --database {database_config.nickname} --workspace {database_config.workspace}'")
+        
+        # Additional debugging for Discord databases
+        if database_config.source_type == "discord":
+            print(f"Debug: Found {len(registry_entries)} raw entries in registry before file processing")
+            if len(registry_entries) > 0:
+                print(f"Debug: Entries exist but no markdown files could be loaded - check file paths and permissions")
+        
         return []
     
     return pages

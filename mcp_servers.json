@@ -44,7 +44,7 @@
       ],
       "args": [],
       "env": {
-        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_KOII_API_KEY}\", \"Notion-Version\": \"2022-06-28\"}"
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer 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\", \"Notion-Version\": \"2022-06-28\"}"
       },
       "enabled": true
     }

@@ -164,13 +164,13 @@ class CopyFriendlyConsole:
                 # Process inline formatting in list items
                 formatted_text = self._process_inline_formatting(content_text)
                 spaces = " " * indent
-                self.console.print(f"{spaces}{marker}", end="")
-                self.console.print(formatted_text, markup=True)
+                self.console.print(f"{spaces}{marker}", style="#c0c0c0", end="")
+                self.console.print(formatted_text, style="#c0c0c0", markup=True)
             
             # Numbered lists  
             elif line.strip() and line.lstrip()[0].isdigit() and '. ' in line:
                 formatted_line = self._process_inline_formatting(line)
-                self.console.print(formatted_line, markup=True)
+                self.console.print(formatted_line, style="#c0c0c0", markup=True)
             
             # Blockquotes
             elif line.startswith('> '):
@@ -182,7 +182,7 @@ class CopyFriendlyConsole:
             # Regular paragraphs with inline formatting
             else:
                 formatted_line = self._process_inline_formatting(line)
-                self.console.print(formatted_line, markup=True)
+                self.console.print(formatted_line, style="#c0c0c0", markup=True)
     
     def _process_inline_formatting(self, text: str) -> str:
         """

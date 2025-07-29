@@ -26,7 +26,7 @@ from promaia.ai.models import LLAMA_MODELS
 from promaia.utils.display import print_markdown, print_code, print_text
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
-from promaia.chat.streaming import create_streaming_handler
+from promaia.storage.recents import RecentsManager
 
 import google.generativeai as genai
 
@@ -346,6 +346,50 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
+    # Parse original_browse_command if provided (from history loading)
+    if original_browse_command and not sources and not filters:
+        try:
+            # Parse the browse command to extract sources and filters
+            import shlex
+            import argparse
+            
+            # Extract arguments from the command
+            if original_browse_command.startswith("maia chat "):
+                command_args = original_browse_command[10:]  # Remove "maia chat "
+            else:
+                command_args = original_browse_command
+            
+            # Parse the command
+            args_list = safe_split_command(command_args)
+            
+            parser = argparse.ArgumentParser(add_help=False)
+            parser.add_argument("-s", "--source", action="append", dest="sources")
+            parser.add_argument("-f", "--filter", action="append", dest="filters")
+            parser.add_argument("-w", "--workspace", dest="workspace")
+            parser.add_argument("-b", "--browse", nargs="*", dest="browse")
+            parser.add_argument("-nl", "--natural-language", nargs="*", dest="natural_language")
+            parser.add_argument("-mcp", action="append", dest="mcp_servers")
+            
+            parsed_args, unknown = parser.parse_known_args(args_list)
+            
+            # Extract parsed values
+            if parsed_args.sources:
+                sources = parsed_args.sources
+            if parsed_args.filters:
+                filters = parsed_args.filters
+            if parsed_args.workspace and not workspace:
+                workspace = parsed_args.workspace
+            if parsed_args.natural_language and not natural_language_prompt:
+                natural_language_prompt = " ".join(parsed_args.natural_language)
+            if parsed_args.mcp_servers and not mcp_servers:
+                mcp_servers = parsed_args.mcp_servers
+                
+            debug_print(f"Parsed browse command: sources={sources}, filters={filters}, workspace={workspace}")
+            
+        except Exception as e:
+            debug_print(f"Error parsing original_browse_command: {e}")
+            # Continue with original values
+
     # Context state tracking for dynamic changes
     context_state = {
         'sources': sources,
@@ -391,7 +435,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if context_state['mcp_servers']:
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
-        context_state['query_command'] = " ".join(query_parts)
+        
+        # Update both query_command and original_query_format so edit interface shows current state
+        built_command = " ".join(query_parts)
+        context_state['query_command'] = built_command
+        context_state['original_query_format'] = built_command
 
     # Initial query command setup - capture original format for regular commands too
     if not context_state.get('original_query_format') and (sources or filters or workspace or natural_language_prompt or mcp_servers):
@@ -535,6 +583,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if current_resolved_workspace:
             actual_workspace = current_resolved_workspace
         else:
+            from promaia.config.workspaces import get_workspace_manager
             workspace_manager = get_workspace_manager()
             if not current_workspace:
                 actual_workspace = workspace_manager.get_default_workspace()
@@ -1425,22 +1474,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             discord_filters = []  # Add missing declaration for Discord filters
             browse_parts = []
             
-            # Group selections by database for cleaner browse command
-            db_selections = {}
+            # Group selections by database AND days (different days create separate sources)
+            db_day_selections = {}
             for db_name, channel_id, channel_name, days in selected_channels:
-                if db_name not in db_selections:
-                    db_selections[db_name] = {'days': days, 'channels': []}
-                db_selections[db_name]['channels'].append(channel_name)
+                # Use db_name:days as the key to group channels with same database AND same days
+                key = f"{db_name}:{days}"
+                if key not in db_day_selections:
+                    db_day_selections[key] = {'db_name': db_name, 'days': days, 'channels': []}
+                db_day_selections[key]['channels'].append(channel_name)
                 
                 # Show what was selected
                 print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
             
-            # Create one source per database with combined channel filter
-            for db_name, selection_info in db_selections.items():
-                source_spec = f"{db_name}:{selection_info['days']}"
+            # Create one source per database+days combination with combined channel filter
+            for key, selection_info in db_day_selections.items():
+                db_name = selection_info['db_name']
+                days = selection_info['days']
+                source_spec = f"{db_name}:{days}"
                 discord_sources.append(source_spec)
                 
-                # Create combined filter for all channels in this database
+                # Create combined filter for all channels in this database+days combination
                 if len(selection_info['channels']) == 1:
                     # Single channel - simple filter
                     filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
@@ -1455,9 +1508,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     discord_filters.append(filter_spec)
             
             # Build browse command format for display
-            for db_name, selection_info in db_selections.items():
-                if selection_info['days'] != 30:  # Only show days if not default
-                    browse_parts.append(f"{db_name}:{selection_info['days']}")
+            for key, selection_info in db_day_selections.items():
+                db_name = selection_info['db_name']
+                days = selection_info['days']
+                if days != 30:  # Only show days if not default
+                    browse_parts.append(f"{db_name}:{days}")
                 else:
                     browse_parts.append(db_name)
             
@@ -1647,37 +1702,58 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             async def run_browse_with_preselect():
                 if previous_selections:
                     print_text(f"ℹ️  Pre-populating with {len(previous_selections)} previous channel selections", style="dim cyan")
-                return await handle_discord_browse_filtered(browse_args, previous_selections)
+                try:
+                    result = await handle_discord_browse_filtered(browse_args, previous_selections)
+                    debug_print(f"Discord browser returned: {result}")
+                    return result
+                except Exception as e:
+                    debug_print(f"Error in Discord browser: {e}")
+                    return None
             
+            import asyncio
             selected_channels = asyncio.run(run_browse_with_preselect())
+            debug_print(f"Final selected_channels: {selected_channels}")
             
             if not selected_channels:
                 print_text("ℹ️  No channels selected. Context unchanged.", style="bold yellow")
                 return False
             
-            print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="bold green")
+            # Additional safety check for None
+            if selected_channels is None:
+                print_text("❌ Error: Channel selection returned None", style="bold red")
+                return False
+            
+            try:
+                print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="bold green")
+            except TypeError as e:
+                print_text(f"❌ Error with selected channels: {e} (type: {type(selected_channels)})", style="bold red")
+                return False
             
             # Convert selected channels to source specifications
             discord_sources = []
             discord_filters = []  # Add missing declaration for Discord filters
             browse_parts = []
             
-            # Group selections by database for cleaner browse command
-            db_selections = {}
+            # Group selections by database AND days (different days create separate sources)
+            db_day_selections = {}
             for db_name, channel_id, channel_name, days in selected_channels:
-                if db_name not in db_selections:
-                    db_selections[db_name] = {'days': days, 'channels': []}
-                db_selections[db_name]['channels'].append(channel_name)
+                # Use db_name:days as the key to group channels with same database AND same days
+                key = f"{db_name}:{days}"
+                if key not in db_day_selections:
+                    db_day_selections[key] = {'db_name': db_name, 'days': days, 'channels': []}
+                db_day_selections[key]['channels'].append(channel_name)
                 
                 # Show what was selected
                 print_text(f"   • {db_name}:{days} → #{channel_name}", style="dim")
             
-            # Create one source per database with combined channel filter
-            for db_name, selection_info in db_selections.items():
-                source_spec = f"{db_name}:{selection_info['days']}"
+            # Create one source per database+days combination with combined channel filter
+            for key, selection_info in db_day_selections.items():
+                db_name = selection_info['db_name']
+                days = selection_info['days']
+                source_spec = f"{db_name}:{days}"
                 discord_sources.append(source_spec)
                 
-                # Create combined filter for all channels in this database
+                # Create combined filter for all channels in this database+days combination
                 if len(selection_info['channels']) == 1:
                     # Single channel - simple filter
                     filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
@@ -1692,9 +1768,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     discord_filters.append(filter_spec)
             
             # Build browse command format for display
-            for db_name, selection_info in db_selections.items():
-                if selection_info['days'] != 30:  # Only show days if not default
-                    browse_parts.append(f"{db_name}:{selection_info['days']}")
+            for key, selection_info in db_day_selections.items():
+                db_name = selection_info['db_name']
+                days = selection_info['days']
+                if days != 30:  # Only show days if not default
+                    browse_parts.append(f"{db_name}:{days}")
                 else:
                     browse_parts.append(db_name)
             
@@ -1702,6 +1780,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Use overlap detection to avoid duplicates between regular sources and Discord sources
             existing_regular_sources = []
             current_sources = context_state.get('sources', [])
+            
+            # Ensure current_sources is a list
+            if current_sources is None:
+                current_sources = []
+            debug_print(f"Current sources: {current_sources}")
             
             from promaia.config.databases import get_database_manager
             db_manager = get_database_manager()
@@ -1711,7 +1794,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 is_discord_handled = False
                 
                 # Check if this source is now handled by Discord selections
-                for db_name, selection_info in db_selections.items():
+                for key, selection_info in db_day_selections.items():
+                    db_name = selection_info['db_name']
                     if source_db == db_name:
                         is_discord_handled = True
                         break
@@ -1733,8 +1817,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             combined_sources = existing_regular_sources + discord_sources
             
             # PRESERVE existing non-Discord filters and combine with new Discord filters  
-            existing_regular_filters = [f for f in context_state.get('filters', [])
-                                      if not any(discord_name in f for discord_name in [ds.split(':')[0] for ds in discord_sources])]
+            current_filters = context_state.get('filters', [])
+            if current_filters is None:
+                current_filters = []
+            debug_print(f"Current filters: {current_filters}")
+            debug_print(f"Discord sources: {discord_sources}")
+            
+            # Create list of Discord database names for filtering
+            discord_db_names = []
+            if discord_sources:
+                discord_db_names = [ds.split(':')[0] for ds in discord_sources]
+            
+            existing_regular_filters = [f for f in current_filters
+                                      if not any(discord_name in f for discord_name in discord_db_names)]
             
             combined_filters = existing_regular_filters + discord_filters
             
@@ -1963,6 +2058,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 continue
             elif user_input.strip().lower() == '/push':
                 try:
+                    import asyncio
                     result = asyncio.run(push_chat_to_notion(messages))
                     print_text(result, style="bold green")
                 except Exception as e:
@@ -1971,6 +2067,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif user_input.strip().lower() == '/s':
                 # Sync current context databases
                 try:
+                    import asyncio
                     asyncio.run(sync_current_context_databases())
                     print_text("Context databases synced successfully. Reloading context...", style="bold green")
                     if reload_context():
@@ -1998,6 +2095,29 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if edit_context():
                         print_text("Context updated successfully!", style="bold green")
                         print()
+                        
+                        # Save the updated command to recents
+                        try:
+                            recents_manager = RecentsManager()
+                            current_sources = context_state.get('sources', [])
+                            current_filters = context_state.get('filters', [])
+                            current_workspace = context_state.get('workspace')
+                            current_nl_prompt = context_state.get('natural_language_prompt')
+                            current_browse_command = context_state.get('original_query_format')
+                            
+                            # Only save if we have meaningful content to save
+                            if current_sources or current_filters or current_nl_prompt or current_browse_command:
+                                recents_manager.add_query(
+                                    sources=current_sources,
+                                    filters=current_filters,
+                                    workspace=current_workspace,
+                                    natural_language_prompt=current_nl_prompt,
+                                    original_browse_command=current_browse_command
+                                )
+                        except Exception as e:
+                            # Don't let recents saving errors break the flow
+                            debug_print(f"Failed to save updated command to recents: {e}")
+                        
                         # Show the same detailed breakdown as when starting a new chat
                         print_welcome_message(
                             query_command=context_state['query_command'], 
@@ -2044,7 +2164,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         'resolved_workspace': context_state.get('resolved_workspace'),
                         'query_command': context_state.get('query_command'),
                         'natural_language_prompt': context_state.get('natural_language_prompt'),
-                        'natural_language_content': None  # Don't save the actual content, regenerate on restore
+                        'natural_language_content': None,  # Don't save the actual content, regenerate on restore
+                        'original_query_format': context_state.get('original_query_format'),  # Save original browse command
+                        'browse_selections': context_state.get('browse_selections')  # Save browse selections for re-editing
                     }
                     
                     # Check if we're continuing an existing thread
@@ -2107,57 +2229,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Call the appropriate API
             response_content = None
             try:
-                # Debug: Log system prompt info before AI call
                 if DEBUG_MODE:
                     debug_print(f"AI Call Debug: System prompt length: {len(system_prompt)}")
                     debug_print(f"AI Call Debug: Total pages in context: {total_pages_loaded}")
                     debug_print(f"AI Call Debug: Context sources: {context_state.get('sources')}")
                 
-                # Use streaming handler for better UX and multi-turn tool execution
-                mcp_executor = context_state.get('mcp_executor')
-                # Enable streaming by default, can be disabled with MAIA_NO_STREAMING=1
-                use_streaming = os.getenv("MAIA_NO_STREAMING", "0") != "1"
-                
-                if use_streaming and mcp_executor:
-                    # Multi-turn streaming with tool feedback
-                    streaming_handler = create_streaming_handler(mcp_executor)
-                    
-                    import asyncio
-                    if current_api == "anthropic" and anthropic_client:
-                        response_text, updated_messages = asyncio.run(
-                            streaming_handler.stream_response_with_tools(
-                                anthropic_client, "anthropic", system_prompt, messages
-                            )
-                        )
-                        messages = updated_messages
-                    elif current_api == "openai" and openai_client:
-                        response_text, updated_messages = asyncio.run(
-                            streaming_handler.stream_response_with_tools(
-                                openai_client, "openai", system_prompt, messages
-                            )
-                        )
-                        messages = updated_messages
-                    elif current_api == "gemini" and gemini_client:
-                        response_text, updated_messages = asyncio.run(
-                            streaming_handler.stream_response_with_tools(
-                                gemini_client, "gemini", system_prompt, messages
-                            )
-                        )
-                        messages = updated_messages
-                    else:
-                        # Fallback to non-streaming
-                        use_streaming = False
-                
-                # Fallback to original non-streaming behavior
-                if not use_streaming:
-                    if current_api == "anthropic" and anthropic_client:
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
-                        if response and response.content:
-                            response_text = response.content[0].text
+                # Direct API calls (streaming removed for reliability)
+                if current_api == "anthropic" and anthropic_client:
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
+                    if response and response.content:
+                        response_text = response.content[0].text
 
-                            # Execute MCP tools if present
-                            import asyncio
-                            response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                        # Execute MCP tools if present
+                        import asyncio
+                        response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
 
                         # Extract token usage for Anthropic
                         if hasattr(response, 'usage'):
@@ -2167,8 +2252,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                             # Calculate cost using centralized function
                             from promaia.utils.ai import calculate_ai_cost
+                            debug_print(f"Cost calculation: input_tokens={input_tokens}, output_tokens={output_tokens}")
                             cost_data = calculate_ai_cost(input_tokens, output_tokens, "claude-3.5-sonnet")
                             total_cost = cost_data["total_cost"]
+                            debug_print(f"Calculated cost: ${total_cost:.6f}")
 
                             debug_print(f"Token usage: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
 
@@ -2235,6 +2322,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     for msg in messages:
                         formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
 
+                    response_text_with_tools = None
                     try:
                         response = gemini_client.generate_content(formatted_prompt)
                         if response.text:
@@ -2243,67 +2331,49 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Execute MCP tools if present
                             import asyncio
                             response_text_with_tools = asyncio.run(execute_mcp_tools_in_response(response_text))
-                            
-                            # If the original response was just tool calls and no conversational text,
-                            # the result might be empty after tool execution. Provide a friendly completion message.
-                            if not response_text_with_tools.strip() or response_text_with_tools == response_text:
-                                if "🔧 Tool Execution Results:" in response_text_with_tools:
-                                    # Tools were executed, show completion
-                                    response_text_with_tools = "Task completed successfully.\n" + response_text_with_tools
-                                elif any(tag in response_text for tag in ['<tool_code>', '<execute_tool>']):
-                                    # Had tool calls but no execution results (error case)
-                                    response_text_with_tools = "I attempted to execute your request, but encountered an issue with tool execution."
                         else:
-                            # Debug: Log the response details
-                            debug_print(f"Gemini response has no text. Response details: {response}")
-                            if hasattr(response, 'candidates') and response.candidates:
-                                for i, candidate in enumerate(response.candidates):
-                                    debug_print(f"Candidate {i}: finish_reason={getattr(candidate, 'finish_reason', 'unknown')}")
-                                    if hasattr(candidate, 'safety_ratings'):
-                                        debug_print(f"Safety ratings: {candidate.safety_ratings}")
-                            
-                            # Handle case where response has no text (safety filter, etc.)
-                            response_text_with_tools = "I apologize, but I couldn't generate a response. This might be due to content filtering or a technical issue. Please try rephrasing your request."
-                    except Exception as gemini_error:
-                        # Handle Gemini API errors (including FinishReason issues)
-                        error_msg = str(gemini_error)
-                        debug_print(f"Gemini API error: {error_msg}")
-                        if "FinishReason enum value" in error_msg or "response.text" in error_msg:
-                            response_text_with_tools = "I encountered a content processing issue with your request. This sometimes happens with complex prompts. Please try a simpler request or rephrase your question."
+                            response_text_with_tools = f"I encountered an error: No response text generated. Please try again."
+                    except Exception as e:
+                        error_msg = str(e)
+                        debug_print(f"Error calling Gemini API: {error_msg}")
+                        if "blocked" in error_msg.lower():
+                            response_text_with_tools = f"I encountered a content filter issue: {error_msg}. Please try rephrasing your question."
                         else:
                             response_text_with_tools = f"I encountered an error: {error_msg}. Please try again."
+                    
+                    if response_text_with_tools:
+                        response_content = {
+                            'text': response_text_with_tools,
+                            'tokens': None
+                        }
+                        
+                        # Extract and display token usage for Gemini (moved outside except block)
+                        if 'response' in locals() and hasattr(response, 'usage_metadata') and response.usage_metadata:
+                            prompt_tokens = response.usage_metadata.prompt_token_count
+                            completion_tokens = response.usage_metadata.candidates_token_count
+                            total_tokens = response.usage_metadata.total_token_count
 
-                        # Extract and display token usage for Gemini
-                        if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                            usage = response.usage_metadata
-                            prompt_tokens = getattr(usage, 'prompt_token_count', 0)
-                            response_tokens = getattr(usage, 'candidates_token_count', 0)
-                            total_tokens = getattr(usage, 'total_token_count', 0)
-
-                            # Calculate cost using centralized function with appropriate model tier
+                            # Calculate cost using centralized function
                             from promaia.utils.ai import calculate_ai_cost
-                            model_tier = "gemini-2.5-pro-short" if prompt_tokens <= 128000 else "gemini-2.5-pro-long"
-                            cost_data = calculate_ai_cost(prompt_tokens, response_tokens, model_tier)
+                            debug_print(f"Cost calculation: prompt_tokens={prompt_tokens}, completion_tokens={completion_tokens}")
+                            
+                            # Determine Gemini model for pricing (use short context pricing for now)
+                            gemini_model = "gemini-2.5-pro-short" if total_tokens <= 128000 else "gemini-2.5-pro-long"
+                            cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model)
                             total_cost = cost_data["total_cost"]
+                            debug_print(f"Calculated cost: ${total_cost:.6f}")
 
-                            debug_print(f"Token usage: {prompt_tokens:,} prompt + {response_tokens:,} response = {total_tokens:,} total")
+                            debug_print(f"Token usage: {prompt_tokens:,} prompt + {completion_tokens:,} completion = {total_tokens:,} total")
 
-                            # Store token info for display after response - preserve tool execution results
                             response_content = {
                                 'text': response_text_with_tools,
                                 'tokens': {
                                     'prompt_tokens': prompt_tokens,
-                                    'response_tokens': response_tokens,
+                                    'response_tokens': completion_tokens,
                                     'total_tokens': total_tokens,
                                     'cost': total_cost,
                                     'model': 'Gemini 2.5 Pro'
                                 }
-                            }
-                        else:
-                            # Fallback for when usage metadata is not available
-                            response_content = {
-                                'text': response_text_with_tools,
-                                'tokens': None
                             }
                 elif current_api == "llama":
                     # Ensure llama client is initialized with current environment
@@ -2363,18 +2433,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"Error: {current_api} API client not available.", style="bold red")
                     continue
 
-                # Handle streaming vs non-streaming responses
-                if use_streaming and 'response_text' in locals():
-                    # Streaming response - already displayed during streaming
-                    timestamp = get_local_timestamp()
-                    print()  # Add spacing after streamed response
-                    print_text(f"{timestamp} Maia", style="dim")
-                    print()
-                    
-                    # Don't append to messages - already handled by streaming handler
-                    
-                elif response_content:
-                    # Non-streaming response handling
+                # Handle API responses
+                if response_content:
                     if isinstance(response_content, dict):
                         # AI response with token data
                         response_text = response_content['text']

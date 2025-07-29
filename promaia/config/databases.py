@@ -239,11 +239,20 @@ class DatabaseManager:
     
     def get_database_by_qualified_name(self, qualified_name: str) -> Optional[DatabaseConfig]:
         """Get a database configuration by its qualified name."""
+        # First, try exact matches
         for db in self.databases.values():
             # Check against the key in the config (e.g., "trass.journal")
             # and the generated qualified name (e.g., "trass.journal")
             if db.name == qualified_name or db.get_qualified_name() == qualified_name:
                 return db
+        
+        # If no exact match, try to resolve workspace.nickname format
+        if '.' in qualified_name:
+            workspace, nickname = qualified_name.rsplit('.', 1)
+            for db in self.databases.values():
+                if db.workspace == workspace and db.nickname == nickname:
+                    return db
+        
         return None
     
     def get_database_by_server_id(self, server_id: str) -> Optional[DatabaseConfig]:

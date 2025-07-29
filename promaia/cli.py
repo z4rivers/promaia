@@ -1414,17 +1414,34 @@ def chat_run_inline_browse(args):
             discord_sources = []
             discord_filters = []
             
-            # Process each channel individually with its specific days
+            # Group channels by database to avoid redundant sources
+            db_selections = {}
             for db_name, channel_id, channel_name, days in selected_channels:
-                # Create individual source with channel-specific days
-                current_source = f"{db_name}:{days}"
-                discord_sources.append(current_source)
-                
-                # Create filter for this specific channel
-                discord_filters.append(f'{current_source}:"channel_name={channel_name}"')
+                if db_name not in db_selections:
+                    db_selections[db_name] = {'days': days, 'channels': []}
+                db_selections[db_name]['channels'].append(channel_name)
                 
                 # Show what was selected
                 print(f"   • {db_name}:{days} → #{channel_name}")
+            
+            # Create one source per database with combined channel filter
+            for db_name, selection_info in db_selections.items():
+                source_spec = f"{db_name}:{selection_info['days']}"
+                discord_sources.append(source_spec)
+                
+                # Create combined filter for all channels in this database
+                if len(selection_info['channels']) == 1:
+                    # Single channel - simple filter
+                    filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
+                    discord_filters.append(filter_spec)
+                else:
+                    # Multiple channels - create complex filter with OR logic
+                    channel_conditions = []
+                    for channel_name in selection_info['channels']:
+                        channel_conditions.append(f'discord_channel_name={channel_name}')
+                    combined_filter = ' or '.join(channel_conditions)
+                    filter_spec = f'{source_spec}:({combined_filter})'
+                    discord_filters.append(filter_spec)
         
         # Combine regular sources with Discord sources
         all_sources = sources + discord_sources
@@ -1598,7 +1615,28 @@ def history_run(args):
                 filters = context.get('filters')
                 workspace = context.get('workspace')
                 resolved_workspace = context.get('resolved_workspace')
+                original_query_format = context.get('original_query_format')
+                browse_selections = context.get('browse_selections')
                 
+                # Check if this was originally a browse command
+                if original_query_format and '-b ' in original_query_format:
+                    print(f"Context: {original_query_format}")
+                    
+                    # Restore browse command properly by passing the original format
+                    chat(
+                        sources=None,  # Don't use decomposed sources for browse commands
+                        filters=None,  # Don't use decomposed filters for browse commands
+                        workspace=workspace,
+                        resolved_workspace=resolved_workspace,
+                        non_interactive=False,
+                        initial_messages=selected_thread.messages,
+                        current_thread_id=selected_thread.id,
+                        original_browse_command=original_query_format,
+                        browse_selections=browse_selections
+                    )
+                    return  # Early return for browse commands
+                
+                # Regular command or fallback
                 if context.get('query_command'):
                     print(f"Context: {context['query_command']}")
                 
