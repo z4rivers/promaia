@@ -30,6 +30,66 @@ maia database info journal --schema                  # Include schema details
 maia database remove old-database
 ```
 
+### 🔍 Unified Browser (NEW)
+
+The unified browser provides an interactive interface for selecting sources from workspaces and Discord channels.
+
+#### Basic Browse Commands
+```bash
+# Browse entire workspace
+maia chat -b trass
+
+# Browse specific databases/channels
+maia chat -b trass.tg trass.journal
+
+# Mixed browsing (workspace + Discord)
+maia chat -b trass.tg trass
+
+# Browse with default days
+maia chat -b trass:30
+```
+
+#### Edit Context Integration
+```bash
+# Start any chat session
+maia chat -s journal:7
+
+# Use /e to edit, then Ctrl+B to browse
+You: /e
+# Press Ctrl+B to open unified browser
+# Modify selections and press Enter
+```
+
+#### Unified Browser Interface
+```
+🔍 trass | Sources: 5 databases, 7 channels | Selected: 8/12 | ↑↓ Navigate SPACE Toggle ENTER Confirm ESC Cancel
+
+📄 Regular Databases:
+☑       trass.cpj:7
+☐       trass.epics:all  
+☑       trass.gmail:20        # ← Custom day value
+☑       trass.journal:7
+☑       trass.stories:7
+
+💬 Discord Channels:
+☑       trass.tg#announcements:7
+☐       trass.tg#customer-support:7
+☑       trass.tg#koii-work:30    # ← Custom day value
+☑       trass.tg#maker-work:all  # ← Text day value
+```
+
+#### Browser Controls
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate sources |
+| `Space` | Toggle selection |
+| `0-9` / `a-z` | Edit day values |
+| `Backspace` | Delete characters |
+| `Enter` | Apply selections |
+| `Esc` | Cancel changes |
+
+**See [UNIFIED_BROWSER.md](UNIFIED_BROWSER.md) for complete documentation.**
+
 ### 🎮 Discord Integration
 
 #### Setup & Configuration
@@ -50,30 +110,17 @@ maia database sync -s myworkspace.discord:1.channel_name=general
 
 #### Interactive Browse Mode
 ```bash
-# Browse Discord channels with visual TUI
-maia sync -b workspace.discord                      # Interactive sync
-maia chat -b workspace.discord                      # Interactive chat
+# Use unified browser for Discord channels (see Unified Browser section above)
+maia chat -b workspace.discord                      # Browse Discord channels
+maia chat -b workspace.discord workspace.yeeps_discord # Multiple Discord databases
 
-# Browse multiple Discord databases
-maia sync -b workspace.discord workspace.community_discord
-maia chat -b workspace.discord workspace.yeeps_discord
-
-# Browse with day specifications
-maia sync -b workspace.discord:30                   # 30-day default filter
-maia chat -b workspace.discord:7 workspace.yeeps_discord:14
+# Direct channel specification still supported
+maia sync -s workspace.discord:7.channel_name=announcements
+maia sync -s workspace.discord:30.author_name=admin
 ```
 
-#### Browser Controls
-```
-🎮 Discord Channel Browser
-
-📂 My Team Server (workspace.discord)
-    ☑ #📢・announcements (30 days)    # ← Selected with ☑
->>> ☐ #💬・general (7 days)          # ← Highlighted with >>>
-    ☐ #🗞️・release-notes (14 days)
-
-↑↓ Navigate  SPACE Toggle  D Cycle Days  ENTER Confirm  ESC Cancel
-```
+**Note**: The old Discord-specific browser has been replaced by the unified browser. 
+Use the unified browser (see above) for interactive Discord channel selection.
 
 #### Direct Discord Sync
 ```bash
@@ -94,14 +141,13 @@ maia chat
 maia chat -s journal:7 -s awakenings:all
 maia chat -s journal:30 -s cms:14
 
-# Interactive Discord browse mode (NEW)
-maia chat -b workspace.discord                      # Browse Discord channels
-maia chat -b workspace.discord workspace.yeeps_discord # Multiple Discord databases
-maia sync -b workspace.discord:30                   # Browse for sync with day filter
+# Interactive unified browse mode (replaces old Discord browser)
+maia chat -b workspace                               # Browse workspace sources
+maia chat -b workspace.discord workspace            # Browse Discord + workspace
+maia sync -b workspace:30                           # Browse for sync with day filter
 
-# Combined sources with Discord browse
-maia chat -s journal:7 -b workspace.discord:14     # Mix Notion with Discord
-maia sync -s journal:5 -b workspace.discord:30     # Combined sync
+# Combined sources with browse
+maia chat -s journal:7 -b workspace.discord:14     # Mix manual with browse selection
 
 # Direct Discord specifications
 maia chat -s workspace.discord:7.channel_name=announcements

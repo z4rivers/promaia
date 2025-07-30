@@ -1008,13 +1008,31 @@ def chat_run(args):
     if getattr(args, 'recent', False):
         return chat_run_recents(args)
     
-    # Handle browse option for Discord channel selection
+    # Handle -ws shortcut by converting to -b browse mode
+    workspace_arg = getattr(args, 'workspace', None)
+    if workspace_arg and not getattr(args, 'sources', None) and not getattr(args, 'browse', None):
+        # Convert -ws workspace to -b workspace
+        args.browse = [workspace_arg]
+        args.workspace = None  # Clear original workspace arg
+    
+    # Handle browse option for workspace or Discord channel selection
     browse_args = getattr(args, 'browse', None)
     if browse_args is not None:
-        # If browse is provided without other sources, use standalone browse
+        # If browse is provided without other sources, determine type of browse
         if not getattr(args, 'sources', None) and not browse_args:
-            return chat_run_browse(args)
-        # Otherwise, handle inline browse functionality
+            return chat_run_browse(args)  # Default Discord browse
+        # Check if this is a workspace browse or Discord browse
+        elif browse_args is not None and len(browse_args) == 1:
+            browse_target = browse_args[0]
+            # Check if it's a workspace name
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            if workspace_manager.validate_workspace(browse_target):
+                return chat_run_workspace_browse(args, browse_target)
+            else:
+                # Treat as Discord database browse
+                return chat_run_inline_browse(args)
+        # Otherwise, handle inline browse functionality (Discord)
         elif browse_args is not None:  # browse_args could be empty list or list with databases
             return chat_run_inline_browse(args)
     
@@ -1171,7 +1189,7 @@ def chat_run_recents(args):
                 parser.add_argument("--source", "-s", action="append", dest="sources")
                 parser.add_argument("--filter", "-f", action="append", dest="filters")
                 parser.add_argument("--workspace", "-ws", dest="workspace")
-                parser.add_argument("--browse", "-b", nargs="*", dest="browse")
+                parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
                 parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
                 
                 parsed_args = parser.parse_args(raw_args)
@@ -1307,9 +1325,8 @@ def chat_run_browse(args):
 
 
 def chat_run_inline_browse(args):
-    """Run the chat interface with inline Discord channel browser (combining regular sources with Discord selection)."""
-    import asyncio
-    from promaia.cli.discord_commands import handle_discord_browse_filtered
+    """Run the chat interface with unified browser for Discord databases."""
+    from promaia.cli.workspace_browser import launch_unified_browser
     from promaia.config.workspaces import get_workspace_manager
     from promaia.chat.interface import chat
     
@@ -1318,14 +1335,20 @@ def chat_run_inline_browse(args):
         workspace_manager = get_workspace_manager()
         original_workspace = getattr(args, 'workspace', None)
         
-        # Resolve workspace (same logic as regular chat_run)
+        # Resolve workspace
         resolved_workspace = original_workspace
         sources = getattr(args, 'sources', None) or []
+        # Flatten nested lists from multiple -b flags: [['trass.tg'], ['trass']] -> ['trass.tg', 'trass']
+        raw_browse = getattr(args, 'browse', [])
+        browse_databases = []
+        if raw_browse:
+            for item in raw_browse:
+                if isinstance(item, list):
+                    browse_databases.extend(item)
+                else:
+                    browse_databases.append(item)
         
-        # Get browse databases (could be empty list or list with specific databases)
-        browse_databases = getattr(args, 'browse', [])
-        
-        # If no workspace is explicitly provided, try to determine from sources
+        # If no workspace, try to determine from sources or browse databases
         if not resolved_workspace and sources:
             for source in sources:
                 if '.' in source:
@@ -1335,10 +1358,8 @@ def chat_run_inline_browse(args):
                         print_text(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.", style="white")
                         break
         
-        # If still no workspace from sources, try to determine from browse databases
         if not resolved_workspace and browse_databases:
             for browse_db in browse_databases:
-                # Extract database name from potential database:days format
                 db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
                 if '.' in db_name:
                     determined_workspace = db_name.split('.')[0]
@@ -1359,165 +1380,147 @@ def chat_run_inline_browse(args):
             print_text(f"✗ Workspace '{resolved_workspace}' is not properly configured.", style="red")
             return
         
-        # Parse browse databases to extract database names and day specifications
-        parsed_browse_databases = []
-        database_days = {}  # Map database -> days
+        # Parse browse databases and expand workspace names
+        database_filter = None
+        default_days = None
         
         if browse_databases:
+            from promaia.config.workspaces import get_workspace_manager
+            from promaia.config.databases import get_database_manager
+            workspace_manager = get_workspace_manager()
+            db_manager = get_database_manager()
+            
+            database_filter = []
             for browse_spec in browse_databases:
                 if ':' in browse_spec:
-                    # Format: database:days
                     db_name, days_str = browse_spec.rsplit(':', 1)
                     try:
                         days = int(days_str)
-                        parsed_browse_databases.append(db_name)
-                        database_days[db_name] = days
+                        if default_days is None:
+                            default_days = days
+                        
+                        # Check if db_name is a workspace
+                        if workspace_manager.validate_workspace(db_name):
+                            # Expand workspace to all its databases
+                            workspace_databases = db_manager.get_workspace_databases(db_name)
+                            for db in workspace_databases:
+                                if db.sync_enabled:  # Only include enabled databases
+                                    database_filter.append(db.get_qualified_name())
+                        else:
+                            database_filter.append(db_name)
                     except ValueError:
-                        # If days_str is not a number, treat whole thing as database name
-                        parsed_browse_databases.append(browse_spec)
+                        database_filter.append(browse_spec)
                 else:
-                    # Just database name, no days specified
-                    parsed_browse_databases.append(browse_spec)
-        
-        # Create args for Discord browse
-        class BrowseArgs:
-            def __init__(self, workspace, databases=None, database_days=None):
-                self.workspace = workspace
-                self.databases = databases  # Specific databases to browse, or None for all
-                self.database_days = database_days or {}  # Map of database -> days
-        
-        browse_args = BrowseArgs(resolved_workspace, parsed_browse_databases if parsed_browse_databases else None, database_days)
+                    # Check if this is a workspace name
+                    if workspace_manager.validate_workspace(browse_spec):
+                        # Expand workspace to all its databases
+                        workspace_databases = db_manager.get_workspace_databases(browse_spec)
+                        for db in workspace_databases:
+                            if db.sync_enabled:  # Only include enabled databases
+                                database_filter.append(db.get_qualified_name())
+                    else:
+                        # It's a specific database name
+                        database_filter.append(browse_spec)
         
         # Show what we're browsing
-        if parsed_browse_databases:
-            db_display = []
-            for db in parsed_browse_databases:
-                if db in database_days:
-                    db_display.append(f"{db}:{database_days[db]}")
-                else:
-                    db_display.append(db)
-            print_text(f"🎮 Launching Discord channel browser for databases: {', '.join(db_display)}...", style="white")
+        if database_filter:
+            print_text(f"🔍 Launching unified browser for databases: {', '.join(database_filter)}...", style="cyan")
         else:
-            print_text(f"🎮 Launching Discord channel browser for workspace '{resolved_workspace}'...", style="white")
+            print_text(f"🔍 Launching unified browser for workspace '{resolved_workspace}'...", style="cyan")
         
-        # Run the Discord browser and get selected channels
-        async def run_browse():
-            return await handle_discord_browse_filtered(browse_args)
+        # Launch unified browser
+        selected_sources = launch_unified_browser(resolved_workspace, default_days, database_filter)
         
-        selected_channels = asyncio.run(run_browse())
-        
-        if not selected_channels:
-            print_text("ℹ️  No channels selected. Continuing with regular sources only.", style="dim")
+        if not selected_sources:
+            print_text("ℹ️  No sources selected. Continuing with regular sources only.", style="dim")
             # Continue with just the regular sources
-            discord_sources = []
-            discord_filters = []
+            all_sources = sources
+            all_filters = getattr(args, 'filters', None) or []
         else:
-            print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="white")
+            print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
             
-            # Convert selected channels to chat sources format
-            discord_sources = []
-            discord_filters = []
+            # Process Discord channel sources and convert to database + filter format
+            processed_sources = []
+            processed_filters = []
             
-            # Group channels by database to avoid redundant sources
-            db_selections = {}
-            for db_name, channel_id, channel_name, days in selected_channels:
-                if db_name not in db_selections:
-                    db_selections[db_name] = {'days': days, 'channels': []}
-                db_selections[db_name]['channels'].append(channel_name)
-                
-                # Show what was selected
-                print_text(f"   • {db_name}:{days} → #{channel_name}", style="white")
+            # Group Discord channels by database to create proper source + filter combinations
+            discord_db_groups = {}
             
-            # Create one source per database with combined channel filter
-            for db_name, selection_info in db_selections.items():
-                source_spec = f"{db_name}:{selection_info['days']}"
-                discord_sources.append(source_spec)
-                
-                # Create combined filter for all channels in this database
-                if len(selection_info['channels']) == 1:
-                    # Single channel - simple filter
-                    filter_spec = f'{source_spec}:discord_channel_name={selection_info["channels"][0]}'
-                    discord_filters.append(filter_spec)
+            for source in selected_sources:
+                if '#' in source:
+                    # Discord channel: trass.tg#customer-support:7
+                    db_channel, days_part = source.rsplit(':', 1)
+                    db_name, channel_name = db_channel.split('#', 1)
+                    
+                    # Group by database + days combination
+                    db_key = f"{db_name}:{days_part}"
+                    if db_key not in discord_db_groups:
+                        discord_db_groups[db_key] = []
+                    discord_db_groups[db_key].append(channel_name)
                 else:
-                    # Multiple channels - create complex filter with OR logic
-                    channel_conditions = []
-                    for channel_name in selection_info['channels']:
-                        channel_conditions.append(f'discord_channel_name={channel_name}')
-                    combined_filter = ' or '.join(channel_conditions)
-                    filter_spec = f'{source_spec}:({combined_filter})'
-                    discord_filters.append(filter_spec)
+                    # Regular database source
+                    processed_sources.append(source)
+            
+            # Convert Discord groups to source + filter combinations
+            for db_spec, channels in discord_db_groups.items():
+                processed_sources.append(db_spec)
+                
+                # Create filter for channels
+                if len(channels) == 1:
+                    # Single channel
+                    filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
+                    processed_filters.append(filter_spec)
+                else:
+                    # Multiple channels - use OR logic
+                    channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
+                    combined_filter = " or ".join(channel_conditions)
+                    filter_spec = f"{db_spec}:({combined_filter})"
+                    processed_filters.append(filter_spec)
+            
+            # Combine regular sources with processed sources
+            all_sources = sources + processed_sources
+            
+            # Combine original filters with Discord filters
+            original_filters = getattr(args, 'filters', None) or []
+            all_filters = original_filters + processed_filters
         
-        # Combine regular sources with Discord sources
-        all_sources = sources + discord_sources
-        all_filters = (getattr(args, 'filters', None) or []) + discord_filters
-        
-        if all_sources:
-            print_text(f"\n💬 Starting chat with combined sources:", style="white")
-            print_text(f"   Regular sources: {sources if sources else 'None'}", style="white")
-            print_text(f"   Discord sources: {discord_sources if discord_sources else 'None'}", style="white")
-        
-        # Create modified args for chat
-        class ChatArgs:
-            def __init__(self, sources, filters, workspace, original_args):
-                self.sources = sources
-                self.workspace = workspace
-                self.filters = filters
-                self.recent = getattr(original_args, 'recent', False)
-                self.browse = None  # Clear browse to avoid recursion
-                self.non_interactive = getattr(original_args, 'non_interactive', False)
-                self.natural_language = getattr(original_args, 'natural_language', None)
-                self.skip_recents_save = True  # Prevent double-saving to recents
-        
-        chat_args = ChatArgs(all_sources, all_filters, original_workspace, args)
-        
-        # Build the original browse command for display in recents
+        # Build the original browse command for display
         original_command_parts = ["maia", "chat"]
         
-        # Add regular sources first
         if sources:
             for source in sources:
                 original_command_parts.extend(["-s", source])
         
-        # Add browse part
         if browse_databases:
             original_command_parts.append("-b")
             for browse_spec in browse_databases:
                 original_command_parts.append(browse_spec)
         
-        # Add any original filters that weren't from Discord
         original_filters = getattr(args, 'filters', None) or []
         for filter_expr in original_filters:
             original_command_parts.extend(["-f", f'"{filter_expr}"'])
         
-        # Add workspace if originally specified
         if original_workspace:
             original_command_parts.extend(["-ws", original_workspace])
         
         original_browse_command = " ".join(original_command_parts)
         
-        # Save combined query to recents
-        # For browse commands, always save even if no sources/filters result
-        if all_sources or all_filters or original_workspace or browse_databases:
-            from promaia.storage.recents import RecentsManager
-            recents_manager = RecentsManager()
-            recents_manager.add_query(
-                sources=all_sources, 
-                filters=all_filters, 
-                workspace=original_workspace,
-                original_browse_command=original_browse_command
-            )
-
-
+        # Store original Discord channel selections for /e context preservation
+        original_discord_selections = []
+        if 'selected_sources' in locals():
+            original_discord_selections = [s for s in selected_sources if '#' in s]
         
-        # Store browse selections and original format in the chat args
-        browse_selections = selected_channels if selected_channels else None
-        
-        # Add browse information to chat args
-        chat_args.original_browse_command = original_browse_command
-        chat_args.browse_selections = browse_selections
-        
-        # Start chat with combined sources
-        chat_run(chat_args)
+        # Start chat with selected sources
+        chat(
+            sources=all_sources,
+            filters=all_filters,
+            workspace=resolved_workspace,
+            resolved_workspace=resolved_workspace,
+            non_interactive=getattr(args, 'non_interactive', False),
+            mcp_servers=getattr(args, 'mcp_servers', None),
+            original_browse_command=original_browse_command,
+            browse_selections=original_discord_selections  # Store for /e preservation
+        )
         
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run_inline_browse: {e}", exc_info=True)
@@ -1785,6 +1788,41 @@ def model_run(args):
     else:
         logger.error("ERROR: Invalid choice. Please select from the available options.")
 
+def chat_run_workspace_browse(args, workspace_name):
+    """Run the chat interface with unified browser for workspace."""
+    from promaia.chat.interface import chat
+    from promaia.config.workspaces import get_workspace_manager
+    
+    try:
+        workspace_manager = get_workspace_manager()
+        
+        # Validate workspace
+        if not workspace_manager.validate_workspace(workspace_name):
+            print_text(f"✗ Workspace '{workspace_name}' is not properly configured.", style="red")
+            return
+        
+        # Get other args
+        sources = getattr(args, 'sources', None) or []
+        filters = getattr(args, 'filters', None) or []
+        mcp_servers = getattr(args, 'mcp_servers', None)
+        
+        # Add workspace to args so chat function can use it
+        args.workspace = workspace_name
+        
+        # Call the chat function with workspace - it will launch the unified browser
+        chat(
+            sources=sources,
+            filters=filters, 
+            workspace=workspace_name,
+            resolved_workspace=workspace_name,
+            non_interactive=getattr(args, 'non_interactive', False),
+            mcp_servers=mcp_servers
+        )
+        
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in chat_run_workspace_browse: {e}", exc_info=True)
+        print_text(f"An unexpected error occurred: {e}", style="red")
+
 # ==================== MAIN ENTRY POINT ====================
 
 def main():
@@ -1864,7 +1902,7 @@ def main():
     chat_parser.add_argument(
         "--browse", "-b",
         nargs="*",
-        help="Launch interactive channel browser to select Discord channels. Optionally specify database names to browse only those (e.g., -b trass.yp). Without arguments, shows all Discord databases."
+        help="Launch interactive browser to select sources. For workspaces: '-b workspace_name' (e.g., -b trass). For Discord channels: '-b discord' or specific databases (e.g., -b trass.yp). Without arguments, shows all available sources."
     )
     chat_parser.add_argument(
         "--non-interactive",

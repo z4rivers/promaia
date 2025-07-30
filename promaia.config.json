@@ -30,7 +30,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T16:45:39.803132+00:00",
+      "last_sync_time": "2025-07-30T20:27:24.343302+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -56,7 +56,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 30,
-      "last_sync_time": "2025-07-29T15:55:50.104816+00:00",
+      "last_sync_time": "2025-07-30T20:27:18.207685+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -79,7 +79,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T15:55:50.159656+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.602982+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -102,7 +102,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-29T15:55:50.153421+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.105609+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -125,7 +125,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-29T15:55:50.288635+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.746622+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -148,7 +148,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T15:55:53.928202+00:00",
+      "last_sync_time": "2025-07-30T20:27:18.176572+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -171,7 +171,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T19:24:08.700317+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.959352+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -197,7 +197,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T19:24:09.081862+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.745399+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Consumer Product"
@@ -222,7 +222,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T15:55:49.341663+00:00",
+      "last_sync_time": "2025-07-30T20:27:19.912013+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -247,7 +247,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T19:24:15.951163+00:00",
+      "last_sync_time": "2025-07-30T20:27:16.222473+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -273,7 +273,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T19:24:05.736874+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.108830+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -296,7 +296,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T15:55:51.430662+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.989199+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": "1291943271509135415"
@@ -385,7 +385,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-30T19:24:05.154213+00:00",
+      "last_sync_time": "2025-07-30T20:27:17.107608+00:00",
       "filters": {
         "Team": "Consumer Product"
       },
