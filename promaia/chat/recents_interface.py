@@ -14,6 +14,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.styles import Style
 
 from promaia.storage.recents import RecentsManager, RecentQuery
+from promaia.utils.display import print_text, print_separator
 
 
 def safe_split_command(user_input):
@@ -141,16 +142,16 @@ class RecentsSelector:
         self.queries = self.recents_manager.get_recents()
         
         if not self.queries:
-            print("No recent queries found. Use 'maia chat' with some options first.")
+            print_text("No recent queries found. Use 'maia chat' with some options first.", style="yellow")
             return ('quit', None)
         
         # Check if we're in a proper terminal
         if not sys.stdin.isatty() or not sys.stdout.isatty():
-            print("Interactive selection not available (not running in a terminal).")
-            print("Available recent queries:")
+            print_text("Interactive selection not available (not running in a terminal).", style="yellow")
+            print_text("Available recent queries:", style="white")
             for i, query in enumerate(self.queries, 1):
-                print(f"  {i}. {query}")
-            print("\nUse 'maia chat' with specific parameters to execute a query.")
+                print_text(f"  {i}. {query}", style="white")
+            print_text("\nUse 'maia chat' with specific parameters to execute a query.", style="dim")
             return ('quit', None)
         
         try:
@@ -188,14 +189,14 @@ class RecentsSelector:
             return self.result or ('quit', None)
             
         except (EOFError, KeyboardInterrupt):
-            print("\nRecents selection cancelled.")
+            print_text("\nRecents selection cancelled.", style="yellow")
             return ('quit', None)
         except Exception as e:
-            print(f"Error with interactive interface: {e}")
-            print("Available recent queries:")
+            print_text(f"Error with interactive interface: {e}", style="red")
+            print_text("Available recent queries:", style="white")
             for i, query in enumerate(self.queries, 1):
-                print(f"  {i}. {query}")
-            print("\nUse 'maia chat' with specific parameters to execute a query.")
+                print_text(f"  {i}. {query}", style="white")
+            print_text("\nUse 'maia chat' with specific parameters to execute a query.", style="dim")
             return ('quit', None)
 
 def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
@@ -226,8 +227,8 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         current_command = ' '.join(parts) if parts else ''
     
     try:
-        print(f"\nCurrent command: maia chat {current_command}")
-        print("Edit the arguments (without 'maia chat'):")
+        print_text(f"\nCurrent command: maia chat {current_command}", style="dim")
+        print_text("Edit the arguments (without 'maia chat'):")
         
         edited_command = prompt(
             "Arguments: ",
@@ -246,7 +247,7 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         # For simplicity, if the command contains browse mode (-b) or other complex syntax,
         # just pass it through as a raw command and let the main CLI handle it
         if edited_command and ('-b ' in edited_command or '--browse ' in edited_command):
-            print(f"Browse mode detected. The command will be executed as: maia chat {edited_command}")
+            print_text(f"Browse mode detected. The command will be executed as: maia chat {edited_command}", style="dim")
             # Return a special query that indicates raw command execution
             return RecentQuery(
                 command="chat_raw",
@@ -261,7 +262,7 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
                 # Use safe parsing that handles natural language queries with apostrophes
                 args = safe_split_command(edited_command)
             except ValueError as e:
-                print(f"Error parsing command: {e}")
+                print_text(f"Error parsing command: {e}", style="red")
                 return None
         else:
             args = []
@@ -270,7 +271,7 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         if args and args[0] in ['-nl', '--natural-language']:
             # Natural language query
             if len(args) < 2:
-                print("Error: Natural language prompt is required after -nl")
+                print_text("Error: Natural language prompt is required after -nl", style="red")
                 return None
             
             nl_prompt = ' '.join(args[1:])
@@ -307,10 +308,10 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
                         workspace=workspace
                     )
                 else:
-                    print("Error: Natural language prompt is required after -nl")
+                    print_text("Error: Natural language prompt is required after -nl", style="red")
                     return None
             else:
-                print(f"Unknown argument: {args[i]}")
+                print_text(f"Unknown argument: {args[i]}", style="red")
                 return None
         
         return RecentQuery(
@@ -321,5 +322,5 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         )
         
     except (KeyboardInterrupt, EOFError):
-        print("\nEdit cancelled.")
+        print_text("\nEdit cancelled.", style="yellow")
         return None 

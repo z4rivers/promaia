@@ -20,6 +20,7 @@ from promaia.markdown.converter import page_to_markdown
 from promaia.storage.files import save_page_to_file, get_existing_page_ids
 from promaia.utils.config import update_last_sync_time, get_last_sync_time, get_sync_days_setting, set_sync_days_setting, load_environment, get_config, update_config
 from promaia.utils.config_loader import get_notion_database_id
+from promaia.utils.display import print_text, print_markdown, print_separator
 
 # Import database management commands
 from promaia.cli.database_commands import (
@@ -1027,7 +1028,7 @@ def chat_run(args):
     if hasattr(args, 'natural_language') and args.natural_language:
         # Join all the natural language arguments into a single prompt
         nl_prompt = ' '.join(args.natural_language)
-        print(f"🤖 Processing natural language query: '{nl_prompt}'")
+        print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="white")
         
         try:
             from promaia.storage.unified_query import get_query_interface
@@ -1036,31 +1037,34 @@ def chat_run(args):
             workspace_manager = get_workspace_manager()
             if original_workspace:
                 if not workspace_manager.validate_workspace(original_workspace):
-                    print(f"✗ Workspace '{original_workspace}' is not properly configured.", file=sys.stderr)
+                    print_text(f"✗ Workspace '{original_workspace}' is not properly configured.", style="red")
                     return
                 resolved_workspace = original_workspace
             else:
                 resolved_workspace = workspace_manager.get_default_workspace()
                 if not resolved_workspace:
-                    print("No workspace specified and no default workspace configured.", file=sys.stderr)
+                    print_text("No workspace specified and no default workspace configured.", style="red")
                     return
             
             # Process natural language using hybrid query interface
             query_interface = get_query_interface()
-            natural_language_content = query_interface.natural_language_query(nl_prompt, resolved_workspace)
+            
+            # Always allow cross-workspace queries for natural language
+            # Workspace is just a classifier/tag, not a mandatory constraint
+            natural_language_content = query_interface.natural_language_query(nl_prompt, None)
             
             if not natural_language_content:
-                print("❌ No content found for natural language query")
+                print_text("❌ No content found for natural language query", style="red")
                 return
             
             # Keep both regular sources and natural language content
             # The chat interface will combine them
             
         except ImportError as e:
-            print(f"Error importing natural language processor: {e}", file=sys.stderr)
+            print_text(f"Error importing natural language processor: {e}", style="red")
             return
         except Exception as e:
-            print(f"Error processing natural language query: {e}", file=sys.stderr)
+            print_text(f"Error processing natural language query: {e}", style="red")
             return
     else:
         natural_language_content = None
@@ -1086,19 +1090,19 @@ def chat_run(args):
                     determined_workspace = source.split('.')[0]
                     if workspace_manager.validate_workspace(determined_workspace):
                         resolved_workspace = determined_workspace
-                        print(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.")
+                        print_text(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.", style="white")
                         break
         
         # If still no workspace, use the default
         if not resolved_workspace:
             resolved_workspace = workspace_manager.get_default_workspace()
             if not resolved_workspace:
-                print("No workspace specified, none could be inferred, and no default workspace is configured.", file=sys.stderr)
+                print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
                 return
 
         # Validate the final resolved workspace
         if not workspace_manager.validate_workspace(resolved_workspace):
-            print(f"✗ Workspace '{resolved_workspace}' is not properly configured.", file=sys.stderr)
+            print_text(f"✗ Workspace '{resolved_workspace}' is not properly configured.", style="red")
             return
         
         # Save query to recents before executing (for both traditional and NL queries)
@@ -1124,11 +1128,11 @@ def chat_run(args):
         chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers)
 
     except ImportError as e:
-        print(f"Error importing chat interface: {e}", file=sys.stderr)
-        print("Please check your dependencies.", file=sys.stderr)
+        print_text(f"Error importing chat interface: {e}", style="red")
+        print_text("Please check your dependencies.", style="red")
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run: {e}", exc_info=True)
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        print_text(f"An unexpected error occurred: {e}", style="red")
 
 
 def chat_run_recents(args):
@@ -1154,7 +1158,7 @@ def chat_run_recents(args):
         if hasattr(selected_query, 'command') and selected_query.command == "chat_raw":
             # Execute the raw command stored in sources[0]
             raw_command = selected_query.sources[0] if selected_query.sources else ""
-            print(f"\nExecuting: maia chat {raw_command}")
+            print_text(f"\nExecuting: maia chat {raw_command}", style="white")
             
             # Parse the raw command and execute it
             try:
@@ -1178,7 +1182,7 @@ def chat_run_recents(args):
                 return
                 
             except Exception as e:
-                print(f"Error executing raw command: {e}")
+                print_text(f"Error executing raw command: {e}", style="red")
                 return
         
         # Create args object for the selected/edited query
@@ -1198,15 +1202,15 @@ def chat_run_recents(args):
         query_args = QueryArgs(selected_query)
         
         # Execute the selected query
-        print(f"\nExecuting: {str(selected_query).split(' (')[0]}")
+        print_text(f"\nExecuting: {str(selected_query).split(' (')[0]}", style="white")
         chat_run(query_args)
         
     except ImportError as e:
-        print(f"Error importing recents interface: {e}", file=sys.stderr)
-        print("Please check your dependencies.", file=sys.stderr)
+        print_text(f"Error importing recents interface: {e}", style="red")
+        print_text("Please check your dependencies.", style="red")
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run_recents: {e}", exc_info=True)
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        print_text(f"An unexpected error occurred: {e}", style="red")
 
 def chat_run_browse(args):
     """Run the chat interface with Discord channel browser."""
@@ -1223,12 +1227,12 @@ def chat_run_browse(args):
         if not workspace:
             workspace = workspace_manager.get_default_workspace()
             if not workspace:
-                print("No workspace specified and no default workspace configured.", file=sys.stderr)
+                print_text("No workspace specified and no default workspace configured.", style="red")
                 return
         
         # Validate workspace
         if not workspace_manager.validate_workspace(workspace):
-            print(f"✗ Workspace '{workspace}' is not properly configured.", file=sys.stderr)
+            print_text(f"✗ Workspace '{workspace}' is not properly configured.", style="red")
             return
         
         # Create args for Discord browse
@@ -1239,7 +1243,7 @@ def chat_run_browse(args):
         browse_args = BrowseArgs(workspace)
         
         # Run the Discord browser and get selected channels
-        print(f"🎮 Launching Discord channel browser for workspace '{workspace}'...")
+        print_text(f"🎮 Launching Discord channel browser for workspace '{workspace}'...", style="white")
         
         # Run the async Discord browse function
         async def run_browse():
@@ -1249,7 +1253,7 @@ def chat_run_browse(args):
         selected_channels = asyncio.run(run_browse())
         
         if not selected_channels:
-            print("ℹ️  No channels selected for chat.")
+            print_text("ℹ️  No channels selected for chat.", style="dim")
             return
         
         # Convert selected channels to chat sources format
@@ -1275,10 +1279,10 @@ def chat_run_browse(args):
                 channel_filter = " OR ".join([f"channel_name={ch}" for ch in channels])
                 filters.append(f'{db_name}:"({channel_filter})"')
         
-        print(f"✅ Selected {len(selected_channels)} Discord channels for chat:")
+        print_text(f"✅ Selected {len(selected_channels)} Discord channels for chat:", style="white")
         for db_name, channels in db_channels.items():
             for channel in channels:
-                print(f"   • {db_name} → #{channel}")
+                print_text(f"   • {db_name} → #{channel}", style="white")
         
         # Create modified args for chat
         class ChatArgs:
@@ -1294,12 +1298,12 @@ def chat_run_browse(args):
         chat_args = ChatArgs(sources, filters, workspace)
         
         # Start chat with selected sources
-        print(f"\n💬 Starting chat with selected Discord channels...")
+        print_text(f"\n💬 Starting chat with selected Discord channels...", style="white")
         chat_run(chat_args)
         
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run_browse: {e}", exc_info=True)
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        print_text(f"An unexpected error occurred: {e}", style="red")
 
 
 def chat_run_inline_browse(args):
@@ -1328,7 +1332,7 @@ def chat_run_inline_browse(args):
                     determined_workspace = source.split('.')[0]
                     if workspace_manager.validate_workspace(determined_workspace):
                         resolved_workspace = determined_workspace
-                        print(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.")
+                        print_text(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.", style="white")
                         break
         
         # If still no workspace from sources, try to determine from browse databases
@@ -1340,19 +1344,19 @@ def chat_run_inline_browse(args):
                     determined_workspace = db_name.split('.')[0]
                     if workspace_manager.validate_workspace(determined_workspace):
                         resolved_workspace = determined_workspace
-                        print(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.")
+                        print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="white")
                         break
         
         # If still no workspace, use the default
         if not resolved_workspace:
             resolved_workspace = workspace_manager.get_default_workspace()
             if not resolved_workspace:
-                print("No workspace specified, none could be inferred, and no default workspace is configured.", file=sys.stderr)
+                print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
                 return
         
         # Validate workspace
         if not workspace_manager.validate_workspace(resolved_workspace):
-            print(f"✗ Workspace '{resolved_workspace}' is not properly configured.", file=sys.stderr)
+            print_text(f"✗ Workspace '{resolved_workspace}' is not properly configured.", style="red")
             return
         
         # Parse browse databases to extract database names and day specifications
@@ -1392,9 +1396,9 @@ def chat_run_inline_browse(args):
                     db_display.append(f"{db}:{database_days[db]}")
                 else:
                     db_display.append(db)
-            print(f"🎮 Launching Discord channel browser for databases: {', '.join(db_display)}...")
+            print_text(f"🎮 Launching Discord channel browser for databases: {', '.join(db_display)}...", style="white")
         else:
-            print(f"🎮 Launching Discord channel browser for workspace '{resolved_workspace}'...")
+            print_text(f"🎮 Launching Discord channel browser for workspace '{resolved_workspace}'...", style="white")
         
         # Run the Discord browser and get selected channels
         async def run_browse():
@@ -1403,12 +1407,12 @@ def chat_run_inline_browse(args):
         selected_channels = asyncio.run(run_browse())
         
         if not selected_channels:
-            print("ℹ️  No channels selected. Continuing with regular sources only.")
+            print_text("ℹ️  No channels selected. Continuing with regular sources only.", style="dim")
             # Continue with just the regular sources
             discord_sources = []
             discord_filters = []
         else:
-            print(f"✅ Selected {len(selected_channels)} Discord channels:")
+            print_text(f"✅ Selected {len(selected_channels)} Discord channels:", style="white")
             
             # Convert selected channels to chat sources format
             discord_sources = []
@@ -1422,7 +1426,7 @@ def chat_run_inline_browse(args):
                 db_selections[db_name]['channels'].append(channel_name)
                 
                 # Show what was selected
-                print(f"   • {db_name}:{days} → #{channel_name}")
+                print_text(f"   • {db_name}:{days} → #{channel_name}", style="white")
             
             # Create one source per database with combined channel filter
             for db_name, selection_info in db_selections.items():
@@ -1448,9 +1452,9 @@ def chat_run_inline_browse(args):
         all_filters = (getattr(args, 'filters', None) or []) + discord_filters
         
         if all_sources:
-            print(f"\n💬 Starting chat with combined sources:")
-            print(f"   Regular sources: {sources if sources else 'None'}")
-            print(f"   Discord sources: {discord_sources if discord_sources else 'None'}")
+            print_text(f"\n💬 Starting chat with combined sources:", style="white")
+            print_text(f"   Regular sources: {sources if sources else 'None'}", style="white")
+            print_text(f"   Discord sources: {discord_sources if discord_sources else 'None'}", style="white")
         
         # Create modified args for chat
         class ChatArgs:
@@ -1517,7 +1521,7 @@ def chat_run_inline_browse(args):
         
     except Exception as e:
         logging.error(f"An unexpected error occurred in chat_run_inline_browse: {e}", exc_info=True)
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        print_text(f"An unexpected error occurred: {e}", style="red")
 
 
 def history_run(args):
@@ -1533,12 +1537,12 @@ def history_run(args):
             history_manager = ChatHistoryManager()
             removed_count = history_manager.clean_duplicates()
             if removed_count > 0:
-                print(f"Cleaned up {removed_count} duplicate thread(s).")
+                print_text(f"Cleaned up {removed_count} duplicate thread(s).", style="white")
             else:
-                print("No duplicate threads found.")
+                print_text("No duplicate threads found.", style="white")
             return
         except Exception as e:
-            print(f"Error cleaning duplicates: {e}", file=sys.stderr)
+            print_text(f"Error cleaning duplicates: {e}", style="red")
             return
     
     try:
@@ -1560,11 +1564,11 @@ def history_run(args):
             # Check if this is a natural language thread
             nl_prompt = context.get('natural_language_prompt')
             
-            print(f"\nLoading conversation: {selected_thread.name}")
+            print_text(f"\nLoading conversation: {selected_thread.name}", style="white")
             
             if nl_prompt:
                 # This is a natural language thread - restore using NL query
-                print(f"Context: maia chat -nl {nl_prompt}")
+                print_text(f"Context: maia chat -nl {nl_prompt}", style="dim")
                 
                 # Process the natural language query to regenerate content
                 try:
@@ -1576,7 +1580,7 @@ def history_run(args):
                     actual_workspace = resolved_workspace or workspace or workspace_manager.get_default_workspace()
                     
                     if actual_workspace:
-                        print(f"🤖 Regenerating context from natural language query...")
+                        print_text("🤖 Regenerating context from natural language query...", style="white")
                         query_interface = get_query_interface()
                         natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace)
                         
@@ -1593,12 +1597,12 @@ def history_run(args):
                             natural_language_prompt=nl_prompt
                         )
                     else:
-                        print("❌ No workspace available to regenerate natural language context")
+                        print_text("❌ No workspace available to regenerate natural language context", style="red")
                         return
                         
                 except Exception as e:
-                    print(f"❌ Error regenerating natural language context: {e}")
-                    print("Falling back to empty context...")
+                    print_text(f"❌ Error regenerating natural language context: {e}", style="red")
+                    print_text("Falling back to empty context...", style="yellow")
                     # Fall back to basic chat without context
                     chat(
                         sources=None,
@@ -1617,10 +1621,11 @@ def history_run(args):
                 resolved_workspace = context.get('resolved_workspace')
                 original_query_format = context.get('original_query_format')
                 browse_selections = context.get('browse_selections')
+                natural_language_prompt = context.get('natural_language_prompt')
                 
                 # Check if this was originally a browse command
                 if original_query_format and '-b ' in original_query_format:
-                    print(f"Context: {original_query_format}")
+                    print_text(f"Context: {original_query_format}", style="white")
                     
                     # Restore browse command properly by passing the original format
                     chat(
@@ -1638,7 +1643,7 @@ def history_run(args):
                 
                 # Regular command or fallback
                 if context.get('query_command'):
-                    print(f"Context: {context['query_command']}")
+                    print_text(f"Context: {context['query_command']}", style="white")
                 
                 # Show warning if context might be missing
                 if sources:
@@ -1654,8 +1659,8 @@ def history_run(args):
                                 missing_sources.append(source_name)
                         
                         if missing_sources:
-                            print(f"⚠️  Warning: Some sources from this conversation are no longer available: {', '.join(missing_sources)}")
-                            print("Continuing with available context...\n")
+                            print_text(f"⚠️  Warning: Some sources from this conversation are no longer available: {', '.join(missing_sources)}", style="yellow")
+                            print_text("Continuing with available context...\n", style="white")
                 
                 # Start chat with the saved context and messages
                 chat(
@@ -1665,23 +1670,24 @@ def history_run(args):
                     resolved_workspace=resolved_workspace,
                     non_interactive=False,
                     initial_messages=selected_thread.messages,
-                    current_thread_id=selected_thread.id
+                    current_thread_id=selected_thread.id,
+                    natural_language_prompt=natural_language_prompt
                 )
         
     except ImportError as e:
-        print(f"Error importing history interface: {e}", file=sys.stderr)
-        print("Please check your dependencies.", file=sys.stderr)
+        print_text(f"Error importing history interface: {e}", style="red")
+        print_text("Please check your dependencies.", style="red")
     except Exception as e:
         logging.error(f"An unexpected error occurred in history_run: {e}", exc_info=True)
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        print_text(f"An unexpected error occurred: {e}", style="red")
 
 async def write_run_async(args):
     """Run the write blog post command."""
     try:
         from promaia.write.interface import write_blog_post
     except ImportError as e:
-        print(f"Error importing write interface: {e}")
-        print("Please check your dependencies or run 'pip install -r requirements.txt'")
+        print_text(f"Error importing write interface: {e}", style="red")
+        print_text("Please check your dependencies or run 'pip install -r requirements.txt'", style="yellow")
         return
         
     days_to_use = args.days
@@ -1717,8 +1723,8 @@ def model_run(args):
     try:
         from promaia.chat.interface import get_api_preference, save_api_preference
     except ImportError as e:
-        print(f"Error importing chat interface: {e}")
-        print("Please check your dependencies or run 'pip install -r requirements.txt'")
+        print_text(f"Error importing chat interface: {e}", style="red")
+        print_text("Please check your dependencies or run 'pip install -r requirements.txt'", style="yellow")
         return
     
     current_model = get_api_preference()
@@ -1825,6 +1831,7 @@ def main():
     sync_parser.add_argument('--source', '-s', dest='sources', action='append',
                             help='Source specifications (e.g., journal:30, trass.stories:7). Can be used multiple times.')
     sync_parser.add_argument('--browse', '-b', nargs='*', help='Browse and select Discord channels to sync. Optionally specify databases (e.g., -b trass.discord trass.yeeps_discord)')
+    sync_parser.add_argument('--workspace', '-ws', help='Workspace to sync (expands to all enabled databases in workspace with default days)')
     sync_parser.add_argument('--days', type=int, help='Number of days to sync')
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
     sync_parser.set_defaults(func=handle_database_sync)
@@ -2081,33 +2088,33 @@ def main():
             elif args.database_command == "validate-registry":
                 asyncio.run(handle_validate_registry(args))
             else:
-                print(f"Unknown database command: {args.database_command}")
+                print_text(f"Unknown database command: {args.database_command}", style="red")
         else:
-            print("Database command requires a subcommand. Use 'maia database --help' for options.")
+            print_text("Database command requires a subcommand. Use 'maia database --help' for options.", style="red")
     elif args.command in ["workspace", "ws"]:
         # Handle workspace commands (NEW) - use func attribute for dynamic routing
         if hasattr(args, 'func'):
             asyncio.run(args.func(args))
         else:
-            print("Workspace command requires a subcommand. Use 'maia workspace --help' for options.")
+            print_text("Workspace command requires a subcommand. Use 'maia workspace --help' for options.", style="red")
     elif args.command in ["migration", "mig"]:
         # Handle migration commands
         if hasattr(args, 'migration_command') and args.migration_command:
             if hasattr(args, 'func'):
                 args.func(args)
             else:
-                print(f"No function assigned to migration command: {args.migration_command}")
+                print_text(f"No function assigned to migration command: {args.migration_command}", style="red")
         else:
-            print("Migration command requires a subcommand. Use 'maia migration --help' for options.")
+            print_text("Migration command requires a subcommand. Use 'maia migration --help' for options.", style="red")
     elif args.command in ["hybrid", "hyb"]:
         # Handle hybrid architecture commands
         if hasattr(args, 'hybrid_command') and args.hybrid_command:
             if hasattr(args, 'func'):
                 args.func(args)
             else:
-                print(f"No function assigned to hybrid command: {args.hybrid_command}")
+                print_text(f"No function assigned to hybrid command: {args.hybrid_command}", style="red")
         else:
-            print("Hybrid command requires a subcommand. Use 'maia hybrid --help' for options.")
+            print_text("Hybrid command requires a subcommand. Use 'maia hybrid --help' for options.", style="red")
     elif args.command == "sync":
         # Handle top-level sync command (alias for database sync)
         asyncio.run(handle_database_sync(args))
@@ -2116,7 +2123,7 @@ def main():
         if hasattr(args, 'func'):
             asyncio.run(args.func(args))
         else:
-            print(f"No function assigned to command: {args.command}")
+            print_text(f"No function assigned to command: {args.command}", style="red")
     elif args.command == "edit":
         # Handle edit command
         if hasattr(args, 'func'):
@@ -2129,18 +2136,18 @@ def main():
             if hasattr(args, 'func'):
                 asyncio.run(args.func(args))
             else:
-                print(f"No function assigned to gmail command: {args.gmail_command}")
+                print_text(f"No function assigned to gmail command: {args.gmail_command}", style="red")
         else:
-            print("Gmail command requires a subcommand. Use 'maia gmail --help' for options.")
+            print_text("Gmail command requires a subcommand. Use 'maia gmail --help' for options.", style="red")
     elif args.command == "discord":
         # Handle Discord commands
         if hasattr(args, 'discord_command') and args.discord_command:
             if hasattr(args, 'func'):
                 asyncio.run(args.func(args))
             else:
-                print(f"No function assigned to discord command: {args.discord_command}")
+                print_text(f"No function assigned to discord command: {args.discord_command}", style="red")
         else:
-            print("Discord command requires a subcommand. Use 'maia discord --help' for options.")
+            print_text("Discord command requires a subcommand. Use 'maia discord --help' for options.", style="red")
     else:
         parser.print_help()
 

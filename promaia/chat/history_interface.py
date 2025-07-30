@@ -12,6 +12,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.styles import Style
 
 from promaia.storage.chat_history import ChatHistoryManager, ChatThread
+from promaia.utils.display import print_text, print_separator
 
 class HistorySelector:
     """Interactive selector for chat history threads."""
@@ -99,16 +100,16 @@ class HistorySelector:
         self.threads = self.history_manager.get_threads()
         
         if not self.threads:
-            print("No chat history found. Use '/save' in a chat to save conversations.")
+            print_text("No chat history found. Use '/save' in a chat to save conversations.", style="yellow")
             return ('quit', None)
         
         # Check if we're in a proper terminal
         if not sys.stdin.isatty() or not sys.stdout.isatty():
-            print("Interactive selection not available (not running in a terminal).")
-            print("Available chat threads:")
+            print_text("Interactive selection not available (not running in a terminal).", style="yellow")
+            print_text("Available chat threads:", style="white")
             for i, thread in enumerate(self.threads, 1):
-                print(f"  {i}. {thread}")
-            print("\nUse 'maia chat' to start a new conversation.")
+                print_text(f"  {i}. {thread}", style="white")
+            print_text("\nUse 'maia chat' to start a new conversation.", style="dim")
             return ('quit', None)
         
         try:
@@ -146,12 +147,12 @@ class HistorySelector:
             return self.result or ('quit', None)
             
         except (EOFError, KeyboardInterrupt):
-            print("\nHistory selection cancelled.")
+            print_text("\nHistory selection cancelled.", style="yellow")
             return ('quit', None)
         except Exception as e:
-            print(f"Error with interactive interface: {e}")
-            print("Available chat threads:")
+            print_text(f"Error with interactive interface: {e}", style="red")
+            print_text("Available chat threads:", style="white")
             for i, thread in enumerate(self.threads, 1):
-                print(f"  {i}. {thread}")
-            print("\nUse 'maia chat' to start a new conversation.")
+                print_text(f"  {i}. {thread}", style="white")
+            print_text("\nUse 'maia chat' to start a new conversation.", style="dim")
             return ('quit', None) 

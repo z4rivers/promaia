@@ -91,6 +91,7 @@ async def handle_database_add(args):
         "source_type": source_type,
         "database_id": database_id,
         "description": description,
+        "workspace": workspace,  # Add workspace for proper connector initialization
         "sync_enabled": True,
         "include_properties": True,
         "default_days": 7,
@@ -99,11 +100,30 @@ async def handle_database_add(args):
     
     try:
         if db_manager.add_database(name, config, workspace):
-            db_config = db_manager.get_database(name, workspace)
-            print(f"✓ Added database '{db_config.get_qualified_name()}' successfully")
+            # For lookup, we need to use the actual stored key format
+            # If name contains workspace prefix, use it directly; otherwise build qualified name
+            if '.' in name and name.startswith(f"{workspace}."):
+                lookup_name = name
+            else:
+                lookup_name = name
             
-            # Test connection
-            connector = ConnectorRegistry.get_connector(source_type, config)
+            db_config = db_manager.get_database(lookup_name, workspace)
+            if not db_config:
+                # Fallback: try by qualified name lookup
+                if '.' in name:
+                    db_config = db_manager.get_database_by_qualified_name(name)
+                else:
+                    qualified_name = f"{workspace}.{name}" if workspace != "koii" else name
+                    db_config = db_manager.get_database_by_qualified_name(qualified_name)
+            
+            if db_config:
+                print(f"✓ Added database '{db_config.get_qualified_name()}' successfully")
+            else:
+                print(f"✓ Added database '{name}' successfully")
+                return  # Skip connection test if we can't retrieve the config
+            
+            # Test connection with full database config (includes workspace info)
+            connector = ConnectorRegistry.get_connector(source_type, db_config.to_dict())
             if connector and await connector.test_connection():
                 print("✓ Connection test successful")
             else:
@@ -125,15 +145,41 @@ async def handle_database_remove(args):
     # Parse workspace.database format if provided
     workspace = getattr(args, 'workspace', None)
     name = args.name
+    original_name = name
     
     if '.' in name and not workspace:
         workspace, name = name.split('.', 1)
     
-    if db_manager.remove_database(name, workspace):
-        qualified_name = f"{workspace}.{name}" if workspace and workspace != "personal" else name
-        print(f"✓ Removed database '{qualified_name}'")
+    # Try multiple resolution strategies
+    db_config = None
+    
+    # First try: use get_database with parsed workspace and name
+    db_config = db_manager.get_database(name, workspace)
+    
+    # Second try: if that fails and we have a qualified name, try direct lookup
+    if not db_config and '.' in original_name:
+        db_config = db_manager.get_database_by_qualified_name(original_name)
+    
+    # Third try: try direct key lookup in databases dict
+    if not db_config and original_name in db_manager.databases:
+        db_config = db_manager.databases[original_name]
+    
+    if db_config:
+        # Find the actual key to remove
+        key_to_remove = None
+        for key, config in db_manager.databases.items():
+            if config == db_config:
+                key_to_remove = key
+                break
+        
+        if key_to_remove:
+            del db_manager.databases[key_to_remove]
+            db_manager.save_config()
+            print(f"✓ Removed database '{key_to_remove}'")
+        else:
+            print(f"✗ Could not find database key for '{original_name}'")
     else:
-        print(f"✗ Database '{name}' not found")
+        print(f"✗ Database '{original_name}' not found")
 
 async def handle_database_test(args):
     """Handle 'maia database test' command."""
@@ -196,6 +242,33 @@ async def handle_database_sync(args):
     overall_start_time = datetime.now()
     
     db_manager = get_database_manager()
+    
+    # Handle workspace expansion if provided
+    if hasattr(args, 'workspace') and args.workspace and not args.sources:
+        # Expand workspace to individual database source specifications
+        workspace_databases = db_manager.get_workspace_databases(args.workspace)
+        
+        # Build source specifications with qualified names and default days
+        # Only include enabled databases to avoid syncing disabled/problematic ones
+        expanded_sources = []
+        for db in workspace_databases:
+            if not db.sync_enabled:
+                print(f"⚠️  Skipping disabled database: {db.get_qualified_name()}")
+                continue
+                
+            qualified_name = db.get_qualified_name()
+            default_days = db.default_days
+            source_spec = f"{qualified_name}:{default_days}"
+            expanded_sources.append(source_spec)
+            print(f"📦 Adding to sync: {source_spec}")
+        
+        if not expanded_sources:
+            print(f"❌ No enabled databases configured for workspace '{args.workspace}'")
+            return
+        else:
+            print(f"📦 Workspace '{args.workspace}' expanded to {len(expanded_sources)} databases")
+            # Set the expanded sources as if they were provided via -s arguments
+            args.sources = expanded_sources
     
     # Parse source specifications (now supports workspace.database format)
     sources = parse_source_specs(args.sources) if args.sources else []
@@ -2012,6 +2085,7 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     sync_parser = subparsers.add_parser('sync', help='Sync databases')
     sync_parser.add_argument('--source', '-s', action='append', dest='sources', help='Source specifications (e.g., journal:30, trass.stories:7). Can be used multiple times.')
     sync_parser.add_argument('--browse', '-b', nargs='*', help='Browse and select Discord channels to sync. Optionally specify databases (e.g., -b trass.discord trass.yeeps_discord)')
+    sync_parser.add_argument('--workspace', '-ws', help='Workspace to sync (expands to all enabled databases in workspace with default days)')
     sync_parser.add_argument('--days', type=int, help='Number of days to sync')
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
     

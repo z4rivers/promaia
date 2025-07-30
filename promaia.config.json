@@ -1,9 +1,9 @@
 {
   "global": {
     "default_sync_days": 7,
-    "default_output_directory": "data-dev",
-    "markdown_base_directory": "data-dev",
-    "registry_db": "data-dev/hybrid_metadata_dev.db",
+    "default_output_directory": "data",
+    "markdown_base_directory": "data",
+    "registry_db": "data/hybrid_metadata.db",
     "enable_ai_editing": true,
     "ai_edit_safety_mode": true,
     "savecontexts": true,
@@ -30,7 +30,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T05:42:20.051594+00:00",
+      "last_sync_time": "2025-07-30T16:45:39.803132+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -56,7 +56,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 30,
-      "last_sync_time": "2025-07-25T05:22:04.433445+00:00",
+      "last_sync_time": "2025-07-29T15:55:50.104816+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -79,7 +79,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T05:22:04.597053+00:00",
+      "last_sync_time": "2025-07-29T15:55:50.159656+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -102,7 +102,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-25T05:22:04.493872+00:00",
+      "last_sync_time": "2025-07-29T15:55:50.153421+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -125,7 +125,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-25T05:22:08.474185+00:00",
+      "last_sync_time": "2025-07-29T15:55:50.288635+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -148,7 +148,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T05:22:05.806334+00:00",
+      "last_sync_time": "2025-07-29T15:55:53.928202+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -161,7 +161,7 @@
       "excluded_properties": [],
       "auth": {}
     },
-    "tg.journal": {
+    "trass.journal": {
       "source_type": "notion",
       "database_id": "1ebce8f7317a80f4aba7fd8b952b1654",
       "nickname": "journal",
@@ -171,7 +171,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T05:43:22.172296+00:00",
+      "last_sync_time": "2025-07-30T19:24:08.700317+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -187,7 +187,7 @@
       "excluded_properties": [],
       "auth": {}
     },
-    "tg.stories": {
+    "trass.stories": {
       "source_type": "notion",
       "database_id": "1c1ce8f7317a80dfafc4d95c8cb67c3e",
       "nickname": "stories",
@@ -197,10 +197,10 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T05:43:16.475701+00:00",
+      "last_sync_time": "2025-07-30T19:24:09.081862+00:00",
       "filters": {},
       "property_filters": {
-        "Team": "Plush/Maker/Customer Support"
+        "Team": "Consumer Product"
       },
       "date_filters": {},
       "markdown_directory": "data/md/notion/trass/stories",
@@ -222,7 +222,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T05:22:03.271141+00:00",
+      "last_sync_time": "2025-07-29T15:55:49.341663+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -247,7 +247,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T22:36:18.934971+00:00",
+      "last_sync_time": "2025-07-30T19:24:15.951163+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -273,7 +273,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T05:43:30.104830+00:00",
+      "last_sync_time": "2025-07-30T19:24:05.736874+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -296,7 +296,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T05:22:05.388376+00:00",
+      "last_sync_time": "2025-07-29T15:55:51.430662+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": "1291943271509135415"
@@ -317,13 +317,23 @@
       "nickname": "tg",
       "description": "",
       "workspace": "trass",
-      "sync_enabled": true,
+      "sync_enabled": false,
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-29T05:43:33.117747+00:00",
+      "last_sync_time": "2025-07-29T23:18:33.002896+00:00",
       "filters": {},
-      "property_filters": {},
+      "property_filters": {
+        "channel_id": [
+          "1337123188781355103",
+          "1318716205602963498",
+          "1346935909689458708",
+          "1351629843439288473",
+          "1271261308574236776",
+          "1351317345330663474",
+          "1230001715680645305"
+        ]
+      },
       "date_filters": {},
       "markdown_directory": "data/md/discord/trass/trass-games",
       "primary_format": "markdown",
@@ -334,21 +344,54 @@
       "excluded_properties": [],
       "auth": {}
     },
-    "trass.yeeps_discord": {
+    "trass.yeeps": {
       "source_type": "discord",
       "database_id": "1197017602292207666",
       "nickname": "yp",
       "description": "Yeeps 2.0 Discord server",
       "workspace": "trass",
-      "sync_enabled": true,
+      "sync_enabled": false,
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-25T07:07:26.779072+00:00",
+      "last_sync_time": "2025-07-29T15:55:58.487059+00:00",
       "filters": {},
-      "property_filters": {},
+      "property_filters": {
+        "channel_id": [
+          "1197017602770346077",
+          "1197585118148165722",
+          "1257791479460397177",
+          "1203844590575296572",
+          "1357769148117160147"
+        ]
+      },
       "date_filters": {},
       "markdown_directory": "data/md/discord/trass/yeeps",
+      "primary_format": "markdown",
+      "save_markdown": true,
+      "sync_subpages": false,
+      "property_mapping": {},
+      "required_properties": [],
+      "excluded_properties": [],
+      "auth": {}
+    },
+    "trass.epics": {
+      "source_type": "notion",
+      "database_id": "1c1ce8f7317a80a28dc2f04cc4981a63",
+      "nickname": "epics",
+      "description": "trass epics",
+      "workspace": "trass",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": "all",
+      "last_sync_time": "2025-07-30T19:24:05.154213+00:00",
+      "filters": {
+        "Team": "Consumer Product"
+      },
+      "property_filters": {},
+      "date_filters": {},
+      "markdown_directory": "data/notion/trass",
       "primary_format": "markdown",
       "save_markdown": true,
       "sync_subpages": false,

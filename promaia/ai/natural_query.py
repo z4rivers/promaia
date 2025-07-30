@@ -192,9 +192,20 @@ UNIFIED DATABASE ARCHITECTURE:
 
 IMPORTANT: This system uses ONE unified database with a 'unified_content' view for all queries.
 ALL content from different sources is stored in the same database but organized by content type.
-DEFAULT BEHAVIOR: Query across ALL workspaces - DO NOT add workspace filters unless explicitly requested.
 
-CRITICAL RULE: When users mention workspace names like "trass", "koii", etc. in casual queries, they are just describing the content type, NOT requesting workspace filtering. Only add workspace filters if the user explicitly asks to "filter by workspace" or "only from X workspace".
+CRITICAL WORKSPACE RULE: 
+**NEVER add workspace filters to SQL queries unless the user explicitly asks to "filter by workspace" or "only from X workspace".**
+**When users mention workspace names like "trass", "koii", etc., they are just describing content, NOT requesting workspace filtering.**
+**ALWAYS query across ALL workspaces by default.**
+
+Examples of what NOT to do:
+- "trass gmail" → DO NOT add "WHERE workspace = 'trass'" - just use "WHERE database_name = 'gmail'"
+- "koii journal entries" → DO NOT add "WHERE workspace = 'koii'" - just use "WHERE database_name = 'journal'"
+- "emails from trass.gmail" → DO NOT add workspace filter - just use "WHERE database_name = 'gmail'"
+
+Examples of when TO add workspace filters (rare):
+- "filter by trass workspace only" → WHERE workspace = 'trass'
+- "only content from koii workspace" → WHERE workspace = 'koii'
 
 CONTENT TYPES AVAILABLE:
 
@@ -251,11 +262,16 @@ Content-specific columns (only populated for relevant content types):
 - is_unread (INTEGER): 1 if email is unread (only for Gmail)
 
 DATE FILTERING RULES:
-- For all content: Use created_time for date filtering (original creation date)
+- For all content: Use created_time for date filtering (original creation date) 
+- created_time is stored in RFC 822 format (e.g., "Wed, 9 Jul 2025 16:26:40 +0000")
+- For recent content, use pattern matching or simple string comparisons
 - synced_time contains the last sync time but is not used for user queries
 - Examples:
-  - "last 5 days of emails": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-5 days')
-  - "recent journal entries": WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-7 days')
+  - "last 5 days of emails": WHERE database_name = 'gmail' AND created_time >= '2025-07-25' (use approximate date strings)
+  - "recent journal entries": WHERE database_name = 'journal' AND created_time >= '2025-07-20'
+  - "last week": WHERE created_time >= '2025-07-22'
+  - "July emails": WHERE database_name = 'gmail' AND created_time LIKE '%Jul 2025%'
+  - For very recent content (last few days), be generous with date ranges
 
 SEARCH STRATEGY:
 - For text search: Always use content_filters, never try to search file content in SQL
@@ -281,11 +297,24 @@ WORKSPACE ORGANIZATION:
     # Create AI prompt for generating SQL - ENHANCED for multiple queries
     system_prompt = f"""You are an expert SQL query generator for a unified content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
 
+CRITICAL RULES - READ CAREFULLY:
+1. **NEVER add workspace filters unless explicitly requested** - When users say "trass gmail" or "koii journal", treat workspace names as descriptive only, NOT as filters
+2. **Use simple string comparison for dates** - The created_time field is in RFC 822 format, so use patterns like "created_time >= '2025-07-09'" instead of datetime() functions
+3. **Query across ALL workspaces by default** - Do not restrict by workspace unless the user explicitly asks to "filter by workspace only"
+
+WRONG EXAMPLES (DO NOT DO):
+- WHERE workspace = 'trass' AND database_name = 'gmail' (removes workspace filter!)
+- WHERE datetime(created_time) >= datetime('now', '-20 days') (wrong date format!)
+
+CORRECT EXAMPLES:
+- WHERE database_name = 'gmail' AND created_time >= '2025-07-09'
+- WHERE database_name = 'gmail' AND (sender_email LIKE '%fionn%' OR sender_name LIKE '%fionn%')
+
 DATE FILTERING RULE: 
 - For all content: Use created_time for date filtering (original creation date)
 Examples:
-- Gmail: WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-5 days')
-- Notion: WHERE database_name = 'journal' AND datetime(created_time) >= datetime('now', '-5 days')
+- Gmail: WHERE database_name = 'gmail' AND created_time >= '2025-07-09'
+- Notion: WHERE database_name = 'journal' AND created_time >= '2025-07-20'
 
 CURRENT DATE AND TIME CONTEXT:
 - Current Date: {current_date_str}

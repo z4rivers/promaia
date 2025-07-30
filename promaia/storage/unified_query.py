@@ -269,6 +269,15 @@ class HybridQueryInterface:
         
         IMPORTANT: This system uses the 'unified_content' view for all queries.
         
+        CRITICAL WORKSPACE RULE: 
+        **NEVER add workspace filters to SQL queries unless the user explicitly asks to "filter by workspace" or "only from X workspace".**
+        **When users mention workspace names like "trass", "koii", etc., they are just describing content, NOT requesting workspace filtering.**
+        **ALWAYS query across ALL workspaces by default.**
+
+        Examples of what NOT to do:
+        - "trass gmail" → DO NOT add "WHERE workspace = 'trass'" - just use "WHERE database_name = 'gmail'"
+        - "koii journal entries" → DO NOT add "WHERE workspace = 'koii'" - just use "WHERE database_name = 'journal'"
+        
         CONTENT TYPES AVAILABLE:
         
         1. GMAIL (database_name = 'gmail'):
@@ -320,6 +329,12 @@ class HybridQueryInterface:
         DATE FILTERING:
         - For ALL content types including Gmail: Use created_time for date filtering
         - created_time contains the original date (email date for Gmail, page creation for Notion)
+        - created_time is stored in RFC 822 format (e.g., "Wed, 9 Jul 2025 16:26:40 +0000")
+        - For recent content, use pattern matching or simple string comparisons
+        - Examples:
+          - "last week": WHERE created_time >= '2025-07-22'
+          - "last 20 days": WHERE created_time >= '2025-07-09'
+          - "July emails": WHERE created_time LIKE '%Jul 2025%'
         
         QUERY PATTERNS:
         SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name 

@@ -23,6 +23,7 @@ from promaia.markdown.converter import page_to_markdown
 from promaia.storage.files import save_page_to_file
 from promaia.utils.config_loader import get_notion_database_id
 from promaia.ai.models import GOOGLE_MODELS, LLAMA_MODELS
+from promaia.utils.display import print_text, print_markdown, print_separator
 
 # Load environment variables
 load_environment()
@@ -37,10 +38,12 @@ session = PromptSession(history=FileHistory(os.path.expanduser("~/.maia_write_hi
 DRAFTS_DIR = "drafts"
 os.makedirs(DRAFTS_DIR, exist_ok=True)
 
+DEBUG_MODE = os.environ.get("MAIA_DEBUG") == "1"
+
 def debug_print(message):
     """Print debug messages if debug mode is enabled."""
-    if os.environ.get("MAIA_DEBUG") == "1":
-        console.print(f"[dim]DEBUG: {message}[/dim]")
+    if DEBUG_MODE:
+        print_text(f"DEBUG: {message}", style="dim")
 
 def create_blog_system_prompt(journal_pages, webflow_pages, custom_prompt, for_api="anthropic", max_entries=None):
     """
@@ -64,7 +67,7 @@ def create_blog_system_prompt(journal_pages, webflow_pages, custom_prompt, for_a
     if max_entries is not None:
         limited_journal_pages = journal_pages[:max_entries]
         if len(journal_pages) > max_entries:
-            print(f"DEBUG: Limited journal entries from {len(journal_pages)} to {max_entries} for prompt")
+            print_text(f"DEBUG: Limited journal entries from {len(journal_pages)} to {max_entries} for prompt", style="dim")
     else:
         # Use all journal entries if max_entries is None
         limited_journal_pages = journal_pages
@@ -101,7 +104,7 @@ Here are the journal entries to use as source material for the blog post:
         openai_max = 3
         used_entries = limited_journal_pages[:openai_max]
         if len(limited_journal_pages) > openai_max:
-            print(f"NOTICE: Using OpenAI API which has a smaller context window. Limiting to {openai_max} journal entries.")
+            print_text(f"NOTICE: Using OpenAI API which has a smaller context window. Limiting to {openai_max} journal entries.", style="dim")
             
         for i, page in enumerate(used_entries):
             # Further truncate content if needed
@@ -210,7 +213,7 @@ My specific instructions for *this* blog post are:
         # Join the parts into the final prompt string for Local Llama
         base_prompt = "\n".join(prompt_parts)
     else: # Fallback for any unknown API type
-        print(f"WARNING: Unknown API type '{for_api}' for prompt generation. Using generic entry handling.")
+        print_text(f"WARNING: Unknown API type '{for_api}' for prompt generation. Using generic entry handling.", style="dim")
         for page in limited_journal_pages:
             base_prompt += f"\nJournal Entry: {page['filename']}\n{page['content']}\n---\n"
     
@@ -609,7 +612,6 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
         return None
         
     # Display the blog post using copy-friendly markdown rendering
-    from promaia.utils.display import print_markdown
     print_markdown(blog_content, title="Generated Blog Post")
     
     # Push to Notion if requested (Notion client calls are async)
@@ -920,19 +922,19 @@ async def _minimal_process_page(page_id: str, content_type: str = "webflow"):
     from promaia.markdown.converter import page_to_markdown
     from promaia.storage.files import save_page_to_file
     
-    print(f"  Downloading page: {page_id}")
+    print_text(f"  Downloading page: {page_id}", style="dim")
     clear_block_cache()
     title = await get_page_title(page_id)
     blocks = await get_block_content(page_id)
     markdown_content = page_to_markdown(blocks)
     filepath = await save_page_to_file(page_id, title, markdown_content, content_type)
-    print(f"  ✓ Saved page to {filepath}")
+    print_text(f"  ✓ Saved page to {filepath}", style="dim")
 
 async def ensure_latest_live_posts_downloaded(content_type: str = "cms"):
     """Ensure that all Notion pages with Blog Status 'Live' are downloaded locally."""
-    console.print(f"\n[info]Ensuring latest 'Live' posts for content type '{content_type}' are downloaded...[/info]")
+    print_text(f"\n[info]Ensuring latest 'Live' posts for content type '{content_type}' are downloaded...[/info]", style="dim")
     try:
-        console.print(f"  Querying Notion DB {content_type} for 'Live' posts...")
+        print_text(f"  Querying Notion DB {content_type} for 'Live' posts...", style="dim")
         live_pages = await get_pages_by_properties(content_type, {"Blog Status": "Live"}) # Assumes get_pages_by_properties exists and works for status
         
         if live_pages is None: # Indicates an error occurred in the query
@@ -940,32 +942,32 @@ async def ensure_latest_live_posts_downloaded(content_type: str = "cms"):
              return
 
         live_page_ids = {page['id'] for page in live_pages}
-        console.print(f"  Found {len(live_page_ids)} 'Live' posts in Notion.")
+        console.print(f"  Found {len(live_page_ids)} 'Live' posts in Notion.", style="dim")
         
         local_page_ids = get_existing_page_ids(content_type=content_type)
-        console.print(f"  Found {len(local_page_ids)} posts in local '{content_type}' directory.")
+        console.print(f"  Found {len(local_page_ids)} posts in local '{content_type}' directory.", style="dim")
         
         missing_page_ids = live_page_ids - local_page_ids
         
         if not missing_page_ids:
-            console.print("  All 'Live' posts are present locally.")
+            console.print("  All 'Live' posts are present locally.", style="dim")
         else:
-            console.print(f"[warning]Found {len(missing_page_ids)} 'Live' posts missing locally. Downloading...[/warning]")
+            console.print(f"[warning]Found {len(missing_page_ids)} 'Live' posts missing locally. Downloading...[/warning]", style="dim")
             # Process missing pages sequentially
             for i, page_id in enumerate(missing_page_ids, 1):
                 try:
                     # Using the minimal reimplementation for now
                     await _minimal_process_page(page_id, content_type)
                 except Exception as e:
-                    console.print(f"[error]Error processing page {page_id}: {str(e)}[/error]")
+                    console.print(f"[error]Error processing page {page_id}: {str(e)}[/error]", style="dim")
                     continue # Continue with the next page
-            console.print("  Finished downloading missing 'Live' posts.")
+            console.print("  Finished downloading missing 'Live' posts.", style="dim")
             
     except ImportError as e:
-        console.print(f"[error]Import error during live post check: {e}. Make sure all Notion dependencies are installed.[/error]")
+        console.print(f"[error]Import error during live post check: {e}. Make sure all Notion dependencies are installed.[/error]", style="dim")
     except Exception as e:
         # Catch other potential errors during the process
-        console.print(f"[error]Unexpected error during live post check/download: {str(e)}[/error]")
+        console.print(f"[error]Unexpected error during live post check/download: {str(e)}[/error]", style="dim")
         # Optionally re-raise or handle differently
         # raise e 
 # ==========================================================

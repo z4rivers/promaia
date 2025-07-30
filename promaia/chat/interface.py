@@ -23,7 +23,7 @@ from promaia.utils.config import load_environment, get_last_sync_time
 from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
 from promaia.ai.models import LLAMA_MODELS, ANTHROPIC_MODELS
-from promaia.utils.display import print_markdown, print_code, print_text
+from promaia.utils.display import print_markdown, print_code, print_text, print_separator
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
 from promaia.storage.recents import RecentsManager
@@ -431,7 +431,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             for filter_expr in context_state['filters']:
                 query_parts.extend(["-f", f'"{filter_expr}"'])
         if context_state['workspace']:  # Only show workspace if explicitly provided by user
-            query_parts.extend(["-w", context_state['workspace']])
+            query_parts.extend(["-ws", context_state['workspace']])
         if context_state['natural_language_prompt']:
             query_parts.extend(["-nl", f'"{context_state["natural_language_prompt"]}"'])
         if context_state['mcp_servers']:
@@ -454,7 +454,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             for filter_expr in filters:
                 query_parts.extend(["-f", f'"{filter_expr}"'])
         if workspace:
-            query_parts.extend(["-w", workspace])
+            query_parts.extend(["-ws", workspace])
         if natural_language_prompt:
             query_parts.extend(["-nl", natural_language_prompt])
         if mcp_servers:
@@ -476,55 +476,81 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         natural_language_data = {}
         if context_state.get('natural_language_prompt'):
             nl_prompt = context_state['natural_language_prompt']
-            print("🤖 Processing natural language content")
             
-            try:
-                from promaia.storage.unified_query import get_query_interface
+            # Check if we already have content from CLI (first time) or cached results
+            existing_nl_content = context_state.get('natural_language_content', {})
+            cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+            
+            # If we have content and no cached prompt yet, this is CLI-provided content (first time)
+            if existing_nl_content and not cached_nl_prompt:
+                print_text("🔄 Using natural language results from CLI", style="dim")
+                natural_language_data = existing_nl_content
+                # Set up cache for future reloads
+                context_state['cached_natural_language_prompt'] = nl_prompt
+            # If we have cached content for this exact prompt, reuse it
+            elif nl_prompt == cached_nl_prompt and existing_nl_content:
+                print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
+                natural_language_data = existing_nl_content
+            # Otherwise, process fresh query
+            else:
+                print_text("🤖 Processing natural language content", style="white")
                 
-                # Determine workspace to use - preserve from original context
-                workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
-                
-                # If no explicit workspace, try to infer from original sources
-                if not workspace_to_use and context_state.get('sources'):
-                    # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
-                    for source in context_state['sources']:
-                        if '.' in source:
-                            potential_workspace = source.split('.')[0]
-                            workspace_to_use = potential_workspace
-                            break
-                
-                # Fall back to default workspace
-                if not workspace_to_use:
-                    from promaia.config.workspaces import get_workspace_manager
-                    workspace_manager = get_workspace_manager()
-                    workspace_to_use = workspace_manager.get_default_workspace()
-                
-                if not workspace_to_use:
-                    print_text("Error: No workspace available for natural language query.", style="bold red")
-                    return False
-                
-                # Process the natural language query fresh
-                query_interface = get_query_interface()
-                natural_language_data = query_interface.natural_language_query(nl_prompt, workspace_to_use)
-                
-                if natural_language_data:
-                    print(f"🤖 Natural language query found {sum(len(pages) for pages in natural_language_data.values())} pages")
-                    # Add to combined data
-                    combined_multi_source_data.update(natural_language_data)
-                    # Update stored NL content
-                    context_state['natural_language_content'] = natural_language_data
-                else:
-                    print_text("⚠️ No content found for natural language query", style="bold yellow")
-                
-            except Exception as e:
-                print_text(f"Error processing natural language content: {e}", style="bold red")
-                # Continue with regular sources even if NL fails
+                try:
+                    from promaia.storage.unified_query import get_query_interface
+                    
+                    # Determine workspace to use - preserve from original context
+                    workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                    
+                    # If no explicit workspace, try to infer from original sources
+                    if not workspace_to_use and context_state.get('sources'):
+                        # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
+                        for source in context_state['sources']:
+                            if '.' in source:
+                                potential_workspace = source.split('.')[0]
+                                workspace_to_use = potential_workspace
+                                break
+                    
+                    # Fall back to default workspace
+                    if not workspace_to_use:
+                        from promaia.config.workspaces import get_workspace_manager
+                        workspace_manager = get_workspace_manager()
+                        workspace_to_use = workspace_manager.get_default_workspace()
+                    
+                    if not workspace_to_use:
+                        print_text("Error: No workspace available for natural language query.", style="bold red")
+                        return False
+                    
+                    # Process natural language query fresh
+                    query_interface = get_query_interface()
+                    
+                    # Always allow cross-workspace queries for natural language
+                    # Workspace is just a classifier/tag, not a mandatory constraint
+                    natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+                    
+                    if not natural_language_content:
+                        print_text("❌ No content found for natural language query", style="bold red")
+                        return False
+                    
+                    # Cache both the results and prompt for future use
+                    context_state['natural_language_content'] = natural_language_content
+                    context_state['cached_natural_language_prompt'] = nl_prompt
+                    
+                except Exception as e:
+                    print_text(f"Error processing natural language content: {e}", style="bold red")
+                    # Continue with regular sources even if NL fails
+                    # Clear cache on error
+                    context_state['natural_language_content'] = {}
+                    context_state['cached_natural_language_prompt'] = ''
+            
+            # Add natural language data to combined results (whether cached or fresh)
+            if natural_language_data:
+                combined_multi_source_data.update(natural_language_data)
         
         # Process MCP servers if present
         mcp_tools_info = ""
         if context_state.get('mcp_servers'):
             try:
-                print("🔧 Connecting to MCP servers...")
+                print_text("🔧 Connecting to MCP servers...", style="white")
                 
                 # Load environment variables for MCP servers
                 from dotenv import load_dotenv
@@ -608,7 +634,41 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Only auto-load workspace databases if user provided NO arguments at all
         user_provided_args = bool(sources or filters or natural_language_prompt or browse_selections or mcp_servers)
         
-        if not current_sources and len(combined_multi_source_data) == 0 and not user_provided_args:
+        # Check if user provided workspace but no sources (workspace expansion)
+        user_provided_workspace_only = bool(workspace and not sources and not filters and not natural_language_prompt)
+        
+        if user_provided_workspace_only:
+            debug_print(f"Expanding workspace '{actual_workspace}' to individual sources with default days.")
+            workspace_databases = db_manager.get_workspace_databases(actual_workspace)
+            
+            # Build source specifications with qualified names and default days
+            # Only include enabled databases to avoid loading disabled/problematic ones
+            expanded_sources = []
+            for db in workspace_databases:
+                if not db.sync_enabled:
+                    debug_print(f"Skipping disabled database: {db.get_qualified_name()}")
+                    continue
+                    
+                qualified_name = db.get_qualified_name()
+                default_days = db.default_days
+                source_spec = f"{qualified_name}:{default_days}"
+                expanded_sources.append(source_spec)
+                debug_print(f"Expanded to source: {source_spec}")
+            
+            current_sources = expanded_sources
+            context_state['sources'] = current_sources
+            # Clear workspace from context since it's now expanded to individual sources
+            context_state['workspace'] = None
+            # For workspace expansions, clear original_query_format so command rebuilds from expanded sources
+            # This is safe because workspace expansions don't have browse_selections or natural_language_prompt
+            if not context_state.get('original_browse_mode') and not context_state.get('natural_language_prompt'):
+                context_state['original_query_format'] = None
+            
+            if not current_sources:
+                print_text(f"Warning: No enabled databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
+            else:
+                print_text(f"📦 Workspace '{actual_workspace}' expanded to {len(expanded_sources)} databases", style="cyan")
+        elif not current_sources and len(combined_multi_source_data) == 0 and not user_provided_args:
             debug_print(f"No arguments provided, loading default databases for workspace '{actual_workspace}'.")
             workspace_databases = db_manager.get_workspace_databases(actual_workspace)
             current_sources = [db.nickname for db in workspace_databases]
@@ -896,9 +956,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Update sources list to reflect only the sources that were actually loaded
         # This ensures session logs show accurate source information
-        # However, preserve the original sources format if we have an original_query_format
+        # However, preserve the original sources format if we have user-provided args
         # to maintain day specifications in the query display
-        if not context_state.get('original_query_format'):
+        if not context_state.get('original_query_format') and not user_provided_args:
+            # Only overwrite if sources were auto-generated (no user input)
             context_state['sources'] = list(new_multi_source_data.keys())
         # else: keep the existing sources with their day specifications for display
         
@@ -1212,57 +1273,88 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("Error: Natural language prompt is empty.", style="bold red")
                         return False
                     
-                    # Process natural language query
-                    try:
-                        from promaia.storage.unified_query import get_query_interface
-                        
-                        # Determine workspace to use
-                        workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
-                        
-                        # If no explicit workspace, try to infer from original sources
-                        if not workspace_to_use and context_state.get('sources'):
-                            # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
-                            for source in context_state['sources']:
-                                if '.' in source:
-                                    potential_workspace = source.split('.')[0]
-                                    workspace_to_use = potential_workspace
-                                    break
-                        
-                        # Fall back to default workspace
-                        if not workspace_to_use:
-                            from promaia.config.workspaces import get_workspace_manager
-                            workspace_manager = get_workspace_manager()
-                            workspace_to_use = workspace_manager.get_default_workspace()
-                        
-                        if not workspace_to_use:
-                            print_text("Error: No workspace available for natural language query.", style="bold red")
-                            return False
-                        
-                        print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
-                        
-                        # Process the natural language query
-                        query_interface = get_query_interface()
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, workspace_to_use)
-                        
-                        if not natural_language_content:
-                            print_text("❌ No content found for natural language query", style="bold red")
-                            return False
-                        
-                        # Update context state for natural language mode
-                        context_state['natural_language_content'] = natural_language_content
-                        context_state['natural_language_prompt'] = nl_prompt
-                        # Keep existing regular sources and filters - they'll be combined
-                        
-                        # Reload with natural language content
-                        if reload_context():
-                            print_text("Context updated successfully!", style="bold green")
-                            return True
-                        else:
-                            print_text("Failed to reload context with natural language content.", style="bold red")
-                            return False
+                    # Check if we already have cached results for this exact NL prompt
+                    cached_nl_content = context_state.get('natural_language_content', {})
+                    cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+                    
+                    if nl_prompt == cached_nl_prompt and cached_nl_content:
+                        print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
+                        natural_language_content = cached_nl_content
+                    else:
+                        # Process natural language query
+                        try:
+                            from promaia.storage.unified_query import get_query_interface
                             
-                    except Exception as e:
-                        print_text(f"Error processing natural language query: {e}", style="bold red")
+                            # Determine workspace to use
+                            workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                            
+                            # If no explicit workspace, try to infer from original sources
+                            if not workspace_to_use and context_state.get('sources'):
+                                # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
+                                for source in context_state['sources']:
+                                    if '.' in source:
+                                        potential_workspace = source.split('.')[0]
+                                        workspace_to_use = potential_workspace
+                                        break
+                            
+                            # Fall back to default workspace
+                            if not workspace_to_use:
+                                from promaia.config.workspaces import get_workspace_manager
+                                workspace_manager = get_workspace_manager()
+                                workspace_to_use = workspace_manager.get_default_workspace()
+                            
+                            if not workspace_to_use:
+                                print_text("Error: No workspace available for natural language query.", style="bold red")
+                                return False
+                            
+                            print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
+                            
+                            # Process the natural language query
+                            query_interface = get_query_interface()
+                            
+                            # Always allow cross-workspace queries for natural language
+                            # Workspace is just a classifier/tag, not a mandatory constraint
+                            natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+                            
+                            if not natural_language_content:
+                                print_text("❌ No content found for natural language query", style="bold red")
+                                return False
+                            
+                            # Cache both the results and prompt for future use
+                            context_state['natural_language_content'] = natural_language_content
+                            context_state['cached_natural_language_prompt'] = nl_prompt
+                            
+                        except Exception as e:
+                            print_text(f"Error processing natural language query: {e}", style="bold red")
+                            return False
+                    
+                    # Update context state for natural language mode
+                    # natural_language_content is already set above (either from cache or fresh query)
+                    context_state['natural_language_prompt'] = nl_prompt
+                    
+                    # Update sources and filters based on the edited command, not the old state
+                    new_sources = getattr(parsed_args, 'sources', []) or []
+                    new_filters = getattr(parsed_args, 'filters', []) or []
+                    new_workspace = getattr(parsed_args, 'workspace', None)
+                    new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
+                    
+                    context_state['sources'] = new_sources
+                    context_state['filters'] = new_filters
+                    context_state['mcp_servers'] = new_mcp_servers
+                    if new_workspace:
+                        context_state['workspace'] = new_workspace
+                    
+                    # Clear browse state since user didn't include -b in their edited command
+                    context_state['original_browse_mode'] = False
+                    context_state['browse_selections'] = []
+                    context_state['original_query_format'] = None  # Clear to rebuild query format
+                    
+                    # Reload with natural language content and updated sources
+                    if reload_context():
+                        print_text("Context updated successfully!", style="bold green")
+                        return True
+                    else:
+                        print_text("Failed to reload context with natural language content.", style="bold red")
                         return False
                 else:
                     # Regular mode with sources and filters
@@ -1275,9 +1367,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     context_state['sources'] = new_sources
                     context_state['filters'] = new_filters
                     context_state['mcp_servers'] = new_mcp_servers
-                    context_state['natural_language_content'] = None  # Clear NL content
-                    context_state['natural_language_prompt'] = None   # Clear NL prompt
-                    context_state['original_query_format'] = None    # Clear original format so query rebuilds
+                    
+                    # Only clear natural language content if we're switching to regular sources mode
+                    if new_sources or new_filters:
+                        context_state['natural_language_content'] = None  # Clear NL content
+                        context_state['natural_language_prompt'] = None   # Clear NL prompt
+                        context_state['original_query_format'] = None    # Clear original format so query rebuilds
+                    
                     if new_workspace:
                         context_state['workspace'] = new_workspace
                     
@@ -1585,28 +1681,48 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Process natural language query if present
             natural_language_content = None
             if nl_prompt:
-                try:
-                    from promaia.storage.unified_query import get_query_interface
-                    print_text(f"🔍 Searching content with: '{nl_prompt}'", style="dim cyan")
-                    
-                    query_interface = get_query_interface()
-                    natural_language_content = query_interface.natural_language_query(nl_prompt, resolved_workspace)
-                    
-                    if natural_language_content:
-                        total_nl_pages = sum(len(pages) for pages in natural_language_content.values())
-                        print_text(f"✅ Found {total_nl_pages} pages matching your query", style="green")
-                    else:
-                        print_text("⚠️  No content found for natural language query", style="yellow")
+                # Check if we already have cached results for this exact NL prompt
+                cached_nl_content = context_state.get('natural_language_content', {})
+                cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+                
+                if nl_prompt == cached_nl_prompt and cached_nl_content:
+                    print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
+                    natural_language_content = cached_nl_content
+                else:
+                    try:
+                        from promaia.storage.unified_query import get_query_interface
+                        print_text(f"🔍 Searching content with: '{nl_prompt}'", style="dim cyan")
                         
-                except Exception as e:
-                    print_text(f"❌ Error processing natural language query: {e}", style="red")
+                        query_interface = get_query_interface()
+                        
+                        # Always allow cross-workspace queries for natural language
+                        # Workspace is just a classifier/tag, not a mandatory constraint
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+                        
+                        if natural_language_content:
+                            total_nl_pages = sum(len(pages) for pages in natural_language_content.values())
+                            print_text(f"✅ Found {total_nl_pages} pages matching your query", style="green")
+                            # Cache both the results and prompt for future use
+                            context_state['natural_language_content'] = natural_language_content
+                            context_state['cached_natural_language_prompt'] = nl_prompt
+                        else:
+                            print_text("⚠️  No content found for natural language query", style="yellow")
+                            # Clear cache if no results
+                            context_state['natural_language_content'] = {}
+                            context_state['cached_natural_language_prompt'] = ''
+                            
+                    except Exception as e:
+                        print_text(f"❌ Error processing natural language query: {e}", style="red")
+                        # Clear cache on error
+                        context_state['natural_language_content'] = {}
+                        context_state['cached_natural_language_prompt'] = ''
             
             # Update context state
             context_state['sources'] = combined_sources
             context_state['filters'] = combined_filters
             context_state['workspace'] = workspace
             context_state['resolved_workspace'] = resolved_workspace
-            context_state['natural_language_content'] = natural_language_content
+            # natural_language_content is already set above (either from cache or fresh query)
             context_state['natural_language_prompt'] = nl_prompt
             context_state['original_browse_mode'] = True
             context_state['browse_selections'] = selected_channels

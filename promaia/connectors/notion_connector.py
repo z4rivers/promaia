@@ -30,13 +30,21 @@ class NotionConnector(BaseConnector):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         
-        # Use workspace-specific API key if provided, otherwise fall back to global client
+        # Use workspace-specific API key if provided, otherwise fall back to workspace client
         api_key = config.get('api_key')
+        workspace = config.get('workspace')
+        
         if api_key:
             from notion_client import AsyncClient
             self.client = AsyncClient(auth=api_key)
+        elif workspace:
+            # Use workspace-specific client
+            from promaia.notion.client import get_client
+            self.client = get_client(workspace)
         else:
-            self.client = notion_client
+            # Ensure the global client is properly initialized
+            from promaia.notion.client import ensure_default_client
+            self.client = ensure_default_client()
     
     async def _monitored_api_call(self, api_func, result: Optional[SyncResult] = None, *args, **kwargs):
         """

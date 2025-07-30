@@ -807,9 +807,38 @@ def read_markdown_files_with_registry(
         
         for page_id, title, created_time, last_edited_time, synced_time, file_path, metadata in registry_entries:
             try:
-                # Simplified approach: Always search by page_id first, ignore registry file paths
-                # This handles filename format changes gracefully
-                md_files = glob.glob(os.path.join(md_dir, "**", f"*{page_id}*.md"), recursive=True)
+                # Optimized approach: Try direct file path first, then limited search
+                md_files = []
+                
+                # First try: Use registry file_path if available and exists
+                if file_path and os.path.exists(file_path):
+                    md_files = [file_path]
+                else:
+                    # Second try: Build expected path from page_id and check if it exists
+                    expected_paths = [
+                        os.path.join(md_dir, f"{page_id}.md"),
+                        os.path.join(md_dir, f"{page_id}_{title}.md") if title else None,
+                        os.path.join(md_dir, f"{title}_{page_id}.md") if title else None
+                    ]
+                    
+                    for expected_path in expected_paths:
+                        if expected_path and os.path.exists(expected_path):
+                            md_files = [expected_path]
+                            break
+                    
+                    # Last resort: Limited recursive search (only if really needed)
+                    if not md_files:
+                        try:
+                            # Limit search to prevent hangs - only search immediate subdirectories
+                            for subdir in [md_dir] + [os.path.join(md_dir, d) for d in os.listdir(md_dir) if os.path.isdir(os.path.join(md_dir, d))]:
+                                pattern = os.path.join(subdir, f"*{page_id}*.md")
+                                matches = glob.glob(pattern)
+                                if matches:
+                                    md_files = matches
+                                    break
+                        except (OSError, PermissionError):
+                            # Skip if directory issues
+                            continue
                 
                 if not md_files:
                     # Only warn if we truly can't find the file by page_id

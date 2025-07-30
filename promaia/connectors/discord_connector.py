@@ -97,11 +97,12 @@ class DiscordConnector(BaseConnector):
         client = discord.Client(intents=self.intents)
         
         try:
-            await client.login(self.bot_token)
+            # Add connection timeout and better error handling
+            await asyncio.wait_for(client.login(self.bot_token), timeout=30.0)
             
             # Get guild using HTTP API (no gateway connection needed)
-            guild = await client.fetch_guild(int(self.server_id))
-            channels = await guild.fetch_channels()
+            guild = await asyncio.wait_for(client.fetch_guild(int(self.server_id)), timeout=15.0)
+            channels = await asyncio.wait_for(guild.fetch_channels(), timeout=15.0)
             
             # Convert to simple data structure
             guild_data = {
@@ -171,6 +172,43 @@ class DiscordConnector(BaseConnector):
         if not self._connected:
             await self.connect()
         
+        max_retries = 3
+        retry_delay = 2.0
+        
+        for attempt in range(max_retries):
+            try:
+                return await self._query_pages_impl(filters, date_filter, sort_by, sort_direction, limit, complex_filter)
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                if attempt < max_retries - 1 and any(phrase in error_msg for phrase in [
+                    "cannot connect to host discord.com",
+                    "nodename nor servname provided",
+                    "connection timeout",
+                    "ssl",
+                    "network",
+                    "dns"
+                ]):
+                    self.logger.warning(f"Discord connection attempt {attempt + 1} failed: {e}")
+                    self.logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 1.5  # Exponential backoff
+                    continue
+                else:
+                    self.logger.error(f"Failed to query Discord messages: {e}")
+                    return []
+        
+        self.logger.error(f"Failed to query Discord messages after {max_retries} attempts")
+        return []
+
+    async def _query_pages_impl(self, 
+                               filters: Optional[List[QueryFilter]] = None,
+                               date_filter: Optional[DateRangeFilter] = None,
+                               sort_by: Optional[str] = None,
+                               sort_direction: str = "desc",
+                               limit: Optional[int] = None,
+                               complex_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Internal implementation of query_pages with actual Discord API calls."""
         try:
             # Get channels to sync - support both single and multiple channels
             channel_identifiers = self._extract_multiple_channel_filters(filters, complex_filter)
@@ -180,11 +218,9 @@ class DiscordConnector(BaseConnector):
                 if single_channel:
                     channel_identifiers = [single_channel]
                 else:
-                    # No specific channel filter - this shouldn't happen in normal usage
-                    # Users should use browse mode to select channels first
-                    self.logger.warning("No specific channel filter provided for Discord sync")
-                    self.logger.info("Use browse mode (-b) to select Discord channels before syncing")
-                    return []
+                    # No specific channel filter - sync all accessible channels (original behavior)
+                    self.logger.info("No specific channel filter provided - syncing all accessible channels")
+                    return await self._query_all_accessible_channels(date_filter, sort_direction, limit)
             
             self.logger.info(f"Querying {len(channel_identifiers)} Discord channels: {channel_identifiers}")
             
@@ -192,11 +228,16 @@ class DiscordConnector(BaseConnector):
             client = discord.Client(intents=self.intents)
             
             try:
-                await client.login(self.bot_token)
-                guild = await client.fetch_guild(int(self.server_id))
+                # Add connection timeout and better error handling
+                self.logger.info("Connecting to Discord API...")
+                await asyncio.wait_for(client.login(self.bot_token), timeout=30.0)
+                self.logger.info("Successfully authenticated with Discord")
+                
+                guild = await asyncio.wait_for(client.fetch_guild(int(self.server_id)), timeout=15.0)
+                self.logger.info(f"Successfully connected to Discord server: {guild.name}")
                 
                 # Fetch the channels for this guild
-                guild_channels = await guild.fetch_channels()
+                guild_channels = await asyncio.wait_for(guild.fetch_channels(), timeout=15.0)
                 
                 # Calculate date range for filtering (common for all channels)
                 after_date = None
@@ -332,11 +373,16 @@ class DiscordConnector(BaseConnector):
                 return all_messages
                 
             finally:
-                await client.close()
+                if client and not client.is_closed():
+                    await client.close()
+                    self.logger.debug("Discord client connection closed")
             
-        except Exception as e:
-            self.logger.error(f"Failed to query Discord messages: {e}")
+        except asyncio.TimeoutError:
+            self.logger.error("Timeout while connecting to Discord API - check your network connection")
             return []
+        except Exception as e:
+            # This will be caught by the retry logic in the parent method
+            raise
 
     async def get_page_content(self, page_id: str, include_properties: bool = True) -> Dict[str, Any]:
         """Get full content of a specific Discord message."""
@@ -518,12 +564,24 @@ class DiscordConnector(BaseConnector):
         # Handle simple filters first
         if filters:
             for filter_obj in filters:
-                if filter_obj.property_name == "channel_id" and filter_obj.operator == "eq":
-                    channel_identifiers.append(filter_obj.value)
-                elif filter_obj.property_name == "channel_name" and filter_obj.operator == "eq":
-                    channel_identifiers.append(f"name:{filter_obj.value}")
-                elif filter_obj.property_name == "discord_channel_name" and filter_obj.operator == "eq":
-                    channel_identifiers.append(f"name:{filter_obj.value}")
+                if filter_obj.property_name == "channel_id":
+                    if filter_obj.operator == "eq":
+                        channel_identifiers.append(filter_obj.value)
+                    elif filter_obj.operator == "in" and isinstance(filter_obj.value, list):
+                        # Handle array of channel IDs
+                        channel_identifiers.extend(filter_obj.value)
+                elif filter_obj.property_name == "channel_name":
+                    if filter_obj.operator == "eq":
+                        channel_identifiers.append(f"name:{filter_obj.value}")
+                    elif filter_obj.operator == "in" and isinstance(filter_obj.value, list):
+                        # Handle array of channel names
+                        channel_identifiers.extend([f"name:{name}" for name in filter_obj.value])
+                elif filter_obj.property_name == "discord_channel_name":
+                    if filter_obj.operator == "eq":
+                        channel_identifiers.append(f"name:{filter_obj.value}")
+                    elif filter_obj.operator == "in" and isinstance(filter_obj.value, list):
+                        # Handle array of discord channel names
+                        channel_identifiers.extend([f"name:{name}" for name in filter_obj.value])
         
         # Handle complex filters (multiple channels with OR logic)
         if complex_filter and complex_filter.get('type') == 'complex':
@@ -552,8 +610,13 @@ class DiscordConnector(BaseConnector):
             all_messages = []
             
             try:
-                await client.login(self.bot_token)
-                guild = await client.fetch_guild(int(self.server_id))
+                # Add connection timeout and better error handling
+                self.logger.info("Connecting to Discord API for full server sync...")
+                await asyncio.wait_for(client.login(self.bot_token), timeout=30.0)
+                self.logger.info("Successfully authenticated with Discord")
+                
+                guild = await asyncio.wait_for(client.fetch_guild(int(self.server_id)), timeout=15.0)
+                self.logger.info(f"Successfully connected to Discord server: {guild.name}")
                 
                 # Get all accessible channels
                 guild_channels = await guild.fetch_channels()
@@ -888,8 +951,10 @@ class DiscordConnector(BaseConnector):
         client = discord.Client(intents=self.intents)
         
         try:
-            await client.login(self.bot_token)
-            guild = await client.fetch_guild(int(self.server_id))
+            # Add connection timeout and better error handling
+            self.logger.info("Connecting to Discord API to list channels...")
+            await asyncio.wait_for(client.login(self.bot_token), timeout=30.0)
+            guild = await asyncio.wait_for(client.fetch_guild(int(self.server_id)), timeout=15.0)
             
             print(f'🎮 Discord Server: {guild.name} (ID: {guild.id})')
             print('📢 Available Channels:')
@@ -965,8 +1030,10 @@ class DiscordConnector(BaseConnector):
         client = discord.Client(intents=self.intents)
         
         try:
-            await client.login(self.bot_token)
-            guild = await client.fetch_guild(int(self.server_id))
+            # Add connection timeout and better error handling
+            self.logger.info("Connecting to Discord API to discover accessible channels...")
+            await asyncio.wait_for(client.login(self.bot_token), timeout=30.0)
+            guild = await asyncio.wait_for(client.fetch_guild(int(self.server_id)), timeout=15.0)
             
             # Get bot member once for efficiency
             bot_user_id = client.user.id

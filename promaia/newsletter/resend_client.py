@@ -4,6 +4,7 @@ Simple Resend email client for newsletters.
 import os
 import resend
 from typing import List, Optional, Dict, Any
+from promaia.utils.display import print_text, print_separator
 
 
 class ResendClient:
@@ -55,11 +56,11 @@ class ResendClient:
             html_content = self._plain_text_to_html(plain_text)
         
         try:
-            print(f"   📧 Sending newsletter via Resend...")
-            print(f"   📧 Subject: {subject}")
-            print(f"   📧 From: {from_name} <{from_email}>")
-            print(f"   📧 To: {to_emails}")
-            print(f"   📧 Content length: {len(plain_text)} characters")
+            print_text(f"   �� Sending newsletter via Resend...", style="white")
+            print_text(f"   📧 Subject: {subject}", style="white")
+            print_text(f"   📧 From: {from_name} <{from_email}>", style="white")
+            print_text(f"   📧 To: {to_emails}", style="white")
+            print_text(f"   📧 Content length: {len(plain_text)} characters", style="white")
             
             # Send the email
             response = resend.Emails.send({
@@ -70,8 +71,8 @@ class ResendClient:
                 "html": html_content
             })
             
-            print(f"   ✅ Email sent successfully!")
-            print(f"   📧 Resend ID: {response.get('id', 'Unknown')}")
+            print_text("   ✅ Email sent successfully!", style="green")
+            print_text(f"   📧 Resend ID: {response.get('id', 'Unknown')}", style="white")
             
             return {
                 "success": True,
@@ -80,7 +81,7 @@ class ResendClient:
             }
             
         except Exception as e:
-            print(f"   ❌ Error sending email: {str(e)}")
+            print_text(f"   ❌ Error sending email: {str(e)}", style="red")
             return {
                 "success": False,
                 "error": str(e)

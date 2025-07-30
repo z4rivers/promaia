@@ -16,6 +16,8 @@ from rich.layout import Layout
 from rich.live import Live
 from rich import box
 
+from promaia.utils.display import print_text, print_separator
+
 logger = logging.getLogger(__name__)
 
 async def handle_discord_setup(args):
@@ -23,9 +25,9 @@ async def handle_discord_setup(args):
     workspace = args.workspace
     server_id = getattr(args, 'server_id', None)
     
-    print(f"🔧 Setting up Discord bot for workspace '{workspace}'")
+    print_text(f"🔧 Setting up Discord bot for workspace '{workspace}'")
     if server_id:
-        print(f"🏰 Server ID: {server_id}")
+        print_text(f"🏰 Server ID: {server_id}")
     print()
     
     # Create workspace credentials directory
@@ -83,7 +85,7 @@ async def handle_discord_setup(args):
         with open(credentials_file, 'w') as f:
             json.dump(creds_data, f, indent=2)
         
-        print(f"✅ Credentials saved to {credentials_file}")
+        print_text(f"✅ Credentials saved to {credentials_file}")
         
     except Exception as e:
         print(f"❌ Error saving credentials: {e}")
@@ -144,8 +146,8 @@ async def handle_discord_list_channels(args):
         credentials_file = os.path.join(config_dir, "discord_credentials.json")
         
         if not os.path.exists(credentials_file):
-            print(f"❌ Discord credentials not found for workspace '{workspace}'")
-            print(f"Please run: maia workspace discord-setup {workspace}")
+            print_text(f"❌ Discord credentials not found for workspace '{workspace}'")
+            print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
         with open(credentials_file, 'r') as f:
@@ -331,7 +333,7 @@ async def handle_discord_browse(args):
                 discord_databases.append((db_name, db_config))
         
         if not discord_databases:
-            console.print(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
+            print_text(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
             return
         
         # Load credentials
@@ -339,8 +341,8 @@ async def handle_discord_browse(args):
         credentials_file = os.path.join(config_dir, "discord_credentials.json")
         
         if not os.path.exists(credentials_file):
-            console.print(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
-            console.print(f"Please run: maia workspace discord-setup {workspace}")
+            print_text(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
+            print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
         with open(credentials_file, 'r') as f:
@@ -379,29 +381,29 @@ async def handle_discord_browse(args):
                     })
                     
                 except Exception as e:
-                    console.print(f"⚠️  Error fetching channels for {db_name}: {e}", style="yellow")
+                    print_text(f"⚠️  Error fetching channels for {db_name}: {e}", style="yellow")
         
         if not any(server["channels"] for server in all_channels):
-            console.print("❌ No accessible channels found", style="red")
+            print_text("❌ No accessible channels found", style="red")
             return
         
         # Start interactive browser
         selected_channels, _ = await interactive_channel_browser(console, all_channels, workspace)
         
         if selected_channels:
-            console.print(f"\n🎉 Selected {len(selected_channels)} channels!")
+            print_text(f"\n🎉 Selected {len(selected_channels)} channels!")
             
             # Return the selected channels for chat integration
             return selected_channels
         else:
-            console.print("ℹ️  No channels selected", style="cyan")
+            print_text("ℹ️  No channels selected", style="cyan")
             return []
         
     except ImportError:
-        console.print("❌ Discord integration not available.")
-        console.print("Please install discord.py: pip install discord.py")
+        print("❌ Discord integration not available.")
+        print("Please install discord.py: pip install discord.py")
     except Exception as e:
-        console.print(f"❌ Error in Discord browse: {e}", style="red")
+        print(f"❌ Error in Discord browse: {e}", style="red")
         logger.error(f"Discord browse error: {e}")
 
 
@@ -422,10 +424,10 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
         
         # Show date filtering info if specified
         if database_days:
-            console.print("📅 Date filtering active:")
+            print_text("📅 Date filtering active:")
             for db_name, days in database_days.items():
-                console.print(f"   • {db_name}: last {days} days")
-            console.print()
+                print_text(f"   • {db_name}: last {days} days")
+            print()
         
         # Get all Discord databases for this workspace
         db_manager = get_database_manager()
@@ -465,7 +467,7 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
         
         if not discord_databases:
             if filter_databases:
-                console.print(f"❌ No Discord databases found matching: {', '.join(filter_databases)}", style="red")
+                print_text(f"❌ No Discord databases found matching: {', '.join(filter_databases)}", style="red")
                 
                 # Show available Discord databases to help user
                 all_discord_dbs = []
@@ -479,17 +481,17 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
                             all_discord_dbs.append(qualified_name)
                 
                 if all_discord_dbs:
-                    console.print(f"📋 Available Discord databases for workspace '{workspace}':", style="cyan")
+                    print_text(f"📋 Available Discord databases for workspace '{workspace}':", style="cyan")
                     for db in all_discord_dbs:
-                        console.print(f"   • {db}", style="dim cyan")
+                        print_text(f"   • {db}", style="dim cyan")
                     # For suggestion, use the qualified name (which includes nickname)
                     first_suggestion = all_discord_dbs[0].split(' (or ')[0]  # Get just the qualified name part
-                    console.print(f"\n💡 Try: -b {first_suggestion}:7", style="dim yellow")
+                    print_text(f"\n💡 Try: -b {first_suggestion}:7", style="dim yellow")
                 else:
-                    console.print(f"ℹ️  No Discord databases configured for workspace '{workspace}'", style="yellow")
-                    console.print(f"💡 Set up Discord integration: maia workspace discord-setup {workspace}", style="dim yellow")
+                    print_text(f"ℹ️  No Discord databases configured for workspace '{workspace}'", style="yellow")
+                    print_text(f"💡 Set up Discord integration: maia workspace discord-setup {workspace}", style="dim yellow")
             else:
-                console.print(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
+                print_text(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
             return []
         
         # Load credentials
@@ -497,8 +499,8 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
         credentials_file = os.path.join(config_dir, "discord_credentials.json")
         
         if not os.path.exists(credentials_file):
-            console.print(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
-            console.print(f"Please run: maia workspace discord-setup {workspace}")
+            print_text(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
+            print_text(f"Please run: maia workspace discord-setup {workspace}")
             return []
         
         with open(credentials_file, 'r') as f:
@@ -538,17 +540,17 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
                     })
                     
                 except Exception as e:
-                    console.print(f"⚠️  Error fetching channels for {db_name}: {e}", style="yellow")
+                    print_text(f"⚠️  Error fetching channels for {db_name}: {e}", style="yellow")
         
         if not any(server["channels"] for server in all_channels):
-            console.print("❌ No accessible channels found", style="red")
+            print_text("❌ No accessible channels found", style="red")
             return []
         
         # Start interactive browser
         selected_channels, updated_days = await interactive_channel_browser(console, all_channels, workspace, previous_selections)
         
         if selected_channels:
-            console.print(f"\n🎉 Selected {len(selected_channels)} channels!")
+            print_text(f"\n🎉 Selected {len(selected_channels)} channels!")
             
             # Show any date range changes
             if updated_days:
@@ -559,22 +561,22 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
                             original_days = orig_days
                             break
                     if original_days and original_days != days:
-                        console.print(f"📅 Updated {db_name}: {original_days} → {days} days", style="cyan")
+                        print_text(f"�� Updated {db_name}: {original_days} → {days} days", style="cyan")
             
             # Return the selected channels for chat integration
             # For now, we'll still return the original format for compatibility
             # but in the future, we could return updated days too
             return selected_channels
         else:
-            console.print("ℹ️  No channels selected", style="cyan")
+            print_text("ℹ️  No channels selected", style="cyan")
             return []
         
     except ImportError:
-        console.print("❌ Discord integration not available.")
-        console.print("Please install discord.py: pip install discord.py")
+        print("❌ Discord integration not available.")
+        print("Please install discord.py: pip install discord.py")
         return []
     except Exception as e:
-        console.print(f"❌ Error in Discord browse: {e}", style="red")
+        print(f"❌ Error in Discord browse: {e}", style="red")
         logger.error(f"Discord browse error: {e}")
         return []
 
@@ -1033,7 +1035,7 @@ async def handle_discord_debug_channels(args):
             print("❌ No workspace specified and no default workspace configured.")
             return
     
-    print(f"🔍 Debugging Discord channels for workspace: {workspace}")
+    print_text(f"🔍 Debugging Discord channels for workspace: {workspace}")
     
     # Get all Discord databases for this workspace
     db_manager = get_database_manager()
@@ -1045,10 +1047,10 @@ async def handle_discord_debug_channels(args):
             discord_dbs.append((db_name, db_config))
     
     if not discord_dbs:
-        print(f"❌ No Discord databases found for workspace '{workspace}'")
+        print_text(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
         return
     
-    print(f"📋 Found {len(discord_dbs)} Discord database(s):")
+    print_text(f"📋 Found {len(discord_dbs)} Discord database(s):")
     
     for db_name, db_config in discord_dbs:
         print(f"\n🗃️  Database: {db_name} (ID: {db_config.database_id})")
@@ -1063,7 +1065,7 @@ async def handle_discord_debug_channels(args):
             credentials_file = os.path.join(config_dir, "discord_credentials.json")
             
             if not os.path.exists(credentials_file):
-                print(f"   ❌ Discord credentials not found for workspace '{workspace}'")
+                print_text(f"   ❌ Discord credentials not found for workspace '{workspace}'", style="red")
                 continue
             
             with open(credentials_file, 'r') as f:
@@ -1104,7 +1106,7 @@ async def handle_discord_refresh(args):
                 discord_databases.append((db_name, db_config))
         
         if not discord_databases:
-            console.print(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
+            print_text(f"❌ No Discord databases found for workspace '{workspace}'", style="red")
             return
         
         # Load credentials
@@ -1112,8 +1114,8 @@ async def handle_discord_refresh(args):
         credentials_file = os.path.join(config_dir, "discord_credentials.json")
         
         if not os.path.exists(credentials_file):
-            console.print(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
-            console.print(f"Please run: maia workspace discord-setup {workspace}")
+            print_text(f"❌ Discord credentials not found for workspace '{workspace}'", style="red")
+            print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
         with open(credentials_file, 'r') as f:
@@ -1222,12 +1224,12 @@ async def handle_discord_registry_check(args):
         orphaned_entries = registry_sync.find_orphaned_registry_entries()
         
         if not orphaned_entries:
-            console.print("✅ No orphaned registry entries found", style="bold green")
-            console.print("🎯 All registry entries match current database configurations", style="dim")
+            print_text("✅ No orphaned registry entries found", style="bold green")
+            print_text("🎯 All registry entries match current database configurations", style="dim")
             return
         
-        console.print(f"📊 Found {len(orphaned_entries)} orphaned database(s) in registry:", style="bold yellow")
-        console.print()
+        print_text(f"📊 Found {len(orphaned_entries)} orphaned database(s) in registry:", style="bold yellow")
+        print()
         
         # Create table of orphaned entries
         table = Table(title="Orphaned Registry Entries", box=box.ROUNDED)
@@ -1256,18 +1258,18 @@ async def handle_discord_registry_check(args):
         suggestions = registry_sync.suggest_database_mappings(orphaned_entries)
         
         if suggestions:
-            console.print("💡 Suggested mappings:", style="bold blue")
+            print_text("💡 Suggested mappings:", style="bold blue")
             for old_name, new_name in suggestions.items():
-                console.print(f"  {old_name} → {new_name}")
+                print_text(f"  {old_name} → {new_name}")
             
-            console.print()
-            console.print("💡 Run 'maia discord registry-sync --dry-run' to see what would be updated", style="dim")
-            console.print("💡 Run 'maia discord registry-sync' to apply the mappings", style="dim")
+            print()
+            print_text("💡 Run 'maia discord registry-sync --dry-run' to see what would be updated", style="dim")
+            print_text("💡 Run 'maia discord registry-sync' to apply the mappings", style="dim")
         else:
-            console.print("⚠️  No automatic mappings found. Manual intervention may be required.", style="yellow")
+            print_text("⚠️  No automatic mappings found. Manual intervention may be required.", style="yellow")
         
     except Exception as e:
-        console.print(f"❌ Error checking registry: {e}", style="bold red")
+        print_text(f"❌ Error checking registry: {e}", style="bold red")
         logger.error(f"Discord registry check failed: {e}", exc_info=True)
 
 async def handle_discord_registry_sync(args):
@@ -1281,73 +1283,73 @@ async def handle_discord_registry_sync(args):
         dry_run = args.dry_run
         
         if dry_run:
-            console.print("🔍 Performing registry sync dry run (no changes will be made)...", style="bold blue")
+            print_text("🔍 Performing registry sync dry run (no changes will be made)...", style="bold blue")
         else:
-            console.print("🚀 Starting Discord registry synchronization...", style="bold green")
+            print_text("🚀 Starting Discord registry synchronization...", style="bold green")
         
         # Find orphaned entries and get suggestions
         orphaned_entries = registry_sync.find_orphaned_registry_entries()
         
         if not orphaned_entries:
-            console.print("✅ No orphaned registry entries found", style="bold green")
-            console.print("🎯 All registry entries match current database configurations", style="dim")
+            print_text("✅ No orphaned registry entries found", style="bold green")
+            print_text("🎯 All registry entries match current database configurations", style="dim")
             return
         
         suggestions = registry_sync.suggest_database_mappings(orphaned_entries)
         
         if not suggestions:
-            console.print("⚠️  No automatic mappings could be determined", style="bold yellow")
-            console.print("💡 Run 'maia discord registry-check' to see orphaned entries", style="dim")
+            print_text("⚠️  No automatic mappings could be determined", style="bold yellow")
+            print_text("💡 Run 'maia discord registry-check' to see orphaned entries", style="dim")
             return
         
-        console.print(f"📊 Found {len(suggestions)} database mapping(s):", style="bold cyan")
+        print_text(f"📊 Found {len(suggestions)} database mapping(s):", style="bold cyan")
         for old_name, new_name in suggestions.items():
-            console.print(f"  {old_name} → {new_name}")
-        console.print()
+            print_text(f"  {old_name} → {new_name}")
+        print()
         
         # Apply the mappings
         results = registry_sync.sync_all_suggested_mappings(suggestions, dry_run=dry_run)
         
-        console.print(f"📊 Registry Sync Results ({'' if not dry_run else 'DRY RUN '}Summary):", style="bold cyan")
-        console.print(f"  • Total mappings processed: {results['total_mappings']}")
-        console.print(f"  • Successful updates: {results['successful_updates']}")
-        console.print(f"  • Failed updates: {results['failed_updates']}")
-        console.print(f"  • Total registry entries updated: {results['total_entries_updated']}")
+        print_text(f"📊 Registry Sync Results ({'' if not dry_run else 'DRY RUN '}Summary):", style="bold cyan")
+        print_text(f"  • Total mappings processed: {results['total_mappings']}")
+        print_text(f"  • Successful updates: {results['successful_updates']}")
+        print_text(f"  • Failed updates: {results['failed_updates']}")
+        print_text(f"  • Total registry entries updated: {results['total_entries_updated']}")
         
         # Show detailed results
         if results["update_results"]:
-            console.print()
+            print()
             for update_result in results["update_results"]:
                 if dry_run:
                     count_key = "entries_would_update"
                     count_value = update_result.get(count_key, 0)
                     status = "🔍 WOULD UPDATE" if count_value > 0 else "ℹ️  NO ENTRIES"
-                    console.print(f"{status} {update_result['old_name']} → {update_result['new_name']}")
-                    console.print(f"  • Entries: {count_value}")
+                    print_text(f"{status} {update_result['old_name']} → {update_result['new_name']}")
+                    print_text(f"  • Entries: {count_value}")
                 else:
                     status = "✅ SUCCESS" if update_result.get("success") else "❌ FAILED"
-                    console.print(f"{status} {update_result['old_name']} → {update_result['new_name']}")
-                    console.print(f"  • Entries updated: {update_result.get('entries_updated', 0)}")
+                    print_text(f"{status} {update_result['old_name']} → {update_result['new_name']}")
+                    print_text(f"  • Entries updated: {update_result.get('entries_updated', 0)}")
                     
                     if update_result.get("error"):
-                        console.print(f"  • Error: {update_result['error']}", style="red")
-                console.print()
+                        print_text(f"  • Error: {update_result['error']}", style="red")
+                print()
         
         # Show any general errors
         if results.get("errors"):
-            console.print("❌ Errors encountered:", style="bold red")
+            print_text("❌ Errors encountered:", style="bold red")
             for error in results["errors"]:
-                console.print(f"  • {error}", style="red")
-            console.print()
+                print_text(f"  • {error}", style="red")
+            print()
         
         if dry_run:
-            console.print("💡 Run without --dry-run to perform the actual registry update", style="dim")
+            print_text("💡 Run without --dry-run to perform the actual registry update", style="dim")
         elif results["successful_updates"] > 0:
-            console.print("🎉 Registry synchronization completed successfully!", style="bold green")
-            console.print("💡 You can now use renamed Discord databases without registry issues", style="dim")
+            print_text("🎉 Registry synchronization completed successfully!", style="bold green")
+            print_text("💡 You can now use renamed Discord databases without registry issues", style="dim")
         
     except Exception as e:
-        console.print(f"❌ Error during registry sync: {e}", style="bold red")
+        print_text(f"❌ Error during registry sync: {e}", style="bold red")
         logger.error(f"Discord registry sync failed: {e}", exc_info=True)
 
 

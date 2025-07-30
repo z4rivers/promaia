@@ -328,17 +328,31 @@ class DatabaseManager:
         if workspace is None:
             workspace = self.workspace_manager.get_default_workspace() or "koii"
         
+        # Check if name is already qualified (contains workspace prefix)
+        if '.' in name:
+            # Split to get workspace and database name
+            name_workspace, name_part = name.rsplit('.', 1)
+            if name_workspace == workspace:
+                # Already properly qualified, use as-is
+                qualified_name = name
+                database_name = name_part
+            else:
+                # Different workspace in name vs parameter - use parameter workspace
+                qualified_name = f"{workspace}.{name_part}" if workspace != "koii" else name_part
+                database_name = name_part
+        else:
+            # Simple name, add workspace prefix if needed
+            qualified_name = f"{workspace}.{name}" if workspace != "koii" else name
+            database_name = name
+        
         # Add workspace to config data
         config_data["workspace"] = workspace
-        
-        # Create qualified name for storage
-        qualified_name = f"{workspace}.{name}" if workspace != "koii" else name
         
         if qualified_name in self.databases:
             logger.warning(f"Database '{qualified_name}' already exists")
             return False
         
-        self.databases[qualified_name] = DatabaseConfig(name, config_data)
+        self.databases[qualified_name] = DatabaseConfig(database_name, config_data)
         self.save_config()
         
         logger.info(f"Added database '{qualified_name}' to workspace '{workspace}'")

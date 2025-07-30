@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from promaia.storage.json_editor import NotionJSONEditor
 from promaia.storage.notion_sync import NotionSyncer
 from promaia.utils.config import get_config
+from promaia.utils.display import print_text, print_markdown, print_separator
 
 console = Console(width=9999, soft_wrap=False)
 
@@ -34,7 +35,7 @@ def list_pages(content_type, page_id, title_filter):
         content_dir = editor._get_content_type_dir(content_type)
         
         if not os.path.exists(content_dir):
-            console.print(f"[red]No data found for content type: {content_type}[/red]")
+            print_text(f"No data found for content type: {content_type}", style="red")
             return
         
         table = Table(title=f"Pages in {content_type}")
@@ -75,12 +76,12 @@ def list_pages(content_type, page_id, title_filter):
                     table.add_row(title[:50], page_id_val, saved_at[:19], sync_status)
                     
                 except Exception as e:
-                    console.print(f"[red]Error reading {filename}: {e}[/red]")
+                    print_text(f"Error reading {filename}: {e}", style="red")
         
         console.print(table)
         
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        print_text(f"Error: {e}", style="red")
 
 @edit.command()
 @click.argument('content_type')
@@ -98,17 +99,17 @@ def update(content_type, page_id, title, properties, add_paragraph, add_heading,
         
         # Load the page
         data = editor.load_page(content_type, page_id)
-        console.print(f"[green]Loaded page: {data['title']}[/green]")
+        print_text(f"Loaded page: {data['title']}", style="green")
         
         # Update title if provided
         if title:
             data = editor.update_title(data, title)
-            console.print(f"[cyan]Updated title to: {title}[/cyan]")
+            print_text(f"Updated title to: {title}", style="cyan")
         
         # Update properties if provided
         for prop in properties:
             if '=' not in prop:
-                console.print(f"[red]Invalid property format: {prop}. Use 'Name=Value'[/red]")
+                print_text(f"Invalid property format: {prop}. Use 'Name=Value'", style="red")
                 continue
             
             prop_name, prop_value = prop.split('=', 1)
@@ -135,52 +136,47 @@ def update(content_type, page_id, title, properties, add_paragraph, add_heading,
                 }]
             
             data = editor.update_property(data, prop_name, prop_value, prop_type)
-            console.print(f"[cyan]Updated property {prop_name}: {str(prop_value)[:50]}[/cyan]")
+            print_text(f"Updated property {prop_name}: {str(prop_value)[:50]}", style="cyan")
         
         # Add content blocks if provided
         if add_paragraph:
             block = editor.create_paragraph_block(add_paragraph)
             data = editor.add_content_block(data, block)
-            console.print(f"[cyan]Added paragraph: {add_paragraph[:50]}[/cyan]")
+            print_text(f"Added paragraph: {add_paragraph[:50]}", style="cyan")
         
         if add_heading:
             block = editor.create_heading_block(add_heading, heading_level)
             data = editor.add_content_block(data, block)
-            console.print(f"[cyan]Added heading {heading_level}: {add_heading[:50]}[/cyan]")
+            print_text(f"Added heading {heading_level}: {add_heading[:50]}", style="cyan")
         
         # Save the changes
         filepath = editor.save_page(data, backup=backup)
-        console.print(f"[green]Saved changes to: {filepath}[/green]")
+        print_text(f"Saved changes to: {filepath}", style="green")
         
         # Show changes summary
         changes = editor.get_changes_summary()
         if changes:
-            console.print("\n[bold]Changes made:[/bold]")
+            print_text("\nChanges made:", style="bold")
             for change in changes:
-                console.print(f"  • {change['description']}")
+                print_text(f"  • {change['description']}", style="white")
         
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        print_text(f"Error: {e}", style="red")
 
-@edit.command()
-@click.argument('content_type')
-@click.argument('page_id')
-def show(content_type, page_id):
-    """Show detailed information about a page"""
+def handle_edit_show(content_type, page_id=None):
+    """Show page content in tree format."""
     try:
-        editor = NotionJSONEditor()
         data = editor.load_page(content_type, page_id)
-        
-        console.print(f"[bold cyan]Page: {data['title']}[/bold cyan]")
-        console.print(f"[dim]ID: {data['page_id']}[/dim]")
-        console.print(f"[dim]Type: {data['content_type']}[/dim]")
-        console.print(f"[dim]Last saved: {data['saved_at']}[/dim]")
-        console.print(f"[dim]Last synced: {data.get('last_synced', 'Never')}[/dim]")
+        print_text(f"Page: {data['title']}", style="bold cyan")
+        print_text(f"ID: {data['page_id']}", style="dim")
+        print_text(f"Type: {data['content_type']}", style="dim")
+        print_text(f"Last saved: {data['saved_at']}", style="dim")
+        print_text(f"Last synced: {data.get('last_synced', 'Never')}", style="dim")
         
         # Show properties
-        console.print("\n[bold]Properties:[/bold]")
-        props = data['notion_data']['properties']
-        for name, prop in props.items():
+        properties = data.get('properties', {})
+        print_text("\nProperties:", style="bold")
+        for name, prop in properties.items():
             prop_type = prop.get('type', 'unknown')
             value = prop.get(prop_type, 'N/A')
             
@@ -194,13 +190,13 @@ def show(content_type, page_id):
             elif prop_type == 'relation' and isinstance(value, list):
                 display_value = f"{len(value)} related items"
             else:
-                display_value = str(value)[:100]
+                display_value = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
             
-            console.print(f"  [cyan]{name}[/cyan] ({prop_type}): {display_value}")
+            print_text(f"  {name} ({prop_type}): {display_value}", style="cyan")
         
-        # Show content summary
-        content = data['notion_data']['content']
-        console.print(f"\n[bold]Content blocks: {len(content)}[/bold]")
+        # Show content structure
+        content = data.get('content', [])
+        print_text(f"\nContent blocks: {len(content)}", style="bold")
         
         if content:
             tree = Tree("Content Structure")
@@ -225,7 +221,7 @@ def show(content_type, page_id):
             console.print(tree)
         
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        print_text(f"Error: {e}", style="red")
 
 @edit.command()
 @click.argument('content_type', required=False)
@@ -238,7 +234,8 @@ def sync(content_type, page_id, force, dry_run):
         syncer = NotionSyncer()
         
         if dry_run:
-            console.print("[yellow]DRY RUN - No changes will be made[/yellow]\n")
+            print_text("DRY RUN - No changes will be made", style="yellow")
+            print()
             
             if content_type:
                 plan = syncer.create_sync_plan(content_type)
@@ -246,51 +243,51 @@ def sync(content_type, page_id, force, dry_run):
                 plan = syncer.create_sync_plan()
             
             if not plan:
-                console.print("[green]No pages need syncing[/green]")
+                print_text("No pages need syncing", style="green")
                 return
             
-            console.print("[bold]Sync Plan:[/bold]")
+            print_text("Sync Plan:", style="bold")
             for ct, pages in plan.items():
-                console.print(f"\n[cyan]{ct}:[/cyan]")
+                print_text(f"\n{ct}:", style="cyan")
                 for page_id in pages:
-                    console.print(f"  • {page_id}")
+                    print_text(f"  • {page_id}", style="white")
             return
         
         if page_id:
             # Sync single page
             if not content_type:
-                console.print("[red]Content type required when syncing specific page[/red]")
+                print_text("Content type required when syncing specific page", style="red")
                 return
             
-            console.print(f"[yellow]Syncing page {page_id} in {content_type}...[/yellow]")
+            print_text(f"Syncing page {page_id} in {content_type}...", style="yellow")
             result = syncer.sync_page(content_type, page_id, force=force)
             
             if result.success:
-                console.print(f"[green]✓ Successfully synced {result.changes_applied} changes[/green]")
+                print_text(f"✓ Successfully synced {result.changes_applied} changes", style="green")
             else:
-                console.print(f"[red]✗ Sync failed[/red]")
+                print_text("✗ Sync failed", style="red")
                 for error in result.errors:
-                    console.print(f"  [red]Error: {error}[/red]")
+                    print_text(f"  Error: {error}", style="red")
                 for conflict in result.conflicts:
-                    console.print(f"  [yellow]Conflict: {conflict}[/yellow]")
+                    print_text(f"  Conflict: {conflict}", style="yellow")
         
         elif content_type:
             # Sync entire database
-            console.print(f"[yellow]Syncing all pages in {content_type}...[/yellow]")
+            print_text(f"Syncing all pages in {content_type}...", style="yellow")
             results = syncer.sync_database(content_type, force=force)
             
             success_count = sum(1 for r in results if r.success)
             total_count = len(results)
             
-            console.print(f"\n[bold]Sync Results: {success_count}/{total_count} successful[/bold]")
+            print_text(f"\nSync Results: {success_count}/{total_count} successful", style="bold")
             
             for result in results:
                 if result.success:
-                    console.print(f"[green]✓ {result.page_id}: {result.changes_applied} changes[/green]")
+                    print_text(f"✓ {result.page_id}: {result.changes_applied} changes", style="green")
                 else:
-                    console.print(f"[red]✗ {result.page_id}: Failed[/red]")
-                    for error in result.errors[:2]:  # Show first 2 errors
-                        console.print(f"    [red]{error}[/red]")
+                    print_text(f"✗ {result.page_id}: Failed", style="red")
+                    for error in result.errors:
+                        print_text(f"    {error}", style="red")
         
         else:
             # Sync all databases
@@ -298,17 +295,17 @@ def sync(content_type, page_id, force, dry_run):
             all_results = []
             
             for ct in config.keys():
-                console.print(f"[yellow]Syncing {ct}...[/yellow]")
+                print_text(f"Syncing {ct}...", style="yellow")
                 results = syncer.sync_database(ct, force=force)
                 all_results.extend(results)
             
             success_count = sum(1 for r in all_results if r.success)
             total_count = len(all_results)
             
-            console.print(f"\n[bold]Total Sync Results: {success_count}/{total_count} successful[/bold]")
+            print_text(f"\nTotal Sync Results: {success_count}/{total_count} successful", style="bold")
         
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        print_text(f"Error: {e}", style="red")
 
 @edit.command()
 @click.argument('content_type', required=False)
@@ -344,7 +341,7 @@ def status(content_type):
         console.print(table)
         
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        print_text(f"Error: {e}", style="red")
 
 if __name__ == '__main__':
     edit() 
