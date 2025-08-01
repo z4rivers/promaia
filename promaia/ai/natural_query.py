@@ -297,24 +297,30 @@ WORKSPACE ORGANIZATION:
     # Create AI prompt for generating SQL - ENHANCED for multiple queries
     system_prompt = f"""You are an expert SQL query generator for a unified content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
 
-CRITICAL RULES - READ CAREFULLY:
-1. **NEVER add workspace filters unless explicitly requested** - When users say "trass gmail" or "koii journal", treat workspace names as descriptive only, NOT as filters
-2. **Use simple string comparison for dates** - The created_time field is in RFC 822 format, so use patterns like "created_time >= '2025-07-09'" instead of datetime() functions
-3. **Query across ALL workspaces by default** - Do not restrict by workspace unless the user explicitly asks to "filter by workspace only"
+🚨 CRITICAL RULES - NEVER VIOLATE THESE:
 
-WRONG EXAMPLES (DO NOT DO):
-- WHERE workspace = 'trass' AND database_name = 'gmail' (removes workspace filter!)
-- WHERE datetime(created_time) >= datetime('now', '-20 days') (wrong date format!)
+1. **NEVER ADD WORKSPACE FILTERS** - Never add "WHERE workspace = ..." to any query.
 
-CORRECT EXAMPLES:
-- WHERE database_name = 'gmail' AND created_time >= '2025-07-09'
-- WHERE database_name = 'gmail' AND (sender_email LIKE '%fionn%' OR sender_name LIKE '%fionn%')
+2. **ALWAYS START WITH database_name** - Every SQL query MUST begin with "WHERE database_name = 'journal'" or "WHERE database_name = 'gmail'" etc. This is MANDATORY.
 
-DATE FILTERING RULE: 
-- For all content: Use created_time for date filtering (original creation date)
-Examples:
-- Gmail: WHERE database_name = 'gmail' AND created_time >= '2025-07-09'
-- Notion: WHERE database_name = 'journal' AND created_time >= '2025-07-20'
+3. **WORK WITH LOADED SOURCES ONLY** - Only query database types that are currently loaded in the system.
+
+4. **USE ISO 8601 DATE FORMAT** - The created_time field is in ISO 8601 format (e.g., "2024-12-26T02:05:00.000Z").
+
+❌ WRONG EXAMPLES (NEVER DO THESE):
+- WHERE workspace = 'koii' ← NEVER add workspace filters!
+- WHERE created_time >= '2024-12-01' ← MISSING database_name filter!
+- WHERE created_time LIKE '%Dec 2024%' ← Wrong date format!
+
+✅ CORRECT EXAMPLES - FOLLOW THESE EXACTLY:
+- WHERE database_name = 'journal' AND created_time >= '2024-12-01'
+- WHERE database_name = 'gmail' AND sender_email LIKE '%john%'
+- WHERE database_name = 'stories' AND created_time LIKE '%2024-12%'
+
+🎯 EXACT TEMPLATE TO FOLLOW:
+For journal queries, always start with: WHERE database_name = 'journal' AND ...
+For gmail queries, always start with: WHERE database_name = 'gmail' AND ...
+For stories queries, always start with: WHERE database_name = 'stories' AND ...
 
 CURRENT DATE AND TIME CONTEXT:
 - Current Date: {current_date_str}
@@ -322,98 +328,37 @@ CURRENT DATE AND TIME CONTEXT:
 - Current Year: {current_year}
 - Current Month: {current_month} ({current_month_num})
 
-TEMPORAL REFERENCE RULES:
-1. When users mention months without years (e.g., "march through june"), assume the CURRENT YEAR ({current_year})
-2. "This year" = {current_year}
-3. "Last year" = {current_year - 1}
-4. "Next year" = {current_year + 1}
-5. Relative terms like "last week", "last month" should use datetime('now', '-X days/months')
-6. When users say "march through june" without a year, interpret as "March {current_year} through June {current_year}"
-7. Always be explicit about years in date ranges to avoid confusion
+DATE HANDLING - USE ISO 8601 FORMAT:
+- "last week": created_time >= '2025-07-25'
+- "December 2024": created_time LIKE '%2024-12%'  
+- "first week of march 2025": created_time >= '2025-03-01' AND created_time <= '2025-03-07'
+- "since 2024-12": created_time >= '2024-12-01'
 
 HYBRID ARCHITECTURE - Always use unified_content view
 {schema_info}
 
-MULTI-QUERY DETECTION:
-For complex requests that involve different databases with different requirements, generate multiple separate queries instead of trying to combine everything into one query.
+SIMPLE EXAMPLE - FOLLOW THIS PATTERN EXACTLY:
 
-SIMPLE QUERIES (use single query):
-- "recent journal entries"
-- "emails from john"
-- "last week of trass.gmail"
-- "published blog posts and completed stories" (same filtering logic)
-
-COMPLEX QUERIES (use multiple queries):
-- "emails containing X and recent journal entries" (different content filters)
-- "gmail with meetings and all stories from last month" (selective content filtering)
-- "avask emails and last 15 days of stories and journal" (content filter only applies to emails)
-
-EXAMPLES OF MULTI-QUERY RESPONSES:
-
-Query: "emails containing avask and last 15 days of stories"
-Response:
-{{
-    "query_type": "multiple",
-    "queries": [
-        {{
-            "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail'",
-            "content_filters": ["avask"],
-            "description": "emails containing avask"
-        }},
-        {{
-            "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'stories' AND (datetime(created_time) >= datetime('now', '-15 days') OR datetime(last_edited_time) >= datetime('now', '-15 days'))",
-            "content_filters": [],
-            "description": "last 15 days of stories"
-        }}
-    ]
-}}
-
-Query: "trass.gmail emails with avask and last 14 days of trass.journal and last 15 days of trass.stories"
-Response:
-{{
-    "query_type": "multiple", 
-    "queries": [
-        {{
-            "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE workspace = 'trass' AND database_name = 'gmail'",
-            "content_filters": ["avask"],
-            "description": "trass.gmail emails with avask"
-        }},
-        {{
-            "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE workspace = 'trass' AND database_name = 'journal' AND (datetime(created_time) >= datetime('now', '-14 days') OR datetime(last_edited_time) >= datetime('now', '-14 days'))",
-            "content_filters": [],
-            "description": "last 14 days of trass.journal"
-        }},
-        {{
-            "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE workspace = 'trass' AND database_name = 'stories' AND (datetime(created_time) >= datetime('now', '-15 days') OR datetime(last_edited_time) >= datetime('now', '-15 days'))",
-            "content_filters": [],
-            "description": "last 15 days of trass.stories"
-        }}
-    ]
-}}
-
-EXAMPLES OF SINGLE QUERY RESPONSES:
-
-Query: "recent journal entries"
+Query: "journal entries from December 2024"
 Response:
 {{
     "query_type": "single",
-    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND (datetime(created_time) >= datetime('now', '-7 days') OR datetime(last_edited_time) >= datetime('now', '-7 days'))",
+    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time LIKE '%2024-12%'",
     "content_filters": []
 }}
 
-Query: "published blog posts and completed stories"
+Query: "first week of journal entries from every month since December 2024"
 Response:
 {{
-    "query_type": "single",
-    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE ((database_name = 'cms' AND status = 'Published') OR (database_name = 'stories' AND status = 'Done'))",
+    "query_type": "single", 
+    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2024-12-01' AND (SUBSTR(created_time, 1, 7) LIKE '2024-12' OR SUBSTR(created_time, 1, 7) LIKE '2025-01' OR SUBSTR(created_time, 1, 7) LIKE '2025-02' OR SUBSTR(created_time, 1, 7) LIKE '2025-03' OR SUBSTR(created_time, 1, 7) LIKE '2025-04' OR SUBSTR(created_time, 1, 7) LIKE '2025-05' OR SUBSTR(created_time, 1, 7) LIKE '2025-06' OR SUBSTR(created_time, 1, 7) LIKE '2025-07' OR SUBSTR(created_time, 1, 7) LIKE '2025-08') AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7",
     "content_filters": []
 }}
 
-DECISION LOGIC:
-- Use "multiple" when different parts of the request need different content_filters
-- Use "multiple" when combining time-based filters with content-based filters
-- Use "single" when all databases can use the same filtering logic
-- Always provide clear "description" fields for each query
+MANDATORY REQUIREMENTS:
+- EVERY query MUST start with "WHERE database_name = 'journal'" (or gmail, stories, etc.)
+- NEVER omit the database_name filter
+- Follow the examples exactly
 
 User request: "{nl_prompt}"
 """

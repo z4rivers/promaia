@@ -391,7 +391,7 @@
       },
       "property_filters": {},
       "date_filters": {},
-      "markdown_directory": "data/notion/trass",
+      "markdown_directory": "data/md/notion/trass/epics",
       "primary_format": "markdown",
       "save_markdown": true,
       "sync_subpages": false,
