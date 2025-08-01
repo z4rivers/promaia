@@ -344,9 +344,161 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
         return None
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, mcp_servers=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
+
+    # Detect mixed commands: when user provides both sources and browse arguments
+    has_regular_sources = bool(sources)
+    has_browse_command = bool(browse_databases) or bool(original_browse_command and '-b' in original_browse_command)
+    has_natural_language = bool(natural_language_prompt)
+    
+    # Mixed command flow: -s sources + -b browse + -nl (optional)
+    # This should: 1) Load -s sources first, 2) Launch browser with sources as context, 3) Process -nl last
+    if has_regular_sources and has_browse_command and not original_browse_command:
+        debug_print("🔄 Detected mixed command: sources + browse. Processing in sequence...")
+        print_text("🔄 Processing mixed command: loading sources first, then launching browser...", style="cyan")
+        
+        # Step 1: Parse and prepare regular sources first
+        print_text(f"📦 Preparing {len(sources)} regular sources for browser context...", style="cyan")
+        
+        # Import unified browser and workspace management
+        from promaia.cli.workspace_browser import launch_unified_browser
+        from promaia.config.workspaces import get_workspace_manager
+        from promaia.config.databases import get_database_manager
+        
+        workspace_manager = get_workspace_manager()
+        db_manager = get_database_manager()
+        
+        # Determine workspace and database filter from browse_databases
+        database_filter = None
+        default_days = None
+        browse_workspace = resolved_workspace or workspace
+        
+        if browse_databases:
+            database_filter = []
+            workspace_names = []
+            
+            for browse_spec in browse_databases:
+                if ':' in browse_spec:
+                    db_name, days_str = browse_spec.rsplit(':', 1)
+                    try:
+                        days = int(days_str)
+                        if default_days is None:
+                            default_days = days
+                        
+                        # Check if db_name is a workspace
+                        if workspace_manager.validate_workspace(db_name):
+                            # Don't expand workspace - let browser handle it
+                            workspace_names.append(db_name)
+                            if not browse_workspace:
+                                browse_workspace = db_name
+                        else:
+                            database_filter.append(browse_spec)  # Keep the full spec with days
+                    except ValueError:
+                        database_filter.append(browse_spec)
+                else:
+                    # Check if this is a workspace name
+                    if workspace_manager.validate_workspace(browse_spec):
+                        # Don't expand workspace - let browser handle it
+                        workspace_names.append(browse_spec)
+                        if not browse_workspace:
+                            browse_workspace = browse_spec
+                    else:
+                        # It's a specific database name
+                        database_filter.append(browse_spec)
+            
+            # If we only have workspace names, clear the database filter
+            if workspace_names and not database_filter:
+                database_filter = None  # Let browser show all databases in the workspace
+        
+        # Step 2: Launch browser with regular sources as context
+        print_text("🔍 Launching browser with regular sources as context...", style="cyan")
+        
+        # For workspace browse commands, we want to default to ALL workspace sources selected
+        # Plus include the regular sources (like journal:30)
+        browser_current_sources = list(sources)  # Start with regular sources like journal:30
+        
+        # Check if this is a workspace browse by seeing if we have a workspace but no specific database filter
+        is_workspace_browse = browse_workspace and database_filter is None
+        
+        if is_workspace_browse:
+            # For workspace browse, add all workspace databases as selected by default
+            workspace_databases = db_manager.get_workspace_databases(browse_workspace)
+            for db in workspace_databases:
+                if db.sync_enabled:  # Only include enabled databases
+                    if default_days:
+                        source_with_days = f"{db.get_qualified_name()}:{default_days}"
+                    else:
+                        source_with_days = f"{db.get_qualified_name()}:7"  # Default to 7 days
+                    browser_current_sources.append(source_with_days)
+        
+        # Launch unified browser with existing sources as context
+        selected_sources = launch_unified_browser(
+            workspace=browse_workspace,
+            default_days=default_days,
+            database_filter=database_filter,
+            current_sources=browser_current_sources  # Pre-populate with all workspace sources + regular sources
+        )
+        
+        if not selected_sources:
+            print_text("ℹ️  No sources selected from browser. Using only the regular sources.", style="yellow")
+            # Keep browser selections empty - only use regular sources
+            browse_selections = []
+        else:
+            # Store ALL browser selections for persistence (not just additional ones)
+            browse_selections = selected_sources.copy()  # Store all selected sources
+            
+            print_text(f"✅ Browser selections: {len(browse_selections)} sources selected (will be stored for persistence)", style="green")
+        
+        # Step 3: Store the original mixed command format and browser selections
+        # Build the original command format to preserve -s and -b structure
+        query_parts = ["maia", "chat"]
+        if sources:
+            for source in sources:
+                query_parts.extend(["-s", source])
+        if browse_databases:
+            query_parts.append("-b")
+            query_parts.extend(browse_databases)
+        if filters:
+            for filter_expr in filters:
+                query_parts.extend(["-f", f'"{filter_expr}"'])
+        if workspace:
+            query_parts.extend(["-ws", workspace])
+        if natural_language_prompt:
+            query_parts.extend(["-nl", natural_language_prompt])
+        if mcp_servers:
+            for server in mcp_servers:
+                query_parts.extend(["-mcp", server])
+        
+        # Store the original command format and browser selections
+        original_mixed_command = " ".join(query_parts)
+        print_text(f"📝 Preserving original command format: {original_mixed_command}", style="dim")
+        
+        # Step 4: Combine all sources for the main chat flow
+        all_sources = list(sources)  # Start with regular sources like journal:30
+        
+        if selected_sources:
+            # Add all browser selections to sources for the main chat flow
+            for selected in selected_sources:
+                # Only add if not already in sources
+                source_base = selected.split(':')[0].split('#')[0]
+                already_in_sources = any(source_base in existing for existing in sources)
+                if not already_in_sources:
+                    all_sources.append(selected)
+        
+        # Update sources to include all selections for the main chat flow
+        sources = all_sources
+        print_text(f"🔗 Combined sources: {len(sources)} total sources for chat", style="blue")
+        
+        # Set these for context state initialization
+        original_browse_command = original_mixed_command
+        
+        # Clear browse_databases since we've processed it and stored the results
+        browse_databases = None
+        print_text("🚀 Proceeding with normal chat flow preserving original format...", style="green")
+        
+        # Continue to normal chat processing below with the combined sources
 
     # Parse original_browse_command if provided (from history loading)
     if original_browse_command and not sources and not filters:
@@ -408,16 +560,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'mcp_servers': mcp_servers,  # Store MCP server names to include
         'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
-        'browse_selections': browse_selections,  # Store original browse selections for re-editing
+        'browse_selections': browse_selections if browse_selections is not None else [],  # Store original browse selections for re-editing
         'original_query_format': original_browse_command  # Store the original query format for display
     }
 
     def update_query_command():
         """Update the query command display based on current context state."""
-        # If we have an original query format (like -b), prefer showing that
+        # If we have an original query format (like -b), prefer showing that unless it needs updating
         if context_state.get('original_query_format'):
-            context_state['query_command'] = context_state['original_query_format']
-            return
+            # Only rebuild if the original format doesn't match current context
+            # Check if original format has -b and we have browse_selections
+            original_format = context_state['original_query_format']
+            has_browse_in_original = '-b ' in original_format
+            has_browse_selections = bool(context_state.get('browse_selections'))
+            
+            # If this looks like a browse command, preserve it
+            if has_browse_in_original:
+                context_state['query_command'] = original_format
+                return
         
         # Otherwise, build the command from current state
         query_parts = ["maia", "chat"]
@@ -444,23 +604,27 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         context_state['original_query_format'] = built_command
 
     # Initial query command setup - capture original format for regular commands too
-    if not context_state.get('original_query_format') and (sources or filters or workspace or natural_language_prompt or mcp_servers):
-        # Build and store the original query format for regular commands to preserve day specifications
-        query_parts = ["maia", "chat"]
-        if sources:
-            for source in sources:
-                query_parts.extend(["-s", source])
-        if filters:
-            for filter_expr in filters:
-                query_parts.extend(["-f", f'"{filter_expr}"'])
-        if workspace:
-            query_parts.extend(["-ws", workspace])
-        if natural_language_prompt:
-            query_parts.extend(["-nl", natural_language_prompt])
-        if mcp_servers:
-            for server in mcp_servers:
-                query_parts.extend(["-mcp", server])
-        context_state['original_query_format'] = " ".join(query_parts)
+    if not context_state.get('original_query_format'):
+        if original_browse_command:
+            # Use the provided original browse command
+            context_state['original_query_format'] = original_browse_command
+        elif sources or filters or workspace or natural_language_prompt or mcp_servers:
+            # Build and store the original query format for regular commands to preserve day specifications
+            query_parts = ["maia", "chat"]
+            if sources:
+                for source in sources:
+                    query_parts.extend(["-s", source])
+            if filters:
+                for filter_expr in filters:
+                    query_parts.extend(["-f", f'"{filter_expr}"'])
+            if workspace:
+                query_parts.extend(["-ws", workspace])
+            if natural_language_prompt:
+                query_parts.extend(["-nl", natural_language_prompt])
+            if mcp_servers:
+                for server in mcp_servers:
+                    query_parts.extend(["-mcp", server])
+            context_state['original_query_format'] = " ".join(query_parts)
     
     update_query_command()
     query_command = context_state['query_command']
@@ -1106,7 +1270,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 channel_count = len([f for f in context_state['filters'] if 'channel_name=' in f])
                 if channel_count > 0:
                     print_text(f"  Discord channels selected: {channel_count}", style="dim cyan")
-            
+        
             # Show if this was originally a browse mode session
             if context_state.get('original_browse_mode'):
                 print_text(f"  Original format: browse mode", style="dim cyan")
@@ -1357,9 +1521,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Only clear natural language content if we're switching to regular sources mode
                     if new_sources or new_filters:
-                    context_state['natural_language_content'] = None  # Clear NL content
-                    context_state['natural_language_prompt'] = None   # Clear NL prompt
-                    context_state['original_query_format'] = None    # Clear original format so query rebuilds
+                        context_state['natural_language_content'] = None  # Clear NL content
+                        context_state['natural_language_prompt'] = None   # Clear NL prompt
+                        context_state['original_query_format'] = None    # Clear original format so query rebuilds
                     
                     if new_workspace:
                         context_state['workspace'] = new_workspace
@@ -1405,14 +1569,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("--source", "-s", action="append", dest="sources")
             parser.add_argument("--filter", "-f", action="append", dest="filters") 
             parser.add_argument("--workspace", "-ws", dest="workspace")
-            parser.add_argument("--browse", "-b", nargs="*", dest="browse")
+            parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
             parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
             
             parsed_args = parser.parse_args(args_list)
             
             # Extract components
             regular_sources = parsed_args.sources or []
-            # Flatten nested lists from multiple -b flags
+            # Flatten nested lists from multiple -b flags: [['trass'], ['trass.tg']] -> ['trass', 'trass.tg']
             raw_browse = parsed_args.browse or []
             browse_databases = []
             if raw_browse:
@@ -1436,12 +1600,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             default_days = None
             
             if browse_databases:
-            from promaia.config.workspaces import get_workspace_manager
+                from promaia.config.workspaces import get_workspace_manager
                 from promaia.config.databases import get_database_manager
-            workspace_manager = get_workspace_manager()
+                workspace_manager = get_workspace_manager()
                 db_manager = get_database_manager()
                 
                 database_filter = []
+                workspace_names = []
+                
                 for browse_spec in browse_databases:
                     if ':' in browse_spec:
                         db_name, days_str = browse_spec.rsplit(':', 1)
@@ -1452,45 +1618,125 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             
                             # Check if db_name is a workspace
                             if workspace_manager.validate_workspace(db_name):
-                                # Expand workspace to all its databases
-                                workspace_databases = db_manager.get_workspace_databases(db_name)
-                                for db in workspace_databases:
-                                    if db.sync_enabled:  # Only include enabled databases
-                                        database_filter.append(db.get_qualified_name())
+                                # Don't expand workspace - let browser handle it
+                                workspace_names.append(db_name)
                             else:
-                                database_filter.append(db_name)
+                                database_filter.append(browse_spec)  # Keep the full spec with days
                         except ValueError:
                             database_filter.append(browse_spec)
                     else:
                         # Check if this is a workspace name
                         if workspace_manager.validate_workspace(browse_spec):
-                            # Expand workspace to all its databases
-                            workspace_databases = db_manager.get_workspace_databases(browse_spec)
-                            for db in workspace_databases:
-                                if db.sync_enabled:  # Only include enabled databases
-                                    database_filter.append(db.get_qualified_name())
+                            # Don't expand workspace - let browser handle it
+                            workspace_names.append(browse_spec)
                         else:
                             # It's a specific database name
                             database_filter.append(browse_spec)
+                
+                # If we only have workspace names, clear the database filter
+                if workspace_names and not database_filter:
+                    database_filter = None  # Let browser show all databases in the workspace
             
             # Resolve workspace from browse databases if needed
             resolved_workspace = workspace
+            multiple_workspaces = []
+            
             if browse_databases and not workspace:
-                # Try to determine workspace from browse databases or database_filter
-                check_list = database_filter if database_filter else browse_databases
-                for browse_db in check_list:
-                    if '.' in browse_db:
-                        determined_workspace = browse_db.split('.')[0]
-                        if workspace_manager.validate_workspace(determined_workspace):
-                            resolved_workspace = determined_workspace
-                            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="cyan")
-                            break
+                # First, collect all unique workspaces from the browse arguments
+                for browse_db in browse_databases:
+                    if workspace_manager.validate_workspace(browse_db):
+                        if browse_db not in multiple_workspaces:
+                            multiple_workspaces.append(browse_db)
+                
+                # Also check database_filter for workspace prefixes
+                if database_filter:
+                    for db_name in database_filter:
+                        if '.' in db_name:
+                            determined_workspace = db_name.split('.')[0]
+                            if workspace_manager.validate_workspace(determined_workspace):
+                                if determined_workspace not in multiple_workspaces:
+                                    multiple_workspaces.append(determined_workspace)
+                
+                # Handle workspace resolution based on how many workspaces we found
+                if len(multiple_workspaces) == 1:
+                    # Single workspace - use it normally
+                    resolved_workspace = multiple_workspaces[0]
+                    print_text(f"INFO: Using workspace '{resolved_workspace}' from browse argument.", style="cyan")
+                elif len(multiple_workspaces) > 1:
+                    # Multiple workspaces - don't resolve to a single one, use database_filter instead
+                    resolved_workspace = None
+                    print_text(f"INFO: Using multiple workspaces: {', '.join(multiple_workspaces)}", style="cyan")
+                else:
+                    # No workspace found in browse args, try to determine from database_filter
+                    if database_filter:
+                        for browse_db in database_filter:
+                            if '.' in browse_db:
+                                determined_workspace = browse_db.split('.')[0]
+                                if workspace_manager.validate_workspace(determined_workspace):
+                                    resolved_workspace = determined_workspace
+                                    print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="cyan")
+                                    break
             
             if not resolved_workspace:
                 resolved_workspace = context_state.get('resolved_workspace')
             
+            # Update context state with the resolved workspace(s)
+            if resolved_workspace:
+                context_state['workspace'] = resolved_workspace
+                context_state['resolved_workspace'] = resolved_workspace
+            elif multiple_workspaces:
+                # For multiple workspaces, store them in a special way
+                context_state['workspace'] = None  # No single workspace
+                context_state['resolved_workspace'] = None
+                context_state['multiple_workspaces'] = multiple_workspaces
+            
+            # Handle mixed commands (browse + regular sources) differently
+            if browse_databases and regular_sources:
+                # This is a mixed command - update context directly without launching browser
+                print_text(f"🔄 Updating context with browse databases and regular sources...", style="cyan")
+                
+                # Combine regular sources with browse databases expanded to their full names
+                all_sources = regular_sources.copy()
+                
+                # Add browse databases to sources
+                if database_filter:
+                    for db_name in database_filter:
+                        # Check if this is a workspace name that was expanded
+                        workspace_found = False
+                        for browse_db in browse_databases:
+                            if workspace_manager.validate_workspace(browse_db) and db_name.startswith(f"{browse_db}."):
+                                # This database came from workspace expansion - add with default days
+                                if default_days:
+                                    source_with_days = f"{db_name}:{default_days}"
+                                else:
+                                    source_with_days = db_name
+                                if source_with_days not in all_sources:
+                                    all_sources.append(source_with_days)
+                                workspace_found = True
+                                break
+                        
+                        # If not from workspace expansion, add the database as-is
+                        if not workspace_found and db_name not in all_sources and f"{db_name}:" not in str(all_sources):
+                            all_sources.append(db_name)
+                
+                # Update context state
+                context_state['sources'] = all_sources
+                context_state['filters'] = original_filters
+                
+                # Update the original query format to the manually edited command
+                context_state['original_query_format'] = user_input
+                update_query_command()
+                
+                # Reload context with the updated information
+                if reload_context():
+                    print_text("Context updated successfully with mixed command!", style="green")
+                    return True
+                else:
+                    print_text("❌ Failed to reload context after mixed command update", style="red")
+                    return False
+            
             # Handle browse mode using unified browser
-            if browse_databases:
+            elif browse_databases:
                 try:
                     from promaia.cli.workspace_browser import launch_unified_browser
                     
@@ -1498,37 +1744,101 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if database_filter:
                         if len(database_filter) == 1:
                             print_text(f"🔍 Launching unified browser for database: {database_filter[0]}...", style="cyan")
-                else:
-                            print_text(f"🔍 Launching unified browser for databases: {', '.join(database_filter)}...", style="cyan")
                         else:
+                            print_text(f"🔍 Launching unified browser for databases: {', '.join(database_filter)}...", style="cyan")
+                    elif multiple_workspaces:
+                        print_text(f"🔍 Launching unified browser for workspaces: {', '.join(multiple_workspaces)}...", style="cyan")
+                    elif resolved_workspace:
                         print_text(f"🔍 Launching unified browser for workspace '{resolved_workspace}'...", style="cyan")
+                    else:
+                        print_text("🔍 Launching unified browser...", style="cyan")
                     
                     # Get current sources for pre-population (handle mixed commands properly)
                     current_sources = []
                     
-                    # Get current context for pre-population
+                    # Get what we have in context_state
                     stored_discord_selections = context_state.get('browse_selections', [])
                     current_regular_sources = context_state.get('sources', [])
                     
-                    # First, get any stored Discord channel selections
-                    if stored_discord_selections:
-                        current_sources.extend(stored_discord_selections)
+                    # Ensure stored_discord_selections is never None to avoid iteration errors
+                    if stored_discord_selections is None:
+                        stored_discord_selections = []
                     
-                    # For mixed commands, we also need to include regular database sources
-                    # Get current regular sources (but exclude those that are handled by Discord)
-                    if current_regular_sources:
-                        # Extract database names from Discord selections to avoid duplicates
-                        discord_db_names = set()
-                        for discord_sel in stored_discord_selections:
-                            if '#' in discord_sel:
-                                db_name = discord_sel.split('#')[0]
-                                discord_db_names.add(db_name)
+                    # For workspace browse commands (like -b trass), we want to default to ALL workspace sources selected
+                    # BUT only if there are no existing browser selections (for persistence)
+                    # Check if this is a workspace browse command by looking at the original format
+                    is_workspace_browse = False
+                    if original_format and '-b ' in original_format and workspace_to_use and not database_filter:
+                        is_workspace_browse = True
+                    
+                    if is_workspace_browse:
+                        # Check if we have previous browser selections
+                        has_previous_selections = bool(stored_discord_selections)
                         
-                        # Add regular sources that aren't Discord databases
-                        for source in current_regular_sources:
-                            source_db = source.split(':')[0] if ':' in source else source
-                            if source_db not in discord_db_names:
-                                current_sources.append(source)
+                        if has_previous_selections:
+                            # Use previous selections to maintain user's choices
+                            current_sources.extend(stored_discord_selections)
+                            
+                            # Include regular sources that aren't part of this workspace
+                            if current_regular_sources:
+                                for source in current_regular_sources:
+                                    source_db = source.split(':')[0] if ':' in source else source
+                                    # Check if this source is from a different workspace
+                                    if '.' in source_db:
+                                        source_workspace = source_db.split('.')[0]
+                                        if source_workspace != workspace_to_use:
+                                            current_sources.append(source)
+                                    else:
+                                        # Non-workspace source (like journal:30), always include
+                                        current_sources.append(source)
+                        else:
+                            # First time browsing workspace - default to all workspace databases
+                            from promaia.config.databases import get_database_manager
+                            db_manager = get_database_manager()
+                            workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
+                            
+                            # Add all workspace databases with their default days
+                            for db in workspace_databases:
+                                if db.sync_enabled:  # Only include enabled databases
+                                    if default_days:
+                                        source_with_days = f"{db.get_qualified_name()}:{default_days}"
+                                    else:
+                                        source_with_days = f"{db.get_qualified_name()}:7"  # Default to 7 days
+                                    current_sources.append(source_with_days)
+                            
+                            # Include regular sources that aren't part of this workspace
+                            if current_regular_sources:
+                                for source in current_regular_sources:
+                                    source_db = source.split(':')[0] if ':' in source else source
+                                    # Check if this source is from a different workspace
+                                    if '.' in source_db:
+                                        source_workspace = source_db.split('.')[0]
+                                        if source_workspace != workspace_to_use:
+                                            current_sources.append(source)
+                                    else:
+                                        # Non-workspace source (like journal:30), always include
+                                        current_sources.append(source)
+                    else:
+                        # For specific database browse or mixed commands, use existing logic
+                        # First, get any stored Discord channel selections
+                        if stored_discord_selections:
+                            current_sources.extend(stored_discord_selections)
+                        
+                        # For mixed commands, we also need to include regular database sources
+                        # Get current regular sources (but exclude those that are handled by Discord)
+                        if current_regular_sources:
+                            # Extract database names from Discord selections to avoid duplicates
+                            discord_db_names = set()
+                            for discord_sel in stored_discord_selections:
+                                if '#' in discord_sel:
+                                    db_name = discord_sel.split('#')[0]
+                                    discord_db_names.add(db_name)
+                            
+                            # Add regular sources that aren't Discord databases
+                            for source in current_regular_sources:
+                                source_db = source.split(':')[0] if ':' in source else source
+                                if source_db not in discord_db_names:
+                                    current_sources.append(source)
                     
                     # Launch unified browser
                     selected_sources = launch_unified_browser(
@@ -1540,8 +1850,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     if not selected_sources:
                         print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
-                return False
-            
+                        return False
+                    
                     print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
                     
                     # Process Discord channel sources and convert to database + filter format (same logic as cli.py)
@@ -1560,7 +1870,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             if db_key not in discord_db_groups:
                                 discord_db_groups[db_key] = []
                             discord_db_groups[db_key].append(channel_name)
-                else:
+                        else:
                             # Regular database source
                             processed_sources.append(source)
                     
@@ -1573,7 +1883,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Single channel
                             filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
                             processed_filters.append(filter_spec)
-                else:
+                        else:
                             # Multiple channels - use OR logic
                             channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
                             combined_filter = " or ".join(channel_conditions)
@@ -1584,16 +1894,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     context_state['sources'] = processed_sources
                     context_state['filters'] = processed_filters
                     
-                    # Store original Discord channel selections for future /e preservation
-                    original_discord_selections = [s for s in selected_sources if '#' in s]
-                    if original_discord_selections:
-                        context_state['browse_selections'] = original_discord_selections
+                    # Store ALL browser selections for future /e preservation (not just Discord)
+                    # This includes both regular database selections and Discord channel selections
+                    if selected_sources:
+                        context_state['browse_selections'] = selected_sources.copy()
                     
-                    # For browse commands, preserve the original format; for others, use reconstructed
-                    if original_format and '-b ' in original_format:
-                        # This was originally a browse command - preserve the original format
-                        context_state['original_query_format'] = original_format
-                else:
+                    # Preserve the original browse command format
+                    context_state['original_query_format'] = original_format
+                    
+                    # Get original format from context state
+                    original_format = context_state.get('original_query_format', '')
+                    
+                    # For browse commands, use the manually edited command; for others, use reconstructed
+                    if '-b ' in user_input:
+                        # This was manually edited with browse arguments - use the new command
+                        context_state['original_query_format'] = user_input
+                    else:
                         # Reconstruct command from current state
                         cmd_parts = ["maia", "chat"]
                         for source in processed_sources:
@@ -1611,11 +1927,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if reload_context():
                         print_text("Context updated successfully from unified browser!", style="green")
                         return True
-                        else:
+                    else:
                         print_text("❌ Failed to reload context after browser selection", style="red")
                         return False
                             
-                    except Exception as e:
+                except Exception as e:
                     print_text(f"Error handling manual browse edit: {e}", style="bold red")
                     return False
         except Exception as e:
@@ -1625,31 +1941,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     def handle_browse_in_edit_context():
         """Handle unified browse mode selection within edit context."""
         try:
-            # Determine workspace from current context
-            workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
-            
-            # If no workspace in context, try to infer from current sources
-            if not workspace_to_use and context_state.get('sources'):
-                for source in context_state['sources']:
-                    if '.' in source:
-                        potential_workspace = source.split('.')[0].split(':')[0].split('#')[0]
-                        workspace_to_use = potential_workspace
-                        break
-            
-            # Fall back to default workspace
-            if not workspace_to_use:
-                from promaia.config.workspaces import get_workspace_manager
-                workspace_manager = get_workspace_manager()
-                workspace_to_use = workspace_manager.get_default_workspace()
-            
-            if not workspace_to_use:
-                print_text("Error: No workspace available for browse mode.", style="bold red")
-                return False
-            
-            # Parse current browse command to extract database filter and default days
-            original_format = context_state.get('original_query_format', '')
+            # Initialize variables first
             database_filter = None
             default_days = None
+            workspace_to_use = None
+            
+            # Parse current browse command to extract database filter and default days FIRST
+            # This should take priority over context inference
+            original_format = context_state.get('original_query_format', '')
             
             if '-b ' in original_format:
                 # Extract all browse arguments (not just the first one)
@@ -1671,14 +1970,29 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         else:
                             i += 1
                     
-                    # Apply the same workspace expansion logic as cli.py
+                    # Don't expand workspaces here - let the unified browser handle it
                     if browse_databases:
-                        from promaia.config.workspaces import get_workspace_manager
-                        from promaia.config.databases import get_database_manager
-                        workspace_manager = get_workspace_manager()
-                        db_manager = get_database_manager()
+                        database_filter = browse_databases.copy()  # Use the original browse arguments
                         
-                        database_filter = []
+                        # Extract workspace from browse databases first (highest priority)
+                        from promaia.config.workspaces import get_workspace_manager
+                        workspace_manager = get_workspace_manager()
+                        
+                        for browse_spec in browse_databases:
+                            # Remove day specification if present
+                            browse_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
+                            # Check if this is a workspace name
+                            if workspace_manager.validate_workspace(browse_name):
+                                workspace_to_use = browse_name
+                                break
+                            # Check if this is a database name (workspace.database format)
+                            elif '.' in browse_name:
+                                potential_workspace = browse_name.split('.')[0]
+                                if workspace_manager.validate_workspace(potential_workspace):
+                                    workspace_to_use = potential_workspace
+                                    break
+                        
+                        # Only extract default days if specified
                         for browse_spec in browse_databases:
                             if ':' in browse_spec:
                                 db_name, days_str = browse_spec.rsplit(':', 1)
@@ -1686,38 +2000,73 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     days = int(days_str)
                                     if default_days is None:
                                         default_days = days
-                                    
-                                    # Check if db_name is a workspace
-                                    if workspace_manager.validate_workspace(db_name):
-                                        # Expand workspace to all its databases
-                                        workspace_databases = db_manager.get_workspace_databases(db_name)
-                                        for db in workspace_databases:
-                                            if db.sync_enabled:  # Only include enabled databases
-                                                database_filter.append(db.get_qualified_name())
-                else:
-                                        database_filter.append(db_name)
                                 except ValueError:
-                                    database_filter.append(browse_spec)
-                            else:
-                                # Check if this is a workspace name
-                                if workspace_manager.validate_workspace(browse_spec):
-                                    # Expand workspace to all its databases
-                                    workspace_databases = db_manager.get_workspace_databases(browse_spec)
-                                    for db in workspace_databases:
-                                        if db.sync_enabled:  # Only include enabled databases
-                                            database_filter.append(db.get_qualified_name())
-                                else:
-                                    # It's a specific database name
-                                    database_filter.append(browse_spec)
+                                    pass  # Not a day specification
                 except Exception as e:
                     print_text(f"Warning: Could not parse browse arguments: {e}", style="yellow")
-                    # Fallback to old logic
-                    parts = original_format.split('-b ')
-                    if len(parts) > 1:
-                        browse_args = parts[1].split()
-                        if browse_args:
-                            database_filter = [browse_args[0]]
+                    # Fallback to old logic - extract all -b arguments
+                    import re
+                    browse_matches = re.findall(r'-b\s+([^\s-]+)', original_format)
+                    if browse_matches:
+                        database_filter = browse_matches
+            
+            # Only if we couldn't determine workspace from browse command, then use context
+            if not workspace_to_use:
+                # Determine workspace from current context
+                workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                multiple_workspaces_in_context = context_state.get('multiple_workspaces', [])
+                
+                # If we have multiple workspaces, use None as workspace_to_use so the browser shows all
+                if multiple_workspaces_in_context:
+                    workspace_to_use = None
+                    print_text(f"INFO: Browsing multiple workspaces: {', '.join(multiple_workspaces_in_context)}", style="cyan")
+                
+                # If no workspace in context, try to infer from current sources
+                if not workspace_to_use and context_state.get('sources'):
+                    for source in context_state['sources']:
+                        if '.' in source:
+                            potential_workspace = source.split('.')[0].split(':')[0].split('#')[0]
+                            workspace_to_use = potential_workspace
+                            break
+                
+                # Fall back to default workspace (only if we don't have multiple workspaces)
+                if not workspace_to_use and not multiple_workspaces_in_context:
+                    from promaia.config.workspaces import get_workspace_manager
+                    workspace_manager = get_workspace_manager()
+                    workspace_to_use = workspace_manager.get_default_workspace()
 
+            # Now fix the database_filter vs workspace parameter issue
+            # If database_filter contains workspace names, we should use them as workspace and clear the filter
+            if database_filter:
+                from promaia.config.workspaces import get_workspace_manager
+                workspace_manager = get_workspace_manager()
+                
+                actual_databases = []
+                workspace_names = []
+                
+                for browse_spec in database_filter:
+                    # Remove day specification if present
+                    browse_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
+                    # Check if this is a workspace name
+                    if workspace_manager.validate_workspace(browse_name):
+                        workspace_names.append(browse_spec)
+                        # If we found a workspace and don't have one set, use it
+                        if not workspace_to_use:
+                            workspace_to_use = browse_name
+                    else:
+                        # This is likely a database name
+                        actual_databases.append(browse_spec)
+                
+                # If we only have workspace names in the filter, clear the filter and use workspace parameter
+                if workspace_names and not actual_databases:
+                    database_filter = None  # Let browser show all databases in the workspace
+                elif actual_databases:
+                    database_filter = actual_databases  # Keep only actual database names
+            
+            if not workspace_to_use and not multiple_workspaces_in_context:
+                print_text("Error: No workspace available for browse mode.", style="bold red")
+                return False
+            
             # Show what we're browsing
             if database_filter:
                 if len(database_filter) == 1:
@@ -1728,35 +2077,77 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"🔍 Launching unified browser for workspace '{workspace_to_use}'...", style="cyan")
 
             # Get current sources for pre-population (handle mixed commands properly)
-                current_sources = []
+            current_sources = []
             
-            # Debug: Show what we have in context_state
+            # Get what we have in context_state
             stored_discord_selections = context_state.get('browse_selections', [])
             current_regular_sources = context_state.get('sources', [])
-            print_text(f"Debug: context_state['browse_selections'] = {stored_discord_selections}", style="dim")
-            print_text(f"Debug: context_state['sources'] = {current_regular_sources}", style="dim")
             
-            # First, get any stored Discord channel selections
-            if stored_discord_selections:
-                current_sources.extend(stored_discord_selections)
+            # Ensure stored_discord_selections is never None to avoid iteration errors
+            if stored_discord_selections is None:
+                stored_discord_selections = []
             
-            # For mixed commands, we also need to include regular database sources
-            # Get current regular sources (but exclude those that are handled by Discord)
-            if current_regular_sources:
-                # Extract database names from Discord selections to avoid duplicates
-                discord_db_names = set()
-                for discord_sel in stored_discord_selections:
-                    if '#' in discord_sel:
-                        db_name = discord_sel.split('#')[0]
-                        discord_db_names.add(db_name)
+            # For workspace browse commands (like -b trass), we want to default to ALL workspace sources selected
+            # Check if this is a workspace browse command by looking at the original format
+            is_workspace_browse = False
+            if original_format and '-b ' in original_format and workspace_to_use and not database_filter:
+                is_workspace_browse = True
+            
+            if is_workspace_browse:
+                # For workspace browse, default to all workspace databases being selected
+                # But also include any previously stored browser selections to maintain persistence
+                from promaia.config.databases import get_database_manager
+                db_manager = get_database_manager()
+                workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
                 
-                # Add regular sources that aren't Discord databases
-                for source in current_regular_sources:
-                source_db = source.split(':')[0] if ':' in source else source
-                    if source_db not in discord_db_names:
-                        current_sources.append(source)
+                # Add all workspace databases with their default days
+                for db in workspace_databases:
+                    if db.sync_enabled:  # Only include enabled databases
+                        if default_days:
+                            source_with_days = f"{db.get_qualified_name()}:{default_days}"
+                        else:
+                            source_with_days = f"{db.get_qualified_name()}:7"  # Default to 7 days
+                        current_sources.append(source_with_days)
+                
+                # Also include any stored Discord channel selections for persistence
+                if stored_discord_selections:
+                    current_sources.extend(stored_discord_selections)
+                
+                # Include regular sources that aren't part of this workspace
+                if current_regular_sources:
+                    for source in current_regular_sources:
+                        source_db = source.split(':')[0] if ':' in source else source
+                        # Check if this source is from a different workspace
+                        if '.' in source_db:
+                            source_workspace = source_db.split('.')[0]
+                            if source_workspace != workspace_to_use:
+                                current_sources.append(source)
+                        else:
+                            # Non-workspace source (like journal:30), always include
+                            current_sources.append(source)
+            else:
+                # For specific database browse or mixed commands, use existing logic
+                # First, get any stored Discord channel selections
+                if stored_discord_selections:
+                    current_sources.extend(stored_discord_selections)
+                
+                # For mixed commands, we also need to include regular database sources
+                # Get current regular sources (but exclude those that are handled by Discord)
+                if current_regular_sources:
+                    # Extract database names from Discord selections to avoid duplicates
+                    discord_db_names = set()
+                    for discord_sel in stored_discord_selections:
+                        if '#' in discord_sel:
+                            db_name = discord_sel.split('#')[0]
+                            discord_db_names.add(db_name)
+                    
+                    # Add regular sources that aren't Discord databases
+                    for source in current_regular_sources:
+                        source_db = source.split(':')[0] if ':' in source else source
+                        if source_db not in discord_db_names:
+                            current_sources.append(source)
             
-            print_text(f"Debug: Pre-populating browser with {len(current_sources)} sources", style="dim")
+
             
             # Launch unified browser
             from promaia.cli.workspace_browser import launch_unified_browser
@@ -1813,10 +2204,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             context_state['sources'] = processed_sources
             context_state['filters'] = processed_filters
             
-            # Store original Discord channel selections for future /e preservation
-            original_discord_selections = [s for s in selected_sources if '#' in s]
-            if original_discord_selections:
-                context_state['browse_selections'] = original_discord_selections
+            # Store ALL browser selections for future /e preservation (not just Discord)
+            # This includes both regular database selections and Discord channel selections
+            if selected_sources:
+                context_state['browse_selections'] = selected_sources.copy()
             
             # Preserve the original browse command format
             context_state['original_query_format'] = original_format
@@ -2037,7 +2428,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     asyncio.run(sync_current_context_databases())
                     print_text("Context databases synced successfully. Reloading context...", style="bold green")
                     if reload_context():
-                        print_text("Context reloaded successfully!", style="bold green")
                         print()
                         # Show the same detailed breakdown as when starting a new chat
                         print_welcome_message(
@@ -2059,7 +2449,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Edit context
                 try:
                     if edit_context():
-                        print_text("Context updated successfully!", style="bold green")
                         print()
                         
                         # Save the updated command to recents

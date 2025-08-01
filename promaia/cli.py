@@ -1017,9 +1017,55 @@ def chat_run(args):
     
     # Handle browse option for workspace or Discord channel selection
     browse_args = getattr(args, 'browse', None)
+    sources = getattr(args, 'sources', None)
+    
+    # Detect mixed commands: when user provides both sources and browse arguments
+    has_mixed_command = bool(sources) and bool(browse_args)
+    
     if browse_args is not None:
+        # If this is a mixed command, handle it specially
+        if has_mixed_command:
+            print_text("🔄 Detected mixed command with sources and browse. Using unified handling...", style="cyan")
+            
+            # Flatten nested lists from multiple -b flags: [['trass'], ['trass.tg']] -> ['trass', 'trass.tg']
+            browse_databases = []
+            if browse_args:
+                for item in browse_args:
+                    if isinstance(item, list):
+                        browse_databases.extend(item)
+                    else:
+                        browse_databases.append(item)
+            
+            # Get other arguments
+            filters = getattr(args, 'filters', None)
+            original_workspace = getattr(args, 'workspace', None)
+            mcp_servers = getattr(args, 'mcp_servers', None)
+            nl_prompt = None
+            
+            # Handle natural language processing
+            if hasattr(args, 'natural_language') and args.natural_language:
+                nl_prompt = ' '.join(args.natural_language)
+                print_text(f"🤖 Will process natural language query after browser: '{nl_prompt}'", style="white")
+            
+            # Call main chat function with mixed command parameters
+            try:
+                chat(
+                    sources=sources,
+                    filters=filters,
+                    workspace=original_workspace,
+                    non_interactive=getattr(args, 'non_interactive', False),
+                    natural_language_prompt=nl_prompt,
+                    browse_databases=browse_databases,
+                    mcp_servers=mcp_servers
+                )
+                return
+            except Exception as e:
+                print_text(f"❌ Error in mixed command execution: {e}", style="red")
+                return
+        
+        # Handle non-mixed browse commands (existing logic)
         # If browse is provided without other sources, determine type of browse
-        if not getattr(args, 'sources', None) and not browse_args:
+        elif not getattr(args, 'sources', None) and not browse_args:
             return chat_run_browse(args)  # Default Discord browse
         # Check if this is a workspace browse or Discord browse
         elif browse_args is not None and len(browse_args) == 1:
@@ -1036,9 +1082,10 @@ def chat_run(args):
         elif browse_args is not None:  # browse_args could be empty list or list with databases
             return chat_run_inline_browse(args)
     
+    # Handle regular commands (no browse)
     sources = getattr(args, 'sources', None)
     filters = getattr(args, 'filters', None)
-    original_workspace = getattr(args, 'workspace', None)  # Keep original for display
+    original_workspace = getattr(args, 'workspace', None)
     mcp_servers = getattr(args, 'mcp_servers', None)
     nl_prompt = None
     
@@ -1809,14 +1856,38 @@ def chat_run_workspace_browse(args, workspace_name):
         # Add workspace to args so chat function can use it
         args.workspace = workspace_name
         
-        # Call the chat function with workspace - it will launch the unified browser
+        # Build the original browse command for display
+        original_command_parts = ["maia", "chat"]
+        
+        # Add browse argument
+        original_command_parts.extend(["-b", workspace_name])
+        
+        # Add any regular sources
+        if sources:
+            for source in sources:
+                original_command_parts.extend(["-s", source])
+        
+        # Add filters
+        if filters:
+            for filter_expr in filters:
+                original_command_parts.extend(["-f", f'"{filter_expr}"'])
+        
+        # Add MCP servers
+        if mcp_servers:
+            for server in mcp_servers:
+                original_command_parts.extend(["-mcp", server])
+        
+        original_browse_command = " ".join(original_command_parts)
+        
+        # Call the chat function with workspace and original command format
         chat(
             sources=sources,
             filters=filters, 
             workspace=workspace_name,
             resolved_workspace=workspace_name,
             non_interactive=getattr(args, 'non_interactive', False),
-            mcp_servers=mcp_servers
+            mcp_servers=mcp_servers,
+            original_browse_command=original_browse_command
         )
         
     except Exception as e:

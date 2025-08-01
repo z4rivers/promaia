@@ -30,7 +30,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T20:27:24.343302+00:00",
+      "last_sync_time": "2025-08-01T01:35:03.718739+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -171,7 +171,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T20:27:17.959352+00:00",
+      "last_sync_time": "2025-08-01T01:35:56.906331+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -197,7 +197,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T20:27:17.745399+00:00",
+      "last_sync_time": "2025-08-01T01:37:38.971330+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Consumer Product"
@@ -247,7 +247,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T20:27:16.222473+00:00",
+      "last_sync_time": "2025-07-31T02:10:47.564820+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -273,7 +273,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
-      "last_sync_time": "2025-07-30T20:27:17.108830+00:00",
+      "last_sync_time": "2025-08-01T01:35:09.666208+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -385,7 +385,7 @@
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": "all",
-      "last_sync_time": "2025-07-30T20:27:17.107608+00:00",
+      "last_sync_time": "2025-08-01T01:35:49.971330+00:00",
       "filters": {
         "Team": "Consumer Product"
       },
