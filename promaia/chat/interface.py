@@ -563,6 +563,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store original browse selections for re-editing
         'original_query_format': original_browse_command  # Store the original query format for display
     }
+    
+    # Debug: Show what browse_selections were stored
+    # if browse_selections:
+    #     debug_print(f"STORED browse_selections in context_state: {browse_selections}")
 
     def update_query_command():
         """Update the query command display based on current context state."""
@@ -1695,29 +1699,54 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # This is a mixed command - update context directly without launching browser
                 print_text(f"🔄 Updating context with browse databases and regular sources...", style="cyan")
                 
-                # Combine regular sources with browse databases expanded to their full names
+                # Start with regular sources
                 all_sources = regular_sources.copy()
                 
-                # Add browse databases to sources
+                # For workspaces mentioned in -b, preserve existing browser selections instead of expanding
+                existing_sources = context_state.get('sources', [])
+                preserved_workspace_sources = []
+                
+                for browse_db in browse_databases:
+                    if workspace_manager.validate_workspace(browse_db):
+                        # This is a workspace - preserve existing browser selections for this workspace
+                        for existing_source in existing_sources:
+                            source_db = existing_source.split(':')[0] if ':' in existing_source else existing_source
+                            if '.' in source_db:
+                                source_workspace = source_db.split('.')[0]
+                                if source_workspace == browse_db:
+                                    preserved_workspace_sources.append(existing_source)
+                
+                # Add preserved workspace sources
+                all_sources.extend(preserved_workspace_sources)
+                
+                # Only add database_filter sources that aren't already covered by preserved sources
                 if database_filter:
                     for db_name in database_filter:
-                        # Check if this is a workspace name that was expanded
-                        workspace_found = False
-                        for browse_db in browse_databases:
-                            if workspace_manager.validate_workspace(browse_db) and db_name.startswith(f"{browse_db}."):
-                                # This database came from workspace expansion - add with default days
-                                if default_days:
-                                    source_with_days = f"{db_name}:{default_days}"
-                                else:
-                                    source_with_days = db_name
-                                if source_with_days not in all_sources:
-                                    all_sources.append(source_with_days)
-                                workspace_found = True
-                                break
+                        # Check if this database is already preserved
+                        db_base = db_name.split(':')[0] if ':' in db_name else db_name
+                        already_preserved = any(
+                            existing.split(':')[0] == db_base 
+                            for existing in preserved_workspace_sources
+                        )
                         
-                        # If not from workspace expansion, add the database as-is
-                        if not workspace_found and db_name not in all_sources and f"{db_name}:" not in str(all_sources):
-                            all_sources.append(db_name)
+                        if not already_preserved:
+                            # Check if this is a workspace name that was expanded
+                            workspace_found = False
+                            for browse_db in browse_databases:
+                                if workspace_manager.validate_workspace(browse_db) and db_name.startswith(f"{browse_db}."):
+                                    # This database came from workspace expansion - add with default days
+                                    if default_days:
+                                        source_with_days = f"{db_name}:{default_days}"
+                                    else:
+                                        source_with_days = db_name
+                                    if source_with_days not in all_sources:
+                                        all_sources.append(source_with_days)
+                                    workspace_found = True
+                                    break
+                            
+                            # If not from workspace expansion, add the database as-is
+                            if not workspace_found and db_name not in all_sources and f"{db_name}:" not in str(all_sources):
+                                all_sources.append(db_name)
                 
                 # Update context state
                 context_state['sources'] = all_sources
@@ -1757,12 +1786,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     current_sources = []
                     
                     # Get what we have in context_state
-                    stored_discord_selections = context_state.get('browse_selections', [])
+                    stored_browser_selections = context_state.get('browse_selections', [])
                     current_regular_sources = context_state.get('sources', [])
                     
-                    # Ensure stored_discord_selections is never None to avoid iteration errors
-                    if stored_discord_selections is None:
-                        stored_discord_selections = []
+                    # Debug: Show what was retrieved
+                    # debug_print(f"RETRIEVED stored_browser_selections: {stored_browser_selections}")
+                    # debug_print(f"RETRIEVED current_regular_sources: {current_regular_sources}")
+                    
+                    # Ensure stored_browser_selections is never None to avoid iteration errors
+                    if stored_browser_selections is None:
+                        stored_browser_selections = []
                     
                     # For workspace browse commands (like -b trass), we want to default to ALL workspace sources selected
                     # BUT only if there are no existing browser selections (for persistence)
@@ -1773,11 +1806,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     if is_workspace_browse:
                         # Check if we have previous browser selections
-                        has_previous_selections = bool(stored_discord_selections)
+                        has_previous_selections = bool(stored_browser_selections)
+                        
+                        # Debug: Show the decision logic
+                        # debug_print(f"is_workspace_browse: {is_workspace_browse}, has_previous_selections: {has_previous_selections}")
                         
                         if has_previous_selections:
                             # Use previous selections to maintain user's choices
-                            current_sources.extend(stored_discord_selections)
+                            current_sources.extend(stored_browser_selections)
                             
                             # Include regular sources that aren't part of this workspace
                             if current_regular_sources:
@@ -1821,15 +1857,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         # For specific database browse or mixed commands, use existing logic
                         # First, get any stored Discord channel selections
-                        if stored_discord_selections:
-                            current_sources.extend(stored_discord_selections)
+                        if stored_browser_selections:
+                            current_sources.extend(stored_browser_selections)
                         
                         # For mixed commands, we also need to include regular database sources
                         # Get current regular sources (but exclude those that are handled by Discord)
                         if current_regular_sources:
                             # Extract database names from Discord selections to avoid duplicates
                             discord_db_names = set()
-                            for discord_sel in stored_discord_selections:
+                            for discord_sel in stored_browser_selections:
                                 if '#' in discord_sel:
                                     db_name = discord_sel.split('#')[0]
                                     discord_db_names.add(db_name)
@@ -1891,7 +1927,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             processed_filters.append(filter_spec)
                     
                     # Update context with processed sources and filters
-                    context_state['sources'] = processed_sources
+                    # Simple approach: keep non-workspace sources, replace workspace sources with browser selections
+                    original_sources = context_state.get('sources', [])
+                    final_sources = []
+                    
+                    # Keep sources that are NOT from the current workspace
+                    workspace_name = workspace_to_use if workspace_to_use else context_state.get('resolved_workspace') or context_state.get('workspace')
+                    
+                    for source in original_sources:
+                        source_db = source.split(':')[0] if ':' in source else source
+                        if '.' in source_db:
+                            source_workspace = source_db.split('.')[0]
+                            if source_workspace != workspace_name:
+                                final_sources.append(source)  # Keep other workspace sources
+                        else:
+                            final_sources.append(source)  # Keep non-workspace sources (like journal:30)
+                    
+                    # Add the new browser selections (these replace the old workspace sources)
+                    final_sources.extend(processed_sources)
+                    
+                    context_state['sources'] = final_sources
                     context_state['filters'] = processed_filters
                     
                     # Store ALL browser selections for future /e preservation (not just Discord)
@@ -2080,12 +2135,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             current_sources = []
             
             # Get what we have in context_state
-            stored_discord_selections = context_state.get('browse_selections', [])
+            stored_browser_selections = context_state.get('browse_selections', [])
             current_regular_sources = context_state.get('sources', [])
             
-            # Ensure stored_discord_selections is never None to avoid iteration errors
-            if stored_discord_selections is None:
-                stored_discord_selections = []
+            # Debug: Show what was retrieved
+            # debug_print(f"RETRIEVED stored_browser_selections: {stored_browser_selections}")
+            # debug_print(f"RETRIEVED current_regular_sources: {current_regular_sources}")
+            
+            # Ensure stored_browser_selections is never None to avoid iteration errors
+            if stored_browser_selections is None:
+                stored_browser_selections = []
             
             # For workspace browse commands (like -b trass), we want to default to ALL workspace sources selected
             # Check if this is a workspace browse command by looking at the original format
@@ -2094,54 +2153,72 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 is_workspace_browse = True
             
             if is_workspace_browse:
-                # For workspace browse, default to all workspace databases being selected
-                # But also include any previously stored browser selections to maintain persistence
-                from promaia.config.databases import get_database_manager
-                db_manager = get_database_manager()
-                workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
+                # Check if we have previous browser selections
+                has_previous_selections = bool(stored_browser_selections)
                 
-                # Add all workspace databases with their default days
-                for db in workspace_databases:
-                    if db.sync_enabled:  # Only include enabled databases
-                        if default_days:
-                            source_with_days = f"{db.get_qualified_name()}:{default_days}"
-                        else:
-                            source_with_days = f"{db.get_qualified_name()}:7"  # Default to 7 days
-                        current_sources.append(source_with_days)
+                # Debug: Show the decision logic
+                # debug_print(f"is_workspace_browse: {is_workspace_browse}, has_previous_selections: {has_previous_selections}")
                 
-                # Also include any stored Discord channel selections for persistence
-                if stored_discord_selections:
-                    current_sources.extend(stored_discord_selections)
-                
-                # Include regular sources that aren't part of this workspace
-                if current_regular_sources:
-                    for source in current_regular_sources:
-                        source_db = source.split(':')[0] if ':' in source else source
-                        # Check if this source is from a different workspace
-                        if '.' in source_db:
-                            source_workspace = source_db.split('.')[0]
-                            if source_workspace != workspace_to_use:
+                if has_previous_selections:
+                    # Use previous selections to maintain user's choices
+                    current_sources.extend(stored_browser_selections)
+                    
+                    # Include regular sources that aren't part of this workspace
+                    if current_regular_sources:
+                        for source in current_regular_sources:
+                            source_db = source.split(':')[0] if ':' in source else source
+                            # Check if this source is from a different workspace
+                            if '.' in source_db:
+                                source_workspace = source_db.split('.')[0]
+                                if source_workspace != workspace_to_use:
+                                    current_sources.append(source)
+                            else:
+                                # Non-workspace source (like journal:30), always include
                                 current_sources.append(source)
-                        else:
-                            # Non-workspace source (like journal:30), always include
-                            current_sources.append(source)
+                else:
+                    # First time browsing workspace - default to all workspace databases
+                    from promaia.config.databases import get_database_manager
+                    db_manager = get_database_manager()
+                    workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
+                    
+                    # Add all workspace databases with their default days
+                    for db in workspace_databases:
+                        if db.sync_enabled:  # Only include enabled databases
+                            if default_days:
+                                source_with_days = f"{db.get_qualified_name()}:{default_days}"
+                            else:
+                                source_with_days = f"{db.get_qualified_name()}:7"  # Default to 7 days
+                            current_sources.append(source_with_days)
+                    
+                    # Include regular sources that aren't part of this workspace
+                    if current_regular_sources:
+                        for source in current_regular_sources:
+                            source_db = source.split(':')[0] if ':' in source else source
+                            # Check if this source is from a different workspace
+                            if '.' in source_db:
+                                source_workspace = source_db.split('.')[0]
+                                if source_workspace != workspace_to_use:
+                                    current_sources.append(source)
+                            else:
+                                # Non-workspace source (like journal:30), always include
+                                current_sources.append(source)
             else:
                 # For specific database browse or mixed commands, use existing logic
-                # First, get any stored Discord channel selections
-                if stored_discord_selections:
-                    current_sources.extend(stored_discord_selections)
+                # First, get any stored browser selections
+                if stored_browser_selections:
+                    current_sources.extend(stored_browser_selections)
                 
                 # For mixed commands, we also need to include regular database sources
-                # Get current regular sources (but exclude those that are handled by Discord)
+                # Get current regular sources (but exclude those that are handled by browser selections)
                 if current_regular_sources:
-                    # Extract database names from Discord selections to avoid duplicates
+                    # Extract database names from Discord channel selections to avoid duplicates
                     discord_db_names = set()
-                    for discord_sel in stored_discord_selections:
-                        if '#' in discord_sel:
-                            db_name = discord_sel.split('#')[0]
+                    for browser_sel in stored_browser_selections:
+                        if '#' in browser_sel:  # This indicates a Discord channel selection
+                            db_name = browser_sel.split('#')[0]
                             discord_db_names.add(db_name)
                     
-                    # Add regular sources that aren't Discord databases
+                    # Add regular sources that aren't already covered by Discord channel selections
                     for source in current_regular_sources:
                         source_db = source.split(':')[0] if ':' in source else source
                         if source_db not in discord_db_names:
@@ -2201,7 +2278,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     processed_filters.append(filter_spec)
             
             # Update context with processed sources and filters
-            context_state['sources'] = processed_sources
+            # Simple approach: keep non-workspace sources, replace workspace sources with browser selections
+            original_sources = context_state.get('sources', [])
+            final_sources = []
+            
+            # Keep sources that are NOT from the current workspace
+            workspace_name = workspace_to_use if workspace_to_use else context_state.get('resolved_workspace') or context_state.get('workspace')
+            
+            for source in original_sources:
+                source_db = source.split(':')[0] if ':' in source else source
+                if '.' in source_db:
+                    source_workspace = source_db.split('.')[0]
+                    if source_workspace != workspace_name:
+                        final_sources.append(source)  # Keep other workspace sources
+                else:
+                    final_sources.append(source)  # Keep non-workspace sources (like journal:30)
+            
+            # Add the new browser selections (these replace the old workspace sources)
+            final_sources.extend(processed_sources)
+            
+            context_state['sources'] = final_sources
             context_state['filters'] = processed_filters
             
             # Store ALL browser selections for future /e preservation (not just Discord)
