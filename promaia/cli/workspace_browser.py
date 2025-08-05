@@ -62,9 +62,17 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
             workspace_names = []
             for filter_item in database_filter:
                 base_name = filter_item.split(':')[0]  # Remove day specification
+                
+                # Check if it's a workspace name directly
                 if workspace_manager.validate_workspace(base_name):
                     if base_name not in workspace_names:
                         workspace_names.append(base_name)
+                # Check if it's a database name (workspace.database format)
+                elif '.' in base_name:
+                    potential_workspace = base_name.split('.')[0]
+                    if workspace_manager.validate_workspace(potential_workspace):
+                        if potential_workspace not in workspace_names:
+                            workspace_names.append(potential_workspace)
             
             if not workspace_names:
                 console.print(f"❌ No valid workspaces found in database filter: {database_filter}", style="red")
