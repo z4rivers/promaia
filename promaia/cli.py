@@ -1067,24 +1067,40 @@ def chat_run(args):
                     workspace_manager = get_workspace_manager()
                     db_manager = get_database_manager()
                     
-                    # Determine workspace
-                    if not original_workspace:
-                        for browse_spec in browse_databases:
-                            if '.' in browse_spec:
-                                determined_workspace = browse_spec.split('.')[0]
-                                if workspace_manager.validate_workspace(determined_workspace):
-                                    original_workspace = determined_workspace
-                                    break
+                    # Detect multiple workspaces and handle accordingly
+                    workspace_names_found = []
+                    
+                    # First pass: collect all workspace names from browse arguments
+                    for browse_spec in browse_databases:
+                        # Remove day specification if present
+                        base_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
                         
-                        if not original_workspace:
-                            for browse_db in browse_databases:
-                                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-                                if workspace_manager.validate_workspace(db_name):
-                                    original_workspace = db_name
-                                    break
-                        
+                        # Check if this is a workspace name directly
+                        if workspace_manager.validate_workspace(base_name):
+                            if base_name not in workspace_names_found:
+                                workspace_names_found.append(base_name)
+                        # Check if this is a database name (workspace.database format)
+                        elif '.' in base_name:
+                            potential_workspace = base_name.split('.')[0]
+                            if workspace_manager.validate_workspace(potential_workspace):
+                                if potential_workspace not in workspace_names_found:
+                                    workspace_names_found.append(potential_workspace)
+                    
+                    # Determine workspace parameter for browser
+                    if len(workspace_names_found) > 1:
+                        # Multiple workspaces - use None and let browser handle via database_filter
+                        original_workspace = None
+                        use_workspace_expansion = False  # Don't expand to individual databases
+                        print_text(f"INFO: Detected multiple workspaces: {', '.join(workspace_names_found)}", style="cyan")
+                    elif len(workspace_names_found) == 1:
+                        # Single workspace
+                        original_workspace = workspace_names_found[0]
+                        use_workspace_expansion = True  # Expand to individual databases
+                    else:
+                        # No workspaces found in browse args, fall back to original logic
                         if not original_workspace:
                             original_workspace = workspace_manager.get_default_workspace()
+                        use_workspace_expansion = True
                     
                     # Parse browse databases
                     database_filter = []
@@ -1102,11 +1118,15 @@ def chat_run(args):
                                 database_filter.append(browse_spec)
                         else:
                             if workspace_manager.validate_workspace(browse_spec):
-                                # Expand workspace to all its databases
-                                workspace_databases = db_manager.get_workspace_databases(browse_spec)
-                                for db in workspace_databases:
-                                    if db.sync_enabled:
-                                        database_filter.append(db.get_qualified_name())
+                                if use_workspace_expansion:
+                                    # Single workspace - expand to all its databases
+                                    workspace_databases = db_manager.get_workspace_databases(browse_spec)
+                                    for db in workspace_databases:
+                                        if db.sync_enabled:
+                                            database_filter.append(db.get_qualified_name())
+                                else:
+                                    # Multiple workspaces - keep workspace name for browser to handle
+                                    database_filter.append(browse_spec)
                             else:
                                 database_filter.append(browse_spec)
                     
@@ -1512,38 +1532,69 @@ def chat_run_inline_browse(args, browse_args=None):
                         print_text(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.", style="white")
                         break
         
-        if not resolved_workspace and browse_databases:
-            for browse_db in browse_databases:
-                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-                if '.' in db_name:
-                    determined_workspace = db_name.split('.')[0]
-                    if workspace_manager.validate_workspace(determined_workspace):
-                        resolved_workspace = determined_workspace
-                        print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="white")
-                        break
+        # Detect multiple workspaces from browse_databases first
+        workspace_names_found = []
+        if browse_databases:
+            from promaia.config.databases import get_database_manager  
+            db_manager = get_database_manager()
+            
+            for browse_spec in browse_databases:
+                # Remove day specification if present
+                base_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
+                
+                # Check if this is a workspace name directly  
+                if workspace_manager.validate_workspace(base_name):
+                    if base_name not in workspace_names_found:
+                        workspace_names_found.append(base_name)
+                # Check if this is a database name (workspace.database format)
+                elif '.' in base_name:
+                    potential_workspace = base_name.split('.')[0]
+                    if workspace_manager.validate_workspace(potential_workspace):
+                        if potential_workspace not in workspace_names_found:
+                            workspace_names_found.append(potential_workspace)
         
-        # If still no workspace, use the default
-        if not resolved_workspace:
-            resolved_workspace = workspace_manager.get_default_workspace()
+        # Handle multiple vs single workspace cases
+        if len(workspace_names_found) > 1:
+            # Multiple workspaces detected
+            resolved_workspace = None  # Use None to trigger multiple workspace logic in browser
+            use_workspace_expansion = False
+            print_text(f"INFO: Detected multiple workspaces: {', '.join(workspace_names_found)}", style="cyan")
+        elif len(workspace_names_found) == 1:
+            # Single workspace from browse args
+            resolved_workspace = workspace_names_found[0]
+            use_workspace_expansion = True
+            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database.", style="white")
+        else:
+            # No workspace found in browse args, try original logic
+            if not resolved_workspace and browse_databases:
+                for browse_db in browse_databases:
+                    db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                    if '.' in db_name:
+                        determined_workspace = db_name.split('.')[0]
+                        if workspace_manager.validate_workspace(determined_workspace):
+                            resolved_workspace = determined_workspace
+                            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="white")
+                            break
+            
+            # If still no workspace, use the default
             if not resolved_workspace:
-                print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
-                return
+                resolved_workspace = workspace_manager.get_default_workspace()
+                if not resolved_workspace:
+                    print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
+                    return
+            
+            use_workspace_expansion = True
         
-        # Validate workspace
-        if not workspace_manager.validate_workspace(resolved_workspace):
+        # Validate workspace (only if not None for multiple workspace case)
+        if resolved_workspace and not workspace_manager.validate_workspace(resolved_workspace):
             print_text(f"✗ Workspace '{resolved_workspace}' is not properly configured.", style="red")
             return
         
-        # Parse browse databases and expand workspace names
+        # Parse browse databases
         database_filter = None
         default_days = None
         
         if browse_databases:
-            from promaia.config.workspaces import get_workspace_manager
-            from promaia.config.databases import get_database_manager
-            workspace_manager = get_workspace_manager()
-            db_manager = get_database_manager()
-            
             database_filter = []
             for browse_spec in browse_databases:
                 if ':' in browse_spec:
@@ -1555,11 +1606,15 @@ def chat_run_inline_browse(args, browse_args=None):
                         
                         # Check if db_name is a workspace
                         if workspace_manager.validate_workspace(db_name):
-                            # Expand workspace to all its databases
-                            workspace_databases = db_manager.get_workspace_databases(db_name)
-                            for db in workspace_databases:
-                                if db.sync_enabled:  # Only include enabled databases
-                                    database_filter.append(db.get_qualified_name())
+                            if use_workspace_expansion:
+                                # Single workspace - expand to all its databases
+                                workspace_databases = db_manager.get_workspace_databases(db_name)
+                                for db in workspace_databases:
+                                    if db.sync_enabled:  # Only include enabled databases
+                                        database_filter.append(db.get_qualified_name())
+                            else:
+                                # Multiple workspaces - keep workspace name for browser to handle
+                                database_filter.append(db_name)
                         else:
                             database_filter.append(db_name)
                     except ValueError:
@@ -1567,11 +1622,15 @@ def chat_run_inline_browse(args, browse_args=None):
                 else:
                     # Check if this is a workspace name
                     if workspace_manager.validate_workspace(browse_spec):
-                        # Expand workspace to all its databases
-                        workspace_databases = db_manager.get_workspace_databases(browse_spec)
-                        for db in workspace_databases:
-                            if db.sync_enabled:  # Only include enabled databases
-                                database_filter.append(db.get_qualified_name())
+                        if use_workspace_expansion:
+                            # Single workspace - expand to all its databases
+                            workspace_databases = db_manager.get_workspace_databases(browse_spec)
+                            for db in workspace_databases:
+                                if db.sync_enabled:  # Only include enabled databases
+                                    database_filter.append(db.get_qualified_name())
+                        else:
+                            # Multiple workspaces - keep workspace name for browser to handle
+                            database_filter.append(browse_spec)
                     else:
                         # It's a specific database name
                         database_filter.append(browse_spec)

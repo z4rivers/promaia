@@ -107,17 +107,29 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                 else:
                     database_names_in_filter.append(filter_item)
             
-            # If the filter contains the current workspace, include all databases from this workspace
-            # Plus any specifically named databases
-            if workspace in workspace_names_in_filter:
-                # Include all databases from this workspace, plus any specifically named ones
-                workspace_databases = [
-                    db for db in workspace_databases 
-                    if db.workspace == workspace or db.get_qualified_name() in database_names_in_filter
-                ]
+            # Handle filtering based on whether we have single or multiple workspaces
+            if workspace is None:
+                # Multiple workspace case - if workspace names are in filter, include all their databases
+                if workspace_names_in_filter:
+                    # Include all databases from workspaces mentioned in filter, plus any specifically named ones
+                    workspace_databases = [
+                        db for db in workspace_databases 
+                        if db.workspace in workspace_names_in_filter or db.get_qualified_name() in database_names_in_filter
+                    ]
+                else:
+                    # Only specific database names in filter
+                    workspace_databases = [db for db in workspace_databases if db.get_qualified_name() in database_names_in_filter]
             else:
-                # Only include specifically named databases
-                workspace_databases = [db for db in workspace_databases if db.get_qualified_name() in database_names_in_filter]
+                # Single workspace case (original logic)
+                if workspace in workspace_names_in_filter:
+                    # Include all databases from this workspace, plus any specifically named ones
+                    workspace_databases = [
+                        db for db in workspace_databases 
+                        if db.workspace == workspace or db.get_qualified_name() in database_names_in_filter
+                    ]
+                else:
+                    # Only include specifically named databases
+                    workspace_databases = [db for db in workspace_databases if db.get_qualified_name() in database_names_in_filter]
         
         # Build entries for both regular databases and Discord channels
         all_entries = []
