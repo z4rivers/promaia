@@ -58,9 +58,34 @@ async def interactive_unified_browser(workspace: str, default_days: Optional[int
             console.print(f"❌ No databases found in workspace '{workspace}'", style="red")
             return []
         
-        # Filter databases if specified (for Discord-only browsing)
+        # Filter databases if specified (handle both workspace names and specific database names)
         if database_filter:
-            workspace_databases = [db for db in workspace_databases if db.get_qualified_name() in database_filter]
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            
+            # Separate workspace names from database names in the filter
+            workspace_names_in_filter = []
+            database_names_in_filter = []
+            
+            for filter_item in database_filter:
+                # Check if this is a workspace name
+                base_name = filter_item.split(':')[0]  # Remove day specification
+                if workspace_manager.validate_workspace(base_name):
+                    workspace_names_in_filter.append(base_name)
+                else:
+                    database_names_in_filter.append(filter_item)
+            
+            # If the filter contains the current workspace, include all databases from this workspace
+            # Plus any specifically named databases
+            if workspace in workspace_names_in_filter:
+                # Include all databases from this workspace, plus any specifically named ones
+                workspace_databases = [
+                    db for db in workspace_databases 
+                    if db.workspace == workspace or db.get_qualified_name() in database_names_in_filter
+                ]
+            else:
+                # Only include specifically named databases
+                workspace_databases = [db for db in workspace_databases if db.get_qualified_name() in database_names_in_filter]
         
         # Build entries for both regular databases and Discord channels
         all_entries = []

@@ -492,7 +492,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         print_text(f"🔗 Combined sources: {len(sources)} total sources for chat", style="blue")
         
         # Set these for context state initialization
-        original_browse_command = original_mixed_command
+        original_browse_command = f"maia chat {original_browse_command}" if original_browse_command else None
         
         # Clear browse_databases since we've processed it and stored the results
         browse_databases = None
@@ -602,10 +602,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
         
-        # Update both query_command and original_query_format so edit interface shows current state
+        # Update query_command but preserve original_query_format if it exists
         built_command = " ".join(query_parts)
         context_state['query_command'] = built_command
-        context_state['original_query_format'] = built_command
+        # Only update original_query_format if it doesn't exist
+        if not context_state.get('original_query_format'):
+            context_state['original_query_format'] = built_command
 
     # Initial query command setup - capture original format for regular commands too
     if not context_state.get('original_query_format'):
@@ -633,7 +635,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     update_query_command()
     query_command = context_state['query_command']
 
-    def reload_context():
+    def reload_context(skip_nl_cache_messages=False):
         """Reload the chat context with current state configuration."""
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command
         
@@ -651,13 +653,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             # If we have content and no cached prompt yet, this is CLI-provided content (first time)
             if existing_nl_content and not cached_nl_prompt:
-                print_text("🔄 Using natural language results from CLI", style="dim")
+                if not skip_nl_cache_messages:
+                    print_text("🔄 Using natural language results from CLI", style="dim")
                 natural_language_data = existing_nl_content
                 # Set up cache for future reloads
                 context_state['cached_natural_language_prompt'] = nl_prompt
             # If we have cached content for this exact prompt, reuse it
             elif nl_prompt == cached_nl_prompt and existing_nl_content:
-                print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
+                if not skip_nl_cache_messages:
+                    print_text("🔄 Using cached natural language results (prompt matches)", style="dim")
                 natural_language_data = existing_nl_content
             # Otherwise, process fresh query
             else:
@@ -702,6 +706,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Cache both the results and prompt for future use
                     context_state['natural_language_content'] = natural_language_content
                     context_state['cached_natural_language_prompt'] = nl_prompt
+                    
+                    # IMPORTANT: Set natural_language_data for integration with combined_multi_source_data
+                    natural_language_data = natural_language_content
                     
                 except Exception as e:
                     print_text(f"Error processing natural language content: {e}", style="bold red")
@@ -1118,8 +1125,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # This ensures session logs show accurate source information
         # However, preserve the original sources format if we have user-provided args
         # to maintain day specifications in the query display
-        if not context_state.get('original_query_format') and not user_provided_args:
-            # Only overwrite if sources were auto-generated (no user input)
+        if not context_state.get('original_query_format') and not user_provided_args and not context_state.get('sources'):
+            # Only overwrite if sources were auto-generated AND we don't already have sources
             context_state['sources'] = list(new_multi_source_data.keys())
         # else: keep the existing sources with their day specifications for display
         
@@ -1263,7 +1270,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Show current context summary
         print_text("Current command:", style="dim")
-        print_text(f"  {context_state['query_command']}", style="bold")
+        # Always show with maia chat prefix for consistency and copy-ability
+        command_to_display = context_state['query_command']
+        if not command_to_display.startswith("maia chat"):
+            command_to_display = f"maia chat {command_to_display}"
+        print_text(f"  {command_to_display}", style="bold")
         
         # Show helpful info for Discord contexts
         if context_state.get('sources') and any('discord' in src.lower() or src.endswith('.ds') for src in context_state['sources']):
@@ -1298,7 +1309,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if original_cmd and original_cmd.startswith("maia chat "):
                 current_args_str = original_cmd[10:]  # Remove "maia chat "
             else:
-                current_args_str = ""
+                current_args_str = original_cmd  # Use the whole thing as args
         else:
             # Check if we're in natural language mode
             if context_state.get('natural_language_prompt'):
@@ -1347,6 +1358,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 user_input = ""
             else:
                 user_input = user_input.strip()
+                
+            # Handle case where user types full command including "maia chat"
+            if user_input.startswith("maia chat "):
+                user_input = user_input[10:]  # Remove "maia chat " prefix
+            elif user_input == "maia chat":
+                user_input = ""  # Treat as empty input (reset to no args)
             
             # Check if a special action was triggered
             if action_taken['type'] == 'recents':
@@ -1432,6 +1449,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     cached_nl_content = context_state.get('natural_language_content', {})
                     cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
                     
+                    # If this is a new/different prompt, clear the cache to force fresh processing
+                    if nl_prompt != cached_nl_prompt:
+                        context_state['natural_language_content'] = None
+                        context_state['cached_natural_language_prompt'] = ''
+                        cached_nl_content = {}
+                        cached_nl_prompt = ''
+                    
                     if nl_prompt == cached_nl_prompt and cached_nl_content:
                         print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
                         natural_language_content = cached_nl_content
@@ -1487,6 +1511,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # natural_language_content is already set above (either from cache or fresh query)
                     context_state['natural_language_prompt'] = nl_prompt
                     
+                    # NOTE: Don't update cached_natural_language_prompt here!
+                    # Let reload_context() handle cache updates after processing new queries
+                    
                     # Update sources and filters based on the edited command, not the old state
                     new_sources = getattr(parsed_args, 'sources', []) or []
                     new_filters = getattr(parsed_args, 'filters', []) or []
@@ -1499,13 +1526,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if new_workspace:
                         context_state['workspace'] = new_workspace
                     
-                    # Clear browse state since user didn't include -b in their edited command
-                    context_state['original_browse_mode'] = False
-                    context_state['browse_selections'] = []
-                    context_state['original_query_format'] = None  # Clear to rebuild query format
+                    # Only clear browse state if user is explicitly switching away from browse mode
+                    # Don't clear if they're just editing other aspects of the command
+                    if not any('-b' in arg for arg in args_list):
+                        # User removed browse flag - clear browse state but preserve other context
+                        context_state['original_browse_mode'] = False
+                        context_state['browse_selections'] = []
+                        # Don't clear original_query_format to preserve command display
+                    
+                    # Update the original query format for natural language mode
+                    full_command = f"maia chat {user_input}"
+                    context_state['original_query_format'] = full_command
                     
                     # Reload with natural language content and updated sources
-                    if reload_context():
+                    # Pass flag to indicate this is after manual editing to avoid confusing cache messages
+                    if reload_context(skip_nl_cache_messages=True):
                         print_text("Context updated successfully!", style="bold green")
                         return True
                     else:
@@ -1523,14 +1558,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     context_state['filters'] = new_filters
                     context_state['mcp_servers'] = new_mcp_servers
                     
-                    # Only clear natural language content if we're switching to regular sources mode
+                    # Only clear natural language content if we're explicitly switching away from NL mode
+                    # Don't clear if user is just adding sources to existing NL content
                     if new_sources or new_filters:
-                        context_state['natural_language_content'] = None  # Clear NL content
-                        context_state['natural_language_prompt'] = None   # Clear NL prompt
-                        context_state['original_query_format'] = None    # Clear original format so query rebuilds
+                        # Only clear NL content if there was no previous NL content, meaning user is switching modes
+                        if not context_state.get('natural_language_content'):
+                            context_state['natural_language_content'] = None  
+                            context_state['natural_language_prompt'] = None   
+                        # Don't clear original_query_format to preserve command display
                     
                     if new_workspace:
                         context_state['workspace'] = new_workspace
+                    
+                    # Update the original query format for regular mode
+                    full_command = f"maia chat {user_input}"
+                    context_state['original_query_format'] = full_command
                     
                     # Always reload context with new settings
                     if reload_context():
@@ -1701,6 +1743,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 
                 # Start with regular sources
                 all_sources = regular_sources.copy()
+                # Hmm seems odd that regular sources gets stored as all sources. but maybe it makes sense.
                 
                 # For workspaces mentioned in -b, preserve existing browser selections instead of expanding
                 existing_sources = context_state.get('sources', [])
@@ -1963,7 +2006,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # For browse commands, use the manually edited command; for others, use reconstructed
                     if '-b ' in user_input:
                         # This was manually edited with browse arguments - use the new command
-                        context_state['original_query_format'] = user_input
+                        context_state['original_query_format'] = f"maia chat {user_input}"
                     else:
                         # Reconstruct command from current state
                         cmd_parts = ["maia", "chat"]
@@ -2013,6 +2056,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     parsed_args = shlex.split(original_format)
                     browse_databases = []
                     
+
+                    
                     # Find all -b arguments
                     i = 0
                     while i < len(parsed_args):
@@ -2024,6 +2069,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 i += 1
                         else:
                             i += 1
+                    
+
                     
                     # Don't expand workspaces here - let the unified browser handle it
                     if browse_databases:
@@ -2059,11 +2106,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     pass  # Not a day specification
                 except Exception as e:
                     print_text(f"Warning: Could not parse browse arguments: {e}", style="yellow")
-                    # Fallback to old logic - extract all -b arguments
+                    # Fallback to simpler extraction - find -b and capture all following non-flag arguments
                     import re
-                    browse_matches = re.findall(r'-b\s+([^\s-]+)', original_format)
-                    if browse_matches:
-                        database_filter = browse_matches
+                    
+
+                    
+                    # Split the original format and look for -b manually
+                    args = original_format.split()
+                    database_filter = []
+                    i = 0
+                    while i < len(args):
+                        if args[i] == '-b':
+                            # Collect all arguments after -b until next flag or end
+                            i += 1
+                            while i < len(args) and not args[i].startswith('-'):
+                                database_filter.append(args[i])
+                                i += 1
+                        else:
+                            i += 1
+                    
+
             
             # Only if we couldn't determine workspace from browse command, then use context
             if not workspace_to_use:
@@ -2112,15 +2174,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # This is likely a database name
                         actual_databases.append(browse_spec)
                 
-                # If we only have workspace names in the filter, clear the filter and use workspace parameter
+                # Handle mixed workspace and database names correctly
                 if workspace_names and not actual_databases:
+                    # Only workspace names - clear filter and use workspace parameter
                     database_filter = None  # Let browser show all databases in the workspace
+                elif workspace_names and actual_databases:
+                    # Mixed case: keep the original filter to show both workspace and specific databases
+                    database_filter = database_filter  # Keep the original mixed filter
                 elif actual_databases:
                     database_filter = actual_databases  # Keep only actual database names
             
             if not workspace_to_use and not multiple_workspaces_in_context:
                 print_text("Error: No workspace available for browse mode.", style="bold red")
                 return False
+            
+
             
             # Show what we're browsing
             if database_filter:
