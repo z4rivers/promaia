@@ -693,6 +693,43 @@ def determine_search_strategy(nl_prompt: str) -> str:
         return 'structured'
 
 
+def load_content_for_result(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Load actual content for a database result by reading from the file path.
+    Transforms raw database results into the format expected by the chat interface.
+    """
+    try:
+        import os
+        
+        file_path = result.get('file_path')
+        if not file_path or not os.path.exists(file_path):
+            print(f"⚠️ File not found: {file_path}")
+            return None
+            
+        # Read the actual content from the file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Transform database result into chat interface format
+        loaded_result = {
+            'content': content,
+            'filename': os.path.basename(file_path),
+            'title': result.get('title', os.path.basename(file_path)),
+            'database_name': result.get('database_name'),
+            'created_time': result.get('created_time'),
+            'last_edited_time': result.get('last_edited_time'),
+            'page_id': result.get('page_id'),
+            'file_path': file_path,
+            'metadata': result.get('metadata', {})
+        }
+        
+        return loaded_result
+        
+    except Exception as e:
+        print(f"❌ Failed to load content for {result.get('file_path', 'unknown')}: {e}")
+        return None
+
+
 def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, Any]:
     """
     Process natural language to content with intelligent search strategy selection.
@@ -735,10 +772,18 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
         print(f"   Content matches: {len(content_results)}")
         print(f"   Total unique results: {len(all_results)}")
 
-    # Convert results to the format expected by the interface
+    # Convert results to the format expected by the interface by loading actual content
     formatted_results = {}
 
     if all_results:
+        # Load actual content for each result
+        content_loaded_results = []
+        for result in all_results:
+            loaded_result = load_content_for_result(result)
+            if loaded_result:  # Only include results where content was successfully loaded
+                content_loaded_results.append(loaded_result)
+        
+        all_results = content_loaded_results
         # Group results by database for the interface
         for result in all_results:
             db_name = result.get('database_name', 'unknown')
