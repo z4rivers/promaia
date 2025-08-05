@@ -1189,7 +1189,7 @@ def chat_run(args):
                     workspace=original_workspace,
                     non_interactive=getattr(args, 'non_interactive', False),
                     natural_language_prompt=nl_prompt,
-                    browse_databases=browse_databases if sources else None,  # Only pass browse_databases if no sources selected
+                    browse_databases=None,  # Clear browse_databases since browser selection is already complete
                     mcp_servers=mcp_servers
                 )
                 return

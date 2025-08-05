@@ -962,84 +962,100 @@ async def get_pages_by_properties(database_id: str, properties_filter: Dict[str,
         return []
 
 
-async def detect_child_pages_in_blocks(blocks: List[Dict[str, Any]], 
-                                       parent_page_id: str) -> List[str]:
+async def detect_child_pages_in_blocks(blocks: List[Dict[str, Any]], parent_page_id: str) -> List[str]:
     """
-    Recursively scan blocks to find child_page blocks and page mentions that are 
-    actually children of blocks within this page, extracting their page IDs.
-    
+    Recursively scans blocks to find 'child_page' blocks and page mentions that are
+    true children of the parent page.
+
+    A mentioned page is considered a "true child" if its parent is a block that
+    itself is a child of `parent_page_id`. This distinguishes sub-pages from
+    cross-references to other pages.
+
     Args:
-        blocks: List of Notion blocks to scan
-        parent_page_id: ID of the parent page (for logging)
-        
+        blocks: A list of Notion block objects to scan.
+        parent_page_id: The ID of the page that contains these blocks.
+
     Returns:
-        List of child page IDs found in the blocks
+        A list of unique page IDs that are confirmed children.
     """
-    child_page_ids = []
-    
-    async def scan_block(block: Dict[str, Any]) -> List[str]:
-        """Recursively scan a single block for child pages and relevant page mentions."""
-        page_ids = []
-        
-        # Check if this block is a child_page block
-        if block.get("type") == "child_page":
-            child_page_id = block.get("id")
-            if child_page_id:
-                page_ids.append(child_page_id)
-                logger.debug(f"Found child page {child_page_id} in parent {parent_page_id}")
-        
-        # Check for page mentions in rich text that might be child pages
-        elif block.get("type") in ["paragraph", "heading_1", "heading_2", "heading_3", 
-                                   "bulleted_list_item", "numbered_list_item", "to_do", 
-                                   "toggle", "quote", "callout"]:
-            # Get rich text content based on block type
-            rich_text = []
-            block_content = block.get(block["type"], {})
-            if "rich_text" in block_content:
-                rich_text = block_content["rich_text"]
-            
-            # Scan rich text for page mentions
-            for text_obj in rich_text:
-                if text_obj.get("type") == "mention":
-                    mention = text_obj.get("mention", {})
-                    if mention.get("type") == "page":
-                        mentioned_page_id = mention.get("page", {}).get("id")
-                        if mentioned_page_id:
-                            # Check if this mentioned page is actually a child of a block
-                            # within our current page (making it effectively a sub-page)
-                            try:
-                                client = ensure_default_client()
-                                page_response = await client.pages.retrieve(page_id=mentioned_page_id)
-                                page_parent = page_response.get('parent', {})
-                                
-                                # Check if it's a child of a block
-                                if page_parent.get('type') == 'block_id':
-                                    block_id = page_parent.get('block_id')
-                                    # Check if that block belongs to our current page
-                                    block_response = await client.blocks.retrieve(block_id=block_id)
-                                    block_parent = block_response.get('parent', {})
-                                    
-                                    if (block_parent.get('type') == 'page_id' and 
-                                        block_parent.get('page_id') == parent_page_id):
-                                        page_ids.append(mentioned_page_id)
-                                        logger.debug(f"Found child page mention {mentioned_page_id} in parent {parent_page_id}")
-                                        
-                            except Exception as e:
-                                logger.warning(f"Could not verify page mention {mentioned_page_id}: {e}")
-        
-        # Recursively scan children blocks
+    child_page_ids = set()
+    client = ensure_default_client()
+
+    # Memoization cache for block parents to reduce API calls
+    block_parent_cache = {}
+
+    async def get_block_parent(block_id: str) -> Optional[Dict[str, Any]]:
+        if block_id in block_parent_cache:
+            return block_parent_cache[block_id]
+        try:
+            response = await client.blocks.retrieve(block_id=block_id)
+            parent = response.get("parent")
+            block_parent_cache[block_id] = parent
+            return parent
+        except APIResponseError as e:
+            if e.code == "object_not_found":
+                logger.warning(f"Could not find block {block_id} to check its parent.")
+            else:
+                logger.error(f"API error checking parent of block {block_id}: {e}")
+            block_parent_cache[block_id] = None
+            return None
+
+    async def scan_block(block: Dict[str, Any]):
+        block_id = block.get("id")
+        block_type = block.get("type")
+
+        # 1. Direct child_page blocks are always true children
+        if block_type == "child_page":
+            child_page_ids.add(block["id"])
+
+        # 2. Check for page mentions in rich text
+        content = block.get(block_type, {})
+        rich_text_fields = ["rich_text", "caption"]
+        for field in rich_text_fields:
+            if field in content:
+                for text_obj in content[field]:
+                    if text_obj.get("type") == "mention":
+                        mention = text_obj.get("mention", {})
+                        if mention.get("type") == "page":
+                            mentioned_page_id = mention.get("page", {}).get("id")
+                            if mentioned_page_id:
+                                # Retrieve the mentioned page to check its parent
+                                try:
+                                    page_response = await client.pages.retrieve(page_id=mentioned_page_id)
+                                    page_parent = page_response.get("parent", {})
+
+                                    # If the parent is a block, it's a sub-page.
+                                    # We must confirm that block lives on our `parent_page_id`.
+                                    if page_parent.get("type") == "block_id":
+                                        parent_block_id = page_parent.get("block_id")
+                                        # Check if the block containing the mention is the direct parent
+                                        if parent_block_id == block_id:
+                                             child_page_ids.add(mentioned_page_id)
+                                        else:
+                                             # Fallback: check if the parent block belongs to the main page
+                                             grandparent = await get_block_parent(parent_block_id)
+                                             if grandparent and grandparent.get("type") == "page_id" and grandparent.get("page_id") == parent_page_id:
+                                                 child_page_ids.add(mentioned_page_id)
+
+                                except APIResponseError as e:
+                                    if e.code == "object_not_found":
+                                        logger.warning(f"Mentioned page {mentioned_page_id} not found.")
+                                    else:
+                                        logger.error(f"API error checking parent of mentioned page {mentioned_page_id}: {e}")
+
+        # 3. Recurse on children
         if block.get("children"):
             for child_block in block["children"]:
-                page_ids.extend(await scan_block(child_block))
-                
-        return page_ids
-    
-    # Scan all blocks
+                await scan_block(child_block)
+
+    # Start scanning from the top-level blocks
     for block in blocks:
-        child_page_ids.extend(await scan_block(block))
-    
-    logger.info(f"Found {len(child_page_ids)} child pages in {parent_page_id}")
-    return child_page_ids
+        await scan_block(block)
+
+    unique_ids = list(child_page_ids)
+    if unique_ids:
+        logger.info(f"Detected {len(unique_ids)} true child pages for parent {parent_page_id}.")
+    return unique_ids
 
 
 async def fetch_sub_page_content(page_id: str, 
@@ -1240,4 +1256,4 @@ def format_page_with_sub_pages(page_data: Dict[str, Any],
         
         return content
     
-    return format_page_recursive(page_data) 
+    return format_page_recursive(page_data)

@@ -148,11 +148,12 @@ def block_to_markdown(block: Dict[str, Any], level: int = 0, subpage_data: Optio
             elif block_type == "child_page":
                 # Special handling for child_page blocks
                 page_id = block.get("id", "")
-                if text:
-                    # If there's title text, show it with an indicator
-                    markdown = f"{indent}📄 **[Sub-page]** {text}\n\n"
+                title = content.get("title", "")  # Get title directly from the child_page object
+                
+                if title:
+                    markdown = f"{indent}📄 **[Sub-page]** {title}\n\n"
                 else:
-                    # Fallback if no title is available
+                    # Fallback if no title is available at all
                     markdown = f"{indent}📄 **[Sub-page]** {page_id[:8] if page_id else 'Unknown'}\n\n"
             
             else:
@@ -299,62 +300,51 @@ def _format_mention(mention_obj):
 
 def format_rich_text_with_subpages(rich_text_array, subpage_data: Optional[Dict[str, str]] = None):
     """
-    Format rich text array from Notion into markdown, replacing empty page links with subpage content.
+    Format rich text array from Notion into markdown, replacing subpage links with their content.
     
     Args:
-        rich_text_array: Array of rich text objects from Notion
-        subpage_data: Optional dictionary mapping page URLs to their content
+        rich_text_array: Array of rich text objects from Notion.
+        subpage_data: Dictionary mapping sub-page URLs to their markdown content.
         
     Returns:
-        Formatted markdown text with subpages inlined
+        Formatted markdown text with subpages inlined.
     """
     if not rich_text_array:
         return ""
     
     result = ""
     for text_obj in rich_text_array:
+        # Check if the text object is a mention that should be expanded
+        href = text_obj.get("href")
+        if (subpage_data and href and href in subpage_data):
+            # It's a subpage, so we replace the link with its content
+            result += subpage_data[href]
+            continue
+
+        # If it's not a subpage to be expanded, format it normally
         text_type = text_obj.get("type", "")
         annotations = text_obj.get("annotations", {})
         
-        # Handle different types of rich text objects
         if text_type == "text":
-            # Regular text content
             text = text_obj.get("text", {}).get("content", "")
         elif text_type == "mention":
-            # Handle mention objects (pages, users, dates, etc.)
             text = _format_mention(text_obj)
         else:
-            # For other types (equation, etc.), try to get plain_text or fallback to empty
             text = text_obj.get("plain_text", "")
         
-        # Apply text annotations (bold, italic, etc.)
-        if annotations.get("bold"):
-            text = f"**{text}**"
-        if annotations.get("italic"):
-            text = f"*{text}*"
-        if annotations.get("strikethrough"):
-            text = f"~~{text}~~"
-        if annotations.get("code"):
-            text = f"`{text}`"
-        if annotations.get("underline"):
-            # Markdown doesn't directly support underline, using emphasis instead
-            text = f"_{text}_"
+        # Apply annotations
+        if annotations.get("bold"): text = f"**{text}**"
+        if annotations.get("italic"): text = f"*{text}*"
+        if annotations.get("strikethrough"): text = f"~~{text}~~"
+        if annotations.get("code"): text = f"`{text}`"
+        if annotations.get("underline"): text = f"_{text}_"
         
-        # Handle links - check for empty page links that should be expanded
-        if text_obj.get("href"):
-            href = text_obj["href"]
+        # Handle regular links (that are not subpages)
+        if href:
+            text = f"[{text}]({href})"
+        
+        result += text
             
-            # Check if this is an empty page link that should be expanded with subpage content
-            if not text.strip() and subpage_data and href in subpage_data:
-                # Replace empty link with subpage content
-                result += subpage_data[href]
-            else:
-                # Regular link formatting
-                text = f"[{text}]({href})"
-                result += text
-        else:
-            result += text
-    
     return result
 
 def _table_to_markdown(table_block: Dict[str, Any], table_content: Dict[str, Any], indent: str) -> str:
@@ -569,7 +559,7 @@ def page_to_markdown(blocks: List[Dict[str, Any]], properties: Dict[str, Any] = 
     
     return markdown
 
-async def page_to_markdown_with_subpages(blocks: List[Dict[str, Any]], properties: Dict[str, Any] = None, include_properties: bool = True, excluded_properties: List[str] = None) -> str:
+async def page_to_markdown_with_subpages(blocks: List[Dict[str, Any]], properties: Dict[str, Any] = None, include_properties: bool = True, excluded_properties: List[str] = None, parent_page_id: str = None) -> str:
     """
     Convert a list of Notion blocks to a complete markdown document with subpage content inlined.
     
@@ -578,20 +568,25 @@ async def page_to_markdown_with_subpages(blocks: List[Dict[str, Any]], propertie
         properties: Optional dictionary of page properties
         include_properties: Whether to include properties in the output
         excluded_properties: List of property names to exclude from output
+        parent_page_id: ID of the parent page (required for proper child page detection)
         
     Returns:
         Complete markdown document as a string with subpages inlined
     """
     markdown = ""
     
-    # Extract page URLs from empty links
-    page_urls = extract_page_urls_from_blocks(blocks)
-    
-    # Fetch subpage content if any page URLs were found
     subpage_data = {}
-    if page_urls:
-        subpage_data = await fetch_subpage_content(page_urls)
-    
+    if parent_page_id:
+        from promaia.notion.pages import detect_child_pages_in_blocks
+        
+        # Reliably detect true child pages (sub-pages) by checking parent relationships
+        child_page_ids = await detect_child_pages_in_blocks(blocks, parent_page_id)
+        
+        # Fetch content only for the true child pages
+        if child_page_ids:
+            page_urls = [f"https://www.notion.so/{cid.replace('-', '')}" for cid in child_page_ids]
+            subpage_data = await fetch_subpage_content(page_urls)
+
     # Add properties at the top if available and requested
     if include_properties and properties:
         property_markdown = format_notion_properties(properties, excluded_properties)
@@ -604,20 +599,21 @@ async def page_to_markdown_with_subpages(blocks: List[Dict[str, Any]], propertie
     
     return markdown 
 
-def extract_page_urls_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
+def extract_child_page_urls_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
     """
-    Extract all page URLs from empty links in rich text across all blocks.
+    Extract URLs from actual child_page blocks and empty page links in rich text.
+    This distinguishes between true sub-pages and external page references.
     
     Args:
         blocks: List of Notion blocks to scan
         
     Returns:
-        List of unique page URLs found in empty links
+        List of unique page URLs found from child pages and empty links
     """
     page_urls = set()
     
     def scan_rich_text(rich_text_array):
-        """Scan rich text array for empty page links."""
+        """Scan rich text array for empty page links (true sub-pages)."""
         if not rich_text_array:
             return
             
@@ -625,20 +621,31 @@ def extract_page_urls_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
             text = text_obj.get("text", {}).get("content", "")
             href = text_obj.get("href")
             
-            # Check if this is an empty page link (no text but has href to notion.so)
+            # Only include empty links - these are typically sub-pages
+            # Links with text are external references and should not be expanded
             if not text.strip() and href and "notion.so" in href:
                 page_urls.add(href)
     
     def scan_block(block: Dict[str, Any]):
-        """Recursively scan a block for rich text containing page links."""
+        """Recursively scan a block for child pages and empty page links."""
         block_type = block.get("type")
-        content = block.get(block_type, {})
         
-        # Scan rich text in various block types
+        # Check for child_page blocks (true sub-pages)
+        if block_type == "child_page":
+            child_page_id = block.get("id")
+            child_page_title = block.get("child_page", {}).get("title", "")
+            
+            # Only include child pages that have a title (skip empty ones)
+            if child_page_id and child_page_title.strip():
+                # Convert block ID to Notion URL format
+                clean_id = child_page_id.replace('-', '')
+                notion_url = f"https://www.notion.so/{clean_id}"
+                page_urls.add(notion_url)
+        
+        # Check for empty page links in rich text
+        content = block.get(block_type, {})
         if "rich_text" in content:
             scan_rich_text(content["rich_text"])
-        
-        # Scan caption in various block types
         if "caption" in content:
             scan_rich_text(content["caption"])
             
@@ -673,7 +680,9 @@ async def fetch_subpage_content(page_urls: List[str]) -> Dict[str, str]:
         try:
             # Extract page ID from URL
             # URLs like: https://www.notion.so/20dd13396967805eb3bdeb5093a257fd
-            page_id_match = re.search(r'([a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12})', url)
+            page_id_match = re.search(r'([a-f0-9]{32})', url)
+            if not page_id_match:
+                 page_id_match = re.search(r'([a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12})', url)
             if not page_id_match:
                 continue
                 
@@ -691,9 +700,13 @@ async def fetch_subpage_content(page_urls: List[str]) -> Dict[str, str]:
                 # Convert to markdown
                 subpage_markdown = page_to_markdown(page_blocks)
                 
-                # Format with title
-                formatted_content = f"\n\n## {page_title}\n\n{subpage_markdown}"
-                subpage_data[url] = formatted_content
+                # Format with title - only add content if we have meaningful content
+                if page_title and page_title.strip():
+                    formatted_content = f"\n\n📄 **[Sub-page]** {page_title}\n\n{subpage_markdown}"
+                    subpage_data[url] = formatted_content
+                else:
+                    # Skip pages with empty titles
+                    continue
                 
             except Exception as e:
                 # If we can't fetch the page, leave it as an empty link
@@ -702,4 +715,4 @@ async def fetch_subpage_content(page_urls: List[str]) -> Dict[str, str]:
         except Exception as e:
             print(f"Warning: Error processing subpage URL {url}: {e}")
     
-    return subpage_data 
+    return subpage_data

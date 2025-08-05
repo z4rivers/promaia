@@ -1,6 +1,6 @@
 """
-Natural language query processing for chat context generation.
-Converts natural language to SQL and executes directly against the hybrid unified_content view.
+Natural language query processing using Vanna AI for text-to-SQL generation.
+Converts natural language to SQL using trained AI models and executes against the unified_content view.
 """
 import json
 import re
@@ -10,15 +10,294 @@ import glob
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime, timedelta
 
+from promaia.utils.config import load_environment
+from promaia.config.databases import get_database_manager
 from anthropic import Anthropic
 from openai import OpenAI
 import google.generativeai as genai
 
-from promaia.utils.config import load_environment
-from promaia.config.databases import get_database_manager
-
 # Load environment variables
 load_environment()
+
+
+class VannaSQLGenerator:
+    """Vanna AI-based SQL generator for natural language queries."""
+    
+    def __init__(self):
+        self.vn_client = None
+        self.initialized = False
+        self._setup_vanna()
+    
+    def _setup_vanna(self):
+        """Initialize Vanna AI with our schema and training data."""
+        try:
+            import vanna as vn
+            from vanna.chromadb import ChromaDB_VectorStore
+            from vanna.openai import OpenAI_Chat
+            
+            # Get OpenAI API key from environment
+            import os
+            
+            # Load environment variables if needed
+            try:
+                from promaia.utils.config import load_environment
+                load_environment()
+            except:
+                # Fallback to loading .env manually
+                from dotenv import load_dotenv
+                load_dotenv()
+            
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+            
+            if not openai_api_key:
+                print("⚠️  No OPENAI_API_KEY found in environment")
+                print("📄 Using fallback SQL generation only")
+                self.initialized = False
+                return
+            
+            # Create a simple Vanna class with local storage
+            class SimpleVanna(ChromaDB_VectorStore, OpenAI_Chat):
+                def __init__(self, config=None):
+                    ChromaDB_VectorStore.__init__(self, config=config)
+                    OpenAI_Chat.__init__(self, config=config)
+            
+            # Initialize with better model and configuration for complex queries
+            self.vn_client = SimpleVanna(config={
+                'model': 'gpt-4o-mini',  # Use GPT-4 for better reasoning
+                'api_key': openai_api_key,
+                'temperature': 0.1,  # Lower temperature for more consistent results
+                'max_tokens': 1000
+            })
+            
+            # Train on our schema and examples
+            self._train_on_schema()
+            self.initialized = True
+            print("✅ Vanna AI initialized successfully with OpenAI API")
+            
+        except Exception as e:
+            print(f"⚠️  Vanna AI initialization failed: {e}")
+            print("📄 Using fallback SQL generation")
+            self.initialized = False
+    
+    def _train_on_schema(self):
+        """Train Vanna on our database schema and key examples."""
+        # Define our schema
+        schema_sql = """
+        CREATE VIEW unified_content AS
+        SELECT 
+            page_id, workspace, database_name, content_type, file_path, title,
+            created_time,  -- ISO 8601: '2024-12-26T02:05:00.000Z'
+            last_edited_time, synced_time, file_size, checksum,
+            status, featured, priority, category,
+            sender_email, sender_name, has_attachments, is_unread, thread_id,
+            metadata
+        FROM hybrid_content_registry;
+        """
+        
+        # Train on schema
+        self.vn_client.train(ddl=schema_sql)
+        
+        # Comprehensive training examples - covering complex temporal patterns
+        examples = [
+            # The key problematic query - first week of every month pattern
+            ("first week of journal entries from every month since December 2024", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2024-12-01' AND ((SUBSTR(created_time, 1, 7) = '2024-12' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-01' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-02' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-03' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-04' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-05' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-06' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-07' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-08' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7))"),
+            
+            # Variations of the same pattern
+            ("first week of journal entries from every month since 2024-12", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2024-12-01' AND ((SUBSTR(created_time, 1, 7) = '2024-12' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-01' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-02' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-03' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-04' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-05' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-06' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-07' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7) OR (SUBSTR(created_time, 1, 7) = '2025-08' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7))"),
+            
+            # Other "first week" patterns to reinforce the concept
+            ("first week of April 2025 journal entries", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2025-04-01' AND created_time < '2025-04-08'"),
+            
+            ("first week of this month journal entries", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND SUBSTR(created_time, 1, 7) = SUBSTR(date('now'), 1, 7) AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7"),
+            
+            # Simple temporal queries
+            ("recent journal entries", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= date('now', '-7 days')"),
+            
+            ("journal entries from December 2024", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time LIKE '2024-12%'"),
+            
+            # Email queries with sender filters
+            ("emails from john", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')"),
+            
+            # Email content-based searches
+            ("emails about invoice", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%invoice%' OR metadata LIKE '%invoice%')"),
+            
+            ("emails containing receipt", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%receipt%' OR metadata LIKE '%receipt%')"),
+            
+            ("gmails that contain meeting", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%meeting%' OR metadata LIKE '%meeting%')"),
+            
+            ("emails with keywords urgent or important", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%urgent%' OR metadata LIKE '%urgent%' OR title LIKE '%important%' OR metadata LIKE '%important%')"),
+            
+            ("all emails that contain any of the following keywords: payment, invoice, bill", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%payment%' OR metadata LIKE '%payment%' OR title LIKE '%invoice%' OR metadata LIKE '%invoice%' OR title LIKE '%bill%' OR metadata LIKE '%bill%')"),
+            
+            ("all trass gmails that contain any of the following keywords: project, deadline, client", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND (title LIKE '%project%' OR metadata LIKE '%project%' OR title LIKE '%deadline%' OR metadata LIKE '%deadline%' OR title LIKE '%client%' OR metadata LIKE '%client%')"),
+            
+            # Journal content-based searches
+            ("journal entries about work", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND (title LIKE '%work%' OR metadata LIKE '%work%')"),
+            
+            ("notes containing ideas or brainstorm", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND (title LIKE '%ideas%' OR metadata LIKE '%ideas%' OR title LIKE '%brainstorm%' OR metadata LIKE '%brainstorm%')"),
+            
+            # Workspace.database format handling - extract just the database name
+            ("trass.journal entries from last week", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= date('now', '-7 days')"),
+            
+            ("koii.gmail emails from yesterday", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'gmail' AND created_time >= date('now', '-1 day')"),
+            
+            ("trass.journal first week of journal entries from april 2025", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2025-04-01' AND created_time < '2025-04-08'"),
+            
+            # More temporal patterns
+            ("entries from this month", 
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND SUBSTR(created_time, 1, 7) = SUBSTR(date('now'), 1, 7)"),
+            
+            # Last week of each month pattern (to teach the AI about complex date logic)
+            ("last week of each month journal entries since January 2025",
+             "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2025-01-01' AND ((SUBSTR(created_time, 1, 7) = '2025-01' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 25) OR (SUBSTR(created_time, 1, 7) = '2025-02' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 22) OR (SUBSTR(created_time, 1, 7) = '2025-03' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 25) OR (SUBSTR(created_time, 1, 7) = '2025-04' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 24) OR (SUBSTR(created_time, 1, 7) = '2025-05' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 25) OR (SUBSTR(created_time, 1, 7) = '2025-06' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 24) OR (SUBSTR(created_time, 1, 7) = '2025-07' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 25) OR (SUBSTR(created_time, 1, 7) = '2025-08' AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) >= 25))")
+        ]
+        
+        # Train on examples
+        for question, sql in examples:
+            self.vn_client.train(question=question, sql=sql)
+    
+    def generate_sql(self, question: str) -> str:
+        """Generate SQL query from natural language question."""
+        if not self.initialized:
+            return self._fallback_sql_generation(question)
+        
+        try:
+            # Configure Vanna to not require database introspection
+            sql_query = self.vn_client.generate_sql(question, allow_llm_to_see_data=False)
+            
+            # Check if it's an intermediate query or explanation - if so, use fallback
+            if any(phrase in sql_query for phrase in [
+                "intermediate_sql", 
+                "The LLM is not allowed",
+                "cannot be answered",
+                "requires extracting data",
+                "additional information",
+                "This question cannot"
+            ]):
+                print("⚠️  Vanna returned explanation instead of SQL, using fallback")
+                return self._fallback_sql_generation(question)
+            
+            # Also check if it doesn't look like SQL at all
+            if not sql_query.strip().upper().startswith("SELECT"):
+                print("⚠️  Vanna didn't return valid SQL, using fallback")
+                return self._fallback_sql_generation(question)
+            
+            # Ensure the query has a database_name filter
+            if "database_name" not in sql_query:
+                sql_query = self._ensure_database_filter(sql_query, question)
+            
+            return sql_query
+        except Exception as e:
+            print(f"⚠️  Vanna SQL generation failed: {e}")
+            return self._fallback_sql_generation(question)
+    
+    def _ensure_database_filter(self, sql_query: str, question: str) -> str:
+        """Ensure the SQL query has a database_name filter."""
+        # Simple heuristic: if the question mentions database types, add appropriate filter
+        if any(word in question.lower() for word in ['journal', 'diary', 'note']):
+            if "WHERE" in sql_query:
+                return sql_query.replace("WHERE", "WHERE database_name = 'journal' AND")
+            else:
+                return sql_query.replace("FROM unified_content", "FROM unified_content WHERE database_name = 'journal'")
+        elif any(word in question.lower() for word in ['email', 'gmail', 'mail']):
+            if "WHERE" in sql_query:
+                return sql_query.replace("WHERE", "WHERE database_name = 'gmail' AND")
+            else:
+                return sql_query.replace("FROM unified_content", "FROM unified_content WHERE database_name = 'gmail'")
+        
+        # Default to journal
+        if "WHERE" in sql_query:
+            return sql_query.replace("WHERE", "WHERE database_name = 'journal' AND")
+        else:
+            return sql_query.replace("FROM unified_content", "FROM unified_content WHERE database_name = 'journal'")
+    
+    def _fallback_sql_generation(self, nl_prompt: str) -> str:
+        """Simple fallback SQL generation when Vanna fails - handles only basic cases."""
+        import re
+        from datetime import datetime, timedelta
+        
+        # Clean and normalize the prompt
+        prompt_lower = nl_prompt.lower().strip()
+        
+        # Determine database type
+        database_name = 'journal'  # Default
+        if any(word in prompt_lower for word in ['email', 'gmail', 'mail']):
+            database_name = 'gmail'
+        elif any(word in prompt_lower for word in ['story', 'stories']):
+            database_name = 'stories'
+        elif any(word in prompt_lower for word in ['epic', 'epics']):
+            database_name = 'epics'
+        elif any(word in prompt_lower for word in ['cpj', 'project']):
+            database_name = 'cpj'
+        
+        # Extract workspace.database format and convert to just database name
+        workspace_db_match = re.search(r'\b(\w+)\.(\w+)\b', prompt_lower)
+        if workspace_db_match:
+            _, db_part = workspace_db_match.groups()
+            database_name = db_part
+        
+        # Base SQL structure
+        base_sql = f"SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = '{database_name}'"
+        
+        # Only handle simple date patterns - let Vanna handle complex ones
+        current_date = datetime.now()
+        
+        if re.search(r'last\s*week|recent', prompt_lower):
+            week_ago = (current_date - timedelta(days=7)).strftime('%Y-%m-%d')
+            base_sql += f" AND created_time >= '{week_ago}'"
+        
+        elif re.search(r'yesterday', prompt_lower):
+            yesterday = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
+            base_sql += f" AND created_time >= '{yesterday}'"
+        
+        elif re.search(r'december\s*2024', prompt_lower):
+            base_sql += " AND created_time LIKE '2024-12%'"
+        
+        # Email-specific filters (only for gmail database)
+        if database_name == 'gmail':
+            sender_match = re.search(r'from\s+(\w+)', prompt_lower)
+            if sender_match:
+                sender = sender_match.group(1)
+                base_sql += f" AND (sender_email LIKE '%{sender}%' OR sender_name LIKE '%{sender}%')"
+        
+        # Order by created_time for recency
+        if 'recent' in prompt_lower:
+            base_sql += " ORDER BY created_time DESC"
+        
+        # For complex queries that we can't handle, add a comment to explain
+        if any(phrase in prompt_lower for phrase in ['first week.*every month', 'each month', 'every month']):
+            print("⚠️  Complex temporal query detected - this should be handled by Vanna AI training")
+        
+        return base_sql
+
+
+# Global instance
+_sql_generator = None
+
+def get_sql_generator() -> VannaSQLGenerator:
+    """Get singleton instance of VannaSQLGenerator."""
+    global _sql_generator
+    if _sql_generator is None:
+        _sql_generator = VannaSQLGenerator()
+    return _sql_generator
 
 
 def get_ai_client():
@@ -135,481 +414,418 @@ def extract_json_from_response(text: str) -> Dict[str, Any]:
     return {}
 
 
-def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, List[Dict[str, Any]]]:
+def process_natural_language_query(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Tuple[Optional[str], List[str]]:
     """
-    Process natural language prompt to generate content directly using SQL against hybrid architecture.
+    Process natural language query using Vanna AI to generate SQL.
+    
+    Returns:
+        Tuple of (sql_query, errors)
+    """
+    try:
+        sql_generator = get_sql_generator()
+        sql_query = sql_generator.generate_sql(nl_prompt)
+        
+        print(f"🔍 Generated SQL Query:")
+        print(f"   {sql_query}")
+        
+        return sql_query, []
+    except Exception as e:
+        error_msg = f"Failed to generate SQL query: {e}"
+        return None, [error_msg]
+
+
+def execute_natural_language_queries(nl_prompt: str, workspace: str = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    Execute natural language queries using Vanna AI.
+    
+    Returns:
+        Tuple of (results, errors)
+    """
+    # Generate SQL using Vanna AI
+    sql_query, errors = process_natural_language_query(nl_prompt, workspace)
+    
+    if not sql_query or errors:
+        return [], errors
+    
+    # Execute the SQL query
+    try:
+        from promaia.storage.unified_query import get_query_interface
+        query_interface = get_query_interface()
+        
+        # Get workspace for database context
+        workspace_for_db = workspace
+        if not workspace_for_db:
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            available_workspaces = workspace_manager.list_workspaces()
+            workspace_for_db = available_workspaces[0] if available_workspaces else "koii"
+        
+        # Get database context - handle both dict and object returns
+        db_context = query_interface.get_database_context(workspace_for_db)
+        
+        # Handle different return types from query_interface
+        connection = None
+        if hasattr(db_context, 'connection'):
+            connection = db_context.connection
+        elif isinstance(db_context, dict) and 'connection' in db_context:
+            connection = db_context['connection']
+        elif hasattr(query_interface, 'db_path'):
+            # Fallback: create direct SQLite connection
+            import sqlite3
+            connection = sqlite3.connect(query_interface.db_path)
+        
+        if not connection:
+            return [], ["No database connection available"]
+        
+        # Execute SQL query
+        cursor = connection.cursor()
+        cursor.execute(sql_query)
+        
+        # Get column names
+        columns = [desc[0] for desc in cursor.description]
+        
+        # Fetch results and convert to dictionaries
+        results = []
+        for row in cursor.fetchall():
+            row_dict = dict(zip(columns, row))
+            results.append(row_dict)
+        
+        print(f"✅ Found {len(results)} metadata results from natural language query")
+        return results, []
+        
+    except Exception as e:
+        error_msg = f"Failed to execute SQL query: {e}"
+        print(f"❌ {error_msg}")
+        return [], [error_msg]
+
+
+def execute_content_search(nl_prompt: str, workspace: str = None) -> List[Dict[str, Any]]:
+    """
+    Execute content-based search for natural language queries.
+    
+    This searches through the actual content files stored in /data/ directory.
     
     Args:
-        nl_prompt: Natural language description of what content to load
-        workspace: Optional workspace name for context (defaults to cross-workspace queries)
-        schema_info: Schema information (auto-detected as hybrid)
+        nl_prompt: Natural language query
+        workspace: Optional workspace filter
         
     Returns:
-        Dictionary with source names as keys and lists of page data as values,
-        matching the format expected by the chat interface
+        List of content results with file content matches
     """
-    # Get database context using hybrid query interface
-    from promaia.storage.unified_query import get_query_interface
-    query_interface = get_query_interface()
-    
-    # For cross-workspace queries, we don't need specific workspace context
-    # We'll use a default workspace just to establish database connection
-    # Use the provided workspace, or find an available one
-    workspace_for_db = workspace
-    if not workspace_for_db:
-        from promaia.config.workspaces import get_workspace_manager
-        workspace_manager = get_workspace_manager()
-        available_workspaces = workspace_manager.list_workspaces()
-        workspace_for_db = available_workspaces[0] if available_workspaces else "koii"
-    
     try:
-        # For cross-workspace queries, check if ANY workspace has content
-        from promaia.config.workspaces import get_workspace_manager
-        workspace_manager = get_workspace_manager()
-        available_workspaces = workspace_manager.list_workspaces()
+        from promaia.storage.content_search import get_content_searcher
         
-        db_context = None
-        for ws in available_workspaces:
-            test_context = query_interface.get_database_context(ws)
-            if test_context:
-                db_context = test_context
-                workspace_for_db = ws
+        # Extract search terms from natural language prompt
+        search_terms = extract_search_terms(nl_prompt)
+        
+        if not search_terms:
+            print("🔍 No specific search terms extracted from query")
+            return []
+        
+        print(f"🔍 Searching content for terms: {search_terms}")
+        
+        # Get content searcher
+        content_searcher = get_content_searcher()
+        
+        # Determine database filters from the prompt
+        database_names = extract_database_types(nl_prompt)
+        
+        # Search content files
+        content_results = content_searcher.search_content(
+            search_terms=search_terms,
+            workspace=workspace,
+            database_names=database_names,
+            limit=500  # Reasonable limit for content search
+        )
+        
+        print(f"✅ Found {len(content_results)} content results")
+        return content_results
+        
+    except Exception as e:
+        print(f"❌ Content search failed: {e}")
+        return []
+
+
+def extract_search_terms(nl_prompt: str) -> List[str]:
+    """
+    Extract search terms from natural language prompt.
+    
+    This tries to identify key terms that should be searched in content.
+    """
+    import re
+    
+    # Common words to exclude from content search
+    stop_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+        'by', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has',
+        'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can', 'may', 'might',
+        'must', 'shall', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we',
+        'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our',
+        'their', 'all', 'any', 'some', 'each', 'every', 'no', 'none', 'not', 'only', 'just',
+        'also', 'even', 'still', 'more', 'most', 'very', 'too', 'so', 'now', 'then', 'here',
+        'there', 'where', 'when', 'how', 'what', 'who', 'which', 'why', 'emails', 'email',
+        'contain', 'contains', 'containing', 'word', 'words', 'entries', 'entry', 'messages',
+        'message', 'notes', 'note', 'content', 'text'
+    }
+    
+    # Clean the prompt
+    prompt_lower = nl_prompt.lower()
+    
+    # Remove common natural language patterns
+    patterns_to_remove = [
+        r'\b(all|any|some)\s+(emails?|messages?|entries?|notes?)\s+(that|which)\s+',
+        r'\bcontains?\s+(the\s+)?word\s+',
+        r'\bwith\s+(the\s+)?word\s+',
+        r'\bin\s+(the\s+)?(subject|title|body)\s+',
+    ]
+    
+    cleaned_prompt = prompt_lower
+    for pattern in patterns_to_remove:
+        cleaned_prompt = re.sub(pattern, ' ', cleaned_prompt)
+    
+    # Extract quoted terms (these are usually important)
+    quoted_terms = re.findall(r'"([^"]+)"', cleaned_prompt)
+    quoted_terms.extend(re.findall(r"'([^']+)'", cleaned_prompt))
+    
+    # Extract individual words
+    words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9]*\b', cleaned_prompt)
+    
+    # Filter words
+    search_terms = []
+    
+    # Add quoted terms (high priority)
+    for term in quoted_terms:
+        if len(term.strip()) > 1:
+            search_terms.append(term.strip())
+    
+    # Add significant words
+    for word in words:
+        if (len(word) > 2 and 
+            word.lower() not in stop_words and
+            word.lower() not in [term.lower() for term in search_terms]):
+            search_terms.append(word)
+    
+    # Remove duplicates while preserving order
+    unique_terms = []
+    seen = set()
+    for term in search_terms:
+        if term.lower() not in seen:
+            unique_terms.append(term)
+            seen.add(term.lower())
+    
+    return unique_terms[:10]  # Limit to 10 terms to avoid overly broad searches
+
+
+def extract_database_types(nl_prompt: str) -> Optional[List[str]]:
+    """
+    Extract database type filters from natural language prompt.
+    
+    Returns:
+        List of database names to filter by, or None for all databases
+    """
+    prompt_lower = nl_prompt.lower()
+    
+    database_keywords = {
+        'gmail': ['email', 'emails', 'gmail', 'mail'],
+        'journal': ['journal', 'journals', 'diary', 'note', 'notes'],
+        'stories': ['story', 'stories', 'user story', 'user stories'],
+        'cms': ['cms', 'blog', 'article', 'post', 'content'],
+        'discord': ['discord', 'chat', 'message', 'channel'],
+        'epics': ['epic', 'epics']
+    }
+    
+    matched_databases = []
+    
+    for db_name, keywords in database_keywords.items():
+        for keyword in keywords:
+            if keyword in prompt_lower:
+                if db_name not in matched_databases:
+                    matched_databases.append(db_name)
                 break
-            
-        if not db_context:
-            raise ValueError("No databases found in any workspace")
-            
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error getting database context: {e}")
-        raise ValueError(f"Could not access databases: {e}")
     
-    # Use provided schema info or default hybrid schema
-    if schema_info is None:
-        schema_info = f"""
-UNIFIED DATABASE ARCHITECTURE:
-
-IMPORTANT: This system uses ONE unified database with a 'unified_content' view for all queries.
-ALL content from different sources is stored in the same database but organized by content type.
-
-CRITICAL WORKSPACE RULE: 
-**NEVER add workspace filters to SQL queries unless the user explicitly asks to "filter by workspace" or "only from X workspace".**
-**When users mention workspace names like "trass", "koii", etc., they are just describing content, NOT requesting workspace filtering.**
-**ALWAYS query across ALL workspaces by default.**
-
-Examples of what NOT to do:
-- "trass gmail" → DO NOT add "WHERE workspace = 'trass'" - just use "WHERE database_name = 'gmail'"
-- "koii journal entries" → DO NOT add "WHERE workspace = 'koii'" - just use "WHERE database_name = 'journal'"
-- "emails from trass.gmail" → DO NOT add workspace filter - just use "WHERE database_name = 'gmail'"
-
-Examples of when TO add workspace filters (rare):
-- "filter by trass workspace only" → WHERE workspace = 'trass'
-- "only content from koii workspace" → WHERE workspace = 'koii'
-
-CONTENT TYPES AVAILABLE:
-
-1. GMAIL (database_name = 'gmail'):
-   Content from Gmail API - email threads and messages
-   Special columns: sender_email, sender_name, has_attachments, is_unread, thread_id
-   
-   Examples:
-   - "emails from john": WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')
-   - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
-   - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
-   - "emails from last week": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-7 days')
-   - "trass gmail 3 days": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-3 days')
-
-2. NOTION JOURNAL (database_name = 'journal'):
-   Personal journal entries from Notion
-   Special columns: status, featured, author_name
-   Examples:
-   - "published journal entries": WHERE database_name = 'journal' AND status = 'Published'
-   - "featured journal entries": WHERE database_name = 'journal' AND featured = 1
-
-3. NOTION STORIES (database_name = 'stories'):
-   Project stories and tasks from Notion
-   Special columns: status, priority, story_points
-   Examples:
-   - "completed stories": WHERE database_name = 'stories' AND status = 'Done'
-   - "high priority stories": WHERE database_name = 'stories' AND priority = 'High'
-
-4. NOTION CMS (database_name = 'cms'):
-   Blog posts and content management from Notion
-   Special columns: status, category, featured, publish_date
-   Examples:
-   - "published blog posts": WHERE database_name = 'cms' AND status = 'Published'
-   - "featured content": WHERE database_name = 'cms' AND featured = 1
-
-5. OTHER CONTENT TYPES:
-   Other databases like 'awakenings', 'cpj', etc. use generic fields
-
-UNIFIED VIEW SCHEMA:
-The unified_content view provides these columns for ALL content types:
-
-Core columns (available for all content):
-- page_id, workspace, database_name, content_type, file_path, title
-- created_time, synced_time
-
-Content-specific columns (only populated for relevant content types):
-- status (TEXT): Content status - 'Published', 'Draft', 'Done', 'In Progress', etc.
-- featured (INTEGER): 1 for featured content, 0 for normal, NULL if not applicable
-- priority (TEXT): Priority level - 'High', 'Medium', 'Low', etc.
-- category (TEXT): Content category (mainly for CMS)
-- sender_email (TEXT): Email sender (only for Gmail content)
-- sender_name (TEXT): Sender name (only for Gmail content)
-- has_attachments (INTEGER): 1 if email has attachments (only for Gmail)
-- is_unread (INTEGER): 1 if email is unread (only for Gmail)
-
-DATE FILTERING RULES:
-- For all content: Use created_time for date filtering (original creation date) 
-- created_time is stored in RFC 822 format (e.g., "Wed, 9 Jul 2025 16:26:40 +0000")
-- For recent content, use pattern matching or simple string comparisons
-- synced_time contains the last sync time but is not used for user queries
-- Examples:
-  - "last 5 days of emails": WHERE database_name = 'gmail' AND created_time >= '2025-07-25' (use approximate date strings)
-  - "recent journal entries": WHERE database_name = 'journal' AND created_time >= '2025-07-20'
-  - "last week": WHERE created_time >= '2025-07-22'
-  - "July emails": WHERE database_name = 'gmail' AND created_time LIKE '%Jul 2025%'
-  - For very recent content (last few days), be generous with date ranges
-
-SEARCH STRATEGY:
-- For text search: Always use content_filters, never try to search file content in SQL
-- For property searches: Use direct columns when available (status, featured, priority, etc.)
-- For date ranges: Use datetime() functions on created_time or last_edited_time
-- Cross-workspace queries enabled - query any combination of workspaces and databases
-
-WORKSPACE ORGANIZATION:
-- Multiple workspaces can exist (e.g., 'koii', 'trass')
-- Each workspace can have multiple databases (gmail, journal, stories, cms, etc.)
-- Query across all workspaces by default unless specific workspace mentioned
-"""
-
-    # Get current date and time for temporal context
-    from datetime import datetime
-    current_datetime = datetime.now()
-    current_date_str = current_datetime.strftime("%Y-%m-%d")
-    current_time_str = current_datetime.strftime("%H:%M:%S")
-    current_year = current_datetime.year
-    current_month = current_datetime.strftime("%B")  # Full month name
-    current_month_num = current_datetime.month
-
-    # Create AI prompt for generating SQL - ENHANCED for multiple queries
-    system_prompt = f"""You are an expert SQL query generator for a unified content management system. You can handle both simple and complex multi-part requests by generating multiple independent queries when needed.
-
-🚨 CRITICAL RULES - NEVER VIOLATE THESE:
-
-1. **NEVER ADD WORKSPACE FILTERS** - Never add "WHERE workspace = ..." to any query.
-
-2. **ALWAYS START WITH database_name** - Every SQL query MUST begin with "WHERE database_name = 'journal'" or "WHERE database_name = 'gmail'" etc. This is MANDATORY.
-
-3. **WORK WITH LOADED SOURCES ONLY** - Only query database types that are currently loaded in the system.
-
-4. **USE ISO 8601 DATE FORMAT** - The created_time field is in ISO 8601 format (e.g., "2024-12-26T02:05:00.000Z").
-
-❌ WRONG EXAMPLES (NEVER DO THESE):
-- WHERE workspace = 'koii' ← NEVER add workspace filters!
-- WHERE created_time >= '2024-12-01' ← MISSING database_name filter!
-- WHERE created_time LIKE '%Dec 2024%' ← Wrong date format!
-
-✅ CORRECT EXAMPLES - FOLLOW THESE EXACTLY:
-- WHERE database_name = 'journal' AND created_time >= '2024-12-01'
-- WHERE database_name = 'gmail' AND sender_email LIKE '%john%'
-- WHERE database_name = 'stories' AND created_time LIKE '%2024-12%'
-
-🎯 EXACT TEMPLATE TO FOLLOW:
-For journal queries, always start with: WHERE database_name = 'journal' AND ...
-For gmail queries, always start with: WHERE database_name = 'gmail' AND ...
-For stories queries, always start with: WHERE database_name = 'stories' AND ...
-
-CURRENT DATE AND TIME CONTEXT:
-- Current Date: {current_date_str}
-- Current Time: {current_time_str}
-- Current Year: {current_year}
-- Current Month: {current_month} ({current_month_num})
-
-DATE HANDLING - USE ISO 8601 FORMAT:
-- "last week": created_time >= '2025-07-25'
-- "December 2024": created_time LIKE '%2024-12%'  
-- "first week of march 2025": created_time >= '2025-03-01' AND created_time <= '2025-03-07'
-- "since 2024-12": created_time >= '2024-12-01'
-
-HYBRID ARCHITECTURE - Always use unified_content view
-{schema_info}
-
-SIMPLE EXAMPLE - FOLLOW THIS PATTERN EXACTLY:
-
-Query: "journal entries from December 2024"
-Response:
-{{
-    "query_type": "single",
-    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time LIKE '%2024-12%'",
-    "content_filters": []
-}}
-
-Query: "first week of journal entries from every month since December 2024"
-Response:
-{{
-    "query_type": "single", 
-    "sql_query": "SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = 'journal' AND created_time >= '2024-12-01' AND (SUBSTR(created_time, 1, 7) LIKE '2024-12' OR SUBSTR(created_time, 1, 7) LIKE '2025-01' OR SUBSTR(created_time, 1, 7) LIKE '2025-02' OR SUBSTR(created_time, 1, 7) LIKE '2025-03' OR SUBSTR(created_time, 1, 7) LIKE '2025-04' OR SUBSTR(created_time, 1, 7) LIKE '2025-05' OR SUBSTR(created_time, 1, 7) LIKE '2025-06' OR SUBSTR(created_time, 1, 7) LIKE '2025-07' OR SUBSTR(created_time, 1, 7) LIKE '2025-08') AND CAST(SUBSTR(created_time, 9, 2) AS INTEGER) <= 7",
-    "content_filters": []
-}}
-
-MANDATORY REQUIREMENTS:
-- EVERY query MUST start with "WHERE database_name = 'journal'" (or gmail, stories, etc.)
-- NEVER omit the database_name filter
-- Follow the examples exactly
-
-User request: "{nl_prompt}"
-"""
-
-    try:
-        # Get AI client and generate response
-        client = get_ai_client()
-        
-        if isinstance(client, Anthropic):  # Anthropic
-            from promaia.ai.models import ANTHROPIC_MODELS
-            response = client.messages.create(
-                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
-                max_tokens=2000,
-                messages=[{"role": "user", "content": system_prompt}],
-                temperature=0.1
-            )
-            ai_response = response.content[0].text
-        elif hasattr(client, 'chat'):  # OpenAI or Local Llama
-            # Determine if this is local Llama or OpenAI
-            if hasattr(client, 'base_url') and client.base_url and 'localhost' in str(client.base_url):
-                model_name = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
-            else:
-                model_name = "gpt-4o-mini"
-            
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": system_prompt}],
-                max_tokens=2000,
-                temperature=0.1
-            )
-            ai_response = response.choices[0].message.content
-        else:  # Gemini
-            response = client.GenerativeModel('gemini-2.5-flash').generate_content(
-                system_prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=2000,
-                    temperature=0.1
-                )
-            )
-            ai_response = response.text
-        
-        # Parse JSON response
-        try:
-            # Extract JSON from potentially conversational AI response
-            parsed_response = extract_json_from_response(ai_response)
-            if not parsed_response:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to parse AI response as JSON: {ai_response}")
-                return {}
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error parsing AI response: {e}")
-            return {}
-        
-        # Handle both single and multiple query responses
-        query_type = parsed_response.get('query_type', 'single')
-        
-        if query_type == 'multiple':
-            queries = parsed_response.get('queries', [])
-            if not queries:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error("No queries found in multiple query response")
-                return {}
-            
-            # Display queries to user for debugging
-            print(f"🔍 Generated {len(queries)} separate queries:")
-            for i, query_info in enumerate(queries, 1):
-                sql_query = query_info.get('sql_query', '')
-                content_filters = query_info.get('content_filters', [])
-                description = query_info.get('description', f'Query {i}')
-                print(f"   {i}. {description}")
-                print(f"      SQL: {sql_query}")
-                if content_filters:
-                    print(f"      Content Filters: {content_filters}")
-            print()
-            
-            # Execute all queries and merge results
-            return execute_multiple_queries(queries, workspace_for_db)
-            
-        else:  # single query
-            sql_query = parsed_response.get('sql_query', '')
-            content_filters = parsed_response.get('content_filters', [])
-            
-            # Display SQL query to user for debugging
-            print(f"🔍 Generated SQL Query:")
-            print(f"   {sql_query}")
-            if content_filters:
-                print(f"📝 Content Filters: {content_filters}")
-            print()
-            
-            if not sql_query:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error("No SQL query generated")
-                return {}
-            
-            # Execute single query
-            return execute_single_query(sql_query, content_filters, workspace_for_db)
-        
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error in natural language processing: {e}")
-        return {}
+    # If no specific database types mentioned, return None (search all)
+    return matched_databases if matched_databases else None
 
 
+def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, Any]:
+    """
+    Process natural language to content - enhanced with content searching.
+    This is the function that unified_query.py expects to import.
+    Returns just the data dictionary, not errors (for compatibility).
+    """
+    # First, try traditional metadata-based search
+    metadata_results, errors = execute_natural_language_queries(nl_prompt, None)
+    
+    # Then, perform content-based search for better coverage
+    content_results = execute_content_search(nl_prompt, workspace)
+    
+    # Merge results, avoiding duplicates
+    all_results = metadata_results.copy()
+    
+    # Add content results that aren't already in metadata results
+    metadata_page_ids = {result.get('page_id') for result in metadata_results}
+    for content_result in content_results:
+        if content_result.get('page_id') not in metadata_page_ids:
+            all_results.append(content_result)
+
+    # Convert results to the format expected by the interface
+    formatted_results = {}
+
+    if all_results:
+        # Group results by database for the interface
+        for result in all_results:
+            db_name = result.get('database_name', 'unknown')
+            if db_name not in formatted_results:
+                formatted_results[db_name] = []
+            formatted_results[db_name].append(result)
+
+    # Log any errors but don't return them (compatibility)
+    if errors:
+        for error in errors:
+            print(f"❌ Natural language processing error: {error}")
+    
+    # Log search results summary
+    metadata_count = len(metadata_results)
+    content_count = len(content_results)
+    total_count = len(all_results)
+    
+    print(f"🔍 Search Results Summary:")
+    print(f"   Metadata matches: {metadata_count}")
+    print(f"   Content matches: {content_count}")
+    print(f"   Total unique results: {total_count}")
+
+    return formatted_results
+
+
+# Utility functions for query execution (preserved from old system)
 def execute_multiple_queries(queries: List[Dict[str, Any]], workspace: str) -> Dict[str, List[Dict[str, Any]]]:
     """Execute multiple queries and merge their results by database name."""
     merged_results = {}
     
     for query_info in queries:
-        sql_query = query_info.get('sql_query', '')
-        content_filters = query_info.get('content_filters', [])
-        
-        if not sql_query:
-            continue
+        query_type = query_info.get("query_type", "single")
+        if query_type == "single":
+            sql_query = query_info.get("sql_query")
+            content_filters = query_info.get("content_filters", [])
             
-        # Execute this query
-        query_results = execute_single_query(sql_query, content_filters, workspace)
-        
-        # Merge results by database name
-        for db_name, pages in query_results.items():
-            if db_name not in merged_results:
-                merged_results[db_name] = []
-            merged_results[db_name].extend(pages)
+            if sql_query:
+                result = execute_single_query(sql_query, content_filters, workspace)
+                
+                # Merge results by database name
+                for db_name, pages in result.items():
+                    if db_name not in merged_results:
+                        merged_results[db_name] = []
+                    merged_results[db_name].extend(pages)
     
     return merged_results
 
 
 def execute_single_query(sql_query: str, content_filters: List[str], workspace: str) -> Dict[str, List[Dict[str, Any]]]:
-    """Execute a single SQL query against hybrid storage and filter content."""
+    """Execute a single SQL query and return results grouped by database name."""
     try:
-        # Get hybrid database path
         from promaia.storage.unified_query import get_query_interface
         query_interface = get_query_interface()
         
-        with sqlite3.connect(query_interface.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(sql_query)
-            results = cursor.fetchall()
+        # Get database context - handle both dict and object returns
+        db_context = query_interface.get_database_context(workspace)
+        
+        # Handle different return types from query_interface
+        connection = None
+        if hasattr(db_context, 'connection'):
+            connection = db_context.connection
+        elif isinstance(db_context, dict) and 'connection' in db_context:
+            connection = db_context['connection']
+        elif hasattr(query_interface, 'db_path'):
+            # Fallback: create direct SQLite connection
+            import sqlite3
+            connection = sqlite3.connect(query_interface.db_path)
+        
+        if not connection:
+            print(f"❌ No database connection available for workspace: {workspace}")
+            return {}
+        
+        print(f"🔍 Executing SQL query:")
+        print(f"   {sql_query}")
+        
+        # Execute the query
+        cursor = connection.cursor()
+        cursor.execute(sql_query)
+        
+        # Get column names
+        columns = [desc[0] for desc in cursor.description]
+        
+        # Fetch results and convert to dictionaries
+        results = []
+        for row in cursor.fetchall():
+            row_dict = dict(zip(columns, row))
+            results.append(row_dict)
+        
+        # Apply content filters if specified
+        if content_filters:
+            filtered_results = []
+            for page_data in results:
+                if content_matches_filters(page_data, content_filters):
+                    filtered_results.append(page_data)
+            results = filtered_results
+        
+        # Group results by database name
+        grouped_results = {}
+        for page_data in results:
+            db_name = page_data.get('database_name', 'unknown')
+            if db_name not in grouped_results:
+                grouped_results[db_name] = []
+            grouped_results[db_name].append(page_data)
+        
+        # Print summary
+        total_results = len(results)
+        if total_results > 0:
+            print(f"✅ Found {total_results} results from natural language query")
             
-            # Group results by database_name
-            grouped_results = {}
-            
-            for row in results:
-                # Assume columns: page_id, title, created_time, last_edited_time, file_path, metadata, database_name
-                # Safely parse metadata JSON
-                metadata = {}
-                if row[5] and row[5].strip():
-                    try:
-                        metadata = json.loads(row[5])
-                    except (json.JSONDecodeError, ValueError):
-                        # If JSON parsing fails, keep as empty dict
-                        metadata = {}
-                
-                page_data = {
-                    'page_id': row[0],
-                    'title': row[1],
-                    'created_time': row[2],
-                    'last_edited_time': row[3],
-                    'file_path': row[4],
-                    'metadata': metadata,
-                    'database_name': row[6]
-                }
-                
-                # Apply content filters if any (now properly scoped to this query)
-                if content_filters and not content_matches_filters(page_data, content_filters):
-                    continue
-                
-                # Load actual file content for chat interface
-                file_path = page_data.get('file_path', '')
-                if file_path and os.path.exists(file_path):
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            file_content = f.read()
-                            page_data['content'] = file_content
-                            
-                            # Extract title from content if title is empty
-                            if not page_data.get('title') or page_data.get('title').strip() == '':
-                                # Try to extract from "Name: ..." line in content
-                                name_match = re.search(r'^Name:\s*(.+)$', file_content, re.MULTILINE)
-                                if name_match:
-                                    page_data['title'] = name_match.group(1).strip()
-                                else:
-                                    # Fallback to filename without extension
-                                    filename = os.path.basename(file_path)
-                                    page_data['title'] = os.path.splitext(filename)[0]
-                    except Exception as e:
-                        print(f"Warning: Could not read file {file_path}: {e}")
-                        page_data['content'] = f"Error reading file: {e}"
-                        # Still try to set title from filename
-                        if not page_data.get('title') or page_data.get('title').strip() == '':
-                            filename = os.path.basename(file_path)
-                            page_data['title'] = os.path.splitext(filename)[0]
-                else:
-                    page_data['content'] = "File not found or path missing"
-                
-                # Group by database name
-                db_name = page_data['database_name']
-                if db_name not in grouped_results:
-                    grouped_results[db_name] = []
-                grouped_results[db_name].append(page_data)
-            
-            return grouped_results
-            
+            # Print breakdown by database
+            for db_name, pages in grouped_results.items():
+                print(f"   {db_name}: {len(pages)} results")
+        else:
+            print("❌ No content found for natural language query")
+        
+        return grouped_results
+        
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error executing query: {e}")
+        print(f"❌ Query execution failed: {e}")
+        print(f"   SQL: {sql_query}")
         return {}
 
 
 def content_matches_filters(page_data: Dict[str, Any], filters: List[str]) -> bool:
-    """Check if content matches the specified filters."""
+    """Check if page content matches the specified filters."""
     if not filters:
         return True
     
-    # Search in multiple content sources
-    searchable_content = []
+    # Get text content from various fields
+    searchable_text = ""
     
-    # 1. Search in title
-    title = page_data.get('title', '')
-    if title:
-        searchable_content.append(title.lower())
+    # Add title and content
+    if page_data.get('title'):
+        searchable_text += page_data['title'] + " "
     
-    # 2. Search in metadata (especially for Gmail entries)
-    metadata = page_data.get('metadata', {})
-    if metadata:
-        # Common searchable fields
-        searchable_fields = ['subject', 'sender_email', 'sender_name', 'body', 'body_snippet', 'labels']
-        for field in searchable_fields:
-            if field in metadata and metadata[field]:
-                searchable_content.append(str(metadata[field]).lower())
+    # Add metadata if it's a string or convert to string
+    metadata = page_data.get('metadata', '')
+    if isinstance(metadata, dict):
+        # Convert dict to searchable string
+        searchable_text += str(metadata) + " "
+    elif metadata:
+        searchable_text += str(metadata) + " "
     
-    # 3. Search in file content (fallback for markdown files)
-    file_path = page_data.get('file_path', '')
-    if file_path and os.path.exists(file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                file_content = f.read().lower()
-                searchable_content.append(file_content)
-        except Exception:
-            pass  # Continue even if file reading fails
+    # Add any other relevant text fields
+    for field in ['sender_name', 'sender_email', 'file_path']:
+        if page_data.get(field):
+            searchable_text += str(page_data[field]) + " "
     
-    # Check if any filter matches any content source
-    all_content = ' '.join(searchable_content)
+    searchable_text = searchable_text.lower()
+    
+    # Check if any filter matches
     for filter_term in filters:
-        if filter_term.lower() in all_content:
+        filter_term = filter_term.lower().strip()
+        if filter_term and filter_term in searchable_text:
             return True
     
-    return False 
+    return False

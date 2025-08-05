@@ -876,7 +876,8 @@ class NotionConnector(BaseConnector):
                             content_data["content"], 
                             properties=content_data.get("properties") if include_properties else None,
                             include_properties=include_properties,
-                            excluded_properties=excluded_properties or []
+                            excluded_properties=excluded_properties or [],
+                            parent_page_id=page_id  # Pass the parent page ID
                         )
                     except Exception as subpage_error:
                         self.logger.warning(f"Failed to process subpages for {page_id}, falling back to regular content: {subpage_error}")
