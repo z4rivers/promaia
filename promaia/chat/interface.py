@@ -2219,10 +2219,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             context_state['filters'] = processed_filters
             context_state['browse_selections'] = selected_sources.copy()
             
-            # Reconstruct and store the original command format
-            cmd_parts = ["maia", "chat", "-b"]
-            cmd_parts.extend(database_filter if database_filter else [workspace] if workspace else multiple_workspaces)
-            context_state['original_query_format'] = " ".join(cmd_parts)
+            # Don't overwrite the original command format - preserve user's browser selections
+            # The original_query_format should maintain the user's initial command structure
+            # Only update if we don't have an existing format, or if we need to maintain consistency
+            if not context_state.get('original_query_format'):
+                # Only set if we don't have one already
+                cmd_parts = ["maia", "chat", "-b"]
+                cmd_parts.extend(database_filter if database_filter else [workspace] if workspace else multiple_workspaces)
+                context_state['original_query_format'] = " ".join(cmd_parts)
             update_query_command()
             
             # Reload context with updated info
