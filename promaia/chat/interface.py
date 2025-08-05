@@ -2143,10 +2143,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             
             # Only if we couldn't determine workspace from browse command, then use context
-            if not workspace:
+            # But don't override multiple workspace detection (workspace=None)
+            
+            # Initialize context variables
+            multiple_workspaces_in_context = context_state.get('multiple_workspaces', [])
+            
+            if not workspace and not ('multiple_workspaces' in locals() and multiple_workspaces):
                 # Determine workspace from current context
                 workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
-                multiple_workspaces_in_context = context_state.get('multiple_workspaces', [])
                 
                 # If we have multiple workspaces, use None as workspace so the browser shows all
                 if multiple_workspaces_in_context:
@@ -2167,9 +2171,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     workspace_manager = get_workspace_manager()
                     workspace = workspace_manager.get_default_workspace()
 
-            # Now fix the database_filter vs workspace parameter issue
-            # If database_filter contains workspace names, we should use them as workspace and clear the filter
-            if database_filter:
+            # Handle database_filter vs workspace parameter issue
+            # But respect multiple workspace detection (don't override workspace=None)
+            if database_filter and not ('multiple_workspaces' in locals() and multiple_workspaces):
+                # Only apply this logic if we're NOT in multiple workspace mode
                 from promaia.config.workspaces import get_workspace_manager
                 workspace_manager = get_workspace_manager()
                 
@@ -2198,8 +2203,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     database_filter = database_filter  # Keep the original mixed filter
                 elif actual_databases:
                     database_filter = actual_databases  # Keep only actual database names
+            elif 'multiple_workspaces' in locals() and multiple_workspaces:
+                # Multiple workspace mode: ensure database_filter contains workspace names for browser
+                # The browser needs workspace names in database_filter to collect from multiple workspaces
+                if not database_filter:
+                    database_filter = multiple_workspaces.copy()  # Use workspace names as filter
             
-            if not workspace and not multiple_workspaces_in_context:
+            # Check if we have a valid workspace setup (single workspace OR multiple workspaces)
+            has_valid_workspace = (
+                workspace or 
+                multiple_workspaces_in_context or 
+                ('multiple_workspaces' in locals() and multiple_workspaces)
+            )
+            
+            if not has_valid_workspace:
                 print_text("Error: No workspace available for browse mode.", style="bold red")
                 return False
             
