@@ -1168,9 +1168,9 @@ def chat_run(args):
                     # Convert Discord groups to source + filter combinations
                     for db_key, channels in discord_db_groups.items():
                         processed_sources.append(db_key)
-                        # Create a single filter for all channels in this database
+                        # Create a single filter for all channels in this database with source prefix
                         channel_filter = " OR ".join(f'channel:"{channel}"' for channel in channels)
-                        processed_filters.append(f"({channel_filter})")
+                        processed_filters.append(f"{db_key}:({channel_filter})")
                     
                     # Now call chat with the selected sources and natural language prompt
                     sources = processed_sources
