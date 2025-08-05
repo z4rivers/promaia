@@ -594,6 +594,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'original_query_format': original_browse_command  # Store the original query format for display
     }
     
+    # Update context_state with browse_selections if they were set during browser interaction
+    # This handles the case where browse_selections were set locally but not captured in the parameter
+    if 'browse_selections' in locals() and browse_selections:
+        context_state['browse_selections'] = browse_selections
+        print_text(f"🔄 Updated context_state with {len(browse_selections)} browser selections", style="dim cyan")
+    
     # Debug: Show what browse_selections were stored
     # if browse_selections:
     #     debug_print(f"STORED browse_selections in context_state: {browse_selections}")
@@ -2173,6 +2179,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             current_sources = []
             if stored_browser_selections:
                 current_sources.extend(stored_browser_selections)
+                print_text(f"🐛 DEBUG: Using stored browser selections ({len(stored_browser_selections)}): {stored_browser_selections}", style="dim yellow")
             else:
                 # If no selections are stored, and it's a workspace browse, populate with all sources
                 is_workspace_browse = bool(workspace and not database_filter)
