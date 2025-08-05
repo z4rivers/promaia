@@ -1718,10 +1718,10 @@ def chat_run_inline_browse(args, browse_args=None):
         
         original_browse_command = " ".join(original_command_parts)
         
-        # Store original Discord channel selections for /e context preservation
-        original_discord_selections = []
+        # Store original browser selections for /e context preservation
+        original_browser_selections = []
         if 'selected_sources' in locals():
-            original_discord_selections = [s for s in selected_sources if '#' in s]
+            original_browser_selections = selected_sources.copy()  # Store ALL selections, not just Discord
         
         # Start chat with selected sources
         chat(
@@ -1732,7 +1732,7 @@ def chat_run_inline_browse(args, browse_args=None):
             non_interactive=getattr(args, 'non_interactive', False),
             mcp_servers=getattr(args, 'mcp_servers', None),
             original_browse_command=original_browse_command,
-            browse_selections=original_discord_selections  # Store for /e preservation
+            browse_selections=original_browser_selections  # Store for /e preservation
         )
         
     except Exception as e:
