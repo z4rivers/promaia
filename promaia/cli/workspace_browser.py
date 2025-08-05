@@ -35,7 +35,7 @@ def safe_parse_days(source_spec: str, fallback_days):
         # If parsing fails, return fallback
         return fallback_days
 
-def launch_unified_browser(workspace: str, default_days: Optional[int] = None, database_filter: Optional[List[str]] = None, current_sources: Optional[List[str]] = None) -> List[str]:
+def launch_unified_browser(workspace: Optional[str], default_days: Optional[int] = None, database_filter: Optional[List[str]] = None, current_sources: Optional[List[str]] = None) -> List[str]:
     """Launch unified browser for both database sources and Discord channels."""
     return asyncio.run(interactive_unified_browser(workspace, default_days, database_filter, current_sources))
 
@@ -44,7 +44,7 @@ def launch_workspace_browser(workspace: str, default_days: Optional[int] = None)
     """Launch interactive workspace source browser (backward compatibility)."""
     return launch_unified_browser(workspace, default_days)
 
-async def interactive_unified_browser(workspace: str, default_days: Optional[int] = None, database_filter: Optional[List[str]] = None, current_sources: Optional[List[str]] = None) -> List[str]:
+async def interactive_unified_browser(workspace: Optional[str], default_days: Optional[int] = None, database_filter: Optional[List[str]] = None, current_sources: Optional[List[str]] = None) -> List[str]:
     """Interactive unified browser with live text fields for databases and Discord channels."""
     from promaia.config.databases import get_database_manager
     
@@ -52,10 +52,42 @@ async def interactive_unified_browser(workspace: str, default_days: Optional[int
     
     try:
         db_manager = get_database_manager()
-        workspace_databases = db_manager.get_workspace_databases(workspace)
         
+        # Handle multiple workspaces case
+        if workspace is None and database_filter:
+            # Extract workspace names from database_filter and collect databases from all workspaces
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            
+            workspace_names = []
+            for filter_item in database_filter:
+                base_name = filter_item.split(':')[0]  # Remove day specification
+                if workspace_manager.validate_workspace(base_name):
+                    if base_name not in workspace_names:
+                        workspace_names.append(base_name)
+            
+            if not workspace_names:
+                console.print(f"❌ No valid workspaces found in database filter: {database_filter}", style="red")
+                return []
+            
+            # Collect databases from all workspaces
+            workspace_databases = []
+            for ws_name in workspace_names:
+                ws_databases = db_manager.get_workspace_databases(ws_name)
+                workspace_databases.extend(ws_databases)
+                
+            workspace_display = ', '.join(workspace_names)
+        else:
+            # Single workspace case (existing logic)
+            if workspace is None:
+                console.print(f"❌ No workspace specified", style="red")
+                return []
+                
+            workspace_databases = db_manager.get_workspace_databases(workspace)
+            workspace_display = workspace
+            
         if not workspace_databases:
-            console.print(f"❌ No databases found in workspace '{workspace}'", style="red")
+            console.print(f"❌ No databases found in workspace(s) '{workspace_display}'", style="red")
             return []
         
         # Filter databases if specified (handle both workspace names and specific database names)
@@ -311,7 +343,7 @@ async def interactive_unified_browser(workspace: str, default_days: Optional[int
             total_count = len(enabled_states)
             discord_count = sum(1 for entry in entry_info if entry['type'] in ['discord', 'discord_db'])
             db_count = total_count - discord_count
-            return f"🔍 {workspace} | Sources: {db_count} databases, {discord_count} channels | Selected: {enabled_count}/{total_count} | ↑↓ Navigate SPACE Toggle ENTER Confirm ESC Cancel"
+            return f"🔍 {workspace_display} | Sources: {db_count} databases, {discord_count} channels | Selected: {enabled_count}/{total_count} | ↑↓ Navigate SPACE Toggle ENTER Confirm ESC Cancel"
         
         # Status line
         status_window = Window(

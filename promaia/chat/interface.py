@@ -671,24 +671,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     from promaia.storage.unified_query import get_query_interface
                     
                     # Determine workspace to use - preserve from original context
-                    workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                    workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
                     
                     # If no explicit workspace, try to infer from original sources
-                    if not workspace_to_use and context_state.get('sources'):
+                    if not workspace and context_state.get('sources'):
                         # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
                         for source in context_state['sources']:
                             if '.' in source:
                                 potential_workspace = source.split('.')[0]
-                                workspace_to_use = potential_workspace
+                                workspace = potential_workspace
                                 break
                     
                     # Fall back to default workspace
-                    if not workspace_to_use:
+                    if not workspace:
                         from promaia.config.workspaces import get_workspace_manager
                         workspace_manager = get_workspace_manager()
-                        workspace_to_use = workspace_manager.get_default_workspace()
+                        workspace = workspace_manager.get_default_workspace()
                     
-                    if not workspace_to_use:
+                    if not workspace:
                         print_text("Error: No workspace available for natural language query.", style="bold red")
                         return False
                     
@@ -811,7 +811,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Check if user provided workspace but no sources (workspace browse mode)
         # BUT don't launch browser if we already have sources (e.g., from edit context)
-        user_provided_workspace_only = bool(workspace and not sources and not filters and not natural_language_prompt)
+        user_provided_workspace_only = bool(actual_workspace and not sources and not filters and not natural_language_prompt)
         
         if user_provided_workspace_only and not current_sources:
             debug_print(f"Opening workspace browser for '{actual_workspace}'.")
@@ -1465,24 +1465,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             from promaia.storage.unified_query import get_query_interface
                             
                             # Determine workspace to use
-                            workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                            workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
                             
                             # If no explicit workspace, try to infer from original sources
-                            if not workspace_to_use and context_state.get('sources'):
+                            if not workspace and context_state.get('sources'):
                                 # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
                                 for source in context_state['sources']:
                                     if '.' in source:
                                         potential_workspace = source.split('.')[0]
-                                        workspace_to_use = potential_workspace
+                                        workspace = potential_workspace
                                         break
                             
                             # Fall back to default workspace
-                            if not workspace_to_use:
+                            if not workspace:
                                 from promaia.config.workspaces import get_workspace_manager
                                 workspace_manager = get_workspace_manager()
-                                workspace_to_use = workspace_manager.get_default_workspace()
+                                workspace = workspace_manager.get_default_workspace()
                             
-                            if not workspace_to_use:
+                            if not workspace:
                                 print_text("Error: No workspace available for natural language query.", style="bold red")
                                 return False
                             
@@ -1844,7 +1844,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # BUT only if there are no existing browser selections (for persistence)
                     # Check if this is a workspace browse command by looking at the original format
                     is_workspace_browse = False
-                    if original_format and '-b ' in original_format and workspace_to_use and not database_filter:
+                    if original_format and '-b ' in original_format and workspace and not database_filter:
                         is_workspace_browse = True
                     
                     if is_workspace_browse:
@@ -1865,7 +1865,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     # Check if this source is from a different workspace
                                     if '.' in source_db:
                                         source_workspace = source_db.split('.')[0]
-                                        if source_workspace != workspace_to_use:
+                                        if source_workspace != workspace:
                                             current_sources.append(source)
                                     else:
                                         # Non-workspace source (like journal:30), always include
@@ -1874,7 +1874,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # First time browsing workspace - default to all workspace databases
                             from promaia.config.databases import get_database_manager
                             db_manager = get_database_manager()
-                            workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
+                            workspace_databases = db_manager.get_workspace_databases(workspace)
                             
                             # Add all workspace databases with their default days
                             for db in workspace_databases:
@@ -1892,7 +1892,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     # Check if this source is from a different workspace
                                     if '.' in source_db:
                                         source_workspace = source_db.split('.')[0]
-                                        if source_workspace != workspace_to_use:
+                                        if source_workspace != workspace:
                                             current_sources.append(source)
                                     else:
                                         # Non-workspace source (like journal:30), always include
@@ -1975,7 +1975,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     final_sources = []
                     
                     # Keep sources that are NOT from the current workspace
-                    workspace_name = workspace_to_use if workspace_to_use else context_state.get('resolved_workspace') or context_state.get('workspace')
+                    workspace_name = workspace if workspace else context_state.get('resolved_workspace') or context_state.get('workspace')
                     
                     for source in original_sources:
                         source_db = source.split(':')[0] if ':' in source else source
@@ -2014,8 +2014,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             cmd_parts.extend(["-s", source])
                         for filter_expr in processed_filters:
                             cmd_parts.extend(["-f", filter_expr])
-                        if workspace_to_use:
-                            cmd_parts.extend(["-ws", workspace_to_use])
+                        if workspace:
+                            cmd_parts.extend(["-ws", workspace])
                         context_state['original_query_format'] = " ".join(cmd_parts)
                     
                     # Update the query command display to reflect the new state
@@ -2042,7 +2042,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Initialize variables first
             database_filter = None
             default_days = None
-            workspace_to_use = None
+            workspace = None
             
             # Parse current browse command to extract database filter and default days FIRST
             # This should take priority over context inference
@@ -2076,23 +2076,38 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if browse_databases:
                         database_filter = browse_databases.copy()  # Use the original browse arguments
                         
-                        # Extract workspace from browse databases first (highest priority)
+                        # Extract workspace(s) from browse databases first (highest priority)
                         from promaia.config.workspaces import get_workspace_manager
                         workspace_manager = get_workspace_manager()
                         
+                        workspace_names_found = []
                         for browse_spec in browse_databases:
                             # Remove day specification if present
                             browse_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
                             # Check if this is a workspace name
                             if workspace_manager.validate_workspace(browse_name):
-                                workspace_to_use = browse_name
-                                break
+                                if browse_name not in workspace_names_found:
+                                    workspace_names_found.append(browse_name)
                             # Check if this is a database name (workspace.database format)
                             elif '.' in browse_name:
                                 potential_workspace = browse_name.split('.')[0]
                                 if workspace_manager.validate_workspace(potential_workspace):
-                                    workspace_to_use = potential_workspace
-                                    break
+                                    if potential_workspace not in workspace_names_found:
+                                        workspace_names_found.append(potential_workspace)
+                        
+                        # Handle multiple workspaces
+                        if len(workspace_names_found) > 1:
+                            # Multiple workspaces - use None and let database_filter handle everything
+                            workspace = None
+                            # Store multiple workspaces for the browser to handle
+                            multiple_workspaces = workspace_names_found
+                        elif len(workspace_names_found) == 1:
+                            # Single workspace found
+                            workspace = workspace_names_found[0]
+                            multiple_workspaces = None
+                        else:
+                            # No workspace names found, keep existing logic
+                            multiple_workspaces = None
                         
                         # Only extract default days if specified
                         for browse_spec in browse_databases:
@@ -2128,29 +2143,29 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             
             # Only if we couldn't determine workspace from browse command, then use context
-            if not workspace_to_use:
+            if not workspace:
                 # Determine workspace from current context
-                workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
+                workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
                 multiple_workspaces_in_context = context_state.get('multiple_workspaces', [])
                 
-                # If we have multiple workspaces, use None as workspace_to_use so the browser shows all
+                # If we have multiple workspaces, use None as workspace so the browser shows all
                 if multiple_workspaces_in_context:
-                    workspace_to_use = None
+                    workspace = None
                     print_text(f"INFO: Browsing multiple workspaces: {', '.join(multiple_workspaces_in_context)}", style="cyan")
                 
                 # If no workspace in context, try to infer from current sources
-                if not workspace_to_use and context_state.get('sources'):
+                if not workspace and context_state.get('sources'):
                     for source in context_state['sources']:
                         if '.' in source:
                             potential_workspace = source.split('.')[0].split(':')[0].split('#')[0]
-                            workspace_to_use = potential_workspace
+                            workspace = potential_workspace
                             break
                 
                 # Fall back to default workspace (only if we don't have multiple workspaces)
-                if not workspace_to_use and not multiple_workspaces_in_context:
+                if not workspace and not multiple_workspaces_in_context:
                     from promaia.config.workspaces import get_workspace_manager
                     workspace_manager = get_workspace_manager()
-                    workspace_to_use = workspace_manager.get_default_workspace()
+                    workspace = workspace_manager.get_default_workspace()
 
             # Now fix the database_filter vs workspace parameter issue
             # If database_filter contains workspace names, we should use them as workspace and clear the filter
@@ -2168,8 +2183,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if workspace_manager.validate_workspace(browse_name):
                         workspace_names.append(browse_spec)
                         # If we found a workspace and don't have one set, use it
-                        if not workspace_to_use:
-                            workspace_to_use = browse_name
+                        if not workspace:
+                            workspace = browse_name
                     else:
                         # This is likely a database name
                         actual_databases.append(browse_spec)
@@ -2184,7 +2199,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 elif actual_databases:
                     database_filter = actual_databases  # Keep only actual database names
             
-            if not workspace_to_use and not multiple_workspaces_in_context:
+            if not workspace and not multiple_workspaces_in_context:
                 print_text("Error: No workspace available for browse mode.", style="bold red")
                 return False
             
@@ -2196,8 +2211,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"🔍 Launching unified browser for database: {database_filter[0]}...", style="cyan")
                 else:
                     print_text(f"🔍 Launching unified browser for databases: {', '.join(database_filter)}...", style="cyan")
+            elif 'multiple_workspaces' in locals() and multiple_workspaces:
+                print_text(f"🔍 Launching unified browser for workspaces: {', '.join(multiple_workspaces)}...", style="cyan")
             else:
-                print_text(f"🔍 Launching unified browser for workspace '{workspace_to_use}'...", style="cyan")
+                print_text(f"🔍 Launching unified browser for workspace '{workspace}'...", style="cyan")
 
             # Get current sources for pre-population (handle mixed commands properly)
             current_sources = []
@@ -2217,7 +2234,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # For workspace browse commands (like -b trass), we want to default to ALL workspace sources selected
             # Check if this is a workspace browse command by looking at the original format
             is_workspace_browse = False
-            if original_format and '-b ' in original_format and workspace_to_use and not database_filter:
+            if original_format and '-b ' in original_format and workspace and not database_filter:
                 is_workspace_browse = True
             
             if is_workspace_browse:
@@ -2238,7 +2255,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Check if this source is from a different workspace
                             if '.' in source_db:
                                 source_workspace = source_db.split('.')[0]
-                                if source_workspace != workspace_to_use:
+                                if source_workspace != workspace:
                                     current_sources.append(source)
                             else:
                                 # Non-workspace source (like journal:30), always include
@@ -2247,7 +2264,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # First time browsing workspace - default to all workspace databases
                     from promaia.config.databases import get_database_manager
                     db_manager = get_database_manager()
-                    workspace_databases = db_manager.get_workspace_databases(workspace_to_use)
+                    workspace_databases = db_manager.get_workspace_databases(workspace)
                     
                     # Add all workspace databases with their default days
                     for db in workspace_databases:
@@ -2265,7 +2282,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Check if this source is from a different workspace
                             if '.' in source_db:
                                 source_workspace = source_db.split('.')[0]
-                                if source_workspace != workspace_to_use:
+                                if source_workspace != workspace:
                                     current_sources.append(source)
                             else:
                                 # Non-workspace source (like journal:30), always include
@@ -2297,7 +2314,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Launch unified browser
             from promaia.cli.workspace_browser import launch_unified_browser
             selected_sources = launch_unified_browser(
-                workspace=workspace_to_use,
+                workspace=workspace,
                 default_days=default_days,
                 database_filter=database_filter,
                 current_sources=current_sources
@@ -2351,7 +2368,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             final_sources = []
             
             # Keep sources that are NOT from the current workspace
-            workspace_name = workspace_to_use if workspace_to_use else context_state.get('resolved_workspace') or context_state.get('workspace')
+            workspace_name = workspace if workspace else context_state.get('resolved_workspace') or context_state.get('workspace')
             
             for source in original_sources:
                 source_db = source.split(':')[0] if ':' in source else source
@@ -2424,13 +2441,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         from promaia.storage.unified_query import get_query_interface
                         
                         # Determine workspace to use
-                        workspace_to_use = context_state.get('resolved_workspace') or context_state.get('workspace')
-                        if not workspace_to_use:
+                        workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
+                        if not workspace:
                             from promaia.config.workspaces import get_workspace_manager
                             workspace_manager = get_workspace_manager()
-                            workspace_to_use = workspace_manager.get_default_workspace()
+                            workspace = workspace_manager.get_default_workspace()
                         
-                        if not workspace_to_use:
+                        if not workspace:
                             print_text("Error: No workspace available for natural language query.", style="bold red")
                             return False
                         
@@ -2439,7 +2456,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Process the natural language query
                         query_interface = get_query_interface()
                         natural_language_content = query_interface.natural_language_query(
-                            selected_query.natural_language_prompt, workspace_to_use
+                            selected_query.natural_language_prompt, workspace
                         )
                         
                         if not natural_language_content:
