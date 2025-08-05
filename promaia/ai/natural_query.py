@@ -647,17 +647,73 @@ def extract_database_types(nl_prompt: str) -> Optional[List[str]]:
     return matched_databases if matched_databases else None
 
 
+def determine_search_strategy(nl_prompt: str) -> str:
+    """
+    Determine the best search strategy based on the natural language query.
+    
+    Returns:
+        - 'structured': Use SQL/metadata search only (for precise temporal/criteria queries)
+        - 'semantic': Use content search only (for thematic/conceptual queries)  
+        - 'hybrid': Use both approaches (for complex queries)
+    """
+    prompt_lower = nl_prompt.lower()
+    
+    # Structured indicators (dates, specific timeframes, precise criteria)
+    structured_indicators = [
+        'first week', 'last week', 'this month', 'last month', 'this year', 'last year',
+        'january', 'february', 'march', 'april', 'may', 'june', 
+        'july', 'august', 'september', 'october', 'november', 'december',
+        '2024', '2025', '2026', 'since', 'before', 'after', 'between',
+        'recent', 'latest', 'oldest', 'created', 'modified', 'status=', 'from='
+    ]
+    
+    # Semantic indicators (concepts, themes, content-based queries)
+    semantic_indicators = [
+        'about', 'containing', 'mentions', 'discusses', 'related to', 'similar to',
+        'theme', 'topic', 'concept', 'ideas', 'thoughts', 'feelings', 'experience',
+        'what did i', 'how did i', 'when did i feel', 'summarize', 'analyze'
+    ]
+    
+    structured_score = sum(1 for indicator in structured_indicators if indicator in prompt_lower)
+    semantic_score = sum(1 for indicator in semantic_indicators if indicator in prompt_lower)
+    
+    # Decision logic
+    if structured_score > 0 and semantic_score == 0:
+        print(f"🎯 Using structured search strategy (temporal/criteria query)")
+        return 'structured'
+    elif semantic_score > 0 and structured_score == 0:
+        print(f"🧠 Using semantic search strategy (conceptual query)")
+        return 'semantic'
+    elif structured_score > 0 and semantic_score > 0:
+        print(f"⚡ Using hybrid search strategy (complex query)")
+        return 'hybrid'
+    else:
+        # Default to structured for simple, clear queries
+        print(f"📊 Using structured search strategy (default)")
+        return 'structured'
+
+
 def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, Any]:
     """
-    Process natural language to content - enhanced with content searching.
+    Process natural language to content with intelligent search strategy selection.
     This is the function that unified_query.py expects to import.
     Returns just the data dictionary, not errors (for compatibility).
     """
-    # First, try traditional metadata-based search
-    metadata_results, errors = execute_natural_language_queries(nl_prompt, None)
+    # Determine the best search strategy based on query type
+    search_strategy = determine_search_strategy(nl_prompt)
     
-    # Then, perform content-based search for better coverage
-    content_results = execute_content_search(nl_prompt, workspace)
+    metadata_results = []
+    content_results = []
+    
+    if search_strategy in ['structured', 'hybrid']:
+        # Execute SQL-based metadata search for structured queries
+        metadata_results, errors = execute_natural_language_queries(nl_prompt, None)
+        if errors:
+            print(f"⚠️ Metadata search errors: {errors}")
+    
+    if search_strategy in ['semantic', 'hybrid']:
+        # Execute content-based search for semantic queries
+        content_results = execute_content_search(nl_prompt, workspace)
     
     # Merge results, avoiding duplicates
     all_results = metadata_results.copy()
@@ -667,6 +723,17 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
     for content_result in content_results:
         if content_result.get('page_id') not in metadata_page_ids:
             all_results.append(content_result)
+
+    # Display search results summary
+    if search_strategy == 'structured':
+        print(f"📊 Search Results Summary (Structured): {len(all_results)} results from SQL query")
+    elif search_strategy == 'semantic':
+        print(f"🧠 Search Results Summary (Semantic): {len(all_results)} results from content search")
+    elif search_strategy == 'hybrid':
+        print(f"⚡ Search Results Summary (Hybrid):")
+        print(f"   Metadata matches: {len(metadata_results)}")
+        print(f"   Content matches: {len(content_results)}")
+        print(f"   Total unique results: {len(all_results)}")
 
     # Convert results to the format expected by the interface
     formatted_results = {}
