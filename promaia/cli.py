@@ -1181,6 +1181,18 @@ def chat_run(args):
                     print_text(f"❌ Error in browser launch for mixed command: {e}", style="red")
                     return
             
+            # Build original browse command to preserve -b + -nl structure for /e command
+            original_command_parts = ["maia", "chat"]
+            if browse_args:
+                original_command_parts.append("-b")
+                original_command_parts.extend(browse_args)
+            if nl_prompt:
+                original_command_parts.extend(["-nl", f'"{nl_prompt}"'])
+            if mcp_servers:
+                for server in mcp_servers:
+                    original_command_parts.extend(["-mcp", server])
+            original_browse_command = " ".join(original_command_parts)
+            
             # Call main chat function with mixed command parameters
             try:
                 chat(
@@ -1190,6 +1202,8 @@ def chat_run(args):
                     non_interactive=getattr(args, 'non_interactive', False),
                     natural_language_prompt=nl_prompt,
                     browse_databases=None,  # Clear browse_databases since browser selection is already complete
+                    original_browse_command=original_browse_command,  # Preserve original structure
+                    browse_selections=selected_sources,  # Store browser selections for /e persistence
                     mcp_servers=mcp_servers
                 )
                 return
