@@ -20,15 +20,25 @@ The unified browser replaces the separate workspace and Discord browsers with a 
 # Browse entire workspace
 maia chat -b trass
 
-# Browse specific databases/channels  
+# Browse specific databases/channels (single -b flag)
 maia chat -b trass.tg trass.journal
 
 # Mixed browsing (workspace + specific database)
 maia chat -b trass trass.stories
 
+# Multiple -b flags (equivalent to above)
+maia chat -b trass -b trass.stories
+
+# Multiple databases with separate -b flags
+maia chat -b trass -b trass.tg
+
 # Browse specific Discord database
 maia chat -b trass.tg
 ```
+
+**Note**: Both syntaxes are supported:
+- Single `-b` with multiple arguments: `maia chat -b trass trass.tg`  
+- Multiple `-b` flags: `maia chat -b trass -b trass.tg`
 
 ### Edit Context Browse (`/e` → `Ctrl+B`)
 
@@ -91,7 +101,11 @@ Opens browser showing all enabled databases in the `trass` workspace. Select des
 ### Mixed Source Selection
 
 ```bash
+# Single -b flag with multiple arguments
 maia chat -b trass.tg trass
+
+# Multiple -b flags (equivalent)
+maia chat -b trass.tg -b trass
 ```
 Opens browser showing:
 - All Discord channels from `trass.tg` 
@@ -126,16 +140,22 @@ In the browser interface:
 
 The unified browser remembers:
 - **Selected sources** across `/e` sessions
-- **Custom day values** for each source
+- **Custom day values** for each source  
 - **Mixed selections** (regular databases + Discord channels)
+- **Original browse command format** (preserves `-b` syntax)
+
+**Recent Improvements**: The `/e` edit context now properly preserves mixed workspace and Discord selections, ensuring both regular databases and Discord channels remain available for re-selection.
 
 ### Workspace Expansion
 
 When you specify a workspace name (e.g., `trass`), it automatically expands to include all enabled databases in that workspace:
 
 ```bash
+# Either syntax works:
 maia chat -b trass.tg trass
-# Expands to: trass.tg, trass.journal, trass.stories, trass.gmail, trass.cpj, trass.epics
+maia chat -b trass.tg -b trass
+
+# Both expand to: trass.tg, trass.journal, trass.stories, trass.gmail, trass.cpj, trass.epics
 ```
 
 ### Query Format Preservation
