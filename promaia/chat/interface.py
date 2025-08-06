@@ -702,7 +702,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 natural_language_data = existing_nl_content
             # Otherwise, process fresh query
             else:
-                print_text("🤖 Processing natural language content", style="white")
                 
                 try:
                     from promaia.storage.unified_query import get_query_interface
@@ -732,9 +731,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Process natural language query fresh
                     query_interface = get_query_interface()
                     
+                    # Extract database names from browse selections if available
+                    database_names = None
+                    if context_state.get('browse_selections'):
+                        from promaia.cli import extract_database_names_from_sources
+                        database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                    
                     # Always allow cross-workspace queries for natural language
                     # Workspace is just a classifier/tag, not a mandatory constraint
-                    natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+                    natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
                     
                     if not natural_language_content:
                         print_text("❌ No content found for natural language query", style="bold red")
@@ -1528,9 +1533,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Process the natural language query
                             query_interface = get_query_interface()
                             
+                            # Extract database names from browse selections if available
+                            database_names = None
+                            if context_state.get('browse_selections'):
+                                from promaia.cli import extract_database_names_from_sources
+                                database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                                    
                             # Always allow cross-workspace queries for natural language
                             # Workspace is just a classifier/tag, not a mandatory constraint
-                            natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+                            natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
                             
                             if not natural_language_content:
                                 print_text("❌ No content found for natural language query", style="bold red")
@@ -1696,7 +1707,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if nl_workspace:
                         # Process the natural language query
                         query_interface = get_query_interface()
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace)
+                        
+                        # Extract database names from browse selections if available
+                        database_names = None
+                        if context_state.get('browse_selections'):
+                            from promaia.cli import extract_database_names_from_sources
+                            database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                            
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace, database_names)
                         
                         if natural_language_content:
                             print_text("🔄 Using natural language results from CLI", style="cyan")
@@ -2180,8 +2198,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             current_sources = []
             if stored_browser_selections:
                 current_sources.extend(stored_browser_selections)
-                if DEBUG_MODE:
-                    print_text(f"🐛 DEBUG: Using stored browser selections ({len(stored_browser_selections)}): {stored_browser_selections}", style="dim yellow")
             else:
                 # If no selections are stored, and it's a workspace browse, populate with all sources
                 is_workspace_browse = bool(workspace and not database_filter)
@@ -2294,8 +2310,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         
                         # Process the natural language query
                         query_interface = get_query_interface()
+                        
+                        # Extract database names from browse selections if available
+                        database_names = None
+                        if context_state.get('browse_selections'):
+                            from promaia.cli import extract_database_names_from_sources
+                            database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                            
                         natural_language_content = query_interface.natural_language_query(
-                            selected_query.natural_language_prompt, workspace
+                            selected_query.natural_language_prompt, workspace, database_names
                         )
                         
                         if not natural_language_content:

@@ -28,6 +28,7 @@ from promaia.cli.database_commands import (
     handle_database_test, handle_database_sync, handle_database_info,
     handle_database_push, handle_database_status, handle_database_list_sources,
     handle_register_markdown_files, handle_validate_registry,
+    handle_database_add_channels, handle_database_remove_channels,
     add_database_commands, add_database_commands_to_existing_parser
 )
 from promaia.cli.conversion_commands import add_conversion_commands
@@ -999,6 +1000,19 @@ async def pull_cms_filtered(database_config, output_dir, property_filters, days,
 
 # ==================== CORE COMMANDS ====================
 
+def extract_database_names_from_sources(sources: List[str]) -> List[str]:
+    """Extract database nicknames from source selections (e.g., 'koii.journal' -> 'journal')."""
+    database_names = []
+    for source in sources:
+        if '.' in source:
+            # Extract database name from workspace.database format
+            _, db_name = source.split('.', 1)
+            database_names.append(db_name)
+        else:
+            # Source is already just the database name
+            database_names.append(source)
+    return list(set(database_names))  # Remove duplicates
+
 def chat_run(args):
     """Run the chat interface."""
     from promaia.chat.interface import chat
@@ -1264,7 +1278,7 @@ def chat_run(args):
             
             # Always allow cross-workspace queries for natural language
             # Workspace is just a classifier/tag, not a mandatory constraint
-            natural_language_content = query_interface.natural_language_query(nl_prompt, None)
+            natural_language_content = query_interface.natural_language_query(nl_prompt, None, None)
             
             if not natural_language_content:
                 print_text("❌ No content found for natural language query", style="red")
@@ -1734,7 +1748,7 @@ def chat_run_inline_browse(args, browse_args=None):
         
         # Store original browser selections for /e context preservation
         original_browser_selections = []
-        if 'selected_sources' in locals():
+        if 'selected_sources' in locals() and selected_sources:
             original_browser_selections = selected_sources.copy()  # Store ALL selections, not just Discord
         
         # Start chat with selected sources
@@ -1812,7 +1826,7 @@ def history_run(args):
                     if actual_workspace:
                         print_text("🤖 Regenerating context from natural language query...", style="white")
                         query_interface = get_query_interface()
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace)
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace, None)
                         
                         # Start chat with natural language content
                         chat(
@@ -2059,15 +2073,33 @@ def chat_run_workspace_browse(args, workspace_name):
         
         original_browse_command = " ".join(original_command_parts)
         
+        # Launch unified browser to get user selections
+        from promaia.cli.workspace_browser import launch_unified_browser
+        print_text(f"🔍 Launching unified browser for workspace '{workspace_name}'...", style="cyan")
+        
+        selected_sources = launch_unified_browser(workspace_name)
+        
+        if not selected_sources:
+            print_text(f"No sources selected from workspace '{workspace_name}'. Chat will lack context.", style="bold yellow")
+            # Continue anyway, but with empty sources
+            final_sources = sources
+            browse_selections = []
+        else:
+            print_text(f"📦 Selected {len(selected_sources)} sources from workspace '{workspace_name}'", style="cyan")
+            # Process the selected sources 
+            final_sources = sources + selected_sources  # Combine with any regular sources
+            browse_selections = selected_sources.copy()  # Store for /e preservation
+        
         # Call the chat function with workspace and original command format
         chat(
-            sources=sources,
+            sources=final_sources,
             filters=filters, 
             workspace=workspace_name,
             resolved_workspace=workspace_name,
             non_interactive=getattr(args, 'non_interactive', False),
             mcp_servers=mcp_servers,
-            original_browse_command=original_browse_command
+            original_browse_command=original_browse_command,
+            browse_selections=browse_selections  # Store for /e preservation
         )
         
     except Exception as e:
@@ -2377,6 +2409,10 @@ def main():
                 asyncio.run(handle_register_markdown_files(args))
             elif args.database_command == "validate-registry":
                 asyncio.run(handle_validate_registry(args))
+            elif args.database_command == "add-channels":
+                asyncio.run(handle_database_add_channels(args))
+            elif args.database_command == "remove-channels":
+                asyncio.run(handle_database_remove_channels(args))
             else:
                 print_text(f"Unknown database command: {args.database_command}", style="red")
         else:
