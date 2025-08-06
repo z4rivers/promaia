@@ -181,6 +181,242 @@ async def handle_database_remove(args):
     else:
         print(f"✗ Database '{original_name}' not found")
 
+async def handle_database_remove_channels(args):
+    """Handle 'maia database remove-channels' command to remove Discord channels via browser."""
+    from promaia.storage.json_registry import get_json_registry
+    from promaia.cli.discord_commands import interactive_channel_browser, get_accessible_channels_cached
+    from promaia.connectors.discord_connector import DiscordConnector
+    from rich.console import Console
+    
+    console = Console()
+    db_manager = get_database_manager()
+    
+    if not args.database_name:
+        print("✗ Database name is required")
+        return
+    
+    # Parse database name (handle workspace.database format)
+    workspace = None
+    if '.' in args.database_name:
+        workspace, db_name = args.database_name.split('.', 1)
+    else:
+        db_name = args.database_name
+    
+    # Get database config
+    db_config = db_manager.get_database(db_name, workspace)
+    if not db_config:
+        print(f"✗ Database '{args.database_name}' not found")
+        return
+    
+    # Check if it's a Discord database
+    if db_config.source_type != 'discord':
+        print(f"✗ Database '{args.database_name}' is not a Discord database (type: {db_config.source_type})")
+        return
+    
+    try:
+        print(f"🔍 Loading channels for Discord database '{args.database_name}'...")
+        
+        # Get current channel filters from config
+        current_channel_ids = []
+        channel_filter = db_config.property_filters.get('channel_id', [])
+        if isinstance(channel_filter, str):
+            current_channel_ids = [channel_filter]
+        elif isinstance(channel_filter, list):
+            current_channel_ids = channel_filter
+        
+        if not current_channel_ids:
+            print(f"✓ No channels configured for database '{args.database_name}'")
+            return
+        
+        # Create a fake server structure for the browser to show current channels
+        servers = [{
+            "server_id": db_config.database_id,
+            "server_name": f"Discord Server ({db_config.nickname})",
+            "db_name": db_config.nickname,
+            "channels": [{"channel_id": cid, "name": f"Channel {cid}", "channel_name": f"Channel {cid}", "accessible": True} for cid in current_channel_ids]
+        }]
+        
+        print(f"📋 Select channels to REMOVE from database '{args.database_name}':")
+        print("   Use SPACE to select channels, ENTER to confirm, ESC to cancel")
+        
+        # Use the existing interactive browser to let user select channels to remove
+        selected_channels, _ = await interactive_channel_browser(console, servers, db_config.workspace)
+        
+        if not selected_channels:
+            print("No channels selected for removal.")
+            return
+        
+        # Extract channel IDs from selection
+        channels_to_remove = [channel[1] for channel in selected_channels]  # channel[1] is channel_id
+        
+        print(f"\n🗑️  Will remove {len(channels_to_remove)} channels from database '{args.database_name}':")
+        for channel_id in channels_to_remove:
+            print(f"   - {channel_id}")
+        
+        # Confirm removal
+        if not args.force:
+            response = input(f"\nThis will:\n1. Remove channels from config\n2. Delete all stored data for these channels\n\nContinue? (y/N): ")
+            if response.lower() not in ['y', 'yes']:
+                print("Operation cancelled")
+                return
+        
+        # Update config - remove channels from filter
+        remaining_channels = [cid for cid in current_channel_ids if cid not in channels_to_remove]
+        
+        if remaining_channels:
+            db_config.property_filters['channel_id'] = remaining_channels if len(remaining_channels) > 1 else remaining_channels[0]
+        else:
+            # Remove the filter entirely if no channels left
+            if 'channel_id' in db_config.property_filters:
+                del db_config.property_filters['channel_id']
+        
+        db_manager.save_config()
+        print(f"✓ Updated config for database '{args.database_name}'")
+        
+        # Remove stored data for these channels
+        registry = get_json_registry()
+        total_removed = 0
+        
+        for channel_id in channels_to_remove:
+            # Get content for this specific channel
+            content_list = registry.list_content(
+                content_type=db_config.nickname,
+                workspace=db_config.workspace
+            )
+            
+            channel_content = [
+                item for item in content_list 
+                if item.get('discord_channel_id') == channel_id
+            ]
+            
+            print(f"🗑️  Removing {len(channel_content)} items from channel {channel_id}...")
+            
+            for item in channel_content:
+                page_id = item.get('page_id')
+                if page_id and registry.remove_content(page_id):
+                    total_removed += 1
+                else:
+                    print(f"✗ Failed to remove item with page_id: {page_id}")
+        
+        print(f"✅ Successfully removed {len(channels_to_remove)} channels and {total_removed} stored items from database '{args.database_name}'")
+        
+    except Exception as e:
+        print(f"✗ Error removing channels: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def handle_database_add_channels(args):
+    """Handle 'maia database add-channels' command to add Discord channels via browser."""
+    from promaia.cli.discord_commands import interactive_channel_browser, get_accessible_channels_cached
+    from promaia.connectors.discord_connector import DiscordConnector
+    from rich.console import Console
+    
+    console = Console()
+    db_manager = get_database_manager()
+    
+    if not args.database_name:
+        print("✗ Database name is required")
+        return
+    
+    # Parse database name (handle workspace.database format)
+    workspace = None
+    if '.' in args.database_name:
+        workspace, db_name = args.database_name.split('.', 1)
+    else:
+        db_name = args.database_name
+    
+    # Get database config
+    db_config = db_manager.get_database(db_name, workspace)
+    if not db_config:
+        print(f"✗ Database '{args.database_name}' not found")
+        return
+    
+    # Check if it's a Discord database
+    if db_config.source_type != 'discord':
+        print(f"✗ Database '{args.database_name}' is not a Discord database (type: {db_config.source_type})")
+        return
+    
+    try:
+        print(f"🔍 Loading available channels for Discord server...")
+        
+        # Get workspace-specific API key and create connector
+        from promaia.config.workspaces import get_workspace_api_key
+        api_key = get_workspace_api_key(db_config.workspace)
+        
+        if not api_key:
+            print(f"✗ No API key configured for workspace '{db_config.workspace}'")
+            return
+            
+        # Create Discord connector to get available channels
+        connector_config = db_config.to_dict()
+        connector_config['api_key'] = api_key
+        
+        # Get all available channels for this server
+        servers = []
+        try:
+            # Use the cached channel method that works with the existing system
+            channels = await get_accessible_channels_cached(db_config, api_key)
+            if channels:
+                servers = [{
+                    "server_id": db_config.database_id,
+                    "server_name": f"Discord Server ({db_config.nickname})",
+                    "db_name": db_config.nickname,
+                    "channels": channels
+                }]
+        except Exception as e:
+            print(f"⚠️  Could not fetch live channels: {e}")
+            print("You may need to run 'maia discord refresh' first to update channel cache.")
+            return
+        
+        if not servers or not servers[0]["channels"]:
+            print(f"✗ No accessible channels found for database '{args.database_name}'")
+            print("Try running 'maia discord refresh' to update the channel cache.")
+            return
+        
+        print(f"📋 Select channels to ADD to database '{args.database_name}':")
+        print("   Use SPACE to select channels, ENTER to confirm, ESC to cancel")
+        
+        # Use the existing interactive browser
+        selected_channels, _ = await interactive_channel_browser(console, servers, db_config.workspace)
+        
+        if not selected_channels:
+            print("No channels selected.")
+            return
+        
+        # Extract channel IDs from selection
+        channels_to_add = [channel[1] for channel in selected_channels]  # channel[1] is channel_id
+        
+        print(f"\n➕ Will add {len(channels_to_add)} channels to database '{args.database_name}':")
+        for channel in selected_channels:
+            print(f"   - {channel[2]} ({channel[1]})")  # channel[2] is channel_name
+        
+        # Get current channel filters from config
+        current_channel_ids = []
+        channel_filter = db_config.property_filters.get('channel_id', [])
+        if isinstance(channel_filter, str):
+            current_channel_ids = [channel_filter]
+        elif isinstance(channel_filter, list):
+            current_channel_ids = channel_filter
+        
+        # Combine current and new channels (avoid duplicates)
+        all_channels = list(set(current_channel_ids + channels_to_add))
+        
+        # Update config
+        if len(all_channels) == 1:
+            db_config.property_filters['channel_id'] = all_channels[0]
+        else:
+            db_config.property_filters['channel_id'] = all_channels
+        
+        db_manager.save_config()
+        
+        print(f"✅ Successfully added {len(channels_to_add)} channels to database '{args.database_name}'")
+        print(f"💡 Run 'maia database sync {args.database_name}' to sync the new channels")
+        
+    except Exception as e:
+        print(f"✗ Error adding channels: {e}")
+        import traceback
+        traceback.print_exc()
+
 async def handle_database_test(args):
     """Handle 'maia database test' command."""
     db_manager = get_database_manager()
@@ -2075,6 +2311,17 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     rm_parser = subparsers.add_parser('rm', help='Remove a database (alias for remove)')
     rm_parser.add_argument('name', help='Database name to remove')
     rm_parser.set_defaults(func=handle_database_remove)
+    
+    # Add channels to Discord database
+    add_channels_parser = subparsers.add_parser('add-channels', help='Add Discord channels to database via browser')
+    add_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dgs" or "trass.discord")')
+    add_channels_parser.set_defaults(func=handle_database_add_channels)
+    
+    # Remove channels from Discord database
+    remove_channels_parser = subparsers.add_parser('remove-channels', help='Remove Discord channels from database via browser')
+    remove_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dgs" or "trass.discord")')
+    remove_channels_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    remove_channels_parser.set_defaults(func=handle_database_remove_channels)
     
     # Test database connection
     test_parser = subparsers.add_parser('test', help='Test database connections')

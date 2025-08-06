@@ -256,7 +256,7 @@ class HybridQueryInterface:
             logger.error(f"Error searching content: {e}")
             return []
     
-    def natural_language_query(self, nl_prompt: str, workspace: str = None) -> Dict[str, List[Dict[str, Any]]]:
+    def natural_language_query(self, nl_prompt: str, workspace: str = None, database_names: List[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Process natural language queries using hybrid schema across all workspaces by default."""
         from promaia.ai.natural_query import process_natural_language_to_content
         
@@ -344,7 +344,7 @@ class HybridQueryInterface:
         Cross-workspace queries enabled - query any combination of workspaces and databases.
         """
         
-        return process_natural_language_to_content(nl_prompt, workspace, schema_info)
+        return process_natural_language_to_content(nl_prompt, workspace, schema_info, database_names)
     
     def get_database_context(self, workspace: str) -> Dict[str, Any]:
         """Get available databases for a workspace."""

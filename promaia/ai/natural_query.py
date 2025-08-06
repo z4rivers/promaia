@@ -35,6 +35,13 @@ class VannaSQLGenerator:
             from vanna.chromadb import ChromaDB_VectorStore
             from vanna.openai import OpenAI_Chat
             
+            # Suppress Vanna's verbose output
+            import logging
+            import os
+            logging.getLogger('vanna').setLevel(logging.ERROR)
+            logging.getLogger('chromadb').setLevel(logging.ERROR)
+            os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Suppress tokenizer warnings
+            
             # Get OpenAI API key from environment
             import os
             
@@ -72,11 +79,9 @@ class VannaSQLGenerator:
             # Train on our schema and examples
             self._train_on_schema()
             self.initialized = True
-            print("✅ Vanna AI initialized successfully with OpenAI API")
             
         except Exception as e:
             print(f"⚠️  Vanna AI initialization failed: {e}")
-            print("📄 Using fallback SQL generation")
             self.initialized = False
     
     def _train_on_schema(self):
@@ -174,14 +179,34 @@ class VannaSQLGenerator:
         for question, sql in examples:
             self.vn_client.train(question=question, sql=sql)
     
-    def generate_sql(self, question: str) -> str:
+    def generate_sql(self, question: str, database_names: List[str] = None) -> str:
         """Generate SQL query from natural language question."""
         if not self.initialized:
-            return self._fallback_sql_generation(question)
+            return self._fallback_sql_generation(question, database_names)
         
         try:
             # Configure Vanna to not require database introspection
-            sql_query = self.vn_client.generate_sql(question, allow_llm_to_see_data=False)
+            # Suppress Vanna's verbose output during generation
+            import sys
+            import io
+            import os
+            import contextlib
+            
+            @contextlib.contextmanager
+            def suppress_stdout():
+                with open(os.devnull, "w") as devnull:
+                    old_stdout = sys.stdout
+                    old_stderr = sys.stderr
+                    try:
+                        sys.stdout = devnull
+                        sys.stderr = devnull
+                        yield
+                    finally:
+                        sys.stdout = old_stdout
+                        sys.stderr = old_stderr
+            
+            with suppress_stdout():
+                sql_query = self.vn_client.generate_sql(question, allow_llm_to_see_data=False)
             
             # Check if it's an intermediate query or explanation - if so, use fallback
             if any(phrase in sql_query for phrase in [
@@ -192,22 +217,55 @@ class VannaSQLGenerator:
                 "additional information",
                 "This question cannot"
             ]):
-                print("⚠️  Vanna returned explanation instead of SQL, using fallback")
-                return self._fallback_sql_generation(question)
+                return self._fallback_sql_generation(question, database_names)
             
             # Also check if it doesn't look like SQL at all
             if not sql_query.strip().upper().startswith("SELECT"):
-                print("⚠️  Vanna didn't return valid SQL, using fallback")
-                return self._fallback_sql_generation(question)
+                return self._fallback_sql_generation(question, database_names)
             
-            # Ensure the query has a database_name filter
-            if "database_name" not in sql_query:
+            # Override database names if provided from browser selections
+            if database_names and len(database_names) > 0:
+                sql_query = self._override_database_names(sql_query, database_names)
+            elif "database_name" not in sql_query:
+                # Ensure the query has a database_name filter if no specific names provided
                 sql_query = self._ensure_database_filter(sql_query, question)
             
             return sql_query
         except Exception as e:
-            print(f"⚠️  Vanna SQL generation failed: {e}")
-            return self._fallback_sql_generation(question)
+            return self._fallback_sql_generation(question, database_names)
+    
+    def _override_database_names(self, sql_query: str, database_names: List[str]) -> str:
+        """Override database names in SQL query with provided database names from browser selections."""
+        import re
+        
+        
+        # If only one database name, replace any existing database_name filter
+        if len(database_names) == 1:
+            db_name = database_names[0]
+            # Replace existing database_name conditions
+            pattern = r"database_name\s*=\s*'[^']+'"
+            if re.search(pattern, sql_query):
+                sql_query = re.sub(pattern, f"database_name = '{db_name}'", sql_query)
+            else:
+                # Add database_name filter if none exists
+                if "WHERE" in sql_query:
+                    sql_query = sql_query.replace("WHERE", f"WHERE database_name = '{db_name}' AND")
+                else:
+                    sql_query = sql_query.replace("FROM unified_content", f"FROM unified_content WHERE database_name = '{db_name}'")
+        else:
+            # Multiple database names - use IN clause
+            db_list = "', '".join(database_names)
+            pattern = r"database_name\s*=\s*'[^']+'"
+            if re.search(pattern, sql_query):
+                sql_query = re.sub(pattern, f"database_name IN ('{db_list}')", sql_query)
+            else:
+                # Add database_name IN filter if none exists
+                if "WHERE" in sql_query:
+                    sql_query = sql_query.replace("WHERE", f"WHERE database_name IN ('{db_list}') AND")
+                else:
+                    sql_query = sql_query.replace("FROM unified_content", f"FROM unified_content WHERE database_name IN ('{db_list}')")
+        
+        return sql_query
     
     def _ensure_database_filter(self, sql_query: str, question: str) -> str:
         """Ensure the SQL query has a database_name filter."""
@@ -229,7 +287,7 @@ class VannaSQLGenerator:
         else:
             return sql_query.replace("FROM unified_content", "FROM unified_content WHERE database_name = 'journal'")
     
-    def _fallback_sql_generation(self, nl_prompt: str) -> str:
+    def _fallback_sql_generation(self, nl_prompt: str, database_names: List[str] = None) -> str:
         """Simple fallback SQL generation when Vanna fails - handles only basic cases."""
         import re
         from datetime import datetime, timedelta
@@ -237,22 +295,28 @@ class VannaSQLGenerator:
         # Clean and normalize the prompt
         prompt_lower = nl_prompt.lower().strip()
         
-        # Determine database type
-        database_name = 'journal'  # Default
-        if any(word in prompt_lower for word in ['email', 'gmail', 'mail']):
-            database_name = 'gmail'
-        elif any(word in prompt_lower for word in ['story', 'stories']):
-            database_name = 'stories'
-        elif any(word in prompt_lower for word in ['epic', 'epics']):
-            database_name = 'epics'
-        elif any(word in prompt_lower for word in ['cpj', 'project']):
-            database_name = 'cpj'
-        
-        # Extract workspace.database format and convert to just database name
-        workspace_db_match = re.search(r'\b(\w+)\.(\w+)\b', prompt_lower)
-        if workspace_db_match:
-            _, db_part = workspace_db_match.groups()
-            database_name = db_part
+        # Use provided database names from browser selections, or determine from prompt
+        if database_names and len(database_names) > 0:
+            # Use the first database name from browser selections
+            database_name = database_names[0]
+        else:
+            # Fallback to extracting from prompt (old behavior)
+            database_name = 'journal'  # Default
+            if any(word in prompt_lower for word in ['email', 'gmail', 'mail']):
+                database_name = 'gmail'
+            elif any(word in prompt_lower for word in ['story', 'stories']):
+                database_name = 'stories'
+            elif any(word in prompt_lower for word in ['epic', 'epics']):
+                database_name = 'epics'
+            elif any(word in prompt_lower for word in ['cpj', 'project']):
+                database_name = 'cpj'
+            
+            # Extract workspace.database format and convert to just database name
+            workspace_db_match = re.search(r'\b(\w+)\.(\w+)\b', prompt_lower)
+            if workspace_db_match:
+                _, db_part = workspace_db_match.groups()
+                database_name = db_part
+            
         
         # Base SQL structure
         base_sql = f"SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name FROM unified_content WHERE database_name = '{database_name}'"
@@ -284,8 +348,8 @@ class VannaSQLGenerator:
         
         # For complex queries that we can't handle, add a comment to explain
         if any(phrase in prompt_lower for phrase in ['first week.*every month', 'each month', 'every month']):
-            print("⚠️  Complex temporal query detected - this should be handled by Vanna AI training")
-        
+            pass  # Complex temporal queries should be handled by Vanna AI
+            
         return base_sql
 
 
@@ -414,19 +478,22 @@ def extract_json_from_response(text: str) -> Dict[str, Any]:
     return {}
 
 
-def process_natural_language_query(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Tuple[Optional[str], List[str]]:
+def process_natural_language_query(nl_prompt: str, database_names: List[str] = None, schema_info: str = None) -> Tuple[Optional[str], List[str]]:
     """
     Process natural language query using Vanna AI to generate SQL.
     
+    Args:
+        nl_prompt: Natural language query
+        database_names: List of database names to restrict search to (from browser selections)
+        schema_info: Schema information for the AI
+        
     Returns:
         Tuple of (sql_query, errors)
     """
     try:
         sql_generator = get_sql_generator()
-        sql_query = sql_generator.generate_sql(nl_prompt)
+        sql_query = sql_generator.generate_sql(nl_prompt, database_names)
         
-        print(f"🔍 Generated SQL Query:")
-        print(f"   {sql_query}")
         
         return sql_query, []
     except Exception as e:
@@ -434,15 +501,19 @@ def process_natural_language_query(nl_prompt: str, workspace: str = None, schema
         return None, [error_msg]
 
 
-def execute_natural_language_queries(nl_prompt: str, workspace: str = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+def execute_natural_language_queries(nl_prompt: str, database_names: List[str] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
     Execute natural language queries using Vanna AI.
+    
+    Args:
+        nl_prompt: Natural language query
+        database_names: List of database names to restrict search to (from browser selections)
     
     Returns:
         Tuple of (results, errors)
     """
     # Generate SQL using Vanna AI
-    sql_query, errors = process_natural_language_query(nl_prompt, workspace)
+    sql_query, errors = process_natural_language_query(nl_prompt, database_names)
     
     if not sql_query or errors:
         return [], errors
@@ -453,7 +524,7 @@ def execute_natural_language_queries(nl_prompt: str, workspace: str = None) -> T
         query_interface = get_query_interface()
         
         # Get workspace for database context
-        workspace_for_db = workspace
+        workspace_for_db = None
         if not workspace_for_db:
             from promaia.config.workspaces import get_workspace_manager
             workspace_manager = get_workspace_manager()
@@ -490,7 +561,6 @@ def execute_natural_language_queries(nl_prompt: str, workspace: str = None) -> T
             row_dict = dict(zip(columns, row))
             results.append(row_dict)
         
-        print(f"✅ Found {len(results)} metadata results from natural language query")
         return results, []
         
     except Exception as e:
@@ -616,6 +686,55 @@ def extract_search_terms(nl_prompt: str) -> List[str]:
     return unique_terms[:10]  # Limit to 10 terms to avoid overly broad searches
 
 
+def filter_database_names_by_query(nl_prompt: str, available_databases: List[str]) -> List[str]:
+    """
+    Filter database names based on what's mentioned in the natural language query.
+    
+    Args:
+        nl_prompt: Natural language query
+        available_databases: List of database names from browser selections
+        
+    Returns:
+        Filtered list of database names that match the query intent
+    """
+    prompt_lower = nl_prompt.lower()
+    
+    # Database type keywords mapping
+    database_keywords = {
+        'gmail': ['email', 'emails', 'gmail', 'mail'],
+        'journal': ['journal', 'journals', 'diary', 'note', 'notes'],
+        'stories': ['story', 'stories', 'user story', 'user stories'],
+        'cms': ['cms', 'blog', 'article', 'post', 'content'],
+        'discord': ['discord', 'chat', 'message', 'channel'],
+        'epics': ['epic', 'epics'],
+        'cpj': ['cpj', 'meeting', 'meetings'],
+        'projects': ['project', 'projects'],
+        'awakenings': ['awakening', 'awakenings']
+    }
+    
+    # Check for explicit database mentions (e.g., "from koii.journal", "trass.stories")
+    import re
+    workspace_db_pattern = r'\b\w+\.(\w+)\b'
+    explicit_matches = re.findall(workspace_db_pattern, prompt_lower)
+    if explicit_matches:
+        # User explicitly mentioned specific databases
+        explicit_dbs = [db for db in explicit_matches if db in available_databases]
+        if explicit_dbs:
+            return explicit_dbs
+    
+    # Check for database type keywords
+    matched_databases = []
+    for db_name, keywords in database_keywords.items():
+        if db_name in available_databases:
+            for keyword in keywords:
+                if keyword in prompt_lower:
+                    if db_name not in matched_databases:
+                        matched_databases.append(db_name)
+                    break
+    
+    # Return matched databases or all available if no specific matches
+    return matched_databases if matched_databases else available_databases
+
 def extract_database_types(nl_prompt: str) -> Optional[List[str]]:
     """
     Extract database type filters from natural language prompt.
@@ -679,17 +798,13 @@ def determine_search_strategy(nl_prompt: str) -> str:
     
     # Decision logic
     if structured_score > 0 and semantic_score == 0:
-        print(f"🎯 Using structured search strategy (temporal/criteria query)")
         return 'structured'
     elif semantic_score > 0 and structured_score == 0:
-        print(f"🧠 Using semantic search strategy (conceptual query)")
         return 'semantic'
     elif structured_score > 0 and semantic_score > 0:
-        print(f"⚡ Using hybrid search strategy (complex query)")
         return 'hybrid'
     else:
         # Default to structured for simple, clear queries
-        print(f"📊 Using structured search strategy (default)")
         return 'structured'
 
 
@@ -730,12 +845,25 @@ def load_content_for_result(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 
-def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None) -> Dict[str, Any]:
+def process_natural_language_to_content(nl_prompt: str, workspace: str = None, schema_info: str = None, database_names: List[str] = None) -> Dict[str, Any]:
     """
     Process natural language to content with intelligent search strategy selection.
     This is the function that unified_query.py expects to import.
     Returns just the data dictionary, not errors (for compatibility).
+    
+    Args:
+        nl_prompt: Natural language query
+        workspace: Workspace to search in (optional)
+        schema_info: Schema information for the AI (optional)
+        database_names: List of database names to restrict search to (from browser selections)
     """
+    # Filter database names based on natural language query if both are provided
+    if database_names and nl_prompt:
+        filtered_database_names = filter_database_names_by_query(nl_prompt, database_names)
+        if filtered_database_names and len(filtered_database_names) < len(database_names):
+            database_names = filtered_database_names
+            print(f"🎯 Focusing on: {', '.join(database_names)}")
+    
     # Determine the best search strategy based on query type
     search_strategy = determine_search_strategy(nl_prompt)
     
@@ -744,7 +872,7 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
     
     if search_strategy in ['structured', 'hybrid']:
         # Execute SQL-based metadata search for structured queries
-        metadata_results, errors = execute_natural_language_queries(nl_prompt, None)
+        metadata_results, errors = execute_natural_language_queries(nl_prompt, database_names)
         if errors:
             print(f"⚠️ Metadata search errors: {errors}")
     
@@ -761,16 +889,6 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
         if content_result.get('page_id') not in metadata_page_ids:
             all_results.append(content_result)
 
-    # Display search results summary
-    if search_strategy == 'structured':
-        print(f"📊 Search Results Summary (Structured): {len(all_results)} results from SQL query")
-    elif search_strategy == 'semantic':
-        print(f"🧠 Search Results Summary (Semantic): {len(all_results)} results from content search")
-    elif search_strategy == 'hybrid':
-        print(f"⚡ Search Results Summary (Hybrid):")
-        print(f"   Metadata matches: {len(metadata_results)}")
-        print(f"   Content matches: {len(content_results)}")
-        print(f"   Total unique results: {len(all_results)}")
 
     # Convert results to the format expected by the interface by loading actual content
     formatted_results = {}
@@ -801,10 +919,6 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None, s
     content_count = len(content_results)
     total_count = len(all_results)
     
-    print(f"🔍 Search Results Summary:")
-    print(f"   Metadata matches: {metadata_count}")
-    print(f"   Content matches: {content_count}")
-    print(f"   Total unique results: {total_count}")
 
     return formatted_results
 

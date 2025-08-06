@@ -13,9 +13,7 @@
     },
     "chat": {
       "default_days": 7,
-      "default_sources": [
-        "journal"
-      ],
+      "default_sources": ["journal"],
       "enable_multi_source_by_default": false
     }
   },
@@ -358,7 +356,6 @@
       "filters": {},
       "property_filters": {
         "channel_id": [
-          "1197017602770346077",
           "1197585118148165722",
           "1257791479460397177",
           "1203844590575296572",
