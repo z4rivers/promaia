@@ -19,6 +19,71 @@ from promaia.connectors.base import QueryFilter, DateRangeFilter
 
 logger = logging.getLogger(__name__)
 
+async def remove_channel_from_config(db_config, channel_name: str, db_manager) -> bool:
+    """
+    Remove a Discord channel from database configuration by mapping channel name to ID.
+    
+    Args:
+        db_config: Database configuration object
+        channel_name: Name of the channel to remove
+        db_manager: Database manager instance
+        
+    Returns:
+        True if channel was found and removed, False otherwise
+    """
+    try:
+        # Check if this database has channel_id filters
+        if not hasattr(db_config, 'property_filters') or 'channel_id' not in db_config.property_filters:
+            return True  # No channel filters to update
+            
+        channel_ids = db_config.property_filters.get('channel_id', [])
+        if not channel_ids:
+            return True  # No channel IDs configured
+            
+        # Try to map channel name to channel ID using existing data
+        channel_id_to_remove = None
+        
+        # Look through registry entries to find a mapping
+        from promaia.storage.json_registry import get_json_registry
+        registry = get_json_registry()
+        
+        try:
+            # Get content for this database
+            content_items = registry.list_content(
+                workspace=db_config.workspace,
+                database_name=db_config.get_qualified_name()
+            )
+            
+            # Look for items from this channel to extract channel ID
+            for item in content_items:
+                metadata = item.get('metadata', {})
+                item_channel_name = metadata.get('channel_name') or metadata.get('discord_channel_name')
+                
+                if item_channel_name == channel_name:
+                    # Try to extract channel ID from metadata or file path
+                    channel_id = metadata.get('channel_id') or metadata.get('discord_channel_id')
+                    if channel_id and channel_id in channel_ids:
+                        channel_id_to_remove = channel_id
+                        break
+                        
+        except Exception as e:
+            logger.debug(f"Could not find channel ID mapping through registry: {e}")
+        
+        # If we found a channel ID to remove, update the config
+        if channel_id_to_remove:
+            updated_channel_ids = [cid for cid in channel_ids if cid != channel_id_to_remove]
+            db_config.property_filters['channel_id'] = updated_channel_ids
+            db_manager.save_config()
+            logger.info(f"Removed channel ID {channel_id_to_remove} from database {db_config.get_qualified_name()}")
+            return True
+        else:
+            logger.warning(f"Could not find channel ID for channel name '{channel_name}' in database {db_config.get_qualified_name()}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error removing channel from config: {e}")
+        return False
+
 async def handle_database_list(args):
     """Handle 'maia database list' command."""
     db_manager = get_database_manager()
@@ -304,6 +369,344 @@ async def handle_database_remove_channels(args):
         print(f"✗ Error removing channels: {e}")
         import traceback
         traceback.print_exc()
+
+async def handle_database_purge_data(database_config):
+    """Purge all locally stored data for a database."""
+    from promaia.storage.json_registry import get_json_registry
+    import shutil
+    
+    try:
+        # Get the database's markdown directory
+        md_dir = getattr(database_config, 'markdown_directory', None)
+        
+        # Purge from registry database
+        registry = get_json_registry()
+        db_name = database_config.nickname
+        workspace = database_config.workspace
+        qualified_name = f"{workspace}.{db_name}" if workspace else db_name
+        
+        # Count items to be removed
+        removed_count = 0
+        
+        # Query registry for all content from this database
+        try:
+            # Get all content for this database
+            content_items = registry.get_content_by_database(qualified_name)
+            
+            # Remove each item from registry
+            for item in content_items:
+                page_id = item.get('page_id')
+                if page_id and registry.remove_content(page_id):
+                    removed_count += 1
+        except Exception as e:
+            print(f"⚠️  Warning: Could not clean registry for database '{qualified_name}': {e}")
+        
+        # Remove markdown directory if it exists
+        if md_dir and os.path.exists(md_dir):
+            try:
+                shutil.rmtree(md_dir)
+                print(f"🗂️  Removed markdown directory: {md_dir}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not remove directory '{md_dir}': {e}")
+        
+        return removed_count
+        
+    except Exception as e:
+        print(f"✗ Error purging data for database: {e}")
+        return 0
+
+async def handle_database_remove_with_data_purge(args):
+    """Handle 'maia database remove' command with data purging."""
+    db_manager = get_database_manager()
+    
+    if not args.name:
+        print("Database name is required")
+        return
+    
+    # Parse workspace.database format if provided
+    workspace = getattr(args, 'workspace', None)
+    name = args.name
+    original_name = name
+    
+    if '.' in name and not workspace:
+        workspace, name = name.split('.', 1)
+    
+    # Try multiple resolution strategies
+    db_config = None
+    
+    # First try: use get_database with parsed workspace and name
+    db_config = db_manager.get_database(name, workspace)
+    
+    # Second try: if that fails and we have a qualified name, try direct lookup
+    if not db_config and '.' in original_name:
+        db_config = db_manager.get_database_by_qualified_name(original_name)
+    
+    # Third try: try direct key lookup in databases dict
+    if not db_config and original_name in db_manager.databases:
+        db_config = db_manager.databases[original_name]
+    
+    if not db_config:
+        print(f"✗ Database '{original_name}' not found")
+        return
+    
+    # Confirm removal
+    if not getattr(args, 'force', False):
+        response = input(f"This will:\n1. Remove database '{original_name}' from config\n2. Delete all locally stored data for this database\n\nContinue? (y/N): ")
+        if response.lower() not in ['y', 'yes']:
+            print("Operation cancelled")
+            return
+    
+    # Find the actual key to remove
+    key_to_remove = None
+    for key, config in db_manager.databases.items():
+        if config == db_config:
+            key_to_remove = key
+            break
+    
+    if not key_to_remove:
+        print(f"✗ Could not find database key for '{original_name}'")
+        return
+    
+    # Purge data first
+    print(f"🗑️  Purging locally stored data for database '{original_name}'...")
+    removed_count = await handle_database_purge_data(db_config)
+    
+    # Remove from config
+    del db_manager.databases[key_to_remove]
+    db_manager.save_config()
+    
+    print(f"✅ Successfully removed database '{key_to_remove}' and purged {removed_count} stored items")
+
+async def handle_database_remove_interactive(args):
+    """Handle interactive database removal using simple selector."""
+    from promaia.cli.simple_selector import interactive_simple_selector
+    from promaia.config.workspaces import get_workspace_manager
+    
+    # Get workspace
+    workspace_manager = get_workspace_manager()
+    workspace = getattr(args, 'workspace', None)
+    
+    if not workspace:
+        workspace = workspace_manager.get_default_workspace()
+        
+    if not workspace:
+        print("✗ No workspace specified and no default workspace set")
+        return
+    
+    # Launch selector
+    print(f"🔍 Launching database selector for workspace '{workspace}'...")
+    selected_databases = await interactive_simple_selector(workspace, "databases", "Select Databases to Remove")
+    
+    if not selected_databases:
+        print("ℹ️  No databases selected for removal")
+        return
+    
+    # Check for dry-run mode
+    dry_run = getattr(args, 'dry_run', False)
+    
+    if dry_run:
+        print(f"\n🔍 DRY RUN - Would remove {len(selected_databases)} databases:")
+        for db_name in selected_databases:
+            print(f"   - {db_name}")
+        print("\nActions that would be performed:")
+        print("1. Remove databases from config")
+        print("2. Delete all locally stored data for these databases")
+        print("3. Clean registry entries")
+        print("\nRun without --dry-run to actually perform these actions.")
+        return
+    
+    # Confirm removal
+    if not getattr(args, 'force', False):
+        print(f"\n🗑️  Will remove {len(selected_databases)} databases:")
+        for db_name in selected_databases:
+            print(f"   - {db_name}")
+        
+        response = input(f"\nThis will:\n1. Remove databases from config\n2. Delete all locally stored data for these databases\n\nContinue? (y/N): ")
+        if response.lower() not in ['y', 'yes']:
+            print("Operation cancelled")
+            return
+    
+    # Remove each database
+    db_manager = get_database_manager()
+    total_removed = 0
+    successfully_removed = 0
+    
+    for db_name in selected_databases:
+        try:
+            # Get database config
+            if '.' in db_name:
+                workspace_part, name_part = db_name.split('.', 1)
+                db_config = db_manager.get_database(name_part, workspace_part)
+            else:
+                db_config = db_manager.get_database(db_name, workspace)
+            
+            if not db_config:
+                print(f"✗ Database '{db_name}' not found")
+                continue
+            
+            # Purge data
+            removed_count = await handle_database_purge_data(db_config)
+            
+            # Find the actual key to remove
+            key_to_remove = None
+            for key, config in db_manager.databases.items():
+                if config == db_config:
+                    key_to_remove = key
+                    break
+            
+            if key_to_remove:
+                del db_manager.databases[key_to_remove]
+                print(f"✅ Removed database '{key_to_remove}' and purged {removed_count} items")
+                total_removed += removed_count
+                successfully_removed += 1
+            else:
+                print(f"✗ Could not find database key for '{db_name}'")
+                
+        except Exception as e:
+            print(f"✗ Error removing database '{db_name}': {e}")
+    
+    # Save config once at the end
+    if successfully_removed > 0:
+        db_manager.save_config()
+        print(f"🎉 Successfully removed {successfully_removed} databases and purged {total_removed} total items")
+
+async def handle_channel_remove_interactive(args):
+    """Handle interactive Discord channel removal using simple selector.""" 
+    from promaia.cli.simple_selector import interactive_simple_selector
+    from promaia.config.workspaces import get_workspace_manager
+    from promaia.storage.json_registry import get_json_registry
+    import shutil
+    from pathlib import Path
+    
+    # Get workspace
+    workspace_manager = get_workspace_manager()
+    workspace = getattr(args, 'workspace', None)
+    
+    if not workspace:
+        workspace = workspace_manager.get_default_workspace()
+        
+    if not workspace:
+        print("✗ No workspace specified and no default workspace set")
+        return
+    
+    # Launch selector
+    print(f"🔍 Launching Discord channel selector for workspace '{workspace}'...")
+    selected_channels = await interactive_simple_selector(workspace, "channels", "Select Discord Channels to Remove")
+    
+    if not selected_channels:
+        print("ℹ️  No channels selected for removal")
+        return
+    
+    # Check for dry-run mode
+    dry_run = getattr(args, 'dry_run', False)
+    
+    if dry_run:
+        print(f"\n🔍 DRY RUN - Would remove {len(selected_channels)} Discord channels:")
+        for channel_spec in selected_channels:
+            print(f"   - {channel_spec}")
+        print("\nActions that would be performed:")
+        print("1. Remove channels from database config")
+        print("2. Delete all locally stored data for these channels")
+        print("3. Clean registry entries")
+        print("\nRun without --dry-run to actually perform these actions.")
+        return
+    
+    # Confirm removal
+    if not getattr(args, 'force', False):
+        print(f"\n🗑️  Will remove {len(selected_channels)} Discord channels:")
+        for channel_spec in selected_channels:
+            print(f"   - {channel_spec}")
+        
+        response = input(f"\nThis will:\n1. Remove channels from database config\n2. Delete all locally stored data for these channels\n\nContinue? (y/N): ")
+        if response.lower() not in ['y', 'yes']:
+            print("Operation cancelled")
+            return
+    
+    # Process each channel for removal
+    db_manager = get_database_manager()
+    registry = get_json_registry()
+    total_removed_items = 0
+    total_removed_channels = 0
+    
+    # Group channels by database
+    channels_by_database = {}
+    for channel_spec in selected_channels:
+        if '#' not in channel_spec:
+            continue
+            
+        db_name, channel_name = channel_spec.split('#', 1)
+        if db_name not in channels_by_database:
+            channels_by_database[db_name] = []
+        channels_by_database[db_name].append(channel_name)
+    
+    # Process each database
+    for db_name, channel_names in channels_by_database.items():
+        try:
+            # Get database config
+            if '.' in db_name:
+                workspace_part, name_part = db_name.split('.', 1)
+                db_config = db_manager.get_database(name_part, workspace_part)
+            else:
+                db_config = db_manager.get_database(db_name, workspace)
+            
+            if not db_config:
+                print(f"✗ Database '{db_name}' not found")
+                continue
+                
+            if db_config.source_type != 'discord':
+                print(f"✗ Database '{db_name}' is not a Discord database")
+                continue
+            
+            # Remove each channel
+            for channel_name in channel_names:
+                try:
+                    # Remove from registry by channel
+                    removed_count = 0
+                    try:
+                        # Get all content for this database
+                        content_items = registry.list_content(
+                            workspace=db_config.workspace,
+                            database_name=db_config.get_qualified_name()
+                        )
+                        
+                        # Filter for this specific channel and remove
+                        for item in content_items:
+                            # Check if this item is from the channel we want to remove
+                            metadata = item.get('metadata', {})
+                            if (metadata.get('channel_name') == channel_name or 
+                                metadata.get('discord_channel_name') == channel_name):
+                                page_id = item.get('page_id')
+                                if page_id and registry.remove_content(page_id):
+                                    removed_count += 1
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not clean registry for channel '{channel_name}': {e}")
+                    
+                    # Remove channel directory
+                    md_dir = Path(db_config.markdown_directory) / channel_name
+                    if md_dir.exists():
+                        try:
+                            shutil.rmtree(md_dir)
+                            print(f"📁 Removed channel directory: {md_dir}")
+                        except Exception as e:
+                            print(f"⚠️  Warning: Could not remove directory '{md_dir}': {e}")
+                    
+                    # Remove from database config (channel_id filter)
+                    channel_id_removed = await remove_channel_from_config(db_config, channel_name, db_manager)
+                    if not channel_id_removed:
+                        print(f"⚠️  Note: Channel '{channel_name}' data removed, but could not remove from database config")
+                    
+                    print(f"✅ Removed channel '{db_name}#{channel_name}' and purged {removed_count} items")
+                    total_removed_items += removed_count
+                    total_removed_channels += 1
+                    
+                except Exception as e:
+                    print(f"✗ Error removing channel '{channel_name}': {e}")
+                    
+        except Exception as e:
+            print(f"✗ Error processing database '{db_name}': {e}")
+    
+    if total_removed_channels > 0:
+        print(f"🎉 Successfully removed {total_removed_channels} channels and purged {total_removed_items} total items")
 
 async def handle_database_add_channels(args):
     """Handle 'maia database add-channels' command to add Discord channels via browser."""
@@ -2322,6 +2725,39 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     remove_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dgs" or "trass.discord")')
     remove_channels_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
     remove_channels_parser.set_defaults(func=handle_database_remove_channels)
+    
+    # Enhanced remove operations with data purging
+    remove_with_data_parser = subparsers.add_parser('purge', help='Remove a database and purge all its locally stored data')
+    remove_with_data_parser.add_argument('name', help='Database name to remove and purge')
+    remove_with_data_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    remove_with_data_parser.set_defaults(func=handle_database_remove_with_data_purge)
+    
+    # Interactive database removal using simple selector
+    remove_interactive_parser = subparsers.add_parser('remove-interactive', help='Interactively select and remove databases with data purging')
+    remove_interactive_parser.add_argument('--workspace', '-ws', help='Workspace to show databases from (defaults to default workspace)')
+    remove_interactive_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    remove_interactive_parser.add_argument('--dry-run', action='store_true', help='Show what would be removed without making changes')
+    remove_interactive_parser.set_defaults(func=handle_database_remove_interactive)
+    
+    # Interactive channel removal using simple selector
+    remove_channels_interactive_parser = subparsers.add_parser('remove-channels-interactive', help='Interactively select and remove Discord channels with data purging')
+    remove_channels_interactive_parser.add_argument('--workspace', '-ws', help='Workspace to show channels from (defaults to default workspace)')
+    remove_channels_interactive_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    remove_channels_interactive_parser.add_argument('--dry-run', action='store_true', help='Show what would be removed without making changes')
+    remove_channels_interactive_parser.set_defaults(func=handle_channel_remove_interactive)
+    
+    # Add shorter aliases for the interactive commands
+    rmi_parser = subparsers.add_parser('rmi', help='Interactively remove databases (alias for remove-interactive)')
+    rmi_parser.add_argument('--workspace', '-ws', help='Workspace to show databases from (defaults to default workspace)')
+    rmi_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    rmi_parser.add_argument('--dry-run', action='store_true', help='Show what would be removed without making changes')
+    rmi_parser.set_defaults(func=handle_database_remove_interactive)
+    
+    rmci_parser = subparsers.add_parser('rmci', help='Interactively remove channels (alias for remove-channels-interactive)')
+    rmci_parser.add_argument('--workspace', '-ws', help='Workspace to show channels from (defaults to default workspace)')
+    rmci_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
+    rmci_parser.add_argument('--dry-run', action='store_true', help='Show what would be removed without making changes')
+    rmci_parser.set_defaults(func=handle_channel_remove_interactive)
     
     # Test database connection
     test_parser = subparsers.add_parser('test', help='Test database connections')

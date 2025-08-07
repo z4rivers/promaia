@@ -83,7 +83,10 @@ os.environ["API_TYPE"] = current_api
 
 # --- UI Components ---
 
-session = PromptSession(history=FileHistory('.chat_history'))
+session = PromptSession(
+    history=FileHistory('.chat_history'),
+    multiline=True,  # Enable multiline input with Shift+Enter
+)
 
 style = Style.from_dict({
     'prompt': 'ansicyan bold',

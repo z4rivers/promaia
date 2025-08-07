@@ -29,6 +29,8 @@ from promaia.cli.database_commands import (
     handle_database_push, handle_database_status, handle_database_list_sources,
     handle_register_markdown_files, handle_validate_registry,
     handle_database_add_channels, handle_database_remove_channels,
+    handle_database_remove_with_data_purge, handle_database_remove_interactive,
+    handle_channel_remove_interactive,
     add_database_commands, add_database_commands_to_existing_parser
 )
 from promaia.cli.conversion_commands import add_conversion_commands
@@ -1240,6 +1242,20 @@ def chat_run(args):
             else:
                 # Treat as Discord database browse
                 return chat_run_inline_browse(args, browse_args)
+        # Check if this is a multi-workspace browse
+        elif browse_args is not None and len(browse_args) > 1:
+            from promaia.config.workspaces import get_workspace_manager
+            workspace_manager = get_workspace_manager()
+            
+            # Check if all arguments are workspace names
+            all_workspaces = all(workspace_manager.validate_workspace(arg) for arg in browse_args)
+            
+            if all_workspaces:
+                # Multi-workspace browse - pass all workspaces
+                return chat_run_multi_workspace_browse(args, browse_args)
+            else:
+                # Mixed or Discord database browse
+                return chat_run_inline_browse(args, browse_args)
         # Otherwise, handle inline browse functionality (Discord)
         elif browse_args is not None:  # browse_args could be empty list or list with databases
             return chat_run_inline_browse(args, browse_args)
@@ -2106,6 +2122,88 @@ def chat_run_workspace_browse(args, workspace_name):
         logging.error(f"An unexpected error occurred in chat_run_workspace_browse: {e}", exc_info=True)
         print_text(f"An unexpected error occurred: {e}", style="red")
 
+def chat_run_multi_workspace_browse(args, workspace_names):
+    """Run the chat interface with unified browser for multiple workspaces."""
+    from promaia.chat.interface import chat
+    from promaia.config.workspaces import get_workspace_manager
+    
+    try:
+        workspace_manager = get_workspace_manager()
+        
+        # Validate all workspaces
+        invalid_workspaces = [ws for ws in workspace_names if not workspace_manager.validate_workspace(ws)]
+        if invalid_workspaces:
+            print_text(f"✗ Invalid workspaces: {', '.join(invalid_workspaces)}", style="red")
+            return
+        
+        # Get other args
+        sources = getattr(args, 'sources', None) or []
+        filters = getattr(args, 'filters', None) or []
+        mcp_servers = getattr(args, 'mcp_servers', None)
+        
+        # Build the original browse command for display and recents
+        original_command_parts = ["maia", "chat"]
+        
+        # Add browse arguments
+        original_command_parts.append("-b")
+        original_command_parts.extend(workspace_names)
+        
+        # Add any regular sources
+        if sources:
+            for source in sources:
+                original_command_parts.extend(["-s", source])
+        
+        # Add filters
+        if filters:
+            for filter_expr in filters:
+                original_command_parts.extend(["-f", f'"{filter_expr}"'])
+        
+        # Add MCP servers
+        if mcp_servers:
+            for server in mcp_servers:
+                original_command_parts.extend(["-mcp", server])
+        
+        original_browse_command = " ".join(original_command_parts)
+        
+        # Launch unified browser for multiple workspaces
+        from promaia.cli.workspace_browser import launch_unified_browser
+        print_text(f"🔍 Launching unified browser for workspaces: {', '.join(workspace_names)}...", style="cyan")
+        
+        # For multi-workspace, we need to pass the workspace names to the browser
+        # We'll use the first workspace as primary but show databases from all
+        primary_workspace = workspace_names[0]
+        
+        # For multi-workspace browse, pass workspace names directly in the database_filter
+        # The browser will detect workspace names and expand to show all databases
+        selected_sources = launch_unified_browser(None, database_filter=workspace_names)
+        
+        if not selected_sources:
+            print_text("ℹ️  No sources selected. Continuing with regular sources only.", style="dim")
+            # Continue with just the regular sources
+            all_sources = sources
+            all_filters = filters or []
+        else:
+            print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
+            all_sources = sources + selected_sources
+            all_filters = filters or []
+        
+        # Store browse selections for /e preservation
+        browse_selections = selected_sources.copy() if selected_sources else []
+        
+        # Start chat with the combined sources
+        chat(
+            sources=all_sources,
+            filters=all_filters,
+            workspace=primary_workspace,  # Use primary workspace for default
+            mcp_servers=mcp_servers,
+            original_browse_command=original_browse_command,
+            browse_selections=browse_selections  # Store for /e preservation
+        )
+        
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in chat_run_multi_workspace_browse: {e}", exc_info=True)
+        print_text(f"An unexpected error occurred: {e}", style="red")
+
 # ==================== MAIN ENTRY POINT ====================
 
 def main():
@@ -2413,6 +2511,12 @@ def main():
                 asyncio.run(handle_database_add_channels(args))
             elif args.database_command == "remove-channels":
                 asyncio.run(handle_database_remove_channels(args))
+            elif args.database_command == "purge":
+                asyncio.run(handle_database_remove_with_data_purge(args))
+            elif args.database_command in ["remove-interactive", "rmi"]:
+                asyncio.run(handle_database_remove_interactive(args))
+            elif args.database_command in ["remove-channels-interactive", "rmci"]:
+                asyncio.run(handle_channel_remove_interactive(args))
             else:
                 print_text(f"Unknown database command: {args.database_command}", style="red")
         else:
