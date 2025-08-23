@@ -210,32 +210,73 @@ class IntelligentNaturalLanguageProcessor:
             }
 
 
-def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str, Any]], workspace: str = None) -> List[Dict[str, Any]]:
     """
     Load full content for entries that were found by LangGraph but only have metadata.
     
     Args:
-        db_name: Database name (e.g., 'journal')
+        db_name: Database name (e.g., 'gmail')
         metadata_entries: List of entries with just page_id, created_time, etc.
+        workspace: Workspace name (e.g., 'trass')
         
     Returns:
         List of entries with full content loaded
     """
     try:
-        # Get database configuration
+        # Get database configuration - need to find by workspace and nickname
         db_manager = get_database_manager()
-        db_config = db_manager.get_database(db_name)
+        db_config = None
+        
+        if os.getenv("MAIA_DEBUG") == "1":
+            print(f"🔍 Looking for config: db_name='{db_name}', workspace='{workspace}'")
+        
+        # PRIORITIZE workspace matching - search by workspace and nickname first
+        if workspace:
+            # Try workspace.db_name format first
+            full_db_name = f"{workspace}.{db_name}"
+            db_config = db_manager.get_database(full_db_name)
+            if db_config and os.getenv("MAIA_DEBUG") == "1":
+                print(f"   Found via full name: {full_db_name}")
+            
+            # If not found, search by workspace and nickname
+            if not db_config:
+                for config_key, config in db_manager.databases.items():
+                    if config.workspace == workspace and config.nickname == db_name:
+                        db_config = config
+                        if os.getenv("MAIA_DEBUG") == "1":
+                            print(f"   Found via search: {config_key} (workspace={config.workspace}, nickname={config.nickname})")
+                        break
+        
+        # Fallback: try direct lookup only if workspace method failed
+        if not db_config:
+            db_config = db_manager.get_database(db_name)
+            if db_config and os.getenv("MAIA_DEBUG") == "1":
+                print(f"   Found via direct lookup: {db_name} (workspace={getattr(db_config, 'workspace', 'unknown')})")
         
         if not db_config:
-            print(f"⚠️  Database config not found for '{db_name}'. Returning metadata only.")
+            print(f"⚠️  Database config not found for '{db_name}' (workspace: {workspace}). Returning metadata only.")
+            if os.getenv("MAIA_DEBUG") == "1":
+                print(f"   Available configs: {list(db_manager.databases.keys())}")
             return metadata_entries
         
         # Extract page IDs from metadata entries
         target_page_ids = set(entry.get('page_id') for entry in metadata_entries if entry.get('page_id'))
         
+        if os.getenv("MAIA_DEBUG") == "1":
+            print(f"   Target page IDs: {len(target_page_ids)} entries")
+            if len(target_page_ids) > 0:
+                print(f"   Sample page IDs: {list(target_page_ids)[:3]}")
+        
         if not target_page_ids:
             print(f"⚠️  No page IDs found in metadata for '{db_name}'. Returning empty.")
             return []
+        
+        # For Gmail and other non-markdown sources, return metadata entries directly
+        # since they don't have individual markdown files
+        if db_config.source_type in ['gmail', 'discord']:
+            if os.getenv("MAIA_DEBUG") == "1":
+                print(f"   Gmail/Discord source detected - returning metadata entries directly")
+            return metadata_entries
         
         # Load all content from database and filter to matching entries
         all_pages = read_markdown_files_with_registry(
@@ -258,6 +299,14 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
                     if meta_entry.get('created_time') == page_date:
                         matching_pages.append(page)
                         break
+        
+        if os.getenv("MAIA_DEBUG") == "1":
+            print(f"   Loaded {len(all_pages)} total pages from registry")
+            if len(all_pages) > 0:
+                sample_page = all_pages[0]
+                print(f"   Sample page keys: {list(sample_page.keys()) if hasattr(sample_page, 'keys') else 'Not a dict'}")
+                print(f"   Sample page_id: {sample_page.get('page_id') if hasattr(sample_page, 'get') else 'No get method'}")
+            print(f"   Found {len(matching_pages)} matching pages")
         
         print(f"📄 Loaded {len(matching_pages)} full content entries for {db_name}")
         return matching_pages
@@ -296,7 +345,7 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None,
             # The LangGraph system only returns metadata - we need actual content for chat
             enriched_results = {}
             for db_name, entries in result["results"].items():
-                enriched_results[db_name] = _load_full_content_for_entries(db_name, entries)
+                enriched_results[db_name] = _load_full_content_for_entries(db_name, entries, workspace)
             
             return enriched_results
         else:

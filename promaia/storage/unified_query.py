@@ -257,94 +257,18 @@ class HybridQueryInterface:
             return []
     
     def natural_language_query(self, nl_prompt: str, workspace: str = None, database_names: List[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Process natural language queries using hybrid schema across all workspaces by default."""
-        from promaia.ai.natural_query import process_natural_language_to_content
+        """Process natural language queries using pattern-based processing."""
+        try:
+            from promaia.ai.intelligent_nl_processor import process_natural_language_to_content
+        except ImportError:
+            # Fallback to traditional processor if intelligent processor not available
+            from promaia.ai.natural_query import process_natural_language_to_content
         
         # For cross-workspace queries, we don't need specific workspace context
         # The AI will handle workspace filtering in the SQL when specifically mentioned
         
-        # Enhanced schema info for unified architecture
-        schema_info = f"""
-        UNIFIED DATABASE ARCHITECTURE - All content in one database with optimized views:
-        
-        IMPORTANT: This system uses the 'unified_content' view for all queries.
-        
-        CRITICAL WORKSPACE RULE: 
-        **NEVER add workspace filters to SQL queries unless the user explicitly asks to "filter by workspace" or "only from X workspace".**
-        **When users mention workspace names like "trass", "koii", etc., they are just describing content, NOT requesting workspace filtering.**
-        **ALWAYS query across ALL workspaces by default.**
-
-        Examples of what NOT to do:
-        - "trass gmail" → DO NOT add "WHERE workspace = 'trass'" - just use "WHERE database_name = 'gmail'"
-        - "koii journal entries" → DO NOT add "WHERE workspace = 'koii'" - just use "WHERE database_name = 'journal'"
-        
-        CONTENT TYPES AVAILABLE:
-        
-        1. GMAIL (database_name = 'gmail'):
-           Special columns: sender_email, sender_name, has_attachments, is_unread, thread_id
-           Examples:
-           - "emails from john": WHERE database_name = 'gmail' AND (sender_email LIKE '%john%' OR sender_name LIKE '%john%')
-           - "unread emails": WHERE database_name = 'gmail' AND is_unread = 1
-           - "emails with attachments": WHERE database_name = 'gmail' AND has_attachments = 1
-           - "emails from last week": WHERE database_name = 'gmail' AND datetime(created_time) >= datetime('now', '-7 days')
-        
-        2. NOTION JOURNAL (database_name = 'journal'):
-           Special columns: status, featured, author_name
-           Examples:
-           - "published journal entries": WHERE database_name = 'journal' AND status = 'Published'
-           - "featured journal entries": WHERE database_name = 'journal' AND featured = 1
-           
-        3. NOTION STORIES (database_name = 'stories'):
-           Special columns: status, priority, story_points
-           Examples:
-           - "completed stories": WHERE database_name = 'stories' AND status = 'Done'
-           - "high priority stories": WHERE database_name = 'stories' AND priority = 'High'
-           
-        4. NOTION CMS (database_name = 'cms'):
-           Special columns: status, category, featured, publish_date
-           Examples:
-           - "published blog posts": WHERE database_name = 'cms' AND status = 'Published'
-           - "featured content": WHERE database_name = 'cms' AND featured = 1
-        
-        5. OTHER CONTENT TYPES:
-           Other databases use generic fields and metadata JSON extraction
-        
-        UNIFIED VIEW SCHEMA:
-        The unified_content view provides these columns for ALL content types:
-        
-        Core columns (available for all content):
-        - page_id, workspace, database_name, content_type, file_path, title
-        - created_time, last_edited_time, synced_time, file_size, checksum
-        
-        Content-specific columns (only populated for relevant content types):
-        - status (TEXT): Content status - 'Published', 'Draft', 'Done', 'In Progress', etc.
-        - featured (INTEGER): 1 for featured content, 0 for normal, NULL if not applicable
-        - priority (TEXT): Priority level - 'High', 'Medium', 'Low', etc.
-        - category (TEXT): Content category (mainly for CMS)
-        - sender_email (TEXT): Email sender (only for Gmail content)
-        - sender_name (TEXT): Sender name (only for Gmail content)
-        - has_attachments (INTEGER): 1 if email has attachments (only for Gmail)
-        - is_unread (INTEGER): 1 if email is unread (only for Gmail)
-        
-        DATE FILTERING:
-        - For ALL content types including Gmail: Use created_time for date filtering
-        - created_time contains the original date (email date for Gmail, page creation for Notion)
-        - created_time is stored in RFC 822 format (e.g., "Wed, 9 Jul 2025 16:26:40 +0000")
-        - For recent content, use pattern matching or simple string comparisons
-        - Examples:
-          - "last week": WHERE created_time >= '2025-07-22'
-          - "last 20 days": WHERE created_time >= '2025-07-09'
-          - "July emails": WHERE created_time LIKE '%Jul 2025%'
-        
-        QUERY PATTERNS:
-        SELECT page_id, title, created_time, last_edited_time, file_path, metadata, database_name 
-        FROM unified_content 
-        WHERE [conditions using database_name and direct columns]
-        
-        Cross-workspace queries enabled - query any combination of workspaces and databases.
-        """
-        
-        return process_natural_language_to_content(nl_prompt, workspace, schema_info, database_names)
+        # Process using clean pattern-based approach
+        return process_natural_language_to_content(nl_prompt, workspace, database_names)
     
     def get_database_context(self, workspace: str) -> Dict[str, Any]:
         """Get available databases for a workspace."""

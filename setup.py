@@ -22,7 +22,7 @@ setup(
     install_requires=[
         'aiohappyeyeballs==2.6.1',
         'aiohttp==3.11.18',
-        'anthropic==0.50.0',
+        'anthropic==0.64.0',
         'fastapi==0.115.12',
         'google-generativeai',
         'google-auth==2.35.0',

@@ -19,3 +19,5 @@ When discussing time periods (e.g. 'this week', 'today', 'yesterday'), use {toda
 
 For stories:
 - P3 is the highest and P0 is the lowest
+
+Verboseness: -2, generally use as few words as possible. **Don't repeat meaning.**

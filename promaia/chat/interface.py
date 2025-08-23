@@ -12,6 +12,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
 import datetime
 import asyncio
 import traceback
@@ -83,9 +85,25 @@ os.environ["API_TYPE"] = current_api
 
 # --- UI Components ---
 
+# Create key bindings for intuitive chat input
+from prompt_toolkit.filters import Condition
+
+bindings = KeyBindings()
+
+@bindings.add('enter')
+def _(event):
+    """Enter key sends the message/command."""
+    event.app.exit(result=event.app.current_buffer.text)
+
+@bindings.add('c-j')  # Ctrl+J for new line (and often receives Shift+Enter)
+def _(event):
+    """Ctrl+J adds a new line. On many terminals, Shift+Enter sends Ctrl+J."""
+    event.current_buffer.insert_text('\n')
+
 session = PromptSession(
     history=FileHistory('.chat_history'),
-    multiline=True,  # Enable multiline input with Shift+Enter
+    multiline=True,  # Keep multiline for editing capabilities
+    key_bindings=bindings
 )
 
 style = Style.from_dict({
@@ -207,6 +225,7 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
+    print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
 
@@ -225,6 +244,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
+    print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
 
@@ -589,6 +609,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'query_command': None,
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
         'natural_language_content': natural_language_content,  # Track if using natural language
+        'browse_selections': browse_selections,  # Store browser selections from CLI
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
         'mcp_servers': mcp_servers,  # Store MCP server names to include
         'mcp_tools_info': None,  # Store MCP tools information for prompt
@@ -698,11 +719,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 natural_language_data = existing_nl_content
                 # Set up cache for future reloads
                 context_state['cached_natural_language_prompt'] = nl_prompt
-            # If we have cached content for this exact prompt, reuse it
+            # If we have cached content for this exact prompt, reuse it (no re-processing needed)
             elif nl_prompt == cached_nl_prompt and existing_nl_content:
                 if not skip_nl_cache_messages:
-                    print_text("🔄 Using cached natural language results (prompt matches)", style="dim")
+                    print_text("🔄 Using cached natural language results (browse context changed, query unchanged)", style="dim")
                 natural_language_data = existing_nl_content
+                # IMPORTANT: Don't re-process the query, just use cached results
             # Otherwise, process fresh query
             else:
                 
@@ -734,11 +756,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Process natural language query fresh
                     query_interface = get_query_interface()
                     
-                    # Extract database names from browse selections if available
-                    database_names = None
-                    if context_state.get('browse_selections'):
-                        from promaia.cli import extract_database_names_from_sources
-                        database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                    # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
+                    # Browser selections will be loaded separately and combined with NL results
+                    database_names = None  # Search all databases for maximum content discovery
                     
                     # Always allow cross-workspace queries for natural language
                     # Workspace is just a classifier/tag, not a mandatory constraint
@@ -823,6 +843,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Use current state
         current_sources = context_state['sources']
+        
+        # Debug: Check if we have browser selections that should be loaded as regular sources
+        if DEBUG_MODE and current_sources:
+            print_text(f"🔍 Current sources to load: {current_sources}", style="dim cyan")
         current_filters = context_state['filters']
         current_workspace = context_state['workspace']
         current_resolved_workspace = context_state['resolved_workspace']
@@ -856,7 +880,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Check if user provided workspace but no sources (workspace browse mode)
         # BUT don't launch browser if we already have sources (e.g., from edit context)
-        user_provided_workspace_only = bool(actual_workspace and not sources and not filters and not natural_language_prompt)
+        # Only launch browser if user explicitly provided a workspace (not defaulted)
+        user_provided_workspace_only = bool(current_workspace and not sources and not filters and not natural_language_prompt)
         
         if user_provided_workspace_only and not current_sources:
             debug_print(f"Opening workspace browser for '{actual_workspace}'.")
@@ -874,16 +899,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"📦 Selected {len(selected_sources)} sources from workspace '{actual_workspace}'", style="cyan")
             else:
                 print_text(f"No sources selected from workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
-                return
+                # Continue with blank slate - don't return
         elif not current_sources and len(combined_multi_source_data) == 0 and not user_provided_args:
-            debug_print(f"No arguments provided, loading default databases for workspace '{actual_workspace}'.")
-            workspace_databases = db_manager.get_workspace_databases(actual_workspace)
-            current_sources = [db.nickname for db in workspace_databases]
-            context_state['sources'] = current_sources
-            if not current_sources:
-                print_text(f"Warning: No databases configured for workspace '{actual_workspace}'. Chat will lack context.", style="bold yellow")
-        elif not current_sources and len(combined_multi_source_data) > 0:
-            debug_print(f"No regular sources specified, but have natural language content - skipping auto-loading")
+            # For plain "maia chat" with no args, start with blank slate instead of loading defaults
+            debug_print(f"No arguments provided, starting with blank slate (no default databases loaded).")
+            print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
+        elif len(combined_multi_source_data) > 0 and not current_sources:
+            debug_print(f"Have natural language content only (no browser selections) - using NL content only")
+            # Only skip regular sources if we don't have browser selections
+            # This preserves OR logic: browser selections + natural language results
         elif user_provided_args and not current_sources and len(combined_multi_source_data) == 0:
             debug_print(f"User provided arguments but no sources - MCP or other tools will provide context.")
 
@@ -1006,11 +1030,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # 4. Parse the processed source specifications
         parsed_sources_init = []
         if processed_sources:
+            if DEBUG_MODE:
+                print_text(f"🔍 Processed sources to parse: {processed_sources}", style="dim cyan")
             try:
                 parsed_sources_init = parse_source_specs(processed_sources)
+                if DEBUG_MODE:
+                    print_text(f"🔍 Parsed sources result: {len(parsed_sources_init)} sources", style="dim cyan")
             except Exception as e:
                 print_text(f"Warning: Error parsing source specifications: {e}", style="bold yellow")
                 return False
+        else:
+            if DEBUG_MODE:
+                print_text("🔍 No processed sources to parse", style="dim cyan")
 
         # 5. Parse Discord filters separately (they need special handling)
         if discord_filters:
@@ -1159,8 +1190,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text("❌ No content could be loaded from any source", style="bold red")
                 print_text("💡 MCP tools are available for interaction", style="cyan")
             else:
-                print_text("❌ No content could be loaded from any source", style="bold red")
-                return False
+                print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
+                # Continue with blank slate - don't return False
         
         # Update context state
         context_state['initial_multi_source_data'] = new_multi_source_data
@@ -1536,11 +1567,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Process the natural language query
                             query_interface = get_query_interface()
                             
-                            # Extract database names from browse selections if available
-                            database_names = None
-                            if context_state.get('browse_selections'):
-                                from promaia.cli import extract_database_names_from_sources
-                                database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                            # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
+                            # Browser selections will be loaded separately and combined with NL results  
+                            database_names = None  # Search all databases for maximum content discovery
                                     
                             # Always allow cross-workspace queries for natural language
                             # Workspace is just a classifier/tag, not a mandatory constraint
@@ -1689,6 +1718,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             workspace = parsed_args.workspace or context_state.get('workspace')
             natural_language_parts = parsed_args.natural_language or []
             
+            # Detect if the browse part of the command actually changed
+            original_command = context_state.get('original_query_format', '')
+            browse_changed = False
+            
+            if browse_databases:
+                # Extract browse databases from original command
+                import re
+                original_browse_match = re.findall(r'-b\s+([^\s-]+(?:\s+[^\s-]+)*)', original_command)
+                original_browse_databases = []
+                for match in original_browse_match:
+                    original_browse_databases.extend(match.split())
+                
+                # Compare current browse databases with original
+                browse_changed = set(browse_databases) != set(original_browse_databases)
+            elif context_state.get('browse_selections'):
+                # If no browse databases now but we had them before, that's a change
+                browse_changed = True
+            
             # Process natural language query if present
             nl_prompt = None
             natural_language_content = None
@@ -1701,7 +1748,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     from promaia.storage.unified_query import get_query_interface
                     
                     # Determine workspace for natural language processing
-                    nl_workspace = workspace or resolved_workspace or context_state.get('resolved_workspace') or context_state.get('workspace')
+                    nl_workspace = workspace or context_state.get('resolved_workspace') or context_state.get('workspace')
                     if not nl_workspace:
                         from promaia.config.workspaces import get_workspace_manager
                         workspace_manager = get_workspace_manager()
@@ -1711,11 +1758,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Process the natural language query
                         query_interface = get_query_interface()
                         
-                        # Extract database names from browse selections if available
-                        database_names = None
-                        if context_state.get('browse_selections'):
-                            from promaia.cli import extract_database_names_from_sources
-                            database_names = extract_database_names_from_sources(context_state['browse_selections'])
+                        # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
+                        # Browser selections will be loaded separately and combined with NL results
+                        database_names = None  # Search all databases for maximum content discovery
                             
                         natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace, database_names)
                         
@@ -1731,6 +1776,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         
                 except Exception as e:
                     print_text(f"❌ Error processing natural language query: {e}", style="yellow")
+            else:
+                # User removed the natural language part entirely - clear NL state
+                if context_state.get('natural_language_content') or context_state.get('natural_language_prompt'):
+                    print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
+                    context_state['natural_language_content'] = None
+                    context_state['natural_language_prompt'] = None
+                    context_state['cached_natural_language_prompt'] = ''
             
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
@@ -1898,8 +1950,31 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text("❌ Failed to reload context after mixed command update", style="red")
                     return False
             
-            # Handle browse mode using unified browser
-            elif browse_databases:
+            # Handle case where browse databases exist but didn't change (just update context)
+            elif browse_databases and not browse_changed:
+                # Update only natural language context without re-launching browser
+                if natural_language_content:
+                    print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
+                    context_state['natural_language_content'] = natural_language_content
+                    context_state['natural_language_prompt'] = nl_prompt
+                    
+                    # Update the original query format to reflect the new natural language query
+                    context_state['original_query_format'] = f"maia chat {user_input}"
+                    update_query_command()
+                    
+                    # Reload context to apply the new natural language results
+                    if reload_context(skip_nl_cache_messages=True):
+                        print_text("Context updated successfully!", style="bold green")
+                        return True
+                    else:
+                        print_text("❌ Failed to reload context with new natural language results", style="red")
+                        return False
+                else:
+                    print_text("ℹ️  No changes detected. Context unchanged.", style="yellow")
+                    return False
+            
+            # Handle browse mode using unified browser - but only if browse part actually changed
+            elif browse_databases and browse_changed:
                 try:
                     from promaia.cli.workspace_browser import launch_unified_browser
                     
@@ -2011,12 +2086,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     current_sources.append(source)
                     
                     # Launch unified browser
-                    selected_sources = launch_unified_browser(
-                        workspace=resolved_workspace,
-                        default_days=default_days,
-                        database_filter=database_filter,
-                        current_sources=current_sources
-                    )
+                    # Handle multiple workspaces case
+                    if multiple_workspaces and not resolved_workspace:
+                        # For multiple workspaces, pass None as workspace and workspaces as database_filter
+                        selected_sources = launch_unified_browser(
+                            workspace=None,
+                            default_days=default_days,
+                            database_filter=multiple_workspaces,
+                            current_sources=current_sources
+                        )
+                    else:
+                        # Single workspace case
+                        selected_sources = launch_unified_browser(
+                            workspace=resolved_workspace,
+                            default_days=default_days,
+                            database_filter=database_filter,
+                            current_sources=current_sources
+                        )
                     
                     if not selected_sources:
                         print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
@@ -2141,7 +2227,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 workspace_manager = get_workspace_manager()
 
                 try:
-                    parsed_args = shlex.split(original_format)
+                    # Try to parse with shlex, but handle quote errors gracefully
+                    try:
+                        parsed_args = shlex.split(original_format)
+                    except ValueError as quote_error:
+                        if "No closing quotation" in str(quote_error):
+                            # Handle unclosed quotes by adding a closing quote
+                            fixed_format = original_format + '"' if original_format.count('"') % 2 == 1 else original_format
+                            parsed_args = shlex.split(fixed_format)
+                        else:
+                            raise quote_error
+                    
                     browse_databases = []
                     i = 0
                     while i < len(parsed_args):
@@ -2226,12 +2322,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             # Launch unified browser
             from promaia.cli.workspace_browser import launch_unified_browser
-            selected_sources = launch_unified_browser(
-                workspace=workspace,
-                default_days=default_days,
-                database_filter=database_filter,
-                current_sources=current_sources
-            )
+            
+            # Handle multiple workspaces case
+            if multiple_workspaces and not workspace:
+                # For multiple workspaces, pass None as workspace and workspaces as database_filter
+                selected_sources = launch_unified_browser(
+                    workspace=None,
+                    default_days=default_days,
+                    database_filter=multiple_workspaces,
+                    current_sources=current_sources
+                )
+            else:
+                # Single workspace case
+                selected_sources = launch_unified_browser(
+                    workspace=workspace,
+                    default_days=default_days,
+                    database_filter=database_filter,
+                    current_sources=current_sources
+                )
             
             if not selected_sources:
                 print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
@@ -2257,8 +2365,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['original_query_format'] = " ".join(cmd_parts)
             update_query_command()
             
-            # Reload context with updated info
-            if reload_context():
+            # Reload context with updated info - preserve NL cache since only browse changed
+            if reload_context(skip_nl_cache_messages=True):
                 print_text("Context updated successfully from unified browser!", style="green")
                 return True
             else:

@@ -755,17 +755,17 @@ def read_markdown_files_with_registry(
         with sqlite3.connect(registry.db_path) as conn:
             cursor = conn.cursor()
             
-            # Determine which date property to use from config, default to created_time
-            # Use created_time as default since it exists consistently across all content types
-            date_filter_prop = database_config.date_filters.get("property", "created_time")
+            # Determine which date property to use from config, default to last_edited_time
+            # Use last_edited_time as default to show recently modified content first
+            date_filter_prop = database_config.date_filters.get("property", "last_edited_time")
             
             # Basic sanitization to prevent SQL injection from config values
             # This is a safeguard; config should be trusted but it's good practice
             allowed_props = ["created_time", "last_edited_time", "synced_time"] # Use columns that exist in unified_content view
             if date_filter_prop not in allowed_props:
-                # If the configured property is not a direct column, use created_time as fallback
-                print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'created_time' for query.")
-                date_filter_prop = "created_time"
+                # If the configured property is not a direct column, use last_edited_time as fallback
+                print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'last_edited_time' for query.")
+                date_filter_prop = "last_edited_time"
 
             # Query the unified_content view for this database
             # Use database_id for reliable lookup across all database types
