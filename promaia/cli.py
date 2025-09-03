@@ -19,6 +19,9 @@ from promaia.notion.pages import get_pages_by_date, get_page_title, get_block_co
 from promaia.markdown.converter import page_to_markdown
 from promaia.storage.files import save_page_to_file, get_existing_page_ids
 from promaia.utils.config import update_last_sync_time, get_last_sync_time, get_sync_days_setting, set_sync_days_setting, load_environment, get_config, update_config
+
+# Load environment variables from .env file at startup
+load_environment()
 from promaia.utils.config_loader import get_notion_database_id
 from promaia.utils.display import print_text, print_markdown, print_separator
 
@@ -1067,12 +1070,28 @@ def chat_run(args):
             nl_prompt = None
             
             # Handle natural language processing
+            nl_prompts = []
             if hasattr(args, 'natural_language') and args.natural_language:
-                nl_prompt = ' '.join(args.natural_language)
-                print_text(f"🤖 Will process natural language query after browser: '{nl_prompt}'", style="white")
+                # Handle both formats: list of strings (pre-processed) or list of lists (from argparse)
+                if args.natural_language:
+                    if isinstance(args.natural_language[0], list):
+                        # From argparse: list of lists
+                        nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
+                    else:
+                        # Pre-processed: list of strings
+                        nl_prompts = args.natural_language
+                else:
+                    nl_prompts = []
+
+                if len(nl_prompts) > 1:
+                    print_text(f"🤖 Will process {len(nl_prompts)} natural language queries after browser", style="white")
+                    for i, prompt in enumerate(nl_prompts):
+                        print_text(f"   {i+1}. '{prompt}'", style="dim")
+                elif nl_prompts:
+                    print_text(f"🤖 Will process natural language query after browser: '{nl_prompts[0]}'", style="white")
             
             # For -b + -nl combinations (no explicit sources), launch browser first
-            if not sources and browse_databases and nl_prompt:
+            if not sources and browse_databases and nl_prompts:
                 print_text("🔄 Processing mixed command: launching browser first, then natural language query...", style="cyan")
                 
                 # Use the same browser launch logic as regular browse commands
@@ -1202,26 +1221,79 @@ def chat_run(args):
             if browse_args:
                 original_command_parts.append("-b")
                 original_command_parts.extend(browse_args)
-            if nl_prompt:
-                original_command_parts.extend(["-nl", f'"{nl_prompt}"'])
+            if nl_prompts:
+                # For original command reconstruction, combine all NL prompts
+                combined_nl = " ".join([f'-nl "{prompt}"' for prompt in nl_prompts])
+                original_command_parts.append(combined_nl)
             if mcp_servers:
                 for server in mcp_servers:
                     original_command_parts.extend(["-mcp", server])
             original_browse_command = " ".join(original_command_parts)
             
-            # Call main chat function with mixed command parameters
+            # For mixed commands with multiple NL queries, process them separately
             try:
-                chat(
-                    sources=sources,
-                    filters=filters,
-                    workspace=original_workspace,
-                    non_interactive=getattr(args, 'non_interactive', False),
-                    natural_language_prompt=nl_prompt,
-                    browse_databases=None,  # Clear browse_databases since browser selection is already complete
-                    original_browse_command=original_browse_command,  # Preserve original structure
-                    browse_selections=selected_sources,  # Store browser selections for /e persistence
-                    mcp_servers=mcp_servers
-                )
+                if len(nl_prompts) > 1:
+                    # Process multiple NL queries separately and combine results
+                    print_text("🔄 Processing multiple NL queries for mixed command...", style="cyan")
+
+                    combined_nl_content = {}
+                    total_results = 0
+
+                    from promaia.storage.unified_query import get_query_interface
+                    query_interface = get_query_interface()
+
+                    for i, nl_prompt in enumerate(nl_prompts):
+                        print_text(f"🔍 Processing mixed query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+
+                        # Process each NL query
+                        nl_content = query_interface.natural_language_query(nl_prompt, None, None)
+
+                        if nl_content:
+                            # Merge results from this query into combined content
+                            for db_name, entries in nl_content.items():
+                                if db_name not in combined_nl_content:
+                                    combined_nl_content[db_name] = []
+                                combined_nl_content[db_name].extend(entries)
+
+                            query_results = sum(len(entries) for entries in nl_content.values())
+                            total_results += query_results
+                            print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                        else:
+                            print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+
+                    if not combined_nl_content:
+                        print_text("❌ No content found for any natural language queries", style="red")
+                        return
+
+                    print_text(f"🎯 Mixed command: {total_results} total results from {len(nl_prompts)} queries", style="green")
+
+                    chat(
+                        sources=sources,
+                        filters=filters,
+                        workspace=original_workspace,
+                        non_interactive=getattr(args, 'non_interactive', False),
+                        natural_language_content=combined_nl_content,
+                        natural_language_prompt=" ".join(nl_prompts),  # Combined for display
+                        browse_databases=None,
+                        original_browse_command=original_browse_command,
+                        browse_selections=selected_sources,
+                        mcp_servers=mcp_servers
+                    )
+                else:
+                    # Single NL query - use original flow
+                    combined_nl_prompt = nl_prompts[0] if nl_prompts else None
+
+                    chat(
+                        sources=sources,
+                        filters=filters,
+                        workspace=original_workspace,
+                        non_interactive=getattr(args, 'non_interactive', False),
+                        natural_language_prompt=combined_nl_prompt,
+                        browse_databases=None,
+                        original_browse_command=original_browse_command,
+                        browse_selections=selected_sources,
+                        mcp_servers=mcp_servers
+                    )
                 return
             except Exception as e:
                 print_text(f"❌ Error in mixed command execution: {e}", style="red")
@@ -1268,14 +1340,21 @@ def chat_run(args):
     nl_prompt = None
     
     # Handle natural language processing
+    nl_prompts = []
     if hasattr(args, 'natural_language') and args.natural_language:
-        # Join all the natural language arguments into a single prompt
-        nl_prompt = ' '.join(args.natural_language)
-        print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="white")
-        
+                # With action="append" and nargs="+", we get a list of lists
+        # Each inner list contains the tokens for one -nl argument
+        nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
+        if len(nl_prompts) > 1:
+            print_text(f"🤖 Processing {len(nl_prompts)} separate natural language queries", style="white")
+            for i, prompt in enumerate(nl_prompts):
+                print_text(f"   {i+1}. '{prompt}'", style="dim")
+        elif nl_prompts:
+            print_text(f"🤖 Processing natural language query: '{nl_prompts[0]}'", style="white")
+
         try:
             from promaia.storage.unified_query import get_query_interface
-            
+
             # Resolve workspace first for natural language processing
             workspace_manager = get_workspace_manager()
             if original_workspace:
@@ -1288,18 +1367,41 @@ def chat_run(args):
                 if not resolved_workspace:
                     print_text("No workspace specified and no default workspace configured.", style="red")
                     return
-            
+
             # Process natural language using hybrid query interface
             query_interface = get_query_interface()
-            
-            # Always allow cross-workspace queries for natural language
-            # Workspace is just a classifier/tag, not a mandatory constraint
-            natural_language_content = query_interface.natural_language_query(nl_prompt, None, None)
-            
-            if not natural_language_content:
-                print_text("❌ No content found for natural language query", style="red")
+
+            # Process each NL query separately and combine results
+            combined_nl_content = {}
+            total_results = 0
+
+            for i, nl_prompt in enumerate(nl_prompts):
+                print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+
+                # Always allow cross-workspace queries for natural language
+                # Workspace is just a classifier/tag, not a mandatory constraint
+                nl_content = query_interface.natural_language_query(nl_prompt, None, None)
+
+                if nl_content:
+                    # Merge results from this query into combined content
+                    for db_name, entries in nl_content.items():
+                        if db_name not in combined_nl_content:
+                            combined_nl_content[db_name] = []
+                        combined_nl_content[db_name].extend(entries)
+
+                    query_results = sum(len(entries) for entries in nl_content.values())
+                    total_results += query_results
+                    print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                else:
+                    print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+
+            if not combined_nl_content:
+                print_text("❌ No content found for any natural language queries", style="red")
                 return
-            
+
+            print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
+            natural_language_content = combined_nl_content
+
             # Keep both regular sources and natural language content
             # The chat interface will combine them
             
@@ -1351,14 +1453,15 @@ def chat_run(args):
         # Save query to recents before executing (for both traditional and NL queries)
         # Skip if this is being called from browse mode (which handles its own recents saving)
         skip_recents = getattr(args, 'skip_recents_save', False)
-        if not skip_recents and (sources or filters or original_workspace or nl_prompt):
+        combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+        if not skip_recents and (sources or filters or original_workspace or combined_nl_prompt):
             from promaia.storage.recents import RecentsManager
             recents_manager = RecentsManager()
             recents_manager.add_query(
-                sources=sources, 
-                filters=filters, 
+                sources=sources,
+                filters=filters,
                 workspace=original_workspace,
-                natural_language_prompt=nl_prompt
+                natural_language_prompt=combined_nl_prompt
             )
         
         # The `chat` function will now need to handle the main loop
@@ -1368,7 +1471,7 @@ def chat_run(args):
         original_browse_command = getattr(args, 'original_browse_command', None)
         browse_selections = getattr(args, 'browse_selections', None)
         
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers)
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers)
 
     except ImportError as e:
         print_text(f"Error importing chat interface: {e}", style="red")
@@ -1407,8 +1510,27 @@ def chat_run_recents(args):
             try:
                 from promaia.chat.recents_interface import safe_split_command
                 raw_args = safe_split_command(raw_command)
-                
-                # Create a new argument parser and parse the raw command
+
+                # Pre-process to handle multiple -nl arguments
+                processed_args = []
+                nl_arguments = []
+                i = 0
+                while i < len(raw_args):
+                    arg = raw_args[i]
+                    if arg in ['-nl', '--natural-language']:
+                        # Collect the -nl argument and its value
+                        nl_value = []
+                        i += 1  # Move past the -nl flag
+                        while i < len(raw_args) and not raw_args[i].startswith('-'):
+                            nl_value.append(raw_args[i])
+                            i += 1
+                        if nl_value:
+                            nl_arguments.append(' '.join(nl_value))
+                    else:
+                        processed_args.append(arg)
+                        i += 1
+
+                # Create a new argument parser and parse the processed command
                 import argparse
                 parser = argparse.ArgumentParser(description="Execute raw chat command")
                 parser.add_argument("--source", "-s", action="append", dest="sources")
@@ -1416,9 +1538,13 @@ def chat_run_recents(args):
                 parser.add_argument("--workspace", "-ws", dest="workspace")
                 parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
                 parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
-                
-                parsed_args = parser.parse_args(raw_args)
+
+                parsed_args = parser.parse_args(processed_args)
                 parsed_args.recent = False  # Prevent recursion
+
+                # Add the collected NL arguments
+                if nl_arguments:
+                    parsed_args.natural_language = nl_arguments
                 
                 # Execute using the main chat function
                 chat_run(parsed_args)
@@ -1830,21 +1956,34 @@ def history_run(args):
                 # This is a natural language thread - restore using NL query
                 print_text(f"Context: maia chat -nl {nl_prompt}", style="dim")
                 
-                # Process the natural language query to regenerate content
+                # Use cached natural language content if available, otherwise regenerate
                 try:
-                    from promaia.storage.unified_query import get_query_interface
+                    # Check if we have cached content from the saved thread
+                    natural_language_content = context.get('natural_language_content')
                     
-                    workspace_manager = get_workspace_manager()
-                    workspace = context.get('workspace')
-                    resolved_workspace = context.get('resolved_workspace')
-                    actual_workspace = resolved_workspace or workspace or workspace_manager.get_default_workspace()
-                    
-                    if actual_workspace:
-                        print_text("🤖 Regenerating context from natural language query...", style="white")
-                        query_interface = get_query_interface()
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace, None)
+                    if natural_language_content:
+                        print_text("🔄 Using cached natural language results from history", style="dim")
+                    else:
+                        # Fall back to regenerating if no cached content available
+                        from promaia.storage.unified_query import get_query_interface
                         
-                        # Start chat with natural language content
+                        workspace_manager = get_workspace_manager()
+                        workspace = context.get('workspace')
+                        resolved_workspace = context.get('resolved_workspace')
+                        actual_workspace = resolved_workspace or workspace or workspace_manager.get_default_workspace()
+                        
+                        if actual_workspace:
+                            print_text("🤖 Regenerating context from natural language query...", style="white")
+                            query_interface = get_query_interface()
+                            natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace, None)
+                        else:
+                            print_text("❌ No workspace available to regenerate natural language context", style="red")
+                            return
+                    
+                    if natural_language_content:
+                        # Start chat with natural language content (cached or regenerated)
+                        workspace = context.get('workspace')
+                        resolved_workspace = context.get('resolved_workspace')
                         chat(
                             sources=None,
                             filters=None,
@@ -1857,7 +1996,7 @@ def history_run(args):
                             natural_language_prompt=nl_prompt
                         )
                     else:
-                        print_text("❌ No workspace available to regenerate natural language context", style="red")
+                        print_text("❌ No natural language content available", style="red")
                         return
                         
                 except Exception as e:
@@ -2293,8 +2432,9 @@ def main():
     )
     chat_parser.add_argument(
         "--natural-language", "-nl",
-        nargs="*",
-        help="Use natural language to specify what content to load for chat context. Everything after -nl becomes the prompt. Example: maia chat -nl emails from last week about avask"
+        action="append",
+        nargs="+",
+        help="Use natural language to specify what content to load for chat context. Can be used multiple times for separate queries. Example: maia chat -nl 'emails about avask' -nl 'stories about canada'"
     )
     chat_parser.add_argument(
         "--mcp", "-mcp",

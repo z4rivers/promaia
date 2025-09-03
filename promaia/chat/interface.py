@@ -166,6 +166,82 @@ def get_current_model_name():
     }
     return model_names.get(current_api, "Unknown Model")
 
+def switch_model(target_model=None):
+    """Switch to a different AI model during chat session."""
+    global current_api
+    
+    available_models = {
+        "1": ("anthropic", "Claude Sonnet 4"),
+        "2": ("openai", "GPT-4o"), 
+        "3": ("gemini", "Gemini 2.5 Pro"),
+        "4": ("llama", f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})")
+    }
+    
+    # Check availability of each model
+    available_choices = {}
+    if anthropic_client:
+        available_choices["1"] = available_models["1"]
+    if openai_client:
+        available_choices["2"] = available_models["2"]  
+    if gemini_client:
+        available_choices["3"] = available_models["3"]
+    # Llama is always available if configured
+    if os.getenv("LLAMA_BASE_URL"):
+        available_choices["4"] = available_models["4"]
+    
+    if not available_choices:
+        print_text("No AI models are available. Check your API keys.", style="bold red")
+        return False
+    
+    # If target_model is specified, try to use it directly
+    if target_model:
+        target_model = target_model.lower()
+        model_map = {
+            "claude": "anthropic", "anthropic": "anthropic",
+            "gpt": "openai", "openai": "openai", 
+            "gemini": "gemini", "google": "gemini",
+            "llama": "llama", "local": "llama"
+        }
+        
+        if target_model in model_map:
+            new_api = model_map[target_model]
+            # Check if this model is available
+            for choice_num, (api, name) in available_choices.items():
+                if api == new_api:
+                    current_api = new_api
+                    os.environ["API_TYPE"] = current_api
+                    save_api_preference(current_api)
+                    print_text(f"Switched to {name}", style="bold green")
+                    return True
+            
+            print_text(f"Model '{target_model}' is not available. Check API keys.", style="bold red")
+            return False
+    
+    # Interactive model selection
+    print_text("Available models:", style="bold")
+    for choice, (api, name) in available_choices.items():
+        current_indicator = " (current)" if api == current_api else ""
+        print_text(f"  {choice}. {name}{current_indicator}", style="cyan")
+    
+    try:
+        choice = input("Select model (1-4): ").strip()
+        if choice in available_choices:
+            new_api, model_name = available_choices[choice]
+            if new_api != current_api:
+                current_api = new_api
+                os.environ["API_TYPE"] = current_api
+                save_api_preference(current_api)
+                print_text(f"Switched to {model_name}", style="bold green")
+            else:
+                print_text(f"Already using {model_name}", style="bold yellow")
+            return True
+        else:
+            print_text("Invalid choice.", style="bold red")
+            return False
+    except (KeyboardInterrupt, EOFError):
+        print_text("\nModel switch cancelled.", style="bold yellow")
+        return False
+
 def display_message_with_timestamp(role, content):
     """Displays a message with a timestamp using copy-friendly Rich display."""
     if role == 'assistant':
@@ -221,10 +297,11 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
+    print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
     print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
@@ -243,7 +320,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model", style="dim")
     print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
@@ -405,6 +482,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     has_regular_sources = bool(sources)
     has_browse_command = bool(browse_databases) or bool(original_browse_command and '-b' in original_browse_command)
     has_natural_language = bool(natural_language_prompt)
+    
+    # Detect mixed browse+NL commands from CLI: sources from browser + natural language
+    # These should use OR logic (independent operation) not AND logic (filtering)
+    # CLI mixed commands have: sources (from browser) + natural_language_prompt + original_browse_command + browse_databases=None
+    is_cli_mixed_command = has_regular_sources and has_natural_language and browse_selections and not browse_databases
+    debug_print(f"🐛 Mixed command check: has_regular_sources={has_regular_sources}, has_natural_language={has_natural_language}, browse_selections={bool(browse_selections)}, has_browse_command={has_browse_command}, browse_databases={bool(browse_databases)}")
+    is_mixed_browse_nl_command = is_cli_mixed_command
+    
+    if is_mixed_browse_nl_command:
+        debug_print(f"🔍 Detected mixed browse+NL command: sources={bool(sources)}, nl={bool(natural_language_prompt)}, browse_sel={bool(browse_selections)}, browse_cmd={has_browse_command}")
+    else:
+        debug_print(f"🚫 NOT detected as mixed browse+NL command")
     
     # Mixed command flow: -s sources + -b browse + -nl (optional)
     # This should: 1) Load -s sources first, 2) Launch browser with sources as context, 3) Process -nl last
@@ -615,7 +704,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store original browse selections for re-editing
-        'original_query_format': original_browse_command  # Store the original query format for display
+        'original_query_format': original_browse_command,  # Store the original query format for display
+        'is_mixed_browse_nl_command': is_mixed_browse_nl_command  # Flag for OR logic in NL processing
     }
     
     # Update context_state with browse_selections if they were set during browser interaction
@@ -658,7 +748,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if context_state['workspace']:  # Only show workspace if explicitly provided by user
             query_parts.extend(["-ws", context_state['workspace']])
         if context_state['natural_language_prompt']:
-            query_parts.extend(["-nl", f'"{context_state["natural_language_prompt"]}"'])
+            nl_prompt = context_state['natural_language_prompt']
+            # Only add quotes if the prompt contains spaces and isn't already quoted
+            if ' ' in nl_prompt and not (nl_prompt.startswith('"') and nl_prompt.endswith('"')):
+                query_parts.extend(["-nl", f'"{nl_prompt}"'])
+            else:
+                query_parts.extend(["-nl", nl_prompt])
         if context_state['mcp_servers']:
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
@@ -760,6 +855,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Browser selections will be loaded separately and combined with NL results
                     database_names = None  # Search all databases for maximum content discovery
                     
+                    # IMPORTANT: For mixed browse+NL commands, always use None to ensure OR logic
+                    # Don't extract database names from current sources - that would create AND logic
+                    if context_state.get('is_mixed_browse_nl_command'):
+                        database_names = None  # Explicit OR logic for browse + NL independence
+                        debug_print("🔄 Mixed browse+NL command: using database_names=None for OR logic")
+                    
                     # Always allow cross-workspace queries for natural language
                     # Workspace is just a classifier/tag, not a mandatory constraint
                     natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
@@ -841,15 +942,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"Error processing MCP servers: {e}", style="bold red")
                 # Continue even if MCP fails
         
-        # Use current state
-        current_sources = context_state['sources']
+        # Use current state - ensure sources is always a list
+        current_sources = context_state.get('sources', []) or []
         
         # Debug: Check if we have browser selections that should be loaded as regular sources
         if DEBUG_MODE and current_sources:
             print_text(f"🔍 Current sources to load: {current_sources}", style="dim cyan")
-        current_filters = context_state['filters']
-        current_workspace = context_state['workspace']
-        current_resolved_workspace = context_state['resolved_workspace']
+        current_filters = context_state.get('filters', []) or []
+        current_workspace = context_state.get('workspace')
+        current_resolved_workspace = context_state.get('resolved_workspace')
         
         # 1. Determine Workspace (use resolved_workspace if provided, otherwise fallback)
         if current_resolved_workspace:
@@ -1778,11 +1879,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"❌ Error processing natural language query: {e}", style="yellow")
             else:
                 # User removed the natural language part entirely - clear NL state
+                nl_was_removed = False
                 if context_state.get('natural_language_content') or context_state.get('natural_language_prompt'):
                     print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
                     context_state['natural_language_content'] = None
                     context_state['natural_language_prompt'] = None
                     context_state['cached_natural_language_prompt'] = ''
+                    nl_was_removed = True
             
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
@@ -1969,6 +2072,48 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         print_text("❌ Failed to reload context with new natural language results", style="red")
                         return False
+                elif nl_was_removed:
+                    print_text("🔄 Removing natural language results from context...", style="cyan")
+                    
+                    # Update the original query format to reflect removal of natural language
+                    context_state['original_query_format'] = f"maia chat {user_input}"
+                    update_query_command()
+                    
+                    # Instead of full reload, just update the system prompt without NL content
+                    # This preserves browser sources while removing NL results
+                    try:
+                        # Get the current multi-source data and remove NL entries
+                        current_data = dict(initial_multi_source_data)
+                        
+                        # Remove any natural language database entries
+                        nl_keys_to_remove = [key for key in current_data.keys() if 'gmail' in key.lower()]
+                        for key in nl_keys_to_remove:
+                            if key in current_data:
+                                # Only remove if it was from NL query, keep browser-selected gmail
+                                browse_selections = context_state.get('browse_selections', [])
+                                is_from_browser = any('gmail' in sel.lower() for sel in browse_selections)
+                                if not is_from_browser:
+                                    del current_data[key]
+                        
+                        # Update the system prompt with the remaining data
+                        mcp_tools_info = context_state.get('mcp_tools_info')
+                        system_prompt = create_system_prompt(current_data, mcp_tools_info)
+                        context_state['system_prompt'] = system_prompt
+                        
+                        # Update total pages count
+                        total_pages_loaded = sum(len(pages) for pages in current_data.values())
+                        
+                        print_text("Context updated successfully!", style="bold green")
+                        return True
+                    except Exception as e:
+                        print_text(f"❌ Error updating context after NL removal: {e}", style="red")
+                        # Fall back to full reload if manual update fails
+                        if reload_context(skip_nl_cache_messages=True):
+                            print_text("Context updated successfully via reload!", style="bold green")
+                            return True
+                        else:
+                            print_text("❌ Failed to reload context after removing natural language", style="red")
+                            return False
                 else:
                     print_text("ℹ️  No changes detected. Context unchanged.", style="yellow")
                     return False
@@ -2148,12 +2293,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Update context with processed sources and filters
                     # Simple approach: keep non-workspace sources, replace workspace sources with browser selections
-                    original_sources = context_state.get('sources', [])
+                    original_sources = context_state.get('sources', []) or []
                     final_sources = []
-                    
+
                     # Keep sources that are NOT from the current workspace
                     workspace_name = workspace if workspace else context_state.get('resolved_workspace') or context_state.get('workspace')
-                    
+
                     for source in original_sources:
                         source_db = source.split(':')[0] if ':' in source else source
                         if '.' in source_db:
@@ -2650,6 +2795,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif user_input.strip().lower() == '/help':
                 print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
+            elif user_input.strip().lower().startswith('/model'):
+                # Switch AI model
+                input_parts = user_input.strip().split(' ', 1)
+                target_model = input_parts[1] if len(input_parts) > 1 else None
+                
+                if switch_model(target_model):
+                    # Show updated model info
+                    print_text(f"Now using: {get_current_model_name()}", style="bold cyan")
+                continue
             elif user_input.strip().lower().startswith('/save'):
                 # Save current conversation to history
                 if not messages:
@@ -2673,7 +2827,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         'resolved_workspace': context_state.get('resolved_workspace'),
                         'query_command': context_state.get('query_command'),
                         'natural_language_prompt': context_state.get('natural_language_prompt'),
-                        'natural_language_content': None,  # Don't save the actual content, regenerate on restore
+                        'natural_language_content': context_state.get('natural_language_content'),  # Save the actual content for faster restore
                         'original_query_format': context_state.get('original_query_format'),  # Save original browse command
                         'browse_selections': context_state.get('browse_selections')  # Save browse selections for re-editing
                     }
