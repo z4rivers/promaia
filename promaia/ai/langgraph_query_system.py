@@ -750,6 +750,7 @@ CRITICAL REQUIREMENTS:
 12. For OR searches, combine conditions: (term1_conditions OR term2_conditions)
 13. For relationship queries, use the patterns shown in DETECTED RELATIONSHIPS section above
 14. IMPORTANT: Check CONTENT SCOPE primary_sources - if multiple databases are listed, query ALL of them using IN clause
+15. TIME CONSTRAINTS: If TIME CONSTRAINTS are provided, you MUST apply date filtering using the unified_content table's last_edited_time column (which is in ISO format and works with SQLite DATE() function). Use the start_date and end_date from the periods array. Format: AND DATE(uc.last_edited_time) BETWEEN 'start_date' AND 'end_date'
 
 Generate a working SQLite query. Return ONLY the SQL, no explanation or markdown."""
 

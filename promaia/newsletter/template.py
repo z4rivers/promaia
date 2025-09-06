@@ -236,41 +236,71 @@ def populate_email_template(
 
 def notion_blocks_to_plain_text(blocks: List[Dict[str, Any]]) -> str:
     """
-    Convert Notion blocks to plain text format.
-    
+    Convert Notion blocks to plain text format with proper formatting.
+
     Args:
         blocks: List of Notion block objects
-        
+
     Returns:
         Plain text representation of the blocks
     """
     if not blocks:
         return ""
-    
+
     text_parts = []
-    
+
     for block in blocks:
         block_type = block.get("type", "")
         content = block.get(block_type, {})
-        
-        # Extract rich text content
+
+        # Extract rich text content with proper formatting
         rich_text = content.get("rich_text", [])
         text_content = ""
-        
+
         for text_obj in rich_text:
             if text_obj and "plain_text" in text_obj:
-                text_content += text_obj["plain_text"]
-        
+                plain_text = text_obj["plain_text"]
+                annotations = text_obj.get("annotations", {})
+
+                # Handle mentions
+                if text_obj.get("type") == "mention":
+                    mention = text_obj.get("mention", {})
+                    if mention.get("type") == "page":
+                        page_id = mention.get("page", {}).get("id", "")
+                        # Convert page mentions to readable links
+                        plain_text = f"[{plain_text}](https://notion.so/{page_id.replace('-', '')})"
+                    elif mention.get("type") == "database":
+                        database_id = mention.get("database", {}).get("id", "")
+                        plain_text = f"[{plain_text}](https://notion.so/{database_id.replace('-', '')})"
+                    elif mention.get("type") == "user":
+                        # Keep user mentions as plain text for now
+                        pass
+                    elif mention.get("type") == "link_preview":
+                        url = mention.get("link_preview", {}).get("url", "")
+                        plain_text = f"[{plain_text}]({url})"
+
+                # Apply text formatting - use plain text formatting instead of markdown
+                if annotations.get("bold"):
+                    plain_text = plain_text.upper()  # Use uppercase for bold in plain text
+                if annotations.get("italic"):
+                    plain_text = f"*{plain_text}*"  # Keep italics as they work in most email clients
+                if annotations.get("strikethrough"):
+                    plain_text = f"---{plain_text}---"  # Use dashes for strikethrough
+                if annotations.get("code"):
+                    plain_text = f"\"{plain_text}\""  # Use quotes for code
+
+                text_content += plain_text
+
         if not text_content.strip():
             continue
-            
+
         # Format based on block type
         if block_type == "heading_1":
-            text_parts.append(f"\n{text_content}\n" + "=" * len(text_content))
+            text_parts.append(f"\n**{text_content}**")
         elif block_type == "heading_2":
-            text_parts.append(f"\n{text_content}\n" + "-" * len(text_content))
+            text_parts.append(f"\n**{text_content}**")
         elif block_type == "heading_3":
-            text_parts.append(f"\n{text_content}")
+            text_parts.append(f"\n**{text_content}**")
         elif block_type == "paragraph":
             text_parts.append(f"\n{text_content}")
         elif block_type == "bulleted_list_item":
@@ -278,19 +308,22 @@ def notion_blocks_to_plain_text(blocks: List[Dict[str, Any]]) -> str:
         elif block_type == "numbered_list_item":
             text_parts.append(f"\n1. {text_content}")
         elif block_type == "quote":
-            text_parts.append(f"\n> {text_content}")
+            # Put quotes in actual quotation marks
+            text_parts.append(f'\n"{text_content}"')
         elif block_type == "code":
             text_parts.append(f"\n```\n{text_content}\n```")
+        elif block_type == "divider":
+            text_parts.append(f"\n---")
         else:
             # Default formatting for other block types
             text_parts.append(f"\n{text_content}")
-    
+
     # Join all parts and clean up extra whitespace
     full_text = "".join(text_parts)
-    
+
     # Clean up multiple consecutive newlines
     full_text = re.sub(r'\n{3,}', '\n\n', full_text)
-    
+
     return full_text.strip()
 
 
@@ -344,11 +377,8 @@ def create_plain_text_newsletter(
     email_parts.append("---")
     email_parts.append("")
     if post_link:
-        email_parts.append(f"📖 Read the full post: {post_link}")
-        email_parts.append("")
-    
+        email_parts.append(f"📖 Read on website: {post_link}")
     email_parts.append("💌 Forwarded this email? Subscribe: https://www.koiibenvenutto.com/")
-    email_parts.append("")
     email_parts.append("Thanks for reading!")
     email_parts.append(f"- {sender_name}")
     

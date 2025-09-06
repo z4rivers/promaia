@@ -117,7 +117,7 @@ async def check_webflow_published(page: Dict[str, Any]) -> Tuple[bool, Optional[
     
     try:
         # Check if the item exists in Webflow
-        webflow_item = get_webflow_client().get_item(collection_id, webflow_id)
+        webflow_item = get_webflow_client(silent=True).get_item(collection_id, webflow_id)
         if webflow_item:
             print_text(f"   ✅ Found published blog post in Webflow (ID: {webflow_id})", style="green")
             return True, webflow_id, slug
@@ -348,7 +348,7 @@ async def get_webflow_hosted_image_url(page: Dict[str, Any], notion_image_url: s
                 return None
             
             # Get the Webflow item data
-            webflow_item = get_webflow_client().get_item(collection_id, webflow_id)
+            webflow_item = get_webflow_client(silent=True).get_item(collection_id, webflow_id)
             
             if webflow_item and "fieldData" in webflow_item:
                 # Check if the main image is available
@@ -369,12 +369,13 @@ async def get_webflow_hosted_image_url(page: Dict[str, Any], notion_image_url: s
     
     return None
 
-async def send_newsletter_via_resend(page: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
+async def send_newsletter_via_resend(page: Dict[str, Any], test_mode: bool = False) -> Tuple[bool, str, Optional[str]]:
     """
     Send newsletter via Resend based on Notion page content.
     
     Args:
         page: Notion page object
+        test_mode: If True, send to test emails only. If False, send broadcast to audience.
         
     Returns:
         Tuple of (success, message, email_id)
@@ -490,26 +491,50 @@ async def send_newsletter_via_resend(page: Dict[str, Any]) -> Tuple[bool, str, O
     
     # Send via Resend
     try:
-        resend_client = get_resend_client()
+        resend_client = get_resend_client(silent=True)
         
-        result = resend_client.send_newsletter(
-            subject=email_subject,
-            plain_text=email_plain_text,
-            html_content=email_html_content
-        )
-        
-        if result["success"]:
-            email_id = result["email_id"]
-            success_message = f"✅ Newsletter sent successfully (Email ID: {email_id})"
-            if has_inline_images:
-                success_message += f" with inline images"
-                if cover_image_url:
-                    success_message += f" and cover image"
-            elif cover_image_url:
-                success_message += f" with cover image"
-            return True, success_message, email_id
+        if test_mode:
+            # Test mode: send to individual test emails
+            result = resend_client.send_newsletter(
+                subject=email_subject,
+                plain_text=email_plain_text,
+                html_content=email_html_content
+            )
+            
+            if result["success"]:
+                email_id = result["email_id"]
+                success_message = f"✅ TEST Newsletter sent successfully (Email ID: {email_id})"
+                if has_inline_images:
+                    success_message += f" with inline images"
+                    if cover_image_url:
+                        success_message += f" and cover image"
+                elif cover_image_url:
+                    success_message += f" with cover image"
+                
+                return True, success_message, email_id
+            else:
+                return False, f"❌ Failed to send TEST newsletter: {result.get('error', 'Unknown error')}", None
         else:
-            return False, f"❌ Failed to send newsletter: {result['error']}", None
+            # Production mode: send broadcast to audience
+            result = resend_client.send_broadcast_to_audience(
+                subject=email_subject,
+                plain_text=email_plain_text,
+                html_content=email_html_content
+            )
+            
+            if result["success"]:
+                broadcast_id = result["broadcast_id"]
+                success_message = f"✅ Newsletter BROADCAST sent successfully to audience (Broadcast ID: {broadcast_id})"
+                if has_inline_images:
+                    success_message += f" with inline images"
+                    if cover_image_url:
+                        success_message += f" and cover image"
+                elif cover_image_url:
+                    success_message += f" with cover image"
+                
+                return True, success_message, broadcast_id
+            else:
+                return False, f"❌ Failed to send newsletter broadcast: {result.get('error', 'Unknown error')}", None
             
     except Exception as e:
         return False, f"❌ Error with Resend API: {str(e)}", None
@@ -604,59 +629,48 @@ def get_page_display_title(page: Dict[str, Any]) -> str:
 async def list_eligible_newsletter_pages(args):
     """
     List pages eligible for newsletter syncing.
-    
+
     Args:
         args: Command line arguments
     """
-    print_text("Finding newsletter pages eligible for syncing...", style="white")
-    
+    print("🔍 Finding eligible newsletters...")
+
     # Get database ID from args or use default
     database_id = getattr(args, "database", None) or WEBFLOW_CMS_DATABASE_ID
-    
+
     # Get eligible pages
     eligible_pages = await get_eligible_newsletter_pages(database_id)
-    
+
     if not eligible_pages:
-        print_text("No pages eligible for newsletter syncing found.", style="red")
+        print("❌ No eligible newsletters found")
         return
-    
-    print_text(f"\nFound {len(eligible_pages)} eligible pages:\n", style="white")
-    
+
+    print(f"📄 Found {len(eligible_pages)} newsletter(s):")
+
     for i, page in enumerate(eligible_pages, 1):
         # Get page details
-        page_id = page["id"]
-        
-        # Get the title using the helper function
         title = get_page_display_title(page)
-        
         status = get_property_value(page, "Newsletter Status")
-        last_edited = format_datetime(page.get("last_edited_time"))
-        last_synced = get_property_value(page, "Newsletter Last Synced")
-        last_synced_display = format_datetime(last_synced) if last_synced else "Never"
-        
+
         # Check if the blog post has been published to Webflow
-        is_published, webflow_id, _ = await check_webflow_published(page)
+        is_published, _, _ = await check_webflow_published(page)
         webflow_status = "✅ Published" if is_published else "❌ Not published"
-        
+
         # Display page information
-        print_text(f"{i}. {title}", style="white")
-        print_text(f"   ID: {page_id}", style="dim")
-        print_text(f"   Status: {status}", style="white")
-        print_text(f"   Last edited: {last_edited}", style="white")
-        print_text(f"   Last synced: {last_synced_display}", style="white")
-        print_text(f"   Webflow: {webflow_status}", style="white")
-        print_separator()
+        print(f"   {i}. {title}")
+        print(f"      Status: {status}")
+        print(f"      Webflow: {webflow_status}")
 
 async def newsletter_sync_command(args):
     """
     Send newsletters via Resend for eligible CMS pages.
     Takes pages with "Newsletter Status" = "To send" from the CMS database
     and sends newsletters via Resend, then updates status to "Sent".
-    
+
     Args:
         args: Command line arguments
     """
-    print_text("Starting newsletter send from CMS database...", style="white")
+    print("📧 Sending newsletters...")
     
     # Always use the CMS database
     database_id = WEBFLOW_CMS_DATABASE_ID
@@ -665,109 +679,57 @@ async def newsletter_sync_command(args):
     eligible_pages = await get_eligible_newsletter_pages(database_id)
     
     if not eligible_pages:
-        print_text("No CMS pages eligible for newsletter send found.", style="red")
-        print_text("Make sure pages have Newsletter Status set to 'To send'.", style="red")
+        print("❌ No newsletters to send")
         return
-    
-    print_text(f"\nFound {len(eligible_pages)} eligible CMS pages for newsletter sending:", style="white")
-    
-    # Show the newsletters that will be sent
-    newsletter_titles = []
-    for i, page in enumerate(eligible_pages, 1):
-        title = get_page_display_title(page)
-        newsletter_titles.append(title)
-        print_text(f"   {i}. {title}", style="white")
-    
-    print_separator()
+
+    print(f"📄 Found {len(eligible_pages)} newsletter(s) to send")
     
     # SAFETY CONFIRMATION - Require user to type newsletter title(s) to confirm (unless --force is used)
     force_send = getattr(args, 'force', False)
     
     if force_send:
-        print_text("⚠️  --force flag detected: Skipping confirmation prompt", style="yellow")
-        print_text("📧 Proceeding directly to newsletter sending...", style="white")
-        print_separator()
+        print("⚠️ Force mode enabled")
     else:
-        print_text("⚠️  🚨 SAFETY CONFIRMATION 🚨 ⚠️", style="red")
-        print_text("You are about to send newsletter(s) to ALL SUBSCRIBERS via Resend.", style="red")
-        print_text("This will send real emails to your entire subscriber list!", style="red")
-        print_separator()
-        print_text("💡 TIP: Use 'maia newsletter test' to preview emails safely before sending.", style="white")
-        print_text("💡 TIP: Use 'maia newsletter send --force' to skip this confirmation.", style="white")
-        print_separator()
-        
-        if len(newsletter_titles) == 1:
-            # Single newsletter - require exact title
-            expected_title = newsletter_titles[0]
-            print_text(f"To confirm, please type the newsletter title exactly as shown:", style="red")
-            print_text(f'"{expected_title}"', style="dim")
-            print_separator()
-            
-            user_input = input("Type the newsletter title and press Enter to send (or Ctrl+C to cancel): ").strip()
-            
-            if user_input != expected_title:
-                print_text(f"\n❌ Confirmation failed. You typed: '{user_input}'", style="red")
-                print_text(f"   Expected: '{expected_title}'", style="dim")
-                print_text("Newsletter sending cancelled for safety.", style="red")
+        # Safety confirmation - require typing the title
+        if len(eligible_pages) == 1:
+            title = get_page_display_title(eligible_pages[0])
+            user_input = input(f"Send newsletter '{title}'? Type the title to confirm: ").strip()
+            if user_input != title:
+                print("❌ Confirmation failed")
                 return
-                
         else:
-            # Multiple newsletters - require typing "SEND ALL"
-            print_text(f"You are about to send {len(newsletter_titles)} newsletters.", style="red")
-            print_text("To confirm sending ALL newsletters, type: SEND ALL", style="red")
-            print_separator()
-            
-            user_input = input("Type 'SEND ALL' and press Enter to send (or Ctrl+C to cancel): ").strip()
-            
-            if user_input != "SEND ALL":
-                print_text(f"\n❌ Confirmation failed. You typed: '{user_input}'", style="red")
-                print_text("   Expected: 'SEND ALL'", style="red")
-                print_text("Newsletter sending cancelled for safety.", style="red")
+            count = len(eligible_pages)
+            user_input = input(f"Send {count} newsletters? Type '{count}' to confirm: ").strip()
+            if user_input != str(count):
+                print("❌ Confirmation failed")
                 return
-        
-        print_text("\n✅ Confirmation received. Proceeding with newsletter sending...", style="green")
-        print_separator()
+
+        print("✅ Proceeding with newsletter send...")
     
     success_count = 0
     failure_count = 0
     
     for i, page in enumerate(eligible_pages, 1):
         page_id = page["id"]
-        
-        # Get title using the helper function
-        title = get_page_display_title(page)
-        
-        print_text(f"\n{i}. Processing: {title}", style="white")
-        print_text(f"   ID: {page_id}", style="dim")
-        
-        # Send newsletter via Resend
-        success, message, email_id = await send_newsletter_via_resend(page)
-        print_text(f"   {message}", style="white")
-        
+
+        # Send newsletter via Resend (production mode - broadcast to audience)
+        success, message, email_id = await send_newsletter_via_resend(page, test_mode=False)
+
         if success:
             # Update page status and last synced date
-            status_to_set_after_send = "Sent"
-            # Check if current status was "To send" before updating
             current_status = get_property_value(page, "Newsletter Status")
             if current_status == "To send":
-                await update_page_newsletter_status(page_id, status_to_set_after_send)
-                print_text(f"   ✅ Updated page status from 'To send' to '{status_to_set_after_send}'", style="green")
-            
+                await update_page_newsletter_status(page_id, "Sent")
             await update_page_last_synced(page_id)
-            print_text(f"   ✅ Updated last synced timestamp", style="green")
             success_count += 1
         else:
-            # Don't update page if push failed
             failure_count += 1
-    
-    # Print summary
-    print_text(f"\nNewsletter send completed: {success_count} succeeded, {failure_count} failed", style="white")
+
+    # Clean summary
     if success_count > 0:
-        print_text(f"Successfully sent {success_count} newsletters via Resend with 'Sent' status.", style="green")
-        print_text("Newsletters have been sent directly via Resend!", style="green")
-    
+        print(f"✅ Sent {success_count} newsletter(s) successfully")
     if failure_count > 0:
-        print_text(f"\n{failure_count} pages failed to send. Check the error messages above for details.", style="red")
+        print(f"❌ {failure_count} newsletter(s) failed to send")
 
 
 async def newsletter_test_command(args):
@@ -775,16 +737,15 @@ async def newsletter_test_command(args):
     Test newsletter generation for eligible CMS pages without actually sending.
     Takes pages with "Newsletter Status" = "To send" from the CMS database
     and shows what would be sent via Resend, without actually sending or updating status.
-    
+
     Args:
         args: Command line arguments
     """
-    print_text("🧪 Testing newsletter generation from CMS database...", style="white")
-    
+    print("🧪 Testing newsletters...")
+
     # Show which test email will be used
     test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
-    print_text(f"📧 Test emails will be sent to: {test_email}", style="white")
-    print_text(f"   💡 To change test email, set RESEND_TEST_EMAIL environment variable", style="dim")
+    print(f"📧 Test email: {test_email}")
     
     # Always use the CMS database
     database_id = WEBFLOW_CMS_DATABASE_ID
@@ -793,45 +754,31 @@ async def newsletter_test_command(args):
     eligible_pages = await get_eligible_newsletter_pages(database_id)
     
     if not eligible_pages:
-        print_text("No CMS pages eligible for newsletter testing found.", style="red")
-        print_text("Make sure pages have Newsletter Status set to 'To send'.", style="red")
+        print("❌ No newsletters to test")
         return
-    
-    print_text(f"\nFound {len(eligible_pages)} eligible CMS pages for newsletter testing:", style="white")
-    
+
+    print(f"📄 Testing {len(eligible_pages)} newsletter(s)...")
+
     success_count = 0
     failure_count = 0
-    
+
     for i, page in enumerate(eligible_pages, 1):
         page_id = page["id"]
-        
-        # Get title using the helper function
-        title = get_page_display_title(page)
-        
-        print_text(f"\n{i}. Testing: {title}", style="white")
-        print_text(f"   ID: {page_id}", style="dim")
-        
+
         # Test newsletter generation (with actual TEST email sending)
         success, message, email_id = await test_newsletter_generation(page)
-        print_text(f"   {message}", style="white")
-        
+
         if success:
-            print_text(f"   ✅ Newsletter test completed successfully", style="green")
-            print_text(f"   📧 TEST email ID: {email_id}", style="white")
-            print_text(f"   📬 Check your email for the test newsletter", style="white")
             success_count += 1
         else:
             failure_count += 1
-    
-    # Print summary
-    print_text(f"\n🧪 Newsletter test completed: {success_count} succeeded, {failure_count} failed", style="white")
+
+    # Clean summary
     if success_count > 0:
-        print_text(f"✅ {success_count} TEST emails sent successfully to safe recipients.", style="green")
-        print_text(f"📬 Check your email for the test newsletters.", style="white")
-        print_text(f"🚀 Ready to send to all subscribers! Use 'maia newsletter send' to send the real newsletters.", style="white")
-    
+        print(f"✅ Sent {success_count} test email(s)")
+        print(f"📬 Check {test_email} for test newsletters")
     if failure_count > 0:
-        print_text(f"\n❌ {failure_count} pages failed testing. Check the error messages above for details.", style="red")
+        print(f"❌ {failure_count} test(s) failed")
 
 
 async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
@@ -850,35 +797,25 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
         # Get basic page properties
         properties = page.get("properties", {})
         
-        # Show available properties (debug info)
-        prop_names = list(properties.keys())
-        print_text(f"   Available properties: {', '.join(prop_names)}", style="white")
-        
         # Check Webflow publishing status (but don't fail if not published)
         is_published, webflow_id, slug = await check_webflow_published(page)
         if not is_published:
-            print_text(f"   ⚠️  Page not published to Webflow, using fallback slug for testing", style="yellow")
             # Create a fallback slug from the title
             title = get_page_display_title(page)
             slug = title.lower().replace(' ', '-').replace(',', '').replace('.', '').replace('✨', '')
         
         # Get the website URL
         website_url = f"https://www.koiibenvenutto.com/post/{slug}"
-        print_text(f"   📄 Using 'read on website' URL: {website_url}", style="white")
-        
+
         # Get subtitle (description)
         subtitle = get_property_value(page, "Description") or ""
-        print_text(f"   📄 Subtitle: {subtitle}", style="white")
-        
+
         # Get cover image URL
         cover_image_url = get_cover_image_url(page)
         if cover_image_url:
-            print_text(f"   🖼️ Found cover image: {cover_image_url[:50]}...", style="white")
-            
             # Try to get Webflow-hosted version
             webflow_image_url = await get_webflow_hosted_image_url(page, cover_image_url)
             if webflow_image_url:
-                print_text(f"   ✅ Using Webflow-hosted image: {webflow_image_url[:50]}...", style="green")
                 cover_image_url = webflow_image_url
         
         # Get page title
@@ -890,13 +827,13 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
             plain_text_content = await notion_to_plain_text(page_id)
         except Exception as e:
             return False, f"❌ Error converting page content: {str(e)}", None
-        
+
         # Check if we have inline images
         has_inline_images = '<img' in html_content and 'src="' in html_content
-        
+
         # Generate newsletter content
         from promaia.newsletter.template import create_plain_text_newsletter
-        
+
         # Always create plain text version
         newsletter_content = create_plain_text_newsletter(
             content_text=plain_text_content,
@@ -905,17 +842,15 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
             post_link=website_url,
             cover_image_url=cover_image_url
         )
-        
+
         # Create HTML version if needed
         html_newsletter_content = None
         if has_inline_images:
-            print_text(f"   📧 Detected inline images - generating HTML newsletter for testing", style="white")
-            
             # Replace Notion images with Webflow versions if available
             processed_html_content = html_content
             if webflow_id:
                 processed_html_content = replace_notion_images_with_webflow(html_content, webflow_id, cover_image_url)
-            
+
             # Create HTML newsletter using the template
             from promaia.newsletter.template import populate_email_template
             html_newsletter_content = populate_email_template(
@@ -925,24 +860,17 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
                 subtitle=subtitle,
                 post_link=website_url
             )
-        
-        print_text(f"   📧 Generated newsletter content length: {len(newsletter_content)} characters", style="white")
-        
+
         # Get safe test recipients
         test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
         test_recipients = [test_email]
-        
+
         # Create TEST subject line
         test_subject = f"[TEST] {title}"
         
-        print_text(f"   🧪 SENDING TEST EMAIL...", style="white")
-        print_text(f"   📧 Subject: {test_subject}", style="white")
-        print_text(f"   📧 To: {test_recipients}", style="white")
-        print_text(f"   ⚠️  This is a TEST - only sending to safe test recipients", style="yellow")
-        
         # Send actual test email
         try:
-            resend_client = get_resend_client()
+            resend_client = get_resend_client(silent=True)
             
             result = resend_client.send_newsletter(
                 subject=test_subject,

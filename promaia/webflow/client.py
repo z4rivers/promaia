@@ -43,24 +43,25 @@ class WebflowClient:
     """
     Client for the Webflow API.
     """
-    
-    def __init__(self):
+
+    def __init__(self, silent: bool = False):
         """Initialize the Webflow client."""
         self.api_key = os.getenv("WEBFLOW_API_KEY")
         self.site_id = os.getenv("WEBFLOW_SITE_ID")
-        
+
         if not self.api_key:
             raise ValueError("WEBFLOW_API_KEY environment variable not found. Please add it to your .env file.")
-        
+
         if not self.site_id:
             raise ValueError("WEBFLOW_SITE_ID environment variable not found. Please add it to your .env file.")
-        
+
         self.base_url = "https://api.webflow.com/v2"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "accept": "application/json",
             "Content-Type": "application/json"
         }
+        self.silent = silent
         
         # Print authentication info for debugging
         # print(f"Webflow API authentication setup:")
@@ -76,18 +77,14 @@ class WebflowClient:
             List of collection objects
         """
         url = f"{self.base_url}/sites/{self.site_id}/collections"
-        print(f"  Making API request to: {truncate_url(url)}")
-        print(f"  Headers: Authorization: Bearer {self.api_key[:5]}...{self.api_key[-5:]}, accept: {self.headers['accept']}")
-        
+
         try:
             response = requests.get(url, headers=self.headers)
-            
-            print(f"  Response status: {response.status_code}")
-            print(f"  Response body preview: {response.text[:200]}")
-            
-            if not response.ok:
+
+            if not response.ok and not self.silent:
+                print(f"  Error response from Webflow: {response.status_code}")
                 print(f"  Full error response: {response.text}")
-                
+
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -108,50 +105,39 @@ class WebflowClient:
         all_items = []
         offset = 0
         limit = 100
-        
-        print(f"  Fetching all items from collection {collection_id} with pagination...")
-        
+
         while True:
             params = {
                 "offset": offset,
                 "limit": limit
             }
-            print(f"  Making API request to: {truncate_url(url)}")
-            print(f"  Headers: Authorization: Bearer {self.api_key[:5]}...{self.api_key[-5:]}, accept: {self.headers['accept']}")
-            print(f"  Params: {params}")
-            
+
             try:
                 response = requests.get(url, headers=self.headers, params=params)
-                print(f"  Response status: {response.status_code}")
-                print(f"  Response body preview: {response.text[:200]}")
-                
-                if not response.ok:
+
+                if not response.ok and not self.silent:
+                    print(f"  Error response from Webflow: {response.status_code}")
                     print(f"  Full error response: {response.text}")
-                    
+
                 response.raise_for_status()
                 response_data = response.json()
                 batch_items = response_data.get("items", [])
-                
+
                 if not batch_items:
-                    print(f"  No more items found at offset {offset}")
                     break
-                    
+
                 all_items.extend(batch_items)
-                if len(all_items) % 100 == 0:  # Log every 100 items
-                    print(f"  Fetched {len(all_items)} items...")
-                
+
                 # Check if we got less than the limit, which means we're done
                 if len(batch_items) < limit:
-                    print(f"  Reached end of collection (got {len(batch_items)} < {limit})")
                     break
-                    
+
                 offset += limit
-                
+
             except Exception as e:
-                print(f"  Exception: {str(e)}")
+                if not self.silent:
+                    print(f"  Exception: {str(e)}")
                 raise
-        
-        print(f"  Successfully fetched {len(all_items)} total items from collection")
         return all_items
     
     def get_item(self, collection_id: str, item_id: str) -> Dict[str, Any]:
@@ -242,7 +228,8 @@ class WebflowClient:
         }
         
         # Log the update operation
-        print(f"  Updating item {item_id}")
+        if not self.silent:
+            print(f"  Updating item {item_id}")
         
         try:
             # Use PATCH method for updating a single item in V2 API
@@ -729,9 +716,9 @@ class WebflowClient:
 # Lazy-loaded client instance
 _webflow_client_instance = None
 
-def get_webflow_client():
+def get_webflow_client(silent: bool = False):
     """Get the webflow client instance, creating it if needed."""
     global _webflow_client_instance
-    if _webflow_client_instance is None:
-        _webflow_client_instance = WebflowClient()
+    if _webflow_client_instance is None or _webflow_client_instance.silent != silent:
+        _webflow_client_instance = WebflowClient(silent=silent)
     return _webflow_client_instance 

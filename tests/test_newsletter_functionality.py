@@ -177,7 +177,7 @@ class TestNewsletterContentConversion:
         assert content in newsletter
         
         # Check footer formatting
-        assert "📖 Read the full post: https://example.com/post" in newsletter
+        assert "📖 Read on website: https://example.com/post" in newsletter
         assert "💌 Forwarded this email? Subscribe: https://www.koiibenvenutto.com/" in newsletter
         assert "Thanks for reading!" in newsletter
         assert "- Koii Benvenutto" in newsletter
@@ -250,7 +250,7 @@ class TestResendClientIntegration:
             plain_text = """
             Test content here.
             
-            📖 Read the full post: https://example.com/post
+            📖 Read on website: https://example.com/post
             
             💌 Forwarded this email? Subscribe: https://www.koiibenvenutto.com/
             """
@@ -260,7 +260,7 @@ class TestResendClientIntegration:
             # Check that URLs are converted to clickable links
             assert '<a href="https://example.com/post"' in html
             assert '<a href="https://www.koiibenvenutto.com/"' in html
-            assert 'Read the full post</a>' in html
+            assert 'Read on website</a>' in html
             assert 'Subscribe here</a>' in html
 
 

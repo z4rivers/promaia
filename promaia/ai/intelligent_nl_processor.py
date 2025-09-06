@@ -26,21 +26,43 @@ class PromaiLLMAdapter:
         self._setup_client()
     
     def _setup_client(self):
-        """Setup the appropriate LLM client."""
+        """Setup the appropriate LLM client with fallback handling."""
         if self.client_type == "auto":
-            # Use the same logic as existing system
-            if os.getenv("ANTHROPIC_API_KEY"):
-                self.client_type = "anthropic"
-                self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            elif os.getenv("OPENAI_API_KEY"):
-                self.client_type = "openai" 
-                self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            elif os.getenv("GOOGLE_API_KEY"):
-                self.client_type = "gemini"
-                genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-                self.client = genai.GenerativeModel('gemini-2.5-pro')
-            else:
-                raise ValueError("No LLM API keys found")
+            # Try clients in order with proper error handling
+            api_keys = [
+                ("ANTHROPIC_API_KEY", "anthropic"),
+                ("OPENAI_API_KEY", "openai"),
+                ("GOOGLE_API_KEY", "gemini")
+            ]
+            
+            for env_key, client_type in api_keys:
+                if os.getenv(env_key):
+                    try:
+                        if client_type == "anthropic":
+                            self.client_type = "anthropic"
+                            self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+                            # Test the client with a minimal call
+                            test_response = self.client.messages.create(
+                                model="claude-3-5-sonnet-20241022",
+                                max_tokens=10,
+                                messages=[{"role": "user", "content": "test"}]
+                            )
+                            return  # Success
+                        elif client_type == "openai":
+                            self.client_type = "openai"
+                            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                            return  # Success
+                        elif client_type == "gemini":
+                            self.client_type = "gemini"
+                            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+                            self.client = genai.GenerativeModel('gemini-2.5-pro')
+                            return  # Success
+                    except Exception as e:
+                        print(f"⚠️  Failed to setup {client_type} client: {e}")
+                        continue
+            
+            # If all clients fail, raise an error
+            raise ValueError("No working LLM API clients found")
         
     def invoke(self, messages):
         """LangChain-compatible invoke method."""
@@ -178,14 +200,22 @@ class IntelligentNaturalLanguageProcessor:
     
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         self.db_path = db_path
+        self.llm = None
+        self.processor = None
+        self.enabled = False
         
-        # Setup LLM adapter  
-        self.llm = PromaiLLMAdapter()
-        
-        # Create the intelligent processor
-        self.processor = IntelligentQueryProcessor(self.llm, db_path)
-        
-        print(f"✅ Intelligent NL processor initialized with {self.llm.client_type} client")
+        try:
+            # Setup LLM adapter with error handling
+            self.llm = PromaiLLMAdapter()
+            
+            # Create the intelligent processor
+            self.processor = IntelligentQueryProcessor(self.llm, db_path)
+            self.enabled = True
+            
+            print(f"✅ Intelligent NL processor initialized with {self.llm.client_type} client")
+        except Exception as e:
+            print(f"⚠️  Intelligent NL processor disabled: {e}")
+            print("   Falling back to pattern-based processing")
 
     def process_query(self, user_query: str, scope_databases: List[str] = None) -> Dict[str, Any]:
         """
@@ -198,6 +228,14 @@ class IntelligentNaturalLanguageProcessor:
         Returns:
             Dictionary with grouped results and metadata
         """
+        if not self.enabled or not self.processor:
+            return {
+                "success": False,
+                "results": {},
+                "intent": None,
+                "errors": ["Intelligent processor not available - API credits insufficient or no working LLM client"]
+            }
+            
         try:
             return self.processor.process_query(user_query, scope_databases)
         except Exception as e:
@@ -271,11 +309,79 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
             print(f"⚠️  No page IDs found in metadata for '{db_name}'. Returning empty.")
             return []
         
-        # For Gmail and other non-markdown sources, return metadata entries directly
-        # since they don't have individual markdown files
-        if db_config.source_type in ['gmail', 'discord']:
+        # For Gmail, we need to load full content from the gmail_content table
+        # since the metadata entries only have basic info
+        if db_config.source_type in ['gmail']:
             if os.getenv("MAIA_DEBUG") == "1":
-                print(f"   Gmail/Discord source detected - returning metadata entries directly")
+                print(f"   Gmail source detected - loading full content from gmail_content table")
+            
+            try:
+                # Load full Gmail content from the specialized gmail_content table
+                import sqlite3
+                
+                # Get the database path - use the standard path
+                db_path = "data/hybrid_metadata.db"
+                if not os.path.exists(db_path):
+                    print(f"⚠️  Database not found at {db_path}")
+                    return metadata_entries
+                
+                with sqlite3.connect(db_path) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    
+                    # Create a query to get full Gmail content for the target page IDs
+                    placeholders = ','.join(['?' for _ in target_page_ids])
+                    query = f"""
+                        SELECT 
+                            page_id,
+                            subject as title,
+                            sender_email,
+                            sender_name,
+                            recipient_emails,
+                            message_content,
+                            body_snippet,
+                            gmail_labels,
+                            thread_id,
+                            message_id,
+                            email_date as created_time,
+                            workspace,
+                            'gmail' as database_name,
+                            'gmail' as content_type
+                        FROM gmail_content 
+                        WHERE page_id IN ({placeholders})
+                    """
+                    
+                    cursor.execute(query, list(target_page_ids))
+                    gmail_results = []
+                    for row in cursor.fetchall():
+                        gmail_entry = dict(row)
+                        # Add the message content as content for the chat
+                        gmail_entry['content'] = gmail_entry.get('message_content', '') or gmail_entry.get('body_snippet', '')
+                        gmail_entry['metadata'] = {
+                            'sender_email': gmail_entry.get('sender_email', ''),
+                            'sender_name': gmail_entry.get('sender_name', ''),
+                            'recipient_emails': gmail_entry.get('recipient_emails', ''),
+                            'gmail_labels': gmail_entry.get('gmail_labels', ''),
+                            'thread_id': gmail_entry.get('thread_id', ''),
+                            'message_id': gmail_entry.get('message_id', ''),
+                            'body_snippet': gmail_entry.get('body_snippet', ''),
+                        }
+                        gmail_results.append(gmail_entry)
+                    
+                    if os.getenv("MAIA_DEBUG") == "1":
+                        print(f"   Loaded {len(gmail_results)} full Gmail entries with content")
+                    
+                    return gmail_results
+                    
+            except Exception as e:
+                print(f"⚠️  Error loading full Gmail content: {e}")
+                return metadata_entries
+        
+        # For Discord and other non-markdown sources, return metadata entries directly
+        # since they don't have individual markdown files
+        if db_config.source_type in ['discord']:
+            if os.getenv("MAIA_DEBUG") == "1":
+                print(f"   Discord source detected - returning metadata entries directly")
             return metadata_entries
         
         # Load all content from database and filter to matching entries
@@ -322,11 +428,11 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None,
     Drop-in replacement for the old system using intelligent LangGraph processing.
     
     This is the main integration point that replaces both Vanna.ai and my regex patterns
-    with true AI reasoning.
+    with true AI reasoning. Falls back to pattern-based processing if intelligent processing fails.
     """
     
     try:
-        # Create intelligent processor
+        # Try intelligent processor first
         processor = IntelligentNaturalLanguageProcessor()
         
         # Process the query with AI reasoning
@@ -349,10 +455,32 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None,
             
             return enriched_results
         else:
-            errors = result.get("errors", ["Unknown error"])
-            print(f"❌ Intelligent query failed: {'; '.join(errors)}")
-            return {}
+            # Intelligent processing failed, try pattern-based fallback
+            print("⚠️  Intelligent processing failed, trying pattern-based fallback...")
+            return _try_pattern_based_fallback(nl_prompt, workspace, database_names)
             
     except Exception as e:
-        print(f"❌ Intelligent NL processing error: {e}")
+        print(f"⚠️  Intelligent NL processing error: {e}")
+        print("   Trying pattern-based fallback...")
+        return _try_pattern_based_fallback(nl_prompt, workspace, database_names)
+
+
+def _try_pattern_based_fallback(nl_prompt: str, workspace: str = None, 
+                               database_names: List[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """Fallback to pattern-based processing when intelligent processing fails."""
+    try:
+        from .pattern_based_nl import PatternBasedNLProcessor
+        
+        pattern_processor = PatternBasedNLProcessor()
+        # Use the pattern-based processor's process_query method if available
+        if hasattr(pattern_processor, 'process_query'):
+            results = pattern_processor.process_query(nl_prompt, workspace, database_names)
+            if results:
+                print(f"✅ Pattern-based fallback succeeded: {sum(len(v) for v in results.values())} results")
+                return results
+        
+        print("❌ Pattern-based fallback also failed")
+        return {}
+    except Exception as e:
+        print(f"❌ Pattern-based fallback error: {e}")
         return {}

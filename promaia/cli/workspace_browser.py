@@ -404,12 +404,12 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
         def toggle_source(event):
             nonlocal current_focus
             enabled_states[current_focus] = not enabled_states[current_focus]
-            
+
             # Update prefix display using the correct source window index
             prefix_text = get_entry_prefix(current_focus, enabled_states, entry_info)
             source_window_index = text_area_to_source_window[current_focus]
             source_windows[source_window_index].children[0].content.text = prefix_text
-            
+
             # Update status
             status_window.content.text = get_status_display
         

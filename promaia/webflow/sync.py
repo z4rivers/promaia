@@ -90,81 +90,76 @@ def process_html_images(html_content: str, page_id: str) -> str:
     
     # Find all image tags
     images = soup.find_all('img')
-    print(f"Found {len(images)} images in content")
-    
+
     # Keep track of processed images to avoid duplicates
     processed_urls = {}
-    
+
     # Process each image
     for img in images:
         src = img.get('src')
-        
+
         # Skip if no src attribute or already processed
         if not src or src in processed_urls:
             if src in processed_urls:
                 img['src'] = processed_urls[src]
             continue
-        
+
         # Skip if image is already on Webflow
         if 'webflow.com' in src or 'website-files.com' in src:
             continue
-        
+
         try:
             # Generate a unique filename for the image
             parsed_url = urllib.parse.urlparse(src)
             original_filename = os.path.basename(parsed_url.path)
-            
+
             # Create a hash from the URL to ensure uniqueness
             url_hash = hashlib.md5(src.encode()).hexdigest()[:8]
-            
+
             # Create a filename with page ID and hash
             if '.' in original_filename:
                 name, ext = os.path.splitext(original_filename)
                 filename = f"{page_id[:8]}_{url_hash}{ext}"
             else:
                 filename = f"{page_id[:8]}_{url_hash}.jpg"
-            
-            print(f"Processing image: {truncate_url(src)} -> {filename}")
-            
+
             # Upload the image to Webflow
-            result = get_webflow_client().upload_asset_from_url(src, filename)
-            
+            result = get_webflow_client(silent=True).upload_asset_from_url(src, filename)
+
             if result and 'url' in result:
                 # Get the new URL from Webflow
                 new_url = result['url']
-                
+
                 # Create a new figure element with the proper Webflow structure
-                # This follows the structure required by Webflow's RichText field
                 figure = soup.new_tag('figure')
                 figure['class'] = 'w-richtext-figure-type-image w-richtext-align-fullwidth'
-                
+
                 # Create a new img element with the Webflow URL
                 new_img = soup.new_tag('img')
                 new_img['src'] = new_url
-                
+
                 # Add alt text if present
                 if img.get('alt'):
                     new_img['alt'] = img.get('alt')
-                    
+
                 # Add the image to the figure
                 figure.append(new_img)
-                
+
                 # Create a figcaption if there's a title
                 if img.get('title'):
                     figcaption = soup.new_tag('figcaption')
                     figcaption.string = img.get('title')
                     figure.append(figcaption)
-                
+
                 # Replace the original img with the figure
                 img.replace_with(figure)
-                
+
                 # Keep track of this URL
                 processed_urls[src] = new_url
-                print(f"  ✓ Replaced image URL: {truncate_url(src)} -> {truncate_url(new_url)}")
-            else:
-                print(f"  ✗ Failed to upload image: {truncate_url(src)}")
-        except Exception as e:
-            print(f"  ✗ Error processing image {truncate_url(src)}: {str(e)}")
+            # Silent failure for image processing - don't spam logs
+        except Exception:
+            # Silent error handling for image processing
+            pass
     
     # Return the updated HTML content
     return str(soup)
@@ -350,16 +345,14 @@ async def notion_to_webflow_item(page: Dict[str, Any],
                     
                     if image_url:
                         # Use the Notion URL directly for the main image
-                        # Notion URLs are stable so we don't need to re-upload
                         webflow_data[image_field] = image_url
-                        print(f"  ✓ Using Notion thumbnail image URL directly: {truncate_url(image_url)}")
-    
+
     # Handle page cover image if present but no thumbnail was provided
     if image_field not in webflow_data and page and "cover" in page:
         cover = page.get("cover", {})
         if cover:
             image_url = None
-            
+
             if cover.get("type") == "external":
                 external = cover.get("external")
                 if external:
@@ -368,34 +361,31 @@ async def notion_to_webflow_item(page: Dict[str, Any],
                 file_obj = cover.get("file")
                 if file_obj:
                     image_url = file_obj.get("url", "")
-                    
+
             if image_url:
-                # Use the cover image URL directly 
                 webflow_data[image_field] = image_url
-                print(f"  ✓ Using Notion page cover image URL directly: {truncate_url(image_url)}")
-    
+
     # Process featured field (checkbox)
     featured_field = field_mapping.get("Featured", "featured")
     if "Featured" in properties:
         featured_prop = properties["Featured"]
         if featured_prop and featured_prop.get("type") == "checkbox":
             webflow_data[featured_field] = featured_prop.get("checkbox", False)
-    
+
     try:
         # Get page content
         blocks = await get_block_content(page_id)
-        
+
         # Convert blocks to HTML
         html_content = page_to_html(blocks)
-        
+
         # Process images in the HTML content
         processed_html = process_html_images(html_content, page_id)
-        
+
         # Set HTML content field - always supported
         webflow_data["post-body"] = processed_html
-    except Exception as e:
+    except Exception:
         # If there's an error with content processing, just use a placeholder
-        print(f"  ✗ Error processing content: {str(e)}")
         webflow_data["post-body"] = f"<p>Content unavailable. Please check the original Notion page.</p>"
     
     # Remove internal fields that shouldn't be sent to Webflow
@@ -404,16 +394,103 @@ async def notion_to_webflow_item(page: Dict[str, Any],
     
     return (webflow_data, stored_webflow_id)
 
-async def sync_to_webflow(notion_database_id: str = None, 
+async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: str, webflow_id_map: Dict[str, Any],
+                             required_fields: List[str], blog_status_property_name: str, webflow_id_property_name: str,
+                             field_mapping: Dict[str, str]) -> Tuple[str, int, int, int, int, int]:
+    """
+    Process a single Notion page for Webflow sync.
+
+    Returns:
+        Tuple of (page_id, created, updated, deleted, skipped, error)
+    """
+    page_id = page_data.get("id")
+    if not page_id:
+        return "", 0, 0, 0, 0, 1
+
+    try:
+        current_blog_status = await get_page_property(page_id, blog_status_property_name)
+        stored_webflow_id_on_notion = await get_page_property(page_id, webflow_id_property_name)
+
+        # Ensure stored_webflow_id_on_notion is a string or None
+        if not isinstance(stored_webflow_id_on_notion, str) or not stored_webflow_id_on_notion.strip():
+            stored_webflow_id_on_notion = None
+
+        if current_blog_status == "Live":
+            # Live pages are kept as-is
+            return page_id, 0, 0, 0, 1, 0
+
+        elif current_blog_status == "Don't sync":
+            if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
+                try:
+                    delete_success = get_webflow_client(silent=True).delete_item(webflow_collection_id, stored_webflow_id_on_notion)
+                    if delete_success:
+                        await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
+                        return page_id, 0, 0, 1, 0, 0
+                    else:
+                        return page_id, 0, 0, 0, 0, 1
+                except Exception:
+                    return page_id, 0, 0, 0, 0, 1
+            elif stored_webflow_id_on_notion:
+                await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
+            return page_id, 0, 0, 0, 1, 0
+
+        elif current_blog_status in ["To sync", "Update on sync"]:
+            # Convert Notion page to Webflow data
+            webflow_data_payload, _ = await notion_to_webflow_item(page_data, field_mapping, webflow_id_property_name)
+            slug = webflow_data_payload.get("slug", f"page-{page_id[:8]}")
+
+            # Validate required fields
+            missing_fields = [rf for rf in required_fields if rf not in webflow_data_payload or not webflow_data_payload.get(rf)]
+            if missing_fields:
+                return page_id, 0, 0, 0, 0, 1
+
+            # Simple logic: ID exists in Webflow = UPDATE, else = CREATE
+            if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
+                # UPDATE: Remove slug from payload
+                update_payload = webflow_data_payload.copy()
+                update_payload.pop("slug", None)
+
+                response = get_webflow_client(silent=True).update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
+                if response:
+                    # Update status: "To sync" → "Update on sync"
+                    if current_blog_status == "To sync":
+                        await update_page_blog_status(page_id, blog_status_property_name, "Update on sync")
+                    return page_id, 0, 1, 0, 0, 0
+                else:
+                    return page_id, 0, 0, 0, 0, 1
+
+            else:
+                # CREATE: Include slug in payload
+                response = get_webflow_client(silent=True).create_item(webflow_collection_id, webflow_data_payload)
+                if response and response.get("id"):
+                    new_webflow_id = response["id"]
+                    await update_webflow_id(page_id, new_webflow_id, property_name=webflow_id_property_name)
+
+                    # Update status: "To sync" → "Update on sync"
+                    if current_blog_status == "To sync":
+                        await update_page_blog_status(page_id, blog_status_property_name, "Update on sync")
+                    return page_id, 1, 0, 0, 0, 0
+                else:
+                    return page_id, 0, 0, 0, 0, 1
+        else:
+            # Unknown status
+            return page_id, 0, 0, 0, 1, 0
+
+    except Exception as e:
+        return page_id, 0, 0, 0, 0, 1
+
+
+async def sync_to_webflow(notion_database_id: str = None,
                          webflow_collection_id: str = None,
                          field_mapping: Dict[str, str] = None,
                          blog_status_property_name: str = "Blog Status",
                          webflow_id_property_name: str = "Webflow ID",
-                         force_update: bool = False
+                         force_update: bool = False,
+                         max_concurrent: int = 5
                          ) -> Tuple[int, int, int, int, int]:
     """
-    Sync Notion pages to Webflow CMS based on a 'Blog Status' property.
-    
+    Sync Notion pages to Webflow CMS based on a 'Blog Status' property with optimized async processing.
+
     Args:
         notion_database_id: ID of the Notion database. If None, will be fetched from config using nickname 'cms'.
         webflow_collection_id: ID of the Webflow collection.
@@ -421,183 +498,169 @@ async def sync_to_webflow(notion_database_id: str = None,
         blog_status_property_name: Name of the Notion select property for blog status (default: "Blog Status").
         webflow_id_property_name: Name of the Notion rich_text property storing the Webflow item ID (default: "Webflow ID").
         force_update: If True, attempts to update items even if status doesn't force it (e.g. "Live" items if modified).
-                                               However, "To sync" and "Update on sync" will always force update.
-        
+        max_concurrent: Maximum number of concurrent page processing operations.
+
     Returns:
         Tuple of (created_count, updated_count, deleted_count, skipped_count, error_count)
     """
-    # notion_database_id = notion_database_id or DEFAULT_NOTION_DATABASE_ID # Old way
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
     if notion_database_id is None:
         try:
             notion_database_id = get_notion_database_id("cms")
-            print(f"Using Notion database ID for 'cms' from config: {notion_database_id}") # Optional: for logging
         except (FileNotFoundError, ValueError) as e:
             raise ValueError(f"Error loading Notion database ID for 'cms': {e}. Please specify or configure in notion_config.json.") from e
 
     webflow_collection_id = webflow_collection_id or DEFAULT_WEBFLOW_COLLECTION_ID
-    
+
     if not notion_database_id:
         raise ValueError("No Notion database ID provided or configured for nickname 'cms'. Please specify or set in notion_config.json.")
     if not webflow_collection_id:
         raise ValueError("No Webflow collection ID provided. Please specify or set WEBFLOW_COLLECTION_ID.")
 
     created_count, updated_count, deleted_count, skipped_count, error_count = 0, 0, 0, 0, 0
-    
+
     target_statuses_for_fetch = ["To sync", "Update on sync", "Don't sync", "Live"]
-    print(f"Getting pages from Notion database {notion_database_id} with '{blog_status_property_name}' in {target_statuses_for_fetch}...")
+
+    # Clean, minimal status message
+    print("🔄 Syncing CMS content...")
+
     try:
         pages_to_process = await get_pages_by_blog_status(notion_database_id, blog_status_property_name, target_statuses_for_fetch)
     except Exception as e:
-        print(f"Error getting pages from Notion: {str(e)}")
-        return 0, 0, 0, 0, 1 # error_count = 1
-    
+        print(f"❌ Error getting pages from Notion: {str(e)}")
+        return 0, 0, 0, 0, 1
+
     if not pages_to_process:
-        print(f"No pages found with '{blog_status_property_name}' in {target_statuses_for_fetch}.")
-        # Update last sync time even if no pages, as an attempt was made
+        print("✅ No pages to sync")
         new_sync_time = update_last_sync_time()
-        print(f"Updated last sync time to: {new_sync_time}")
         return 0, 0, 0, 0, 0
 
-    print(f"Found {len(pages_to_process)} pages to potentially process based on '{blog_status_property_name}'.")
-
-    print("Getting all current items from Webflow collection...")
     try:
-        webflow_items = get_webflow_client().get_collection_items(webflow_collection_id) or []
-        print(f"Found {len(webflow_items)} existing items in Webflow.")
+        webflow_items = get_webflow_client(silent=True).get_collection_items(webflow_collection_id) or []
     except Exception as e:
-        print(f"Error getting Webflow items: {str(e)}. Proceeding with empty Webflow item list.")
+        print(f"❌ Error getting Webflow items: {str(e)}")
         webflow_items = []
-        # Potentially increment error_count here or decide if it's fatal
-    
-    webflow_id_map = {item["id"]: item for item in webflow_items if item and "id" in item}
-    processed_webflow_ids_in_this_run = set() # Tracks Webflow IDs handled (created, updated, explicitly kept for "Live")
 
-    # Get collection schema (required fields)
+    webflow_id_map = {item["id"]: item for item in webflow_items if item and "id" in item}
+
+    # Get collection schema (required fields) - silent operation
     try:
-        collection_fields = get_webflow_client().get_collection_fields(webflow_collection_id) or {}
+        collection_fields = get_webflow_client(silent=True).get_collection_fields(webflow_collection_id) or {}
         required_fields = [slug for slug, info in collection_fields.items() if info and info.get("required")]
-        print(f"Required fields in Webflow collection: {required_fields}")
-    except Exception as e:
-        print(f"Error getting collection fields: {str(e)}. Proceeding without required field validation.")
+    except Exception:
         required_fields = []
 
+    # Pre-filter pages by status to avoid unnecessary processing
+    pages_by_status = {"To sync": [], "Update on sync": [], "Don't sync": [], "Live": []}
 
-    for i, page_data_from_list in enumerate(pages_to_process, 1):
-        page_id = page_data_from_list.get("id")
+    for page_data in pages_to_process:
+        page_id = page_data.get("id")
         if not page_id:
-            print(f"\n[{i}/{len(pages_to_process)}] Skipping invalid page data (no ID).")
             error_count += 1
             continue
 
-        print(f"\n[{i}/{len(pages_to_process)}] Processing Notion page: {page_id}")
-        
         try:
             current_blog_status = await get_page_property(page_id, blog_status_property_name)
-            stored_webflow_id_on_notion = await get_page_property(page_id, webflow_id_property_name)
-            
-            # Ensure stored_webflow_id_on_notion is a string or None
-            if not isinstance(stored_webflow_id_on_notion, str) or not stored_webflow_id_on_notion.strip():
-                stored_webflow_id_on_notion = None
-
-            print(f"  Notion Page ID: {page_id}, Status: '{current_blog_status}', Stored Webflow ID: {stored_webflow_id_on_notion}")
-
-            if current_blog_status == "Live":
-                print(f"  Status is 'Live'. Skipping active sync. Ensuring it's not deleted from Webflow if present.")
-                if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
-                    processed_webflow_ids_in_this_run.add(stored_webflow_id_on_notion)
-                skipped_count += 1
-                continue
-
-            elif current_blog_status == "Don't sync":
-                print(f"  Status is 'Don't sync'.")
-                if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
-                    print(f"  Attempting to delete Webflow item ID: {stored_webflow_id_on_notion}")
-                    try:
-                        delete_success = get_webflow_client().delete_item(webflow_collection_id, stored_webflow_id_on_notion)
-                        if delete_success:
-                            print(f"  ✓ Successfully deleted Webflow item: {stored_webflow_id_on_notion}")
-                            deleted_count += 1
-                            # Clear Webflow ID from Notion
-                            await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
-                        else:
-                            print(f"  ✗ Webflow client indicated delete failed for item: {stored_webflow_id_on_notion}")
-                            error_count +=1
-                    except Exception as e_del:
-                        print(f"  ✗ Error deleting Webflow item {stored_webflow_id_on_notion}: {str(e_del)}")
-                        error_count += 1
-                elif stored_webflow_id_on_notion: # ID in Notion but not in Webflow map
-                     print(f"  Webflow ID {stored_webflow_id_on_notion} found in Notion but not in Webflow. Clearing from Notion.")
-                     await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
-                else:
-                    print("  No Webflow ID in Notion. Nothing to delete.")
-                # Item handled, even if just by doing nothing for deletion
-                if stored_webflow_id_on_notion: # if there was an ID, it's "handled"
-                     processed_webflow_ids_in_this_run.add(stored_webflow_id_on_notion) # Add to prevent re-deletion if error occurs
-                skipped_count += 1 # Counts as skipped if no active push/update
-                continue
-
-            elif current_blog_status in ["To sync", "Update on sync"]:
-                # Convert Notion page to Webflow data
-                webflow_data_payload, _ = await notion_to_webflow_item(page_data_from_list, field_mapping, webflow_id_property_name)
-                slug = webflow_data_payload.get("slug", f"page-{page_id[:8]}")
-                
-                # Validate required fields
-                missing_fields = [rf for rf in required_fields if rf not in webflow_data_payload or not webflow_data_payload.get(rf)]
-                if missing_fields:
-                    print(f"  ✗ Missing required fields: {', '.join(missing_fields)}")
-                    error_count += 1
-                    continue
-
-                # Simple logic: ID exists in Webflow = UPDATE, else = CREATE
-                if stored_webflow_id_on_notion and stored_webflow_id_on_notion in webflow_id_map:
-                    # UPDATE: Remove slug from payload
-                    update_payload = webflow_data_payload.copy()
-                    update_payload.pop("slug", None)
-                    print(f"  Updating Webflow item: {stored_webflow_id_on_notion}")
-                    
-                    response = get_webflow_client().update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
-                    if response:
-                        updated_count += 1
-                        processed_webflow_ids_in_this_run.add(stored_webflow_id_on_notion)
-                        print(f"  ✓ Updated: {slug}")
-                    else:
-                        print(f"  ✗ Update failed: {slug}")
-                        error_count += 1
-                        
-                else:
-                    # CREATE: Include slug in payload
-                    print(f"  Creating new Webflow item: {slug}")
-                    
-                    response = get_webflow_client().create_item(webflow_collection_id, webflow_data_payload)
-                    if response and response.get("id"):
-                        new_webflow_id = response["id"]
-                        created_count += 1
-                        processed_webflow_ids_in_this_run.add(new_webflow_id)
-                        print(f"  ✓ Created: {slug} (ID: {new_webflow_id})")
-                        
-                        # Update Notion with new Webflow ID
-                        await update_webflow_id(page_id, new_webflow_id, property_name=webflow_id_property_name)
-                        
-                        # Clear stale ID if we had one
-                        if stored_webflow_id_on_notion:
-                            print(f"  ✓ Replaced stale ID with new ID")
-                    else:
-                        print(f"  ✗ Create failed: {slug}")
-                        error_count += 1
-                
-                # Update status: "To sync" → "Update on sync"
-                if current_blog_status == "To sync":
-                    await update_page_blog_status(page_id, blog_status_property_name, "Update on sync")
-            else:
-                print(f"  Unknown blog status: '{current_blog_status}'. Skipping page.")
-                skipped_count += 1
-                error_count +=1 # Or just skip without error, depending on desired strictness
-        
+            if current_blog_status in target_statuses_for_fetch:
+                pages_by_status[current_blog_status].append(page_data)
         except Exception as e:
-            print(f"  ✗ Error processing page: {str(e)}")
             error_count += 1
-        finally:
-            print("-" * 40)
 
-    print(f"\nSync completed: {created_count} created, {updated_count} updated, {deleted_count} deleted, {skipped_count} skipped, {error_count} errors")
+    # Show what we're working with
+    total_to_process = len(pages_by_status['To sync']) + len(pages_by_status['Update on sync'])
+    if total_to_process > 0:
+        page_word = "page" if total_to_process == 1 else "pages"
+        print(f"📄 Processing {total_to_process} {page_word}...")
+
+        # Show which pages are being processed
+        sync_pages = pages_by_status["To sync"] + pages_by_status["Update on sync"]
+        for page_data in sync_pages:
+            page_id = page_data.get("id")
+            if page_id:
+                try:
+                    page_title = await get_page_property(page_id, "Name") or await get_page_property(page_id, "Title") or f"Page {page_id[:8]}"
+                    current_status = await get_page_property(page_id, blog_status_property_name)
+                    action = "Creating" if current_status == "To sync" else "Updating"
+                    print(f"   {action}: {page_title}")
+                except Exception:
+                    print(f"   Processing: Page {page_id[:8]}")
+
+    # Handle "Live" pages first (quick status check)
+    live_pages = pages_by_status["Live"]
+    for page_data in live_pages:
+        page_id = page_data.get("id")
+        stored_webflow_id = await get_page_property(page_id, webflow_id_property_name)
+        if stored_webflow_id and stored_webflow_id in webflow_id_map:
+            pass  # Keep track that this ID is still needed
+        skipped_count += 1
+
+    # Handle "Don't sync" pages (deletions)
+    dont_sync_pages = pages_by_status["Don't sync"]
+    for page_data in dont_sync_pages:
+        page_id = page_data.get("id")
+        stored_webflow_id = await get_page_property(page_id, webflow_id_property_name)
+
+        if stored_webflow_id and stored_webflow_id in webflow_id_map:
+            try:
+                delete_success = get_webflow_client(silent=True).delete_item(webflow_collection_id, stored_webflow_id)
+                if delete_success:
+                    await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
+                    deleted_count += 1
+                else:
+                    error_count += 1
+            except Exception:
+                error_count += 1
+        elif stored_webflow_id:
+            await update_webflow_id(page_id, None, property_name=webflow_id_property_name)
+        skipped_count += 1
+
+    # Process "To sync" and "Update on sync" pages concurrently
+    sync_pages = pages_by_status["To sync"] + pages_by_status["Update on sync"]
+
+    if sync_pages:
+        # Create semaphore for concurrency control
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def process_with_semaphore(page_data):
+            async with semaphore:
+                return await process_single_page(
+                    page_data, webflow_collection_id, webflow_id_map, required_fields,
+                    blog_status_property_name, webflow_id_property_name, field_mapping
+                )
+
+        # Process pages concurrently
+        tasks = [process_with_semaphore(page_data) for page_data in sync_pages]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                error_count += 1
+                continue
+
+            page_id, created, updated, deleted, skipped, error = result
+            created_count += created
+            updated_count += updated
+            deleted_count += deleted
+            skipped_count += skipped
+            error_count += error
+
+    # Update last sync time
+    new_sync_time = update_last_sync_time()
+
+    # Clean final summary
+    if created_count > 0 or updated_count > 0 or deleted_count > 0:
+        print("✅ Sync completed")
+        if created_count > 0:
+            print(f"   📝 Created: {created_count}")
+        if updated_count > 0:
+            print(f"   🔄 Updated: {updated_count}")
+        if deleted_count > 0:
+            print(f"   🗑️  Deleted: {deleted_count}")
+        if error_count > 0:
+            print(f"   ⚠️  Errors: {error_count}")
+    else:
+        print("✅ No changes needed")
     return created_count, updated_count, deleted_count, skipped_count, error_count 

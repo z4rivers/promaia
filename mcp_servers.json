@@ -47,6 +47,14 @@
         "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer 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\", \"Notion-Version\": \"2022-06-28\"}"
       },
       "enabled": true
+    },
+    "search": {
+      "description": "Internet search capability using DuckDuckGo",
+      "command": [
+        "/Users/kb20250422/Documents/dev/promaia/mcp_servers/search_server/search_server.py"
+      ],
+      "args": [],
+      "enabled": true
     }
   }
 }

@@ -482,6 +482,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     has_regular_sources = bool(sources)
     has_browse_command = bool(browse_databases) or bool(original_browse_command and '-b' in original_browse_command)
     has_natural_language = bool(natural_language_prompt)
+
     
     # Detect mixed browse+NL commands from CLI: sources from browser + natural language
     # These should use OR logic (independent operation) not AND logic (filtering)
@@ -497,9 +498,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     
     # Mixed command flow: -s sources + -b browse + -nl (optional)
     # This should: 1) Load -s sources first, 2) Launch browser with sources as context, 3) Process -nl last
-    if has_regular_sources and has_browse_command and not original_browse_command:
+    # Handle both cases: CLI launching browser first, or CLI already processed browser and calling with results
+    if has_regular_sources and has_browse_command and not browse_selections:
         debug_print("🔄 Detected mixed command: sources + browse. Processing in sequence...")
         print_text("🔄 Processing mixed command: loading sources first, then launching browser...", style="cyan")
+        
         
         # Step 1: Parse and prepare regular sources first
         print_text(f"📦 Preparing {len(sources)} regular sources for browser context...", style="cyan")
@@ -592,6 +595,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             browse_selections = selected_sources.copy()  # Store all selected sources
             
             print_text(f"✅ Browser selections: {len(browse_selections)} sources selected (will be stored for persistence)", style="green")
+            
+            # Store in context_state for /e functionality
+            context_state['browse_selections'] = browse_selections
         
         # Step 3: Store the original mixed command format and browser selections
         # Build the original command format to preserve -s and -b structure
@@ -698,22 +704,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'query_command': None,
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
         'natural_language_content': natural_language_content,  # Track if using natural language
-        'browse_selections': browse_selections,  # Store browser selections from CLI
+        'browse_selections': browse_selections if browse_selections is not None else [],  # Store browser selections from CLI
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
         'mcp_servers': mcp_servers,  # Store MCP server names to include
         'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
-        'browse_selections': browse_selections if browse_selections is not None else [],  # Store original browse selections for re-editing
+        'enable_search': False,  # Store search functionality flag (starts disabled)
         'original_query_format': original_browse_command,  # Store the original query format for display
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command  # Flag for OR logic in NL processing
     }
-    
+
     # Update context_state with browse_selections if they were set during browser interaction
     # This handles the case where browse_selections were set locally but not captured in the parameter
     if 'browse_selections' in locals() and browse_selections:
         context_state['browse_selections'] = browse_selections
-        if DEBUG_MODE:
-            print_text(f"🔄 Updated context_state with {len(browse_selections)} browser selections", style="dim cyan")
+    # Also store browse_selections if passed as parameter (for CLI mixed commands)
+    elif browse_selections:
+        context_state['browse_selections'] = browse_selections
     
     # Debug: Show what browse_selections were stored
     # if browse_selections:
@@ -721,18 +728,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     def update_query_command():
         """Update the query command display based on current context state."""
-        # If we have an original query format (like -b), prefer showing that unless it needs updating
+        # If we have an original query format (mixed commands, browse commands, etc.), show it
         if context_state.get('original_query_format'):
-            # Only rebuild if the original format doesn't match current context
-            # Check if original format has -b and we have browse_selections
-            original_format = context_state['original_query_format']
-            has_browse_in_original = '-b ' in original_format
-            has_browse_selections = bool(context_state.get('browse_selections'))
-            
-            # If this looks like a browse command, preserve it
-            if has_browse_in_original:
-                context_state['query_command'] = original_format
-                return
+            context_state['query_command'] = context_state['original_query_format']
+            return
         
         # Otherwise, build the command from current state
         query_parts = ["maia", "chat"]
@@ -2363,7 +2362,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             # Always respect the stored selections as the primary source of truth for pre-population
             stored_browser_selections = context_state.get('browse_selections', [])
-            
+
             # Parse the original command to determine the scope of the browser
             original_format = context_state.get('original_query_format', '')
             if '-b' in original_format:
@@ -2757,6 +2756,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             current_filters = context_state.get('filters', [])
                             current_workspace = context_state.get('workspace')
                             current_nl_prompt = context_state.get('natural_language_prompt')
+                            # Clean up extra spaces in natural language prompt
+                            if current_nl_prompt:
+                                current_nl_prompt = ' '.join(current_nl_prompt.split())
                             current_browse_command = context_state.get('original_query_format')
                             
                             # Only save if we have meaningful content to save
@@ -2882,6 +2884,148 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 except Exception as e:
                     print_text(f"Error saving conversation: {e}", style="bold red")
                     debug_print(f"Save error details: {e}")
+                continue
+            elif user_input.strip().lower() == '/mcp search':
+                # Toggle internet search functionality
+                current_search = context_state.get('enable_search', False)
+                context_state['enable_search'] = not current_search
+
+                if context_state['enable_search']:
+                    # Enable search - add search MCP server if not already present
+                    if 'search' not in (context_state.get('mcp_servers') or []):
+                        if context_state.get('mcp_servers') is None:
+                            context_state['mcp_servers'] = ['search']
+                        else:
+                            context_state['mcp_servers'].append('search')
+
+                        # Reconnect MCP servers to include search
+                        if context_state.get('mcp_client'):
+                            try:
+                                # Disconnect existing servers
+                                import asyncio
+                                asyncio.run(context_state['mcp_client'].disconnect_all())
+
+                                # Reconnect with search server included
+                                from promaia.config.mcp_servers import get_mcp_manager
+                                from promaia.mcp.client import McpClient
+                                from promaia.mcp.execution import McpToolExecutor
+
+                                mcp_manager = get_mcp_manager()
+                                mcp_client = McpClient()
+
+                                connected_servers = []
+                                for server_name in context_state['mcp_servers']:
+                                    server_config = mcp_manager.get_server(server_name)
+                                    if server_config:
+                                        success = asyncio.run(mcp_client.connect_to_server(server_config))
+                                        if success:
+                                            connected_servers.append(server_name)
+
+                                # Update context with new MCP client
+                                context_state['mcp_client'] = mcp_client
+                                context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+
+                                # Update system prompt with new tools
+                                mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                                context_state['mcp_tools_info'] = mcp_tools_info
+
+                                # Regenerate system prompt with new tools
+                                system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                context_state['system_prompt'] = system_prompt
+
+                                print_text("🔍 Internet search enabled and MCP servers reconnected!", style="bold green")
+                                print_text("💡 You can now ask the AI to search the web by saying things like:", style="cyan")
+                                print_text("   'search the web for information about X' or 'find Y online'", style="dim cyan")
+                            except Exception as e:
+                                print_text(f"Error reconnecting MCP servers: {e}", style="bold red")
+                        else:
+                            # Update MCP tools info even without reconnection
+                            from promaia.config.mcp_servers import get_mcp_manager
+                            from promaia.mcp.client import McpClient
+                            mcp_manager = get_mcp_manager()
+                            mcp_client = McpClient()
+
+                            # Get tools info for current servers
+                            connected_servers = context_state.get('mcp_servers', [])
+                            mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                            context_state['mcp_tools_info'] = mcp_tools_info
+
+                            # Count available tools
+                            if 'search' in connected_servers:
+                                print_text("🔍 Internet search enabled!", style="bold green")
+                                print_text("💡 You can now ask the AI to search the web by saying things like:", style="cyan")
+                                print_text("   'search the web for information about X' or 'find Y online'", style="dim cyan")
+                            else:
+                                print_text("🔍 Internet search enabled", style="bold green")
+
+                            # Regenerate system prompt with new tools
+                            system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                            context_state['system_prompt'] = system_prompt
+                    else:
+                        print_text("🔍 Internet search enabled", style="bold green")
+                else:
+                    # Disable search - remove search MCP server
+                    if context_state.get('mcp_servers') and 'search' in context_state['mcp_servers']:
+                        context_state['mcp_servers'].remove('search')
+
+                        # Reconnect MCP servers without search
+                        if context_state.get('mcp_client'):
+                            try:
+                                import asyncio
+                                from promaia.config.mcp_servers import get_mcp_manager
+                                from promaia.mcp.client import McpClient
+                                from promaia.mcp.execution import McpToolExecutor
+
+                                # Disconnect existing servers
+                                asyncio.run(context_state['mcp_client'].disconnect_all())
+
+                                # Reconnect without search server
+                                mcp_manager = get_mcp_manager()
+                                mcp_client = McpClient()
+
+                                connected_servers = []
+                                for server_name in context_state['mcp_servers']:
+                                    server_config = mcp_manager.get_server(server_name)
+                                    if server_config:
+                                        success = asyncio.run(mcp_client.connect_to_server(server_config))
+                                        if success:
+                                            connected_servers.append(server_name)
+
+                                # Update context with new MCP client
+                                context_state['mcp_client'] = mcp_client
+                                context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+
+                                # Update system prompt with new tools
+                                mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                                context_state['mcp_tools_info'] = mcp_tools_info
+
+                                # Regenerate system prompt with new tools
+                                system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                context_state['system_prompt'] = system_prompt
+
+                                print_text("🔍 Internet search disabled and MCP servers reconnected", style="bold yellow")
+                            except Exception as e:
+                                print_text(f"Error reconnecting MCP servers: {e}", style="bold red")
+                        else:
+                            # Update MCP tools info even without reconnection
+                            from promaia.config.mcp_servers import get_mcp_manager
+                            from promaia.mcp.client import McpClient
+                            mcp_manager = get_mcp_manager()
+                            mcp_client = McpClient()
+
+                            # Get tools info for current servers
+                            connected_servers = context_state.get('mcp_servers', [])
+                            mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                            context_state['mcp_tools_info'] = mcp_tools_info
+
+                            # Regenerate system prompt with new tools
+                            system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                            context_state['system_prompt'] = system_prompt
+
+                            print_text("🔍 Internet search disabled - web search tools removed", style="bold yellow")
+                    else:
+                        print_text("🔍 Internet search disabled", style="bold yellow")
+
                 continue
 
             if not user_input.strip():

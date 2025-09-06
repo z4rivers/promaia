@@ -44,9 +44,10 @@ class RecentQuery:
             if self.filters:
                 for filter_expr in self.filters:
                     parts.append(f"-f '{filter_expr}'")
-            if self.workspace:
+            # Only show workspace if there are other parameters or if it's the only parameter and meaningful
+            if self.workspace and (self.sources or self.filters or len(str(self.workspace)) > 3):
                 parts.append(f"-ws {self.workspace}")
-            
+
             command_str = f"maia chat {' '.join(parts)}" if parts else "maia chat"
         
         # Add timestamp for display

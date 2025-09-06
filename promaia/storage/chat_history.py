@@ -8,6 +8,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 @dataclass
 class ChatThread:
     """Represents a chat thread/conversation."""
@@ -51,11 +58,19 @@ class ChatHistoryManager:
         """Load chat threads from file."""
         if not os.path.exists(self.history_file):
             return []
-        
+
         try:
             with open(self.history_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return [ChatThread.from_dict(item) for item in data]
+                threads = []
+                for item in data:
+                    # Ensure timestamp fields are strings (handle legacy data)
+                    if 'last_accessed' in item and isinstance(item['last_accessed'], datetime):
+                        item['last_accessed'] = item['last_accessed'].isoformat()
+                    if 'created_at' in item and isinstance(item['created_at'], datetime):
+                        item['created_at'] = item['created_at'].isoformat()
+                    threads.append(ChatThread.from_dict(item))
+                return threads
         except (json.JSONDecodeError, KeyError, TypeError):
             # If file is corrupted, start fresh
             return []
@@ -64,7 +79,7 @@ class ChatHistoryManager:
         """Save chat threads to file."""
         try:
             with open(self.history_file, 'w', encoding='utf-8') as f:
-                json.dump([item.to_dict() for item in threads], f, indent=2)
+                json.dump([item.to_dict() for item in threads], f, indent=2, cls=DateTimeEncoder)
         except Exception as e:
             print(f"Warning: Could not save chat history: {e}")
     

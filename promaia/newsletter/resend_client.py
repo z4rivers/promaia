@@ -9,15 +9,16 @@ from promaia.utils.display import print_text, print_separator
 
 class ResendClient:
     """Simple client for sending emails via Resend API."""
-    
-    def __init__(self, api_key: Optional[str] = None):
+
+    def __init__(self, api_key: Optional[str] = None, silent: bool = False):
         """Initialize Resend client."""
         self.api_key = api_key or os.getenv("RESEND_API_KEY")
         if not self.api_key:
             raise ValueError("RESEND_API_KEY environment variable is required")
-        
+
         # Set the API key for resend
         resend.api_key = self.api_key
+        self.silent = silent
     
     def send_newsletter(
         self, 
@@ -26,7 +27,8 @@ class ResendClient:
         html_content: Optional[str] = None,
         from_email: Optional[str] = None,
         from_name: Optional[str] = None,
-        to_emails: Optional[List[str]] = None
+        to_emails: Optional[List[str]] = None,
+        reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Send a newsletter email using Resend.
@@ -38,6 +40,7 @@ class ResendClient:
             from_email: Sender email (defaults to env var)
             from_name: Sender name (defaults to env var)
             to_emails: List of recipient emails (defaults to test email)
+            reply_to: Reply-to email address (defaults to a working email)
             
         Returns:
             Dictionary with send results
@@ -45,6 +48,10 @@ class ResendClient:
         # Default values from environment
         from_email = from_email or os.getenv("RESEND_FROM_EMAIL", "newsletter@koiibenvenutto.com")
         from_name = from_name or os.getenv("RESEND_FROM_NAME", "Koii Benvenutto")
+        
+        # Set reply-to to a working email address (use test email as default working address)
+        if not reply_to:
+            reply_to = os.getenv("RESEND_REPLY_TO", os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com"))
         
         # For testing, send to yourself or test emails
         if not to_emails:
@@ -56,32 +63,25 @@ class ResendClient:
             html_content = self._plain_text_to_html(plain_text)
         
         try:
-            print_text(f"   �� Sending newsletter via Resend...", style="white")
-            print_text(f"   📧 Subject: {subject}", style="white")
-            print_text(f"   📧 From: {from_name} <{from_email}>", style="white")
-            print_text(f"   📧 To: {to_emails}", style="white")
-            print_text(f"   📧 Content length: {len(plain_text)} characters", style="white")
-            
             # Send the email
             response = resend.Emails.send({
                 "from": f"{from_name} <{from_email}>",
                 "to": to_emails,
                 "subject": subject,
                 "text": plain_text,
-                "html": html_content
+                "html": html_content,
+                "reply_to": reply_to
             })
-            
-            print_text("   ✅ Email sent successfully!", style="green")
-            print_text(f"   📧 Resend ID: {response.get('id', 'Unknown')}", style="white")
-            
+
             return {
                 "success": True,
                 "email_id": response.get("id"),
                 "response": response
             }
-            
+
         except Exception as e:
-            print_text(f"   ❌ Error sending email: {str(e)}", style="red")
+            if not self.silent:
+                print(f"❌ Error sending email: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -140,13 +140,13 @@ class ResendClient:
                 html_lines.append(f'<p style="margin: 8px 0;"><a href="{line}" style="color: #007acc; text-decoration: underline;">{line}</a></p>')
                 continue
             
-            # Lines that contain "Read the full post:" - make the URL clickable
-            if "📖 Read the full post:" in line:
+            # Lines that contain "Read on website:" - make the URL clickable
+            if "📖 Read on website:" in line:
                 url_match = re.search(r'https?://[^\s]+', line)
                 if url_match:
                     url = url_match.group(0)
                     # Replace the entire line with just the clickable link
-                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">📖 <a href="{url}" style="color: #007acc; text-decoration: underline; font-weight: bold;">Read the full post</a></p>')
+                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">📖 <a href="{url}" style="color: #007acc; text-decoration: underline; font-weight: bold;">Read on website</a></p>')
                     continue
             
             # Lines that contain "Subscribe:" - make the URL clickable
@@ -177,13 +177,120 @@ class ResendClient:
         
         return html.strip()
 
+    def send_broadcast_to_audience(
+        self,
+        subject: str,
+        plain_text: str,
+        html_content: Optional[str] = None,
+        from_email: Optional[str] = None,
+        from_name: Optional[str] = None,
+        audience_id: Optional[str] = None,
+        reply_to: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a broadcast email to a Resend audience.
+        
+        Args:
+            subject: Email subject line
+            plain_text: Plain text content
+            html_content: Optional HTML content (if None, will be generated from plain_text)
+            from_email: Sender email (defaults to env var)
+            from_name: Sender name (defaults to env var)
+            audience_id: Resend audience ID (defaults to env var)
+            reply_to: Reply-to email address (defaults to a working email)
+            
+        Returns:
+            Dictionary with send results
+        """
+        # Default values from environment
+        from_email = from_email or os.getenv("RESEND_FROM_EMAIL", "newsletter@koiibenvenutto.com")
+        from_name = from_name or os.getenv("RESEND_FROM_NAME", "Koii Benvenutto")
+        audience_id = audience_id or os.getenv("RESEND_AUDIENCE_ID")
+        
+        if not audience_id:
+            return {
+                "success": False,
+                "error": "No audience ID provided. Set RESEND_AUDIENCE_ID environment variable."
+            }
+        
+        # Set reply-to to a working email address
+        if not reply_to:
+            reply_to = os.getenv("RESEND_REPLY_TO", os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com"))
+        
+        # Generate simple HTML from plain text if not provided
+        if not html_content:
+            html_content = self._plain_text_to_html(plain_text)
+        
+        # Add unsubscribe link to HTML content
+        if "RESEND_UNSUBSCRIBE_URL" not in html_content:
+            html_content = html_content.replace(
+                "</body>",
+                '<p style="margin: 20px 0 10px 0; font-size: 12px; color: #888;"><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color: #888;">Unsubscribe</a></p></body>'
+            )
+        
+        try:
+            # Two-step process: CREATE then SEND broadcast
+            import requests
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            # Step 1: Create the broadcast
+            create_params = {
+                "audience_id": audience_id,  # Correct field name from documentation
+                "from": f"{from_name} <{from_email}>",
+                "reply_to": reply_to,
+                "subject": subject,
+                "text": plain_text,
+                "html": html_content
+            }
+
+            create_url = "https://api.resend.com/broadcasts"
+            create_response = requests.post(create_url, json=create_params, headers=headers)
+
+            if create_response.status_code not in [200, 201]:
+                raise Exception(f"Failed to create broadcast (status {create_response.status_code}): {create_response.text}")
+
+            create_data = create_response.json()
+            broadcast_id = create_data.get('id')
+            if not broadcast_id:
+                raise Exception(f"No broadcast ID returned from create: {create_data}")
+
+            # Step 2: Send the broadcast
+            send_url = f"https://api.resend.com/broadcasts/{broadcast_id}/send"
+            send_response = requests.post(send_url, headers=headers)
+
+            if send_response.status_code not in [200, 201]:
+                raise Exception(f"Failed to send broadcast (status {send_response.status_code}): {send_response.text}")
+
+            send_data = send_response.json()
+
+            return {
+                "success": True,
+                "broadcast_id": broadcast_id,
+                "response": {
+                    "create": create_data,
+                    "send": send_data
+                }
+            }
+
+        except Exception as e:
+            if not self.silent:
+                print(f"❌ Error sending broadcast: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
 
 # Default client instance
 resend_client = None
 
-def get_resend_client() -> ResendClient:
+def get_resend_client(silent: bool = False) -> ResendClient:
     """Get or create default Resend client."""
     global resend_client
-    if resend_client is None:
-        resend_client = ResendClient()
+    if resend_client is None or resend_client.silent != silent:
+        resend_client = ResendClient(silent=silent)
     return resend_client 

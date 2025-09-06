@@ -19,6 +19,7 @@ def create_system_prompt(
     """
     today = datetime.datetime.now()
     today_str = today.strftime("%Y-%m-%d")
+    current_time_str = today.strftime("%H:%M")
 
     try:
         with open(PROMPT_FILE_PATH, 'r', encoding='utf-8') as f:
@@ -27,8 +28,9 @@ def create_system_prompt(
     except FileNotFoundError:
         logger.error(f"System prompt file not found at {PROMPT_FILE_PATH}. Using a fallback prompt.")
         base_prompt = "You are a helpful AI assistant. Today's date is {today_date}."
-    
+
     base_prompt = base_prompt.replace("{today_date}", today_str)
+    base_prompt = base_prompt.replace("{current_time}", current_time_str)
     
     # Append data sources
     base_prompt += f"\n\n## Context ({sum(len(pages) for pages in multi_source_data.values())} total entries):"
