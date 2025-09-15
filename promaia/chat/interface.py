@@ -1315,6 +1315,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         system_prompt = create_system_prompt(new_multi_source_data, mcp_tools_info)
         context_state['system_prompt'] = system_prompt
         
+        # Save context log when MCP servers are connected (for transparency)
+        if context_state.get('mcp_servers') and mcp_tools_info:
+            save_context_log(context_state, system_prompt, new_total_pages_loaded, current_api, "mcp_connection")
+        
         # Debug: Log context reload details
         if DEBUG_MODE:
             debug_print(f"Context Reload: {len(new_multi_source_data)} data sources loaded")
@@ -2932,6 +2936,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 # Regenerate system prompt with new tools
                                 system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
                                 context_state['system_prompt'] = system_prompt
+
+                                # Save context log when MCP servers are connected (for transparency)
+                                save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "mcp_connection")
 
                                 print_text("🔍 Internet search enabled and MCP servers reconnected!", style="bold green")
                                 print_text("💡 You can now ask the AI to search the web by saying things like:", style="cyan")
