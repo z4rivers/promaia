@@ -1,1 +1,0 @@
-WORKSPACE RULE: Workspace is just a classifier/tag for convenience. NOT mandatory. Natural language queries should always allow cross-workspace access by default.

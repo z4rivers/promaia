@@ -14,8 +14,8 @@ from promaia.storage.files import read_markdown_files_with_registry
 from promaia.utils.config import load_environment
 load_environment()
 
-# Import our LangGraph system
-from .langgraph_query_system import IntelligentQueryProcessor
+# Import our LangGraph system with REAL examples
+from .langgraph_query_system_new import IntelligentQueryProcessor
 
 
 class PromaiLLMAdapter:
@@ -28,7 +28,7 @@ class PromaiLLMAdapter:
     def _setup_client(self):
         """Setup the appropriate LLM client with fallback handling."""
         if self.client_type == "auto":
-            # Try clients in order with proper error handling
+            # Try clients in order with proper error handling - CLAUDE FIRST for better constraint following
             api_keys = [
                 ("ANTHROPIC_API_KEY", "anthropic"),
                 ("OPENAI_API_KEY", "openai"),
@@ -38,7 +38,11 @@ class PromaiLLMAdapter:
             for env_key, client_type in api_keys:
                 if os.getenv(env_key):
                     try:
-                        if client_type == "anthropic":
+                        if client_type == "openai":
+                            self.client_type = "openai"
+                            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                            return  # Success
+                        elif client_type == "anthropic":
                             self.client_type = "anthropic"
                             self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
                             # Test the client with a minimal call
@@ -47,10 +51,6 @@ class PromaiLLMAdapter:
                                 max_tokens=10,
                                 messages=[{"role": "user", "content": "test"}]
                             )
-                            return  # Success
-                        elif client_type == "openai":
-                            self.client_type = "openai"
-                            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
                             return  # Success
                         elif client_type == "gemini":
                             self.client_type = "gemini"
@@ -87,15 +87,7 @@ class PromaiLLMAdapter:
             prompt = str(messages)
             
         # Call the appropriate client
-        if self.client_type == "anthropic":
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                messages=[{"role": "user", "content": prompt.strip()}]
-            )
-            return MockResponse(response.content[0].text)
-            
-        elif self.client_type == "openai":
+        if self.client_type == "openai":
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt.strip()}],
@@ -103,13 +95,20 @@ class PromaiLLMAdapter:
             )
             return MockResponse(response.choices[0].message.content)
             
+        elif self.client_type == "anthropic":
+            response = self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4000,
+                messages=[{"role": "user", "content": prompt.strip()}]
+            )
+            return MockResponse(response.content[0].text)
+            
         elif self.client_type == "gemini":
             response = self.client.generate_content(prompt.strip())
             return MockResponse(response.text)
         
         else:
             raise ValueError(f"Unknown client type: {self.client_type}")
-    
     def with_structured_output(self, schema_class):
         """Mock structured output for compatibility."""
         return StructuredOutputAdapter(self, schema_class)
@@ -214,8 +213,7 @@ class IntelligentNaturalLanguageProcessor:
             
             print(f"✅ Intelligent NL processor initialized with {self.llm.client_type} client")
         except Exception as e:
-            print(f"⚠️  Intelligent NL processor disabled: {e}")
-            print("   Falling back to pattern-based processing")
+            print(f"⚠️  didn't work sorry: {e}")
 
     def process_query(self, user_query: str, scope_databases: List[str] = None) -> Dict[str, Any]:
         """
@@ -330,7 +328,19 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
                     cursor = conn.cursor()
                     
                     # Create a query to get full Gmail content for the target page IDs
-                    placeholders = ','.join(['?' for _ in target_page_ids])
+                    # Handle both page_id formats: with and without 'msg_' prefix
+                    all_page_ids = []
+                    for pid in target_page_ids:
+                        all_page_ids.append(pid)  # Original format
+                        if not pid.startswith('msg_'):
+                            all_page_ids.append(f'msg_{pid}')  # Add msg_ prefix
+                        else:
+                            all_page_ids.append(pid[4:])  # Remove msg_ prefix
+                    
+                    if os.getenv("MAIA_DEBUG") == "1":
+                        print(f"   Searching gmail_content for page_ids: {all_page_ids[:10]}...")
+                    
+                    placeholders = ','.join(['?' for _ in all_page_ids])
                     query = f"""
                         SELECT 
                             page_id,
@@ -351,7 +361,7 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
                         WHERE page_id IN ({placeholders})
                     """
                     
-                    cursor.execute(query, list(target_page_ids))
+                    cursor.execute(query, all_page_ids)
                     gmail_results = []
                     for row in cursor.fetchall():
                         gmail_entry = dict(row)
@@ -382,9 +392,16 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
         if db_config.source_type in ['discord']:
             if os.getenv("MAIA_DEBUG") == "1":
                 print(f"   Discord source detected - returning metadata entries directly")
+                print(f"   Discord entries to return: {len(metadata_entries)}")
+                if metadata_entries:
+                    sample = metadata_entries[0]
+                    print(f"   Sample Discord entry content length: {len(str(sample.get('content', '')))}")
             return metadata_entries
         
         # Load all content from database and filter to matching entries
+        if os.getenv("MAIA_DEBUG") == "1":
+            print(f"   Loading content via markdown files for {db_config.source_type} source")
+        
         all_pages = read_markdown_files_with_registry(
             database_config=db_config,
             days=None,  # Load all entries to find the ones we need
@@ -413,6 +430,9 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
                 print(f"   Sample page keys: {list(sample_page.keys()) if hasattr(sample_page, 'keys') else 'Not a dict'}")
                 print(f"   Sample page_id: {sample_page.get('page_id') if hasattr(sample_page, 'get') else 'No get method'}")
             print(f"   Found {len(matching_pages)} matching pages")
+            if matching_pages:
+                sample_match = matching_pages[0]
+                print(f"   Sample matching page content length: {len(str(sample_match.get('content', '')))}")
         
         print(f"📄 Loaded {len(matching_pages)} full content entries for {db_name}")
         return matching_pages
@@ -447,10 +467,23 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None,
             print(f"   Complexity: {intent.get('complexity_level', 'Unknown')}")
             print(f"   Sources: {list(result['results'].keys())}")
             
+            # DEBUG: Show what was found by the intelligent processor
+            if os.getenv("MAIA_DEBUG") == "1":
+                print(f"\n🔍 RAW RESULTS FROM LANGGRAPH:")
+                for db_name, entries in result["results"].items():
+                    print(f"   {db_name}: {len(entries)} entries")
+                    if entries:
+                        sample_entry = entries[0]
+                        print(f"   Sample entry keys: {list(sample_entry.keys())}")
+                        print(f"   Sample page_id: {sample_entry.get('page_id', 'N/A')}")
+                        print(f"   Sample content preview: {str(sample_entry.get('content', sample_entry.get('message_content', 'N/A')))[:100]}...")
+            
             # IMPORTANT: Load full content for each found entry
             # The LangGraph system only returns metadata - we need actual content for chat
             enriched_results = {}
             for db_name, entries in result["results"].items():
+                if os.getenv("MAIA_DEBUG") == "1":
+                    print(f"\n🔄 LOADING FULL CONTENT for {db_name} ({len(entries)} entries)")
                 enriched_results[db_name] = _load_full_content_for_entries(db_name, entries, workspace)
             
             return enriched_results

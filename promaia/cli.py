@@ -1053,15 +1053,16 @@ def chat_run(args):
                 browse_args.append(item)
     
     # Detect mixed commands: when user provides sources + browse, OR browse + natural language
-    has_mixed_command = (bool(sources) and bool(browse_args)) or (bool(browse_args) and hasattr(args, 'natural_language') and args.natural_language)
+    # ANY command with browse args should be treated as a mixed command to ensure browser launches first
+    has_mixed_command = bool(browse_args) and (bool(sources) or (hasattr(args, 'natural_language') and args.natural_language))
     
     if browse_args is not None:
         # If this is a mixed command, handle it specially
         if has_mixed_command:
             if sources and browse_args:
-                print_text("🔄 Detected mixed command with sources and browse. Using unified handling...", style="cyan")
+                print_text("🔄 Detected mixed command with sources and browse. Browser will launch first...", style="cyan")
             else:
-                print_text("🔄 Detected mixed command with browse and natural language. Using unified handling...", style="cyan")
+                print_text("🔄 Detected mixed command with browse and natural language. Browser will launch first...", style="cyan")
             
             # browse_args is already flattened earlier
             browse_databases = browse_args or []
@@ -1184,11 +1185,16 @@ def chat_run(args):
                             else:
                                 database_filter.append(browse_spec)
 
-                    # For mixed commands, launch browser with all workspace sources pre-selected
-                    print_text(f"🔍 Launching browser with sources from: {', '.join(workspace_names_found)}...", style="cyan")
+                    # For mixed commands, launch browser UI with pre-selected sources
+                    print_text(f"🔍 Launching browser UI for workspaces: {', '.join(workspace_names_found)}...", style="cyan")
 
-                    # Build list of all available sources from workspaces for pre-selection
+                    # Build pre-selected sources prioritizing user's explicit sources
                     preselected_sources = []
+                    
+                    # Get default sources from chat config
+                    from promaia.utils.config import get_chat_default_sources, get_chat_default_days
+                    default_chat_sources = get_chat_default_sources()
+                    default_chat_days = get_chat_default_days()
 
                     # First, create a map of user's explicit sources for overriding
                     user_source_map = {}
@@ -1199,6 +1205,10 @@ def chat_run(args):
                         else:
                             user_source_map[source_spec] = source_spec
 
+                    # Add user's explicit sources first
+                    preselected_sources.extend(sources)
+
+                    # Then add databases with default_include that aren't already specified
                     for workspace_name in workspace_names_found:
                         # Get all databases for this workspace
                         workspace_databases = db_manager.get_workspace_databases(workspace_name)
@@ -1206,32 +1216,26 @@ def chat_run(args):
                             if db.sync_enabled:
                                 qualified_name = db.get_qualified_name()
 
-                                # Check if user specified this database explicitly
-                                if qualified_name in user_source_map:
-                                    # Use user's specification
-                                    preselected_sources.append(user_source_map[qualified_name])
-                                else:
+                                # Only add if not already specified by user and has default_include=true
+                                if qualified_name not in user_source_map and db.default_include:
                                     # Use appropriate default days
                                     if default_days and isinstance(default_days, int) and default_days > 0:
                                         days_to_use = default_days
                                     elif db.default_days and isinstance(db.default_days, int) and db.default_days > 0:
                                         days_to_use = db.default_days
                                     else:
-                                        days_to_use = 7  # Reasonable fallback
+                                        days_to_use = default_chat_days
                                     preselected_sources.append(f"{qualified_name}:{days_to_use}")
 
-                    if not preselected_sources:
-                        print_text("ℹ️  No sources available in specified workspaces. Cannot proceed.", style="yellow")
-                        return
-
-                    print_text(f"✅ Pre-selected {len(preselected_sources)} sources for browser", style="green")
-                    # Launch the browser with pre-selected sources
+                    print_text(f"🎯 Pre-selecting {len(preselected_sources)} sources (user + config defaults)", style="green")
+                    
+                    # Launch the browser UI with pre-selected sources
                     from promaia.cli.workspace_browser import launch_unified_browser
                     selected_sources = launch_unified_browser(
                         original_workspace,
                         default_days,
                         database_filter,
-                        preselected_sources
+                        preselected_sources  # Pass pre-selected sources for UI
                     )
 
                     print_text(f"✅ Selected {len(selected_sources) if selected_sources else 0} sources from browser", style="green")
@@ -1356,28 +1360,43 @@ def chat_run(args):
                             else:
                                 database_filter.append(browse_spec)
                     
-                    # For mixed commands, automatically select all available sources instead of interactive browser
-                    print_text(f" About to auto-select from workspace_names_found={workspace_names_found}", style="yellow")
-                    print_text(f"🔍 Auto-selecting sources from: {', '.join(workspace_names_found)}...", style="cyan")
-
-                    selected_sources = []
+                    # For mixed commands, launch browser with pre-selected sources based on config and workspace
+                    print_text(f"🔍 Launching browser for workspaces: {', '.join(workspace_names_found)}...", style="cyan")
+                    
+                    # Build pre-selected sources from config defaults and workspace context
+                    preselected_sources = []
+                    
+                    # Get default sources from chat config
+                    from promaia.utils.config import get_chat_default_sources, get_chat_default_days
+                    default_chat_sources = get_chat_default_sources()
+                    default_chat_days = get_chat_default_days()
+                    
+                    # For each workspace, add sources based on their default_include setting
                     for workspace_name in workspace_names_found:
-                        # Get all databases for this workspace
                         workspace_databases = db_manager.get_workspace_databases(workspace_name)
                         for db in workspace_databases:
                             if db.sync_enabled:
-                                # Add with default days
-                                if default_days:
-                                    selected_sources.append(f"{db.get_qualified_name()}:{default_days}")
-                                else:
-                                    selected_sources.append(db.get_qualified_name())
-
-                    print_text(f"✅ Auto-selected {len(selected_sources)} sources from workspaces", style="green")
-                    if not selected_sources:
-                        print_text("ℹ️  No sources available in specified workspaces. Cannot proceed.", style="yellow")
-                        return
+                                qualified_name = db.get_qualified_name()
+                                
+                                # Check if this database should be pre-selected based on default_include
+                                if db.default_include:
+                                    # Use specified days or fall back to database/chat defaults
+                                    days_to_use = default_days or db.default_days or default_chat_days
+                                    if days_to_use:
+                                        preselected_sources.append(f"{qualified_name}:{days_to_use}")
+                                    else:
+                                        preselected_sources.append(qualified_name)
                     
-                    print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
+                    print_text(f"🎯 Pre-selecting {len(preselected_sources)} default sources based on config", style="green")
+                    
+                    # Launch unified browser with pre-selected sources
+                    from promaia.cli.workspace_browser import launch_unified_browser
+                    selected_sources = launch_unified_browser(
+                        original_workspace,
+                        default_days,
+                        database_filter,
+                        preselected_sources  # Pass pre-selected sources for UI
+                    )
                     
                     # Process Discord channel sources and convert to database + filter format
                     processed_sources = []
@@ -1416,70 +1435,28 @@ def chat_run(args):
                     return
             
 
-            # For mixed commands with multiple NL queries, process them separately
+            # For mixed commands, pass natural language prompts to chat for processing
+            # after browser selections are complete - do NOT process NL queries here
             try:
+                combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                
                 if len(nl_prompts) > 1:
-                    # Process multiple NL queries separately and combine results
-                    print_text("🔄 Processing multiple NL queries for mixed command...", style="cyan")
+                    print_text(f"🤖 Will process {len(nl_prompts)} natural language queries with selected sources", style="white")
+                elif nl_prompts:
+                    print_text(f"🤖 Will process natural language query with selected sources: '{combined_nl_prompt}'", style="white")
 
-                    combined_nl_content = {}
-                    total_results = 0
-
-                    from promaia.storage.unified_query import get_query_interface
-                    query_interface = get_query_interface()
-
-                    for i, nl_prompt in enumerate(nl_prompts):
-                        print_text(f"🔍 Processing mixed query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
-
-                        # Process each NL query
-                        nl_content = query_interface.natural_language_query(nl_prompt, None, None)
-
-                        if nl_content:
-                            # Merge results from this query into combined content
-                            for db_name, entries in nl_content.items():
-                                if db_name not in combined_nl_content:
-                                    combined_nl_content[db_name] = []
-                                combined_nl_content[db_name].extend(entries)
-
-                            query_results = sum(len(entries) for entries in nl_content.values())
-                            total_results += query_results
-                            print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
-                        else:
-                            print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
-
-                    if not combined_nl_content:
-                        print_text("❌ No content found for any natural language queries", style="red")
-                        return
-
-                    print_text(f"🎯 Mixed command: {total_results} total results from {len(nl_prompts)} queries", style="green")
-
-                    chat(
-                        sources=sources,
-                        filters=filters,
-                        workspace=original_workspace,
-                        non_interactive=getattr(args, 'non_interactive', False),
-                        natural_language_content=combined_nl_content,
-                        natural_language_prompt=" ".join(nl_prompts),  # Combined for display
-                        browse_databases=None,
-                        original_browse_command=original_browse_command,
-                        browse_selections=selected_sources,
-                        mcp_servers=mcp_servers
-                    )
-                else:
-                    # Single NL query - use original flow
-                    combined_nl_prompt = nl_prompts[0] if nl_prompts else None
-
-                    chat(
-                        sources=sources,
-                        filters=filters,
-                        workspace=original_workspace,
-                        non_interactive=getattr(args, 'non_interactive', False),
-                        natural_language_prompt=combined_nl_prompt,
-                        browse_databases=None,
-                        original_browse_command=original_browse_command,
-                        browse_selections=selected_sources,
-                        mcp_servers=mcp_servers
-                    )
+                # Pass NL prompts to chat - let chat handle the processing with selected sources
+                chat(
+                    sources=sources,
+                    filters=filters,
+                    workspace=original_workspace,
+                    non_interactive=getattr(args, 'non_interactive', False),
+                    natural_language_prompt=combined_nl_prompt,
+                    browse_databases=None,
+                    original_browse_command=original_browse_command,
+                    browse_selections=selected_sources,
+                    mcp_servers=mcp_servers
+                )
                 return
             except Exception as e:
                 print_text(f"❌ Error in mixed command execution: {e}", style="red")

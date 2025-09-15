@@ -36,6 +36,7 @@ class DatabaseConfig:
         self.include_properties = config_data.get("include_properties", True)
         self.sync_frequency = config_data.get("sync_frequency", "daily")
         self.default_days = config_data.get("default_days", 7)
+        self.default_include = config_data.get("default_include", False)
         self.last_sync_time = config_data.get("last_sync_time", None)
         
         # Filtering settings
@@ -86,6 +87,7 @@ class DatabaseConfig:
             "include_properties": self.include_properties,
             "sync_frequency": self.sync_frequency,
             "default_days": self.default_days,
+            "default_include": self.default_include,
             "last_sync_time": self.last_sync_time,
             "filters": self.filters,
             "property_filters": self.property_filters,
