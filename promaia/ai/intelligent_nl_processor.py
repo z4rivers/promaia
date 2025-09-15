@@ -462,10 +462,10 @@ def process_natural_language_to_content(nl_prompt: str, workspace: str = None,
             total_count = sum(len(items) for items in result["results"].values())
             intent = result.get("intent", {})
             
-            print(f"✅ Intelligent query processed: {total_count} results")
-            print(f"   Goal: {intent.get('user_goal', 'Unknown')}")
-            print(f"   Complexity: {intent.get('complexity_level', 'Unknown')}")
-            print(f"   Sources: {list(result['results'].keys())}")
+            print(f"Intelligent query processed: {total_count} results")
+            print(f"Goal: {intent.get('user_goal', 'Unknown')}")
+            print(f"Complexity: {intent.get('complexity_level', 'Unknown')}")  
+            print(f"Sources: {list(result['results'].keys())}")
             
             # DEBUG: Show what was found by the intelligent processor
             if os.getenv("MAIA_DEBUG") == "1":

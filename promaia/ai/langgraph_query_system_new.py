@@ -496,21 +496,18 @@ Return only the JSON object:"""
             return state
         
         # Show formatted intent summary
-        print("\n" + "="*60)
-        print("🤖 AI QUERY INTERPRETATION")
-        print("="*60)
-        print(f"📝 Goal: {intent['goal']}")
-        print(f"🗄️  Databases: {', '.join(intent['databases'])}")
+        print("\n🤖 AI Query Interpretation")
+        print(f"Goal: {intent['goal']}")
+        print(f"Databases: {', '.join(intent['databases'])}")
         if intent.get('search_terms'):
-            print(f"🔍 Search terms: {', '.join(intent['search_terms'])}")
+            print(f"Search terms: {', '.join(intent['search_terms'])}")
         else:
-            print("🔍 Search terms: (none - using date filtering)")
-        print(f"📊 Result limit: {intent['limit']}")
+            print("Search terms: (none - using date filtering)")
+        print(f"Result limit: {intent['limit']}")
         
         if intent.get('_workspace_context'):
-            print(f"🏢 Workspace: {intent['_workspace_context']}")
-        
-        print("="*60)
+            print(f"Workspace: {intent['_workspace_context']}")
+        print()
         
         # Get user choice
         while True:
@@ -518,7 +515,7 @@ Return only the JSON object:"""
                 choice = input("\n👉 Continue? (c)ontinue, (m)odify, (q)uit: ").strip().lower()
                 
                 if choice in ['c', 'continue', '']:
-                    print("✅ Proceeding with execution...")
+                    print("Proceeding with execution...")
                     return state
                 elif choice in ['m', 'modify']:
                     return self._handle_modification(state)
@@ -733,7 +730,7 @@ Generate the SQLite query:"""
                 results = [dict(row) for row in cursor.fetchall()]
                 state["results"] = results
                 
-            print(f"✅ Executed: {len(results)} results")
+            print(f"Executed: {len(results)} results")
             
         except Exception as e:
             state["errors"] = [f"Execute failed: {e}"]
@@ -747,7 +744,7 @@ Generate the SQLite query:"""
         errors = state.get("errors", [])
         
         if results and len(results) > 0:
-            print(f"✅ Success: {len(results)} results")
+            print(f"Success: {len(results)} results")
             # Success - no changes needed
         elif errors:
             print(f"❌ Failed: {errors}")
