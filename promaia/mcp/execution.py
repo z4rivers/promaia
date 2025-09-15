@@ -4,6 +4,7 @@ MCP tool execution engine.
 This module handles parsing tool calls from AI responses and executing them
 via connected MCP servers, then formatting the results.
 """
+import xml.etree.ElementTree as ET
 import re
 import json
 import logging
@@ -26,6 +27,10 @@ class McpToolExecutor:
     def parse_tool_calls(self, ai_response: str) -> List[Dict[str, Any]]:
         """Parse tool calls from AI response.
         
+        Supports these formats:
+        1. <tool_code>server.tool(args)</tool_code>
+        2. <invoke name="tool_name"><parameter name="param">value</parameter></invoke>
+        
         Args:
             ai_response: The AI's response text
             
@@ -34,38 +39,95 @@ class McpToolExecutor:
         """
         tool_calls = []
         
-        # Pattern 1: <execute_tool>server.tool(args)</execute_tool>
-        pattern1 = r'<execute_tool>\s*(\w+)\.([\w-]+)\s*\((.*?)\)\s*</execute_tool>'
+        # Pattern: <tool_code>server.tool(args)</tool_code>
+        tool_code_pattern = r'<tool_code>\s*(\w+)\.([\w-]+)\s*\((.*?)\)\s*</tool_code>'
+        matches = re.findall(tool_code_pattern, ai_response, re.DOTALL)
         
-        # Pattern 2: <tool_code>print(server.tool(args))</tool_code>
-        pattern2 = r'<tool_code>\s*print\((\w+)\.([\w-]+)\s*\((.*?)\)\)\s*</tool_code>'
+        for match in matches:
+            server_name, tool_name, args_str = match
+            try:
+                arguments = self._parse_arguments(args_str)
+                tool_calls.append({
+                    'server': server_name,
+                    'tool': tool_name,
+                    'arguments': arguments,
+                    'raw_args': args_str
+                })
+            except Exception as e:
+                logger.error(f"Error parsing tool call arguments: {e}")
         
-        # Pattern 3: <tool_code>server.tool(args)</tool_code>
-        pattern3 = r'<tool_code>\s*(\w+)\.([\w-]+)\s*\((.*?)\)\s*</tool_code>'
+        # Pattern: <invoke name="tool_name"><parameter name="param">value</parameter></invoke>
+        invoke_pattern = r'<invoke name="([\w-]+)">(.*?)</invoke>'
+        invoke_matches = re.findall(invoke_pattern, ai_response, re.DOTALL)
         
-        # Try all patterns
-        for pattern in [pattern1, pattern2, pattern3]:
-            matches = re.findall(pattern, ai_response, re.DOTALL)
-            
-            for match in matches:
-                server_name, tool_name, args_str = match
+        for tool_name, invoke_content in invoke_matches:
+            try:
+                # Extract parameters from <parameter> tags
+                param_pattern = r'<parameter name="([^"]+)">([^<]*)</parameter>'
+                param_matches = re.findall(param_pattern, invoke_content)
                 
-                try:
-                    # Parse arguments - handle both JSON and simple formats
-                    arguments = self._parse_arguments(args_str)
-                    
-                    tool_calls.append({
-                        'server': server_name,
-                        'tool': tool_name,
-                        'arguments': arguments,
-                        'raw_args': args_str
-                    })
-                    
-                except Exception as e:
-                    logger.error(f"Error parsing tool call arguments: {e}")
-                    logger.error(f"Raw arguments: {args_str}")
+                arguments = {}
+                for param_name, param_value in param_matches:
+                    # Try to parse JSON values, otherwise use as string
+                    try:
+                        if param_value.strip().startswith(('{', '[')):
+                            arguments[param_name] = json.loads(param_value)
+                        else:
+                            arguments[param_name] = param_value.strip()
+                    except json.JSONDecodeError:
+                        arguments[param_name] = param_value.strip()
+                
+                # Determine server based on connected servers and tool name
+                server_name = self._determine_server_for_tool(tool_name)
+                
+                tool_calls.append({
+                    'server': server_name,
+                    'tool': tool_name,
+                    'arguments': arguments,
+                    'raw_args': invoke_content
+                })
+                
+            except Exception as e:
+                logger.warning(f"Failed to parse invoke format for '{tool_name}': {e}")
+                continue
         
         return tool_calls
+    
+    def _determine_server_for_tool(self, tool_name: str) -> str:
+        """Determine which server provides a given tool.
+        
+        Args:
+            tool_name: Name of the tool
+            
+        Returns:
+            Server name that provides the tool
+        """
+        connected_servers = self.mcp_client.get_connected_servers()
+        
+        # If only one server, use it
+        if len(connected_servers) == 1:
+            return connected_servers[0]
+        
+        # Check each server for the tool
+        for server_name in connected_servers:
+            tools = self.mcp_client.get_tools_by_server(server_name)
+            if any(tool.name == tool_name for tool in tools):
+                return server_name
+        
+        # Fallback heuristics
+        if tool_name in ['web_search', 'search']:
+            return 'search'
+        elif 'API-' in tool_name or 'notion' in tool_name.lower():
+            return 'notion'
+        elif 'file' in tool_name.lower() or 'directory' in tool_name.lower():
+            return 'filesystem'
+        elif 'git' in tool_name.lower():
+            return 'git'
+        elif 'sql' in tool_name.lower() or 'query' in tool_name.lower():
+            return 'sqlite'
+        
+        # Default to first connected server
+        return connected_servers[0] if connected_servers else 'unknown'
     
     def _parse_arguments(self, args_str: str) -> Dict[str, Any]:
         """Parse tool arguments from string.
@@ -215,11 +277,12 @@ class McpToolExecutor:
                 'tool_call': tool_call
             }
     
-    def format_tool_results(self, results: List[Dict[str, Any]]) -> str:
+    def format_tool_results(self, results: List[Dict[str, Any]], show_raw: bool = True) -> str:
         """Format tool execution results for display.
         
         Args:
             results: List of execution results
+            show_raw: Whether to include raw response data for debugging
             
         Returns:
             Formatted results string
@@ -239,17 +302,25 @@ class McpToolExecutor:
             if result['success']:
                 formatted += f"\n✅ {server}.{tool}:\n"
                 
+                # Show raw response first for debugging
+                if show_raw:
+                    result_data = result['result']
+                    formatted += f"\n🔍 Raw Response:\n"
+                    formatted += f"```json\n{json.dumps(result_data, indent=2)}\n```\n"
+                    formatted += f"\n📋 Formatted Output:\n"
+                
                 # Extract and format the actual result content
                 result_data = result['result']
                 if 'content' in result_data:
                     content = result_data['content']
                     if isinstance(content, list) and content:
-                        # Take the first content item
-                        first_content = content[0]
-                        if isinstance(first_content, dict) and 'text' in first_content:
-                            formatted += f"{first_content['text']}\n"
-                        else:
-                            formatted += f"{first_content}\n"
+                        # Process all content items, not just the first one
+                        for content_item in content:
+                            if isinstance(content_item, dict) and 'text' in content_item:
+                                formatted += f"{content_item['text']}"
+                            else:
+                                formatted += f"{content_item}"
+                        formatted += "\n"
                     else:
                         formatted += f"{content}\n"
                 else:
@@ -257,17 +328,22 @@ class McpToolExecutor:
             else:
                 formatted += f"\n❌ {server}.{tool} failed:\n"
                 formatted += f"Error: {result['error']}\n"
+                
+                # Show raw error data if available
+                if show_raw and 'result' in result:
+                    formatted += f"\n🔍 Raw Error Data:\n"
+                    formatted += f"```json\n{json.dumps(result.get('result', {}), indent=2)}\n```\n"
         
         return formatted
     
     def has_tool_calls(self, ai_response: str) -> bool:
         """Check if AI response contains tool calls.
-        
+
         Args:
             ai_response: The AI's response text
-            
+
         Returns:
             True if tool calls are present
         """
-        return (('<execute_tool>' in ai_response and '</execute_tool>' in ai_response) or 
-                ('<tool_code>' in ai_response and '</tool_code>' in ai_response)) 
+        return (('<tool_code>' in ai_response and '</tool_code>' in ai_response) or
+                ('<invoke name="' in ai_response and '</invoke>' in ai_response)) 

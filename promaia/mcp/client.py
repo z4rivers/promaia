@@ -264,9 +264,29 @@ class McpClient:
             prompt_sections.append(section)
         
         if prompt_sections:
-            full_section = "## MCP (Model Context Protocol) Servers\n\n"
+            full_section = "## IMPORTANT: Tool Usage Instructions\n\n"
+            full_section += "**CRITICAL**: I do NOT have built-in web search capabilities. I must ONLY use external tools provided through MCP (Model Context Protocol) servers when available.\n\n"
+            full_section += "**NEVER use `<web_search>` tags** - these do not work and will provide incorrect results.\n\n"
+            full_section += "If no MCP tools are available and web search is requested, I should explain that I cannot search the web without proper tool access.\n\n"
+            
+            full_section += "## MCP (Model Context Protocol) Servers\n\n"
             full_section += "The following external tools are available through MCP servers:\n\n"
             full_section += "\n".join(prompt_sections)
+            
+            # Add usage instructions
+            full_section += "\n### How to Use MCP Tools\n\n"
+            full_section += "To call an MCP tool, I MUST use this exact format:\n"
+            full_section += "```\n<tool_code>server_name.tool_name(parameter_name=\"value\")</tool_code>\n```\n\n"
+            full_section += "Examples:\n"
+            full_section += "- `<tool_code>search.web_search(query=\"your search terms\")</tool_code>`\n"
+            full_section += "- `<tool_code>filesystem.read_file(path=\"/path/to/file\")</tool_code>`\n"
+            full_section += "- `<tool_code>notion.API-post-search(query=\"journal entries\")</tool_code>`\n\n"
+            full_section += "**Rules:**\n"
+            full_section += "1. Use the exact server and tool names listed above\n"
+            full_section += "2. Use exact parameter names from the tool schema\n"
+            full_section += "3. Wait for tool execution results before continuing\n"
+            full_section += "4. NEVER use built-in `<web_search>` tags - only use MCP format\n\n"
+            
             return full_section
         
         return ""
@@ -307,9 +327,17 @@ class McpClient:
                 # Get first available tool for example
                 example_tool = capabilities.tools[0] if capabilities.tools else None
                 
-                section += f"Usage: Use format <tool_code>{server_name}.ACTUAL_TOOL_NAME(param='value')</tool_code>\n"
+                section += f"Usage: Use format <tool_code>{server_name}.tool_name(parameter_name=value)</tool_code>\n"
                 if example_tool:
-                    section += f"Example: <tool_code>{server_name}.{example_tool.name}(param='value')</tool_code>\n"
+                    # Get the first required parameter for the example
+                    first_param = None
+                    if example_tool.input_schema and 'properties' in example_tool.input_schema:
+                        first_param = list(example_tool.input_schema['properties'].keys())[0]
+                    
+                    if first_param:
+                        section += f"Example: <tool_code>{server_name}.{example_tool.name}({first_param}=\"value\")</tool_code>\n"
+                    else:
+                        section += f"Example: <tool_code>{server_name}.{example_tool.name}()</tool_code>\n"
             else:
                 section += "No tools available.\n"
             

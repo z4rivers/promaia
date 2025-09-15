@@ -222,7 +222,7 @@ class McpProtocolClient:
             
             return McpResponse(
                 success=True,
-                result=response_data.get('result') or response_data,  # Handle responses that put data directly in response
+                result=response_data.get('result'),
                 id=response_data.get('id')
             )
             

@@ -2,7 +2,8 @@
 """
 Internet Search MCP Server
 
-A simple MCP server that provides internet search capabilities using DuckDuckGo.
+An enhanced MCP server that provides reliable internet search capabilities 
+using Perplexity API with source attribution, result validation, and transparency features.
 """
 
 import asyncio
@@ -11,6 +12,9 @@ import logging
 import sys
 import urllib.parse
 import urllib.request
+import time
+import os
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 # Configure logging
@@ -18,13 +22,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class SearchServer:
-    """MCP server for internet search functionality."""
+    """Enhanced MCP server for internet search functionality using Perplexity API."""
 
     def __init__(self):
         self.tools = [
             {
                 "name": "web_search",
-                "description": "Search the internet for information using DuckDuckGo",
+                "description": "Search the internet for current information using Perplexity AI with source citations",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -32,87 +36,151 @@ class SearchServer:
                             "type": "string",
                             "description": "The search query to perform"
                         },
-                        "max_results": {
-                            "type": "integer",
-                            "description": "Maximum number of results to return (default: 5)",
-                            "default": 5
+                        "model": {
+                            "type": "string",
+                            "description": "Perplexity model to use (default: sonar-pro)",
+                            "default": "sonar-pro",
+                            "enum": [
+                                "sonar-pro",
+                                "sonar-medium",
+                                "llama-3.1-sonar-small-128k-online",
+                                "llama-3.1-sonar-large-128k-online",
+                                "llama-3.1-sonar-huge-128k-online"
+                            ]
                         }
                     },
                     "required": ["query"]
                 }
             }
         ]
+        
+        # Get API key from environment
+        self.api_key = os.getenv('PERPLEXITY_API_KEY')
+        if not self.api_key:
+            logger.warning("PERPLEXITY_API_KEY not found in environment variables")
+        
+        # Cache for recent searches to avoid redundant API calls
+        self.search_cache = {}
+        self.cache_duration = timedelta(minutes=15)  # Shorter cache for more current results
 
-    def search_duckduckgo(self, query: str, max_results: int = 5) -> Dict[str, Any]:
-        """Perform a search using DuckDuckGo's instant answer API."""
-        try:
-            # Encode the query
-            encoded_query = urllib.parse.quote(query)
-
-            # DuckDuckGo instant answer API
-            url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1"
-
-            # Make the request
-            with urllib.request.urlopen(url, timeout=10) as response:
-                data = json.loads(response.read().decode('utf-8'))
-
-            results = []
-
-            # Extract instant answer if available
-            if data.get('Answer'):
-                results.append({
-                    "title": "Instant Answer",
-                    "description": data['Answer'],
-                    "url": f"https://duckduckgo.com/?q={encoded_query}",
-                    "source": "DuckDuckGo Instant Answer"
-                })
-
-            # Extract abstract if available
-            if data.get('AbstractText'):
-                results.append({
-                    "title": data.get('Heading', 'Abstract'),
-                    "description": data['AbstractText'],
-                    "url": data.get('AbstractURL', f"https://duckduckgo.com/?q={encoded_query}"),
-                    "source": data.get('AbstractSource', 'DuckDuckGo')
-                })
-
-            # Extract related topics
-            if data.get('RelatedTopics'):
-                for topic in data['RelatedTopics'][:max_results - len(results)]:
-                    if isinstance(topic, dict) and 'Text' in topic:
-                        results.append({
-                            "title": topic.get('FirstURL', topic.get('Text', ''))[:50],
-                            "description": topic['Text'],
-                            "url": f"https://duckduckgo.com/?q={encoded_query}",
-                            "source": "DuckDuckGo Related Topics"
-                        })
-
-            # If no results, provide a fallback
-            if not results:
-                results.append({
-                    "title": f"Search Results for: {query}",
-                    "description": f"No specific results found. Try refining your search query or visit: https://duckduckgo.com/?q={encoded_query}",
-                    "url": f"https://duckduckgo.com/?q={encoded_query}",
-                    "source": "DuckDuckGo"
-                })
-
+    def search_perplexity(self, query: str, model: str = "sonar-pro") -> Dict[str, Any]:
+        """Perform a search using Perplexity API with source citations."""
+        if not self.api_key:
             return {
                 "query": query,
-                "results": results[:max_results],
-                "total_found": len(results)
+                "error": "PERPLEXITY_API_KEY not configured",
+                "results": [{
+                    "title": "Configuration Error",
+                    "description": "Perplexity API key is not configured. Please set PERPLEXITY_API_KEY environment variable.",
+                    "url": "https://docs.perplexity.ai/docs/getting-started",
+                    "source": "Configuration Error",
+                    "timestamp": datetime.now().isoformat()
+                }]
             }
+        
+        # Check cache first
+        cache_key = f"{query}:{model}"
+        if cache_key in self.search_cache:
+            cached_result, timestamp = self.search_cache[cache_key]
+            if datetime.now() - timestamp < self.cache_duration:
+                logger.info(f"Returning cached result for: {query}")
+                return cached_result
+        
+        try:
+            # Prepare the request
+            url = "https://api.perplexity.ai/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Enhanced prompt that encourages source attribution
+            enhanced_query = f"""Please search for current, accurate information about: {query}
 
+Provide a comprehensive answer with:
+1. Current, factual information
+2. Specific details (addresses, phone numbers, hours, etc. if relevant)
+3. Multiple reliable sources
+4. Any recent updates or changes
+
+Be precise about facts like locations, contact information, and business details."""
+
+            data = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": enhanced_query
+                    }
+                ]
+            }
+            
+            # Make the request
+            request = urllib.request.Request(
+                url, 
+                data=json.dumps(data).encode('utf-8'),
+                headers=headers
+            )
+            
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
+            
+            # Extract the response content
+            if 'choices' in result and len(result['choices']) > 0:
+                content = result['choices'][0]['message']['content']
+                
+                # Extract citations if available
+                citations = []
+                if 'citations' in result:
+                    citations = result['citations']
+                elif 'choices' in result and len(result['choices']) > 0:
+                    # Try to extract citations from the message metadata
+                    message = result['choices'][0]['message']
+                    if 'citations' in message:
+                        citations = message['citations']
+                
+                # Format the response
+                search_result = {
+                    "query": query,
+                    "model_used": model,
+                    "content": content,
+                    "citations": citations,
+                    "timestamp": datetime.now().isoformat(),
+                    "cached": False
+                }
+                
+                # Cache the result
+                self.search_cache[cache_key] = (search_result, datetime.now())
+                
+                return search_result
+            
+            else:
+                return {
+                    "query": query,
+                    "error": "No response from Perplexity API",
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+        except urllib.error.HTTPError as e:
+            error_msg = f"HTTP Error {e.code}: {e.reason}"
+            if e.code == 401:
+                error_msg = "Invalid Perplexity API key. Please check your PERPLEXITY_API_KEY environment variable."
+            elif e.code == 429:
+                error_msg = "Rate limit exceeded. Please try again later."
+            
+            logger.error(f"Perplexity API error: {error_msg}")
+            return {
+                "query": query,
+                "error": error_msg,
+                "timestamp": datetime.now().isoformat()
+            }
+            
         except Exception as e:
             logger.error(f"Search error: {e}")
             return {
                 "query": query,
                 "error": f"Search failed: {str(e)}",
-                "results": [{
-                    "title": "Search Error",
-                    "description": f"Unable to perform search: {str(e)}. Try a different search query.",
-                    "url": f"https://duckduckgo.com/?q={urllib.parse.quote(query)}",
-                    "source": "Error"
-                }]
+                "timestamp": datetime.now().isoformat()
             }
 
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -147,9 +215,9 @@ class SearchServer:
 
         if tool_name == "web_search":
             query = tool_args.get("query", "")
-            max_results = tool_args.get("max_results", 5)
+            model = tool_args.get("model", "sonar-pro")
 
-            search_results = self.search_duckduckgo(query, max_results)
+            search_results = self.search_perplexity(query, model)
 
             # Format results for MCP response
             content = []
@@ -157,33 +225,65 @@ class SearchServer:
             if "error" in search_results:
                 content.append({
                     "type": "text",
-                    "text": f"❌ Search Error: {search_results['error']}"
+                    "text": f"❌ Search Error: {search_results['error']}\n"
+                           f"Query: {query}\n"
+                           f"Timestamp: {search_results.get('timestamp', 'N/A')}"
                 })
             else:
+                # Header with search info
+                cache_indicator = "🔄 (cached)" if search_results.get("cached", False) else "🔍 (live search)"
                 content.append({
                     "type": "text",
-                    "text": f"🔍 Search Results for: '{query}'\n"
+                    "text": f"🔍 Perplexity Search Results {cache_indicator}\n"
+                           f"Query: {query}\n"
+                           f"Model: {search_results.get('model_used', model)}\n"
+                           f"Timestamp: {search_results.get('timestamp', 'N/A')}\n"
+                           f"{'='*50}\n"
                 })
 
-                for i, result in enumerate(search_results.get("results", []), 1):
+                # Main content
+                if 'content' in search_results:
                     content.append({
                         "type": "text",
-                        "text": f"\n{i}. **{result['title']}**\n"
-                               f"   {result['description']}\n"
-                               f"   Source: {result['source']}\n"
-                               f"   URL: {result['url']}\n"
+                        "text": search_results['content']
                     })
 
+                # Citations section
+                if search_results.get('citations'):
+                    content.append({
+                        "type": "text",
+                        "text": f"\n\n📚 **Sources & Citations:**\n"
+                    })
+                    
+                    for i, citation in enumerate(search_results['citations'], 1):
+                        if isinstance(citation, dict):
+                            title = citation.get('title', f'Source {i}')
+                            url = citation.get('url', 'N/A')
+                            content.append({
+                                "type": "text",
+                                "text": f"{i}. {title}\n   🔗 {url}\n"
+                            })
+                        else:
+                            content.append({
+                                "type": "text",
+                                "text": f"{i}. {citation}\n"
+                            })
+
+                # Transparency note
                 content.append({
                     "type": "text",
-                    "text": f"\n📊 Total results shown: {len(search_results.get('results', []))}"
+                    "text": f"\n\n💡 **Search Transparency:**\n"
+                           f"• This information was retrieved using Perplexity AI\n"
+                           f"• Results include source citations for verification\n"
+                           f"• Information is current as of search timestamp\n"
+                           f"• Always verify critical information from original sources"
                 })
 
-                return {
-                    "result": {
-                        "content": content
-                    }
+            return {
+                "result": {
+                    "content": content
                 }
+            }
 
         return {
             "result": {
