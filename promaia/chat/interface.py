@@ -2946,28 +2946,48 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             except Exception as e:
                                 print_text(f"Error reconnecting MCP servers: {e}", style="bold red")
                         else:
-                            # Update MCP tools info even without reconnection
-                            from promaia.config.mcp_servers import get_mcp_manager
-                            from promaia.mcp.client import McpClient
-                            mcp_manager = get_mcp_manager()
-                            mcp_client = McpClient()
+                            # Connect to MCP servers for the first time
+                            try:
+                                import asyncio
+                                from promaia.config.mcp_servers import get_mcp_manager
+                                from promaia.mcp.client import McpClient
+                                from promaia.mcp.execution import McpToolExecutor
 
-                            # Get tools info for current servers
-                            connected_servers = context_state.get('mcp_servers', [])
-                            mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
-                            context_state['mcp_tools_info'] = mcp_tools_info
+                                mcp_manager = get_mcp_manager()
+                                mcp_client = McpClient()
 
-                            # Count available tools
-                            if 'search' in connected_servers:
-                                print_text("🔍 Internet search enabled!", style="bold green")
-                                print_text("💡 You can now ask the AI to search the web by saying things like:", style="cyan")
-                                print_text("   'search the web for information about X' or 'find Y online'", style="dim cyan")
-                            else:
-                                print_text("🔍 Internet search enabled", style="bold green")
+                                # Connect to search server
+                                connected_servers = []
+                                for server_name in context_state.get('mcp_servers', []):
+                                    server_config = mcp_manager.get_server(server_name)
+                                    if server_config:
+                                        success = asyncio.run(mcp_client.connect_to_server(server_config))
+                                        if success:
+                                            connected_servers.append(server_name)
 
-                            # Regenerate system prompt with new tools
-                            system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
-                            context_state['system_prompt'] = system_prompt
+                                if connected_servers:
+                                    # Update context with new MCP client
+                                    context_state['mcp_client'] = mcp_client
+                                    context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+
+                                    # Update system prompt with new tools
+                                    mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                                    context_state['mcp_tools_info'] = mcp_tools_info
+
+                                    # Regenerate system prompt with new tools
+                                    system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                    context_state['system_prompt'] = system_prompt
+
+                                    # Save context log when MCP servers are connected (for transparency)
+                                    save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "mcp_connection")
+
+                                    print_text("🔍 Internet search enabled and MCP servers connected!", style="bold green")
+                                    print_text("💡 You can now ask the AI to search the web by saying things like:", style="cyan")
+                                    print_text("   'search the web for information about X' or 'find Y online'", style="dim cyan")
+                                else:
+                                    print_text("🔍 Internet search enabled but no servers connected", style="bold yellow")
+                            except Exception as e:
+                                print_text(f"Error connecting MCP servers: {e}", style="bold red")
                     else:
                         print_text("🔍 Internet search enabled", style="bold green")
                 else:
