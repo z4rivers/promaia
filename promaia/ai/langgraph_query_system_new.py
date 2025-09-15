@@ -471,7 +471,8 @@ Return only the JSON object:"""
                     enhanced_databases.append(db)
                     print(f"   ✅ Including '{db}' (default workspace)")
         
-        parsed_intent['databases'] = enhanced_databases
+        # Remove duplicates and ensure clean list
+        parsed_intent['databases'] = list(dict.fromkeys(enhanced_databases))
         
         # Add workspace context for debugging
         if workspaces_mentioned:
@@ -679,8 +680,8 @@ Table: {self.schema['main_table']}
 Columns: {', '.join(self.schema['key_columns'])}
 {self.schema['date_info']}
 
-Available databases with data:
-{chr(10).join([f"- {db['name']}: {db['count']} entries ({db['date_range']})" for db in self.schema['databases']])}
+Target databases (ONLY use these):
+{chr(10).join([f"- {db_name}: {next((db['count'] for db in self.schema['databases'] if db['name'] == db_name), 'unknown')} entries" for db_name in intent['databases']])}
 
 {workspace_context}
 
@@ -695,17 +696,13 @@ Search terms: {intent['search_terms']}
 Result limit: {intent['limit']}
 
 CRITICAL INSTRUCTIONS:
-1. **FOLLOW THE PROVEN TEMPLATES ABOVE** - These are tested, working patterns for your database
-2. **Match query types** - Find the template that matches the user's query type (Gmail keyword, Journal date range, etc.)
-3. **Use exact SQL patterns** - Adapt the template SQL to your specific query parameters
-4. **WORKSPACE EXCLUSION LOGIC** - This is CRITICAL for correct results:
-   - "koii journal" / "koii.journals" = 'journal' database ONLY → EXCLUDE 'trass.journal'
-   - "trass journal" / "trass.journals" = 'trass.journal' database ONLY → EXCLUDE 'journal'
-   - When user specifies ANY workspace, exclude ALL databases from other workspaces
-   - NEVER mix workspace databases unless user explicitly asks for multiple workspaces
-5. **Handle limits correctly** - Use template limits, but increase to 10000 for "all" queries
+1. **ONLY USE TARGET DATABASES** - Use EXCLUSIVELY the databases listed in "Target databases" above
+2. **NEVER include other databases** - Even if templates show other databases, stick to target list
+3. **Follow workspace filtering** - Target databases have already been filtered for workspace logic
+4. **Generate WHERE clause** - Use: WHERE database_name IN ({', '.join([f"'{db}'" for db in intent['databases']])})
+5. **Handle limits correctly** - Use limit: {intent['limit']}
 
-⚠️  WORKSPACE WARNING: User reports that you've been incorrectly including databases from multiple workspaces. The examples above show the EXACT exclusion logic you must follow.
+⚠️  CRITICAL: The target databases list above is the FINAL filtered list. Do not add or modify databases.
 
 Generate the SQLite query:"""
 
