@@ -260,9 +260,9 @@ class HybridQueryInterface:
         """Process natural language queries using pattern-based processing."""
         try:
             from promaia.ai.intelligent_nl_processor import process_natural_language_to_content
-        except ImportError:
-            # Fallback to traditional processor if intelligent processor not available
-            from promaia.ai.natural_query import process_natural_language_to_content
+        except ImportError as e:
+            print(f"❌ Natural language processing not available: {e}")
+            return []
         
         # For cross-workspace queries, we don't need specific workspace context
         # The AI will handle workspace filtering in the SQL when specifically mentioned
