@@ -17,6 +17,18 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Get the project root directory (up two levels from this file)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    dotenv_path = os.path.join(project_root, '.env')
+    load_dotenv(dotenv_path=dotenv_path)
+except ImportError:
+    print("Warning: python-dotenv not installed, environment variables from .env file won't be loaded")
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
