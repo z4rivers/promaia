@@ -162,10 +162,10 @@ class SchemaAwareSQLGenerator:
         
         # Gmail content search
         if not intent.sources or "gmail" in intent.sources:
-            if self.has_gmail_tables and "gmail_messages" in self.available_tables:
-                joins.append("LEFT JOIN gmail_messages g ON u.page_id = g.page_id")
-                base_fields.extend(["g.sender_email", "g.subject", "g.body_text"])
-                content_search_conditions.append(f"g.body_text LIKE '%{search_term}%'")
+            if self.has_gmail_tables and "gmail_content" in self.available_tables:
+                joins.append("LEFT JOIN gmail_content g ON u.page_id = g.page_id")
+                base_fields.extend(["g.sender_email", "g.subject", "g.message_content"])
+                content_search_conditions.append(f"g.message_content LIKE '%{search_term}%'")
                 content_search_conditions.append(f"g.subject LIKE '%{search_term}%'")
         
         # Notion content search
@@ -221,7 +221,7 @@ class SchemaAwareSQLGenerator:
         # Add person filtering for Gmail
         if intent.person_filter and (not intent.sources or "gmail" in intent.sources):
             if self.has_gmail_tables:
-                joins.append("JOIN gmail_messages g ON u.page_id = g.page_id")
+                joins.append("JOIN gmail_content g ON u.page_id = g.page_id")
                 base_fields.extend(["g.sender_name", "g.sender_email", "g.subject"])
                 # Note: deliberately exclude g.body_text for performance
                 where_conditions.append(f"(g.sender_name LIKE '%{intent.person_filter}%' OR g.sender_email LIKE '%{intent.person_filter}%')")
@@ -290,14 +290,14 @@ class SchemaAwareSQLGenerator:
             gmail_fields = ["u.page_id", "u.title", "u.created_time", "u.workspace", 
                           "u.database_name", "g.sender_name", "g.subject"]
             if query_type == QueryType.CONTENT_REQUIRED:
-                gmail_fields.append("g.body_text")
+                gmail_fields.append("g.message_content")
                 
             gmail_query = f"""
             SELECT {', '.join(gmail_fields)}, 'gmail' as source_type
             FROM unified_content u
-            JOIN gmail_messages g ON u.page_id = g.page_id
+            JOIN gmail_content g ON u.page_id = g.page_id
             WHERE u.database_name = 'gmail'
-            AND (g.subject LIKE '%{search_term}%' OR g.body_text LIKE '%{search_term}%')
+            AND (g.subject LIKE '%{search_term}%' OR g.message_content LIKE '%{search_term}%')
             """
             subqueries.append(gmail_query)
         

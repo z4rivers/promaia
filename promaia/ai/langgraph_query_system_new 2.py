@@ -141,25 +141,12 @@ class IntelligentQueryProcessor:
         if gmail_dbs:
             trass_gmail_dbs = [f"'{db}'" for db in gmail_dbs if 'trass' in db.lower()]
             gmail_db_list = ', '.join(trass_gmail_dbs) if trass_gmail_dbs else "('gmail')"
-            all_gmail_dbs = ', '.join([f"'{db}'" for db in gmail_dbs])
             examples.extend([
                 {
                     "query_type": "Gmail - Business partner search with workspace qualifier",
                     "user_query": "all trass gmail entries that include the term mgm",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
-                    "notes": "Gmail: JOIN unified_content with gmail_content to search actual email content (subject, message_content, sender info). Search across all relevant Gmail fields for comprehensive results."
-                },
-                {
-                    "query_type": "Gmail - Content search with date filtering",
-                    "user_query": "emails with the term mgm from the last 3 months",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') AND g.email_date >= DATE('now', '-90 days') LIMIT 1000",
-                    "notes": "Gmail: JOIN with gmail_content for full text search, use email_date for accurate date filtering. Search subject, content, and sender fields."
-                },
-                {
-                    "query_type": "Gmail - General content search (no workspace qualifier)",
-                    "user_query": "emails about mgm",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({all_gmail_dbs}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
-                    "notes": "Gmail: When no workspace specified, search ALL Gmail databases. JOIN with gmail_content for comprehensive email content search."
+                    "sql_pattern": f"SELECT page_id, title, database_name, created_time, metadata FROM unified_content WHERE database_name IN ({gmail_db_list}) AND (title LIKE '%mgm%' OR metadata LIKE '%mgm%') LIMIT 1000",
+                    "notes": "Gmail: 'trass gmail' maps to 'trass.gmail' database. User uses workspace qualifiers, searches for business partners ('mgm'), prefers 'include the term' phrasing."
                 }
             ])
         
@@ -509,18 +496,21 @@ Return only the JSON object:"""
             return state
         
         # Show formatted intent summary
-        print("\n🤖 AI Query Interpretation")
-        print(f"Goal: {intent['goal']}")
-        print(f"Databases: {', '.join(intent['databases'])}")
+        print("\n" + "="*60)
+        print("🤖 AI QUERY INTERPRETATION")
+        print("="*60)
+        print(f"📝 Goal: {intent['goal']}")
+        print(f"🗄️  Databases: {', '.join(intent['databases'])}")
         if intent.get('search_terms'):
-            print(f"Search terms: {', '.join(intent['search_terms'])}")
+            print(f"🔍 Search terms: {', '.join(intent['search_terms'])}")
         else:
-            print("Search terms: (none - using date filtering)")
-        print(f"Result limit: {intent['limit']}")
+            print("🔍 Search terms: (none - using date filtering)")
+        print(f"📊 Result limit: {intent['limit']}")
         
         if intent.get('_workspace_context'):
-            print(f"Workspace: {intent['_workspace_context']}")
-        print()
+            print(f"🏢 Workspace: {intent['_workspace_context']}")
+        
+        print("="*60)
         
         # Get user choice
         while True:
@@ -528,7 +518,7 @@ Return only the JSON object:"""
                 choice = input("\n👉 Continue? (c)ontinue, (m)odify, (q)uit: ").strip().lower()
                 
                 if choice in ['c', 'continue', '']:
-                    print("Proceeding with execution...")
+                    print("✅ Proceeding with execution...")
                     return state
                 elif choice in ['m', 'modify']:
                     return self._handle_modification(state)
@@ -743,7 +733,7 @@ Generate the SQLite query:"""
                 results = [dict(row) for row in cursor.fetchall()]
                 state["results"] = results
                 
-            print(f"Executed: {len(results)} results")
+            print(f"✅ Executed: {len(results)} results")
             
         except Exception as e:
             state["errors"] = [f"Execute failed: {e}"]
@@ -757,7 +747,7 @@ Generate the SQLite query:"""
         errors = state.get("errors", [])
         
         if results and len(results) > 0:
-            print(f"Success: {len(results)} results")
+            print(f"✅ Success: {len(results)} results")
             # Success - no changes needed
         elif errors:
             print(f"❌ Failed: {errors}")

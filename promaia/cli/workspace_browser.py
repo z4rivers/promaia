@@ -327,8 +327,19 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     key = entry['database']
                 is_enabled = key in current_enabled_set
             else:
-                # If no current sources, enable all by default
-                is_enabled = True
+                # If no current sources, respect the default_include setting from config
+                # Find the database config for this entry
+                db_config = None
+                for db in workspace_databases:
+                    if db.get_qualified_name() == entry['database']:
+                        db_config = db
+                        break
+                
+                if db_config:
+                    is_enabled = db_config.default_include
+                else:
+                    # Fallback to False if database config not found
+                    is_enabled = False
                 
             enabled_states.append(is_enabled)
             entry_info.append(entry)
