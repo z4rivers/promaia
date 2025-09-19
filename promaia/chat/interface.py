@@ -302,7 +302,6 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
-    print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
 
@@ -321,7 +320,6 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save /model", style="dim")
-    print_text("Input: Enter to send, Ctrl+J for new line (Shift+Enter may also work)", style="dim")
     print_text("")
 
 

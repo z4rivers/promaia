@@ -156,6 +156,31 @@ def block_to_markdown(block: Dict[str, Any], level: int = 0, subpage_data: Optio
                     # Fallback if no title is available at all
                     markdown = f"{indent}📄 **[Sub-page]** {page_id[:8] if page_id else 'Unknown'}\n\n"
             
+            elif block_type == "transcript":
+                # Special handling for transcript blocks - extract only the summary
+                summary_text = ""
+                
+                # Handle different possible formats for the summary
+                if content.get("summary"):
+                    summary_data = content.get("summary")
+                    
+                    # If summary is rich text format (like other Notion content)
+                    if isinstance(summary_data, list):
+                        if subpage_data:
+                            summary_text = format_rich_text_with_subpages(summary_data, subpage_data)
+                        else:
+                            summary_text = format_rich_text(summary_data)
+                    # If summary is plain text
+                    elif isinstance(summary_data, str):
+                        summary_text = summary_data
+                
+                if summary_text.strip():
+                    # Format the summary as a highlighted section
+                    markdown = f"{indent}📝 **Transcript Summary:**\n{indent}{summary_text}\n\n"
+                else:
+                    # Fallback if no summary is available
+                    markdown = f"{indent}📝 **[Transcript block - no summary available]**\n\n"
+            
             else:
                 # Default for unhandled block types
                 markdown = f"{indent}*[{block_type} block]*: {text}\n\n"
