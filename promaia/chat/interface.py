@@ -2293,23 +2293,32 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             processed_filters.append(filter_spec)
                     
                     # Update context with processed sources and filters
-                    # Simple approach: keep non-workspace sources, replace workspace sources with browser selections
+                    # Intelligent approach: merge sources, only replacing those that conflict with browser selections
                     original_sources = context_state.get('sources', []) or []
                     final_sources = []
 
-                    # Keep sources that are NOT from the current workspace
-                    workspace_name = workspace if workspace else context_state.get('resolved_workspace') or context_state.get('workspace')
-
+                    # Build set of database names that are covered by new browser selections
+                    # This allows us to only replace sources that actually conflict
+                    new_db_names = set()
+                    for source in processed_sources:
+                        source_db = source.split(':')[0] if ':' in source else source
+                        new_db_names.add(source_db)
+                    
+                    # Also track Discord database names from selected_sources (before processing)
+                    discord_db_names = set()
+                    for source in selected_sources:
+                        if '#' in source:
+                            db_name = source.split('#')[0]
+                            discord_db_names.add(db_name)
+                    
+                    # Keep original sources that don't conflict with new selections
                     for source in original_sources:
                         source_db = source.split(':')[0] if ':' in source else source
-                        if '.' in source_db:
-                            source_workspace = source_db.split('.')[0]
-                            if source_workspace != workspace_name:
-                                final_sources.append(source)  # Keep other workspace sources
-                        else:
-                            final_sources.append(source)  # Keep non-workspace sources (like journal:30)
+                        # Keep source if it's not being replaced by new selections
+                        if source_db not in new_db_names and source_db not in discord_db_names:
+                            final_sources.append(source)
                     
-                    # Add the new browser selections (these replace the old workspace sources)
+                    # Add the new browser selections
                     final_sources.extend(processed_sources)
                     
                     context_state['sources'] = final_sources
@@ -2496,8 +2505,35 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Process selections and update context
             processed_sources, processed_filters = process_browser_selections(selected_sources)
             
-            # Update context state
-            context_state['sources'] = processed_sources
+            # Intelligent merging: only replace sources that conflict with new selections
+            original_sources = context_state.get('sources', []) or []
+            final_sources = []
+
+            # Build set of database names that are covered by new browser selections
+            new_db_names = set()
+            for source in processed_sources:
+                source_db = source.split(':')[0] if ':' in source else source
+                new_db_names.add(source_db)
+            
+            # Also track Discord database names from selected_sources (before processing)
+            discord_db_names = set()
+            for source in selected_sources:
+                if '#' in source:
+                    db_name = source.split('#')[0]
+                    discord_db_names.add(db_name)
+            
+            # Keep original sources that don't conflict with new selections
+            for source in original_sources:
+                source_db = source.split(':')[0] if ':' in source else source
+                # Keep source if it's not being replaced by new selections
+                if source_db not in new_db_names and source_db not in discord_db_names:
+                    final_sources.append(source)
+            
+            # Add the new browser selections
+            final_sources.extend(processed_sources)
+            
+            # Update context state with merged sources
+            context_state['sources'] = final_sources
             context_state['filters'] = processed_filters
             context_state['browse_selections'] = selected_sources.copy()
             

@@ -362,24 +362,68 @@ def _load_full_content_for_entries(db_name: str, metadata_entries: List[Dict[str
                     """
                     
                     cursor.execute(query, all_page_ids)
-                    gmail_results = []
-                    for row in cursor.fetchall():
-                        gmail_entry = dict(row)
-                        # Add the message content as content for the chat
-                        gmail_entry['content'] = gmail_entry.get('message_content', '') or gmail_entry.get('body_snippet', '')
-                        gmail_entry['metadata'] = {
-                            'sender_email': gmail_entry.get('sender_email', ''),
-                            'sender_name': gmail_entry.get('sender_name', ''),
-                            'recipient_emails': gmail_entry.get('recipient_emails', ''),
-                            'gmail_labels': gmail_entry.get('gmail_labels', ''),
-                            'thread_id': gmail_entry.get('thread_id', ''),
-                            'message_id': gmail_entry.get('message_id', ''),
-                            'body_snippet': gmail_entry.get('body_snippet', ''),
-                        }
-                        gmail_results.append(gmail_entry)
+                    matched_messages = cursor.fetchall()
+                    
+                    # Step 1: Collect all unique thread IDs from matched messages
+                    thread_ids = set()
+                    for row in matched_messages:
+                        thread_id = row['thread_id']
+                        if thread_id:
+                            thread_ids.add(thread_id)
                     
                     if os.getenv("MAIA_DEBUG") == "1":
-                        print(f"   Loaded {len(gmail_results)} full Gmail entries with content")
+                        print(f"   Found {len(matched_messages)} matching messages in {len(thread_ids)} threads")
+                        print(f"   Thread IDs: {list(thread_ids)[:5]}")
+                    
+                    # Step 2: Get ALL messages from these threads (thread expansion)
+                    gmail_results = []
+                    if thread_ids:
+                        thread_placeholders = ','.join(['?' for _ in thread_ids])
+                        thread_query = f"""
+                            SELECT 
+                                page_id,
+                                subject as title,
+                                sender_email,
+                                sender_name,
+                                recipient_emails,
+                                message_content,
+                                body_snippet,
+                                gmail_labels,
+                                thread_id,
+                                message_id,
+                                email_date as created_time,
+                                thread_position,
+                                workspace,
+                                'gmail' as database_name,
+                                'gmail' as content_type
+                            FROM gmail_content 
+                            WHERE thread_id IN ({thread_placeholders})
+                            ORDER BY thread_id, thread_position ASC, email_date ASC
+                        """
+                        
+                        cursor.execute(thread_query, list(thread_ids))
+                        all_thread_messages = cursor.fetchall()
+                        
+                        for row in all_thread_messages:
+                            gmail_entry = dict(row)
+                            # Add the message content as content for the chat
+                            gmail_entry['content'] = gmail_entry.get('message_content', '') or gmail_entry.get('body_snippet', '')
+                            gmail_entry['metadata'] = {
+                                'sender_email': gmail_entry.get('sender_email', ''),
+                                'sender_name': gmail_entry.get('sender_name', ''),
+                                'recipient_emails': gmail_entry.get('recipient_emails', ''),
+                                'gmail_labels': gmail_entry.get('gmail_labels', ''),
+                                'thread_id': gmail_entry.get('thread_id', ''),
+                                'message_id': gmail_entry.get('message_id', ''),
+                                'body_snippet': gmail_entry.get('body_snippet', ''),
+                                'thread_position': gmail_entry.get('thread_position', 0),
+                            }
+                            gmail_results.append(gmail_entry)
+                    
+                    if os.getenv("MAIA_DEBUG") == "1":
+                        print(f"   Thread expansion: {len(matched_messages)} matched → {len(gmail_results)} total messages in threads")
+                    
+                    print(f"📧 Expanded Gmail search: {len(matched_messages)} matching messages → {len(gmail_results)} complete thread messages")
                     
                     return gmail_results
                     

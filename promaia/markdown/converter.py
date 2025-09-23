@@ -181,6 +181,17 @@ def block_to_markdown(block: Dict[str, Any], level: int = 0, subpage_data: Optio
                     # Fallback if no summary is available
                     markdown = f"{indent}📝 **[Transcript block - no summary available]**\n\n"
             
+            elif block_type == "unsupported":
+                # Handle unsupported blocks, which often include transcription blocks
+                # The Notion API returns transcription blocks as "unsupported" type
+                if block.get("has_children"):
+                    # If it has children, it might be a transcription block with accessible content
+                    markdown = f"{indent}📝 **[Transcription/Meeting block - content not directly accessible via API]**\n\n"
+                    # Note: child blocks will be processed separately and may contain accessible content
+                else:
+                    # Generic unsupported block
+                    markdown = f"{indent}*[Unsupported block type - content not accessible]*\n\n"
+            
             else:
                 # Default for unhandled block types
                 markdown = f"{indent}*[{block_type} block]*: {text}\n\n"
