@@ -309,9 +309,15 @@ class GmailConnector(BaseConnector):
         if not date_filter or not date_filter.start_date:
             return [date_filter] if date_filter else []
         
+        # For incremental syncs (no end_date), don't chunk - just return the original filter
+        # This preserves the incremental nature and avoids setting an artificial end_date
+        if not date_filter.end_date:
+            self.logger.debug("Incremental sync detected (no end_date), skipping date chunking")
+            return [date_filter]
+        
         chunks = []
         current_start = date_filter.start_date
-        end_date = date_filter.end_date or datetime.now(timezone.utc)
+        end_date = date_filter.end_date  # Don't default to now() - respect the original filter
         
         while current_start < end_date:
             chunk_end = min(current_start + timedelta(days=self.chunk_size_days), end_date)
@@ -340,9 +346,8 @@ class GmailConnector(BaseConnector):
             "has_attachments": {"type": "checkbox", "description": "Has attachments"},
             "is_unread": {"type": "checkbox", "description": "Is unread"},
             "body_snippet": {"type": "text", "description": "Email body preview"},
-            "snippet": latest_message.get('snippet', ''),
-            "messages": messages,  # Store full message data for detailed processing
-            "body_html": self._get_latest_html_body(messages)
+            "snippet": {"type": "text", "description": "Email snippet/preview"},
+            "body_html": {"type": "text", "description": "Email HTML body"}
         }
     
     async def query_pages(self, 
