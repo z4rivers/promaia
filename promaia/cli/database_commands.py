@@ -44,8 +44,8 @@ async def remove_channel_from_config(db_config, channel_name: str, db_manager) -
         channel_id_to_remove = None
         
         # Look through registry entries to find a mapping
-        from promaia.storage.json_registry import get_json_registry
-        registry = get_json_registry()
+        from promaia.storage.hybrid_storage import get_hybrid_registry
+        registry = get_hybrid_registry()
         
         try:
             # Get content for this database
@@ -248,7 +248,7 @@ async def handle_database_remove(args):
 
 async def handle_database_remove_channels(args):
     """Handle 'maia database remove-channels' command to remove Discord channels via browser."""
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     from promaia.cli.discord_commands import interactive_channel_browser, get_accessible_channels_cached
     from promaia.connectors.discord_connector import DiscordConnector
     from rich.console import Console
@@ -339,7 +339,7 @@ async def handle_database_remove_channels(args):
         print(f"✓ Updated config for database '{args.database_name}'")
         
         # Remove stored data for these channels
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         total_removed = 0
         
         for channel_id in channels_to_remove:
@@ -372,7 +372,7 @@ async def handle_database_remove_channels(args):
 
 async def handle_database_purge_data(database_config):
     """Purge all locally stored data for a database."""
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     import shutil
     
     try:
@@ -380,7 +380,7 @@ async def handle_database_purge_data(database_config):
         md_dir = getattr(database_config, 'markdown_directory', None)
         
         # Purge from registry database
-        registry = get_json_registry()
+        registry = get_hybrid_registry()
         db_name = database_config.nickname
         workspace = database_config.workspace
         qualified_name = f"{workspace}.{db_name}" if workspace else db_name
@@ -574,7 +574,7 @@ async def handle_channel_remove_interactive(args):
     """Handle interactive Discord channel removal using simple selector.""" 
     from promaia.cli.simple_selector import interactive_simple_selector
     from promaia.config.workspaces import get_workspace_manager
-    from promaia.storage.json_registry import get_json_registry
+    from promaia.storage.hybrid_storage import get_hybrid_registry
     import shutil
     from pathlib import Path
     
@@ -624,7 +624,7 @@ async def handle_channel_remove_interactive(args):
     
     # Process each channel for removal
     db_manager = get_database_manager()
-    registry = get_json_registry()
+    registry = get_hybrid_registry()
     total_removed_items = 0
     total_removed_channels = 0
     
@@ -1640,8 +1640,8 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
     
     # Check for source prefix (source:filter_expression)
     # But exclude global contains:"..." syntax which doesn't have a source prefix
-    # Updated regex to handle day specifications in source names (e.g., trass.yeeps_discord:30)
-    source_match = re.match(r'^([a-zA-Z0-9_.-]+(?::[0-9]+)?):\s*(.+)$', filter_expr)
+    # Updated regex to handle day specifications in source names (e.g., trass.yeeps_discord:30, trass.yp:all)
+    source_match = re.match(r'^([a-zA-Z0-9_.-]+(?::[0-9]+|:all)?):\s*(.+)$', filter_expr)
     if source_match and not (filter_expr.startswith('contains:"') and ':' not in filter_expr[9:]):
         source = source_match.group(1)
         filter_part = source_match.group(2)

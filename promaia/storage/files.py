@@ -894,7 +894,7 @@ def read_markdown_files_with_registry(
     
         # Commit any registry path updates that were made during the loop
         try:
-            connection.commit()
+            conn.commit()
         except Exception:
             pass
     
@@ -1225,10 +1225,19 @@ def evaluate_condition(actual_value: Any, operator: str, expected_value: str) ->
     
     # Apply the operator
     if operator == '=':
+        # For Discord channel filtering, use exact matching to avoid "announcements" matching "plush-announcements"
         # For Gmail email filtering, support partial matching (contains)
         # This allows "from=avask" to match "someone@avask.com" 
         if isinstance(actual_value, str) and isinstance(expected_value, str):
-            return expected_value.lower() in actual_value.lower()
+            # Check if this is a Discord channel name filter - use exact matching
+            # Note: We can't easily pass context here, so we'll check if both values look like channel names
+            if (actual_value.count('-') > 0 or actual_value.count('・') > 0 or 
+                expected_value.count('-') > 0 or expected_value.count('・') > 0):
+                # Looks like Discord channel names - use exact matching
+                return actual_value.lower() == expected_value.lower()
+            else:
+                # Gmail-style partial matching for emails
+                return expected_value.lower() in actual_value.lower()
         return actual_value == expected_value
     elif operator == 'contains':
         # Full content search for contains operator
