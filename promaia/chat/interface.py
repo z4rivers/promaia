@@ -1735,19 +1735,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     new_workspace = getattr(parsed_args, 'workspace', None)
                     new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
                     
+                    # Check if we're switching from NL mode to regular mode
+                    had_nl_content = bool(context_state.get('natural_language_content'))
+                    had_nl_prompt = bool(context_state.get('natural_language_prompt'))
+                    nl_was_removed = had_nl_content or had_nl_prompt
+                    
                     # Update context state
                     context_state['sources'] = new_sources
                     context_state['filters'] = new_filters
                     context_state['mcp_servers'] = new_mcp_servers
-                    
-                    # Only clear natural language content if we're explicitly switching away from NL mode
-                    # Don't clear if user is just adding sources to existing NL content
-                    if new_sources or new_filters:
-                        # Only clear NL content if there was no previous NL content, meaning user is switching modes
-                        if not context_state.get('natural_language_content'):
-                            context_state['natural_language_content'] = None  
-                            context_state['natural_language_prompt'] = None   
-                        # Don't clear original_query_format to preserve command display
                     
                     if new_workspace:
                         context_state['workspace'] = new_workspace
@@ -1756,13 +1752,90 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     full_command = f"maia chat {user_input}"
                     context_state['original_query_format'] = full_command
                     
-                    # Always reload context with new settings
-                    if reload_context():
-                        print_text("Context updated successfully!", style="bold green")
-                        return True
+                    # If we had NL content and now we don't, properly remove it
+                    if nl_was_removed:
+                        print_text("🔄 Natural language prompt removed - switching to regular mode", style="cyan")
+                        print_text("🔄 Removing natural language results from context...", style="cyan")
+                        
+                        # IMPORTANT: Capture NL sources before clearing state to prevent any confusion  
+                        nl_sources_to_remove = set(context_state.get('natural_language_content', {}).keys() if context_state.get('natural_language_content') else [])
+                        context_state['natural_language_content'] = None
+                        context_state['natural_language_prompt'] = None
+                        context_state['cached_natural_language_prompt'] = ''
+                        
+                        try:
+                            nonlocal initial_multi_source_data, total_pages_loaded
+                            
+                            # Get the current multi-source data
+                            current_data = dict(initial_multi_source_data)
+                            
+                            # Build set of sources that should be kept based on new regular sources
+                            sources_to_keep = set()
+                            if new_sources:
+                                for source_spec in new_sources:
+                                    # Extract just the database name part (before :)
+                                    db_name = source_spec.split(':')[0]
+                                    sources_to_keep.add(db_name)
+                            
+                            # Remove sources that came from NL and are not in the new sources to keep
+                            keys_to_remove = []
+                            for key in current_data.keys():
+                                # Check if this source was loaded via natural language
+                                is_from_nl = key in nl_sources_to_remove
+                                
+                                # Check if this source should be kept based on new regular sources
+                                should_keep = any(keep_src in key for keep_src in sources_to_keep) if sources_to_keep else False
+                                
+                                # Remove if it's from NL and shouldn't be kept
+                                if is_from_nl and not should_keep:
+                                    keys_to_remove.append(key)
+                                    debug_print(f"Will remove NL source: {key} (not in new sources: {sources_to_keep})")
+                            
+                            # Remove the identified keys
+                            for key in keys_to_remove:
+                                if key in current_data:
+                                    debug_print(f"Removing NL source from context: {key}")
+                                    del current_data[key]
+                            
+                            # Update the global variables with the cleaned data
+                            initial_multi_source_data = current_data
+                            total_pages_loaded = sum(len(pages) for pages in current_data.values())
+                            
+                            # Update context state as well
+                            context_state['initial_multi_source_data'] = current_data
+                            context_state['total_pages_loaded'] = total_pages_loaded
+                            
+                            # Update the system prompt with the remaining data
+                            mcp_tools_info = context_state.get('mcp_tools_info')
+                            system_prompt = create_system_prompt(current_data, mcp_tools_info)
+                            context_state['system_prompt'] = system_prompt
+                            
+                            debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
+                            print_text("Context updated successfully!", style="bold green")
+                            return True
+                            
+                        except Exception as e:
+                            print_text(f"❌ Error updating context after NL removal: {e}", style="red")
+                            debug_print(f"NL removal error: {e}")
+                            # Fall back to full reload if manual update fails
+                            # Ensure NL state is still cleared before reload
+                            context_state['natural_language_content'] = None
+                            context_state['natural_language_prompt'] = None
+                            context_state['cached_natural_language_prompt'] = ''
+                            if reload_context():
+                                print_text("Context updated successfully via reload!", style="bold green")
+                                return True
+                            else:
+                                print_text("❌ Failed to reload context after removing natural language", style="red")
+                                return False
                     else:
-                        print_text("Failed to reload context with new settings.", style="bold red")
-                        return False
+                        # No NL content to remove, just reload normally
+                        if reload_context():
+                            print_text("Context updated successfully!", style="bold green")
+                            return True
+                        else:
+                            print_text("Failed to reload context with new settings.", style="bold red")
+                            return False
                     
             except SystemExit:
                 # argparse calls sys.exit on invalid arguments
@@ -1838,6 +1911,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # If no browse databases now but we had them before, that's a change
                 browse_changed = True
             
+            # Detect if natural language was removed FIRST (before processing)
+            nl_was_removed = False
+            nl_sources_to_remove = set()  # Initialize for use throughout function
+            if not natural_language_parts and (context_state.get('natural_language_content') or context_state.get('natural_language_prompt')):
+                print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
+                nl_was_removed = True
+                # Capture NL sources before any state changes
+                nl_sources_to_remove = set(context_state.get('natural_language_content', {}).keys() if context_state.get('natural_language_content') else [])
+                
             # Process natural language query if present
             nl_prompt = None
             natural_language_content = None
@@ -1878,15 +1960,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         
                 except Exception as e:
                     print_text(f"❌ Error processing natural language query: {e}", style="yellow")
-            else:
-                # User removed the natural language part entirely - clear NL state
-                nl_was_removed = False
-                if context_state.get('natural_language_content') or context_state.get('natural_language_prompt'):
-                    print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
-                    context_state['natural_language_content'] = None
-                    context_state['natural_language_prompt'] = None
-                    context_state['cached_natural_language_prompt'] = ''
-                    nl_was_removed = True
+            elif nl_was_removed:
+                # Clear NL state when removed
+                context_state['natural_language_content'] = None
+                context_state['natural_language_prompt'] = None
+                context_state['cached_natural_language_prompt'] = ''
             
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
@@ -2083,32 +2161,63 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Instead of full reload, just update the system prompt without NL content
                     # This preserves browser sources while removing NL results
                     try:
-                        # Get the current multi-source data and remove NL entries
+                        nonlocal initial_multi_source_data, total_pages_loaded
+                        
+                        # Get the current multi-source data
                         current_data = dict(initial_multi_source_data)
                         
-                        # Remove any natural language database entries
-                        nl_keys_to_remove = [key for key in current_data.keys() if 'gmail' in key.lower()]
-                        for key in nl_keys_to_remove:
+                        # Build set of sources that should be kept based on browse selections
+                        browse_selections = context_state.get('browse_selections', [])
+                        sources_to_keep = set()
+                        if browse_selections:
+                            for browse_sel in browse_selections:
+                                # Extract database name from selection (may include workspace prefix)
+                                sources_to_keep.add(browse_sel.lower())
+                        
+                        # Remove sources that came from NL and are not in browser selections
+                        keys_to_remove = []
+                        for key in current_data.keys():
+                            # Check if this source was loaded via natural language
+                            is_from_nl = key in nl_sources_to_remove
+                            
+                            # Check if this source should be kept based on browser selections
+                            should_keep = any(keep_src in key.lower() for keep_src in sources_to_keep) if sources_to_keep else False
+                            
+                            # Remove if it's from NL and not selected in browser
+                            if is_from_nl and not should_keep:
+                                keys_to_remove.append(key)
+                                debug_print(f"Will remove NL source: {key} (not in browse selections: {sources_to_keep})")
+                        
+                        # Remove the identified keys
+                        for key in keys_to_remove:
                             if key in current_data:
-                                # Only remove if it was from NL query, keep browser-selected gmail
-                                browse_selections = context_state.get('browse_selections', [])
-                                is_from_browser = any('gmail' in sel.lower() for sel in browse_selections)
-                                if not is_from_browser:
-                                    del current_data[key]
+                                debug_print(f"Removing NL source from context: {key}")
+                                del current_data[key]
+                        
+                        # Update the global variables with the cleaned data
+                        initial_multi_source_data = current_data
+                        total_pages_loaded = sum(len(pages) for pages in current_data.values())
+                        
+                        # Update context state as well
+                        context_state['initial_multi_source_data'] = current_data
+                        context_state['total_pages_loaded'] = total_pages_loaded
                         
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
                         system_prompt = create_system_prompt(current_data, mcp_tools_info)
                         context_state['system_prompt'] = system_prompt
                         
-                        # Update total pages count
-                        total_pages_loaded = sum(len(pages) for pages in current_data.values())
-                        
+                        debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
                         print_text("Context updated successfully!", style="bold green")
                         return True
                     except Exception as e:
                         print_text(f"❌ Error updating context after NL removal: {e}", style="red")
+                        debug_print(f"NL removal error: {e}")
                         # Fall back to full reload if manual update fails
+                        # Ensure NL state is still cleared before reload
+                        context_state['natural_language_content'] = None
+                        context_state['natural_language_prompt'] = None
+                        context_state['cached_natural_language_prompt'] = ''
                         if reload_context(skip_nl_cache_messages=True):
                             print_text("Context updated successfully via reload!", style="bold green")
                             return True
