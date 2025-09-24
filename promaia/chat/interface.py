@@ -2811,7 +2811,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             results = await mcp_executor.execute_tool_calls(tool_calls)
             
             # Format the results
-            results_text = mcp_executor.format_tool_results(results)
+            results_text = mcp_executor.format_tool_results(results, show_raw=DEBUG_MODE)
             
             # Add results to the response
             updated_response = response_text + "\n" + results_text
