@@ -2944,6 +2944,53 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif user_input.strip().lower() == '/help':
                 print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
+            elif user_input.strip().lower().startswith('/image'):
+                # Handle image attachments
+                try:
+                    parts = user_input.strip().split(' ', 1)
+                    if len(parts) < 2:
+                        print_text("Usage: /image <path_to_image> [optional message]", style="bold yellow")
+                        print_text("Example: /image /path/to/photo.jpg What do you see in this image?", style="dim")
+                        continue
+                    
+                    image_part = parts[1].strip()
+                    
+                    # Check if there's a message after the image path
+                    image_path = None
+                    message_text = ""
+                    
+                    # Simple parsing: assume first word is the path, rest is message
+                    image_parts = image_part.split(' ', 1)
+                    image_path = image_parts[0]
+                    
+                    if len(image_parts) > 1:
+                        message_text = image_parts[1]
+                    else:
+                        # Prompt for message if none provided
+                        message_text = session.prompt("Message (optional): ", style=style).strip()
+                    
+                    # Process the image
+                    from promaia.utils.image_processing import (
+                        encode_image_from_path, is_vision_supported, get_model_image_limits
+                    )
+                    
+                    # Check if current model supports vision
+                    if not is_vision_supported(current_api):
+                        print_text(f"Current model '{current_api}' does not support image inputs.", style="bold red")
+                        print_text("Try switching to a vision-capable model with '/model'.", style="dim")
+                        continue
+                    
+                    # Encode the image
+                    encoded_image = encode_image_from_path(image_path)
+                    print_text(f"📸 Image loaded: {image_path}", style="bold green")
+                    
+                    # Prepare message with image
+                    user_input = message_text  # Set the text part
+                    current_images = [encoded_image]  # Store images for processing
+                    
+                except Exception as e:
+                    print_text(f"Error loading image: {e}", style="bold red")
+                    continue
             elif user_input.strip().lower().startswith('/model'):
                 # Switch AI model
                 input_parts = user_input.strip().split(' ', 1)
@@ -3201,7 +3248,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if not user_input.strip():
                 continue
 
-            messages.append({"role": "user", "content": user_input})
+            # Initialize current_images if not set (for non-image commands)
+            if 'current_images' not in locals():
+                current_images = []
+            
+            # Prepare message with potential images
+            if current_images:
+                debug_print(f"Processing message with {len(current_images)} images")
+            
+            messages.append({"role": "user", "content": user_input, "images": current_images})
 
             # Call the appropriate API
             response_content = None
@@ -3211,9 +3266,31 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     debug_print(f"AI Call Debug: Total pages in context: {total_pages_loaded}")
                     debug_print(f"AI Call Debug: Context sources: {context_state.get('sources')}")
                 
+                # Check for images in current message
+                current_message_images = []
+                if messages and "images" in messages[-1]:
+                    current_message_images = messages[-1].get("images", [])
+                    if current_message_images:
+                        print_text(f"📸 Processing {len(current_message_images)} image(s) with {current_api.title()}...", style="bold green")
+                        
+                    # Clean messages for existing handlers (but keep full messages for image processing)
+                    clean_messages = []
+                    for msg in messages:
+                        clean_msg = {"role": msg["role"], "content": msg["content"]}
+                        clean_messages.append(clean_msg)
+                    messages_for_api = messages  # Keep full messages for image handlers
+                else:
+                    messages_for_api = messages
+
                 # Direct API calls (streaming removed for reliability)
                 if current_api == "anthropic" and anthropic_client:
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, messages)
+                    if current_message_images:
+                        # Handle images with Anthropic
+                        formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages)
+                    else:
+                        # Regular text-only message
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, messages_for_api)
                     if response and response.content:
                         response_text = response.content[0].text
 
@@ -3252,7 +3329,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 'tokens': None
                             }
                 elif current_api == "openai" and openai_client:
-                    formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                    if current_message_images:
+                        # Handle images with OpenAI
+                        formatted_messages = _format_openai_with_images(system_prompt, messages_for_api, current_message_images)
+                    else:
+                        # Regular text-only message
+                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages_for_api
+                    
                     response = openai_client.chat.completions.create(
                         model="gpt-4o",
                         messages=formatted_messages,
@@ -3295,13 +3378,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 'tokens': None
                             }
                 elif current_api == "gemini" and gemini_client:
-                    formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
-                    for msg in messages:
-                        formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
-
                     response_text_with_tools = None
                     try:
-                        response = gemini_client.generate_content(formatted_prompt)
+                        if current_message_images:
+                            # Handle images with Gemini
+                            current_gemini_model, gemini_messages = _format_gemini_with_images(system_prompt, messages_for_api, current_message_images)
+                            response = current_gemini_model.generate_content(
+                                contents=gemini_messages,
+                                generation_config={
+                                    "temperature": 0.7,
+                                }
+                            )
+                        else:
+                            # Regular text-only message
+                            formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
+                            for msg in messages_for_api:
+                                formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
+                            response = gemini_client.generate_content(formatted_prompt)
                         if response.text:
                             response_text = response.text
 
@@ -3387,7 +3480,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         initialize_llama_client()
                     
                     if llama_client:
-                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                        if current_message_images:
+                            # Handle images with Llama
+                            formatted_messages = _format_llama_with_images(system_prompt, messages_for_api, current_message_images)
+                        else:
+                            # Regular text-only message
+                            formatted_messages = [{"role": "system", "content": system_prompt}] + messages_for_api
                         model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
                         
                         try:
@@ -3483,6 +3581,152 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             print_text("\nGoodbye!", style="bold cyan")
             break
 
+# CLI Image Helper Functions
+
+def _format_anthropic_with_images(messages_for_api, current_message_images):
+    """Format Anthropic messages with image support."""
+    from promaia.utils.image_processing import format_image_for_anthropic
+    
+    # Build message history
+    formatted_messages = []
+    
+    # Add all previous messages (text only)
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        formatted_messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    
+    # Add current user message with images
+    current_content = []
+    
+    # Add text if present
+    if messages_for_api:
+        last_msg = messages_for_api[-1]
+        if last_msg.get("content"):
+            current_content.append({"type": "text", "text": last_msg["content"]})
+    
+    # Add images
+    for img in current_message_images:
+        current_content.append(format_image_for_anthropic(img["data"], img["media_type"]))
+    
+    formatted_messages.append({
+        "role": "user",
+        "content": current_content
+    })
+    
+    debug_print(f"Calling Anthropic with {len(formatted_messages)} messages and {len(current_message_images)} images")
+    return formatted_messages
+
+def _format_openai_with_images(system_prompt, messages_for_api, current_message_images):
+    """Format OpenAI messages with image support."""
+    from promaia.utils.image_processing import format_image_for_openai
+    
+    # Start with system message
+    formatted_messages = [{"role": "system", "content": system_prompt}]
+    
+    # Add all previous messages (text only)
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        formatted_messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    
+    # Add current user message with images
+    current_content = []
+    
+    # Add text if present
+    if messages_for_api:
+        last_msg = messages_for_api[-1]
+        if last_msg.get("content"):
+            current_content.append({"type": "text", "text": last_msg["content"]})
+    
+    # Add images
+    for img in current_message_images:
+        current_content.append(format_image_for_openai(img["data"], img["media_type"]))
+    
+    formatted_messages.append({
+        "role": "user",
+        "content": current_content if current_content else "Please analyze the image"
+    })
+    
+    debug_print(f"Calling OpenAI with {len(formatted_messages)} messages and {len(current_message_images)} images")
+    return formatted_messages
+
+def _format_gemini_with_images(system_prompt, messages_for_api, current_message_images):
+    """Format Gemini content with image support."""
+    from promaia.utils.image_processing import format_image_for_gemini
+    import google.generativeai as genai
+    
+    # Gemini uses a different approach - we need to create a model with system instruction
+    # and then format the conversation with images
+    
+    current_gemini_model = genai.GenerativeModel(
+        model_name="gemini-2.5-pro",
+        system_instruction=system_prompt
+    )
+    
+    # Build conversation history
+    gemini_messages = []
+    
+    # Add previous messages (text only)
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        role = 'user' if msg['role'] == 'user' else 'model'
+        gemini_messages.append({'role': role, 'parts': [msg['content']]})
+    
+    # Add current user message with images
+    current_parts = []
+    
+    # Add text if present
+    if messages_for_api:
+        last_msg = messages_for_api[-1]
+        if last_msg.get("content"):
+            current_parts.append(last_msg["content"])
+    
+    # Add images
+    for img in current_message_images:
+        current_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
+    
+    gemini_messages.append({'role': 'user', 'parts': current_parts})
+    
+    debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {len(current_message_images)} images")
+    return current_gemini_model, gemini_messages
+
+def _format_llama_with_images(system_prompt, messages_for_api, current_message_images):
+    """Format Llama messages with image support (OpenAI-compatible format)."""
+    from promaia.utils.image_processing import format_image_for_llama
+    
+    # Start with system message
+    formatted_messages = [{"role": "system", "content": system_prompt}]
+    
+    # Add all previous messages (text only)
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        formatted_messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    
+    # Add current user message with images (only first image for most local vision models)
+    current_content = []
+    
+    # Add text if present
+    if messages_for_api:
+        last_msg = messages_for_api[-1]
+        if last_msg.get("content"):
+            current_content.append({"type": "text", "text": last_msg["content"]})
+    
+    # Add first image (most local vision models support only one image)
+    if current_message_images:
+        current_content.append(format_image_for_llama(current_message_images[0]["data"], current_message_images[0]["media_type"]))
+    
+    formatted_messages.append({
+        "role": "user",
+        "content": current_content if current_content else "Please analyze the image"
+    })
+    
+    debug_print(f"Calling Llama with {len(formatted_messages)} messages and {min(len(current_message_images), 1)} images")
+    return formatted_messages
+
 def main():
     """Entry point for the chat interface."""
     import argparse
@@ -3503,4 +3747,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main() 
+    main()
