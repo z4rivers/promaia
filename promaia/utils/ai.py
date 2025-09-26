@@ -147,11 +147,22 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
         }
     }
     
+    # Map model names to pricing keys
+    model_mapping = {
+        "claude-opus-4-1-20250805": "claude-opus-4",
+        "claude-opus-4-20250514": "claude-opus-4",
+        "claude-sonnet-4-20250514": "claude-sonnet-4",
+        "claude-3-5-sonnet-20241022": "claude-3.5-sonnet",
+    }
+    
+    # Use mapping if available, otherwise use the model name as-is
+    pricing_key = model_mapping.get(model_name, model_name)
+    
     # Default to Claude Sonnet 4 if model not found
-    if model_name not in pricing:
-        model_name = "claude-sonnet-4"
+    if pricing_key not in pricing:
+        pricing_key = "claude-sonnet-4"
         
-    model_pricing = pricing[model_name]
+    model_pricing = pricing[pricing_key]
     
     input_cost = (prompt_tokens / 1_000_000) * model_pricing["input_cost_per_million"]
     output_cost = (response_tokens / 1_000_000) * model_pricing["output_cost_per_million"]

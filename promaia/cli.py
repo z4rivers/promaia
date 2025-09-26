@@ -1105,7 +1105,8 @@ def chat_run(args):
                 original_command_parts.extend(browse_args)
             if nl_prompts:
                 # For original command reconstruction, combine all NL prompts
-                combined_nl = " ".join([f'-nl "{prompt}"' for prompt in nl_prompts])
+                # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
+                combined_nl = " ".join([f'-nl {prompt}' for prompt in nl_prompts])
                 original_command_parts.append(combined_nl)
             if mcp_servers:
                 for server in mcp_servers:

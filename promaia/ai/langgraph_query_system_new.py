@@ -146,19 +146,19 @@ class IntelligentQueryProcessor:
                 {
                     "query_type": "Gmail - Business partner search with workspace qualifier",
                     "user_query": "all trass gmail entries that include the term mgm",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
+                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace = 'trass' AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') LIMIT 1000",
                     "notes": "Gmail: JOIN unified_content with gmail_content to search actual email content (subject, message_content, sender info). Search across all relevant Gmail fields for comprehensive results."
                 },
                 {
                     "query_type": "Gmail - Content search with date filtering",
                     "user_query": "emails with the term mgm from the last 3 months",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') AND g.email_date >= DATE('now', '-90 days') LIMIT 1000",
+                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace = 'trass' AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') AND email_date >= DATE('now', '-90 days') LIMIT 1000",
                     "notes": "Gmail: JOIN with gmail_content for full text search, use email_date for accurate date filtering. Search subject, content, and sender fields."
                 },
                 {
                     "query_type": "Gmail - General content search (no workspace qualifier)",
                     "user_query": "emails about mgm",
-                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({all_gmail_dbs}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
+                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace IN ('koii', 'trass') AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') LIMIT 1000",
                     "notes": "Gmail: When no workspace specified, search ALL Gmail databases. JOIN with gmail_content for comprehensive email content search."
                 }
             ])

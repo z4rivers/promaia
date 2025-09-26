@@ -1,5 +1,5 @@
 ANTHROPIC_MODELS = {
-    "opus": "claude-opus-4-20250514",
+    "opus": "claude-opus-4-1-20250805",
     "sonnet": "claude-sonnet-4-20250514",
 }
 

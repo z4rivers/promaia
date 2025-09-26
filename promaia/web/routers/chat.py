@@ -455,8 +455,15 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
     
     debug_print(f"Calling Anthropic with {len(anthropic_messages)} messages and {len(images)} images")
     
-    # Use the retry utility
-    model_name = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514")
+    # Use the retry utility - select model based on preference
+    if preferred_model == "anthropic":
+        # For web interface, check if specifically requesting Opus vs Sonnet
+        # Default to Opus for "anthropic" preference to match CLI behavior
+        model_name = ANTHROPIC_MODELS.get("opus", "claude-opus-4-1-20250805")
+    else:
+        model_name = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514")
+    
+    debug_print(f"Using Anthropic model: {model_name}")
     response_content = await call_anthropic_with_retry(
         anthropix_client,
         system_prompt,
@@ -480,7 +487,7 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
         response_tokens=estimated_response,
         total_tokens=estimated_prompt + estimated_response,
         cost=cost_data["total_cost"],
-        model="Claude Sonnet 4"
+        model="Claude Opus 4.1"
     )
     
     return response_content, token_usage_data
@@ -652,7 +659,7 @@ async def get_available_models():
                 "type": model_type,
                 "name": {
                     "gemini": "Gemini 2.5 Pro",
-                    "anthropic": "Claude Sonnet 4", 
+                    "anthropic": "Claude Opus 4.1", 
                     "openai": "GPT-4o",
                     "llama": "Local Llama"
                 }.get(model_type, model_type),

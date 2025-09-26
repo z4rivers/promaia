@@ -159,7 +159,7 @@ def get_current_model_name():
     """Get the display name of the current model based on the current API."""
     global current_api
     model_names = {
-        "anthropic": "Claude Sonnet 4",
+        "anthropic": "Claude Opus 4.1",
         "openai": "GPT-4o",
         "gemini": "Gemini 2.5 Pro",
         "llama": f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})"
@@ -171,7 +171,7 @@ def switch_model(target_model=None):
     global current_api
     
     available_models = {
-        "1": ("anthropic", "Claude Sonnet 4"),
+        "1": ("anthropic", "Claude Opus 4.1"),
         "2": ("openai", "GPT-4o"), 
         "3": ("gemini", "Gemini 2.5 Pro"),
         "4": ("llama", f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})")
@@ -336,10 +336,20 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
     """Calls the Anthropic API with retry logic."""
     from promaia.ai.models import ANTHROPIC_MODELS
     
+    # Determine which model to use based on current selection
+    # Check if we're using Claude Opus 4.1 via the display name
+    current_model_name = get_current_model_name()
+    if "Opus" in current_model_name:
+        model_to_use = ANTHROPIC_MODELS.get("opus", "claude-opus-4-1-20250805")
+    else:
+        model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514")
+    
+    debug_print(f"Using Anthropic model: {model_to_use} (selected: {current_model_name})")
+    
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
-                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
+                model=model_to_use,
                 system=system_prompt,
                 messages=messages,
                 max_tokens=max_tokens,
@@ -356,6 +366,111 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
 def run_non_interactive_chat(messages: List[Dict[str, Any]], system_prompt: str, for_api: str):
     """Handles a single, non-interactive chat exchange."""
     pass
+
+def _split_respecting_escaped_spaces(text: str) -> list[str]:
+    """
+    Split text on spaces while respecting escaped spaces (backslash followed by space).
+    
+    Args:
+        text: Text to split
+        
+    Returns:
+        List of parts with escaped spaces properly handled
+    """
+    import re
+    
+    # Replace escaped spaces with a placeholder
+    placeholder = "__ESCAPED_SPACE__"
+    text_with_placeholder = text.replace('\\ ', placeholder)
+    
+    # Split on regular spaces
+    parts = text_with_placeholder.split()
+    
+    # Restore escaped spaces by removing backslash and replacing placeholder
+    restored_parts = []
+    for part in parts:
+        restored_part = part.replace(placeholder, ' ')
+        restored_parts.append(restored_part)
+    
+    return restored_parts
+
+def _parse_image_paths_and_message(input_text: str) -> tuple[list[str], str]:
+    """
+    Parse multiple image paths and message text from input.
+    
+    Args:
+        input_text: The text after '/image' command
+        
+    Returns:
+        Tuple of (image_paths, message_text)
+    """
+    import re
+    from pathlib import Path
+    
+    # Use smart splitting that respects escaped spaces
+    parts = _split_respecting_escaped_spaces(input_text)
+    image_paths = []
+    message_parts = []
+    
+    for part in parts:
+        # Check if this looks like a file path and has an image extension
+        if _is_likely_image_path(part):
+            image_paths.append(part)
+        else:
+            message_parts.append(part)
+    
+    message_text = ' '.join(message_parts)
+    return image_paths, message_text
+
+def _is_likely_image_path(text: str) -> bool:
+    """
+    Check if a string looks like an image file path.
+    
+    Args:
+        text: String to check
+        
+    Returns:
+        True if it looks like an image path
+    """
+    # Common image extensions
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.svg'}
+    
+    # Check if it has an image extension
+    path = Path(text.lower())
+    if path.suffix in image_extensions:
+        return True
+    
+    # Check if it looks like a path (contains / or \ and doesn't look like a sentence)
+    if ('/' in text or '\\' in text) and not text.endswith('.'):
+        # Additional checks to avoid false positives
+        if len(text.split()) == 1:  # Single word/path, not a sentence
+            return True
+    
+    return False
+
+def _detect_image_paths_in_message(user_input: str) -> tuple[str, list[str]]:
+    """
+    Detect image paths in a regular message without /image prefix.
+    
+    Args:
+        user_input: The full user message
+        
+    Returns:
+        Tuple of (cleaned_message, image_paths)
+    """
+    # Use smart splitting that respects escaped spaces
+    words = _split_respecting_escaped_spaces(user_input)
+    image_paths = []
+    remaining_words = []
+    
+    for word in words:
+        if _is_likely_image_path(word):
+            image_paths.append(word)
+        else:
+            remaining_words.append(word)
+    
+    cleaned_message = ' '.join(remaining_words)
+    return cleaned_message, image_paths
 
 def safe_split_command(user_input):
     """
@@ -746,11 +861,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             query_parts.extend(["-ws", context_state['workspace']])
         if context_state['natural_language_prompt']:
             nl_prompt = context_state['natural_language_prompt']
-            # Only add quotes if the prompt contains spaces and isn't already quoted
-            if ' ' in nl_prompt and not (nl_prompt.startswith('"') and nl_prompt.endswith('"')):
-                query_parts.extend(["-nl", f'"{nl_prompt}"'])
-            else:
-                query_parts.extend(["-nl", nl_prompt])
+            # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
+            # Adding quotes is redundant and makes commands harder to read and copy
+            query_parts.extend(["-nl", nl_prompt])
         if context_state['mcp_servers']:
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
@@ -790,7 +903,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     def reload_context(skip_nl_cache_messages=False):
         """Reload the chat context with current state configuration."""
-        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command, natural_language_content, sources
         
         # Initialize combined data container
         combined_multi_source_data = {}
@@ -804,6 +917,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             existing_nl_content = context_state.get('natural_language_content', {})
             cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
             
+            # DEBUG: Add logging to understand cache behavior
+            debug_print(f"🔍 NL Cache Debug:")
+            debug_print(f"  Current prompt: '{nl_prompt}'")
+            debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
+            debug_print(f"  Prompts match: {nl_prompt == cached_nl_prompt}")
+            debug_print(f"  Has existing content: {bool(existing_nl_content)}")
+            debug_print(f"  Content count: {len(existing_nl_content) if existing_nl_content else 0}")
+            
             # If we have content and no cached prompt yet, this is CLI-provided content (first time)
             if existing_nl_content and not cached_nl_prompt:
                 if not skip_nl_cache_messages:
@@ -811,14 +932,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 natural_language_data = existing_nl_content
                 # Set up cache for future reloads
                 context_state['cached_natural_language_prompt'] = nl_prompt
+                debug_print(f"  → Using CLI content, caching prompt")
             # If we have cached content for this exact prompt, reuse it (no re-processing needed)
             elif nl_prompt == cached_nl_prompt and existing_nl_content:
                 if not skip_nl_cache_messages:
                     print_text("🔄 Using cached natural language results (browse context changed, query unchanged)", style="dim")
                 natural_language_data = existing_nl_content
+                debug_print(f"  → Using cached content (cache hit)")
                 # IMPORTANT: Don't re-process the query, just use cached results
             # Otherwise, process fresh query
             else:
+                debug_print(f"  → Cache miss, will re-process query")
                 
                 try:
                     from promaia.storage.unified_query import get_query_interface
@@ -1486,6 +1610,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             original_cmd = context_state['original_query_format']
             if original_cmd and original_cmd.startswith("maia chat "):
                 current_args_str = original_cmd[10:]  # Remove "maia chat "
+            elif original_cmd == "maia chat":
+                current_args_str = ""  # No args when command is just "maia chat"
             else:
                 current_args_str = original_cmd  # Use the whole thing as args
         else:
@@ -1627,20 +1753,32 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     cached_nl_content = context_state.get('natural_language_content', {})
                     cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
                     
-                    # If this is a new/different prompt, clear the cache to force fresh processing
-                    if nl_prompt != cached_nl_prompt:
-                        context_state['natural_language_content'] = None
-                        context_state['cached_natural_language_prompt'] = ''
-                        cached_nl_content = {}
-                        cached_nl_prompt = ''
+                    # DEBUG: Log cache check in edit context
+                    debug_print(f"🔍 Edit Context NL Cache Check:")
+                    debug_print(f"  New prompt: '{nl_prompt}'")
+                    debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
+                    debug_print(f"  Prompts match: {nl_prompt == cached_nl_prompt}")
+                    debug_print(f"  Has cached content: {bool(cached_nl_content)}")
                     
                     if nl_prompt == cached_nl_prompt and cached_nl_content:
                         print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
                         natural_language_content = cached_nl_content
+                        debug_print(f"  → Using cached results (edit context cache hit)")
                     else:
-                        # Process natural language query
+                        # Only clear cache if the prompt is actually different (not empty)
+                        if cached_nl_prompt and nl_prompt != cached_nl_prompt:
+                            debug_print(f"  → Prompt changed from '{cached_nl_prompt}' to '{nl_prompt}', clearing cache")
+                            context_state['natural_language_content'] = None
+                            context_state['cached_natural_language_prompt'] = ''
+                        elif not cached_nl_prompt:
+                            debug_print(f"  → No cached prompt yet, will process and cache")
+                        else:
+                            debug_print(f"  → Cache miss, will re-process")
+                        # Process natural language query (only if not using cache)
                         try:
                             from promaia.storage.unified_query import get_query_interface
+                            
+                            print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
                             
                             # Determine workspace to use
                             workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
@@ -1663,8 +1801,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             if not workspace:
                                 print_text("Error: No workspace available for natural language query.", style="bold red")
                                 return False
-                            
-                            print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
                             
                             # Process the natural language query
                             query_interface = get_query_interface()
@@ -1925,41 +2061,60 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             natural_language_content = None
             if natural_language_parts:
                 nl_prompt = ' '.join(natural_language_parts)
-                print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="cyan")
                 
-                # Process the natural language query
-                try:
-                    from promaia.storage.unified_query import get_query_interface
+                # Check cache first - similar logic to edit_context
+                cached_nl_content = context_state.get('natural_language_content', {})
+                cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+                
+                debug_print(f"🔍 Manual Browse Edit NL Cache Check:")
+                debug_print(f"  New prompt: '{nl_prompt}'")
+                debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
+                debug_print(f"  Prompts match: {nl_prompt == cached_nl_prompt}")
+                debug_print(f"  Has cached content: {bool(cached_nl_content)}")
+                
+                if nl_prompt == cached_nl_prompt and cached_nl_content:
+                    print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="cyan")
+                    natural_language_content = cached_nl_content
+                    debug_print(f"  → Using cached results (browse edit cache hit)")
+                else:
+                    debug_print(f"  → Cache miss, will re-process query")
+                    print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="cyan")
                     
-                    # Determine workspace for natural language processing
-                    nl_workspace = workspace or context_state.get('resolved_workspace') or context_state.get('workspace')
-                    if not nl_workspace:
-                        from promaia.config.workspaces import get_workspace_manager
-                        workspace_manager = get_workspace_manager()
-                        nl_workspace = workspace_manager.get_default_workspace()
-                    
-                    if nl_workspace:
-                        # Process the natural language query
-                        query_interface = get_query_interface()
+                    # Process the natural language query
+                    try:
+                        from promaia.storage.unified_query import get_query_interface
                         
-                        # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
-                        # Browser selections will be loaded separately and combined with NL results
-                        database_names = None  # Search all databases for maximum content discovery
+                        # Determine workspace for natural language processing
+                        nl_workspace = workspace or context_state.get('resolved_workspace') or context_state.get('workspace')
+                        if not nl_workspace:
+                            from promaia.config.workspaces import get_workspace_manager
+                            workspace_manager = get_workspace_manager()
+                            nl_workspace = workspace_manager.get_default_workspace()
+                        
+                        if nl_workspace:
+                            # Process the natural language query
+                            query_interface = get_query_interface()
                             
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace, database_names)
-                        
-                        if natural_language_content:
-                            print_text("🔄 Using natural language results from CLI", style="cyan")
-                            # Update context state with natural language content
-                            context_state['natural_language_content'] = natural_language_content
-                            context_state['natural_language_prompt'] = nl_prompt
+                            # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
+                            # Browser selections will be loaded separately and combined with NL results
+                            database_names = None  # Search all databases for maximum content discovery
+                                
+                            natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace, database_names)
+                            
+                            if natural_language_content:
+                                print_text("🔄 Using natural language results from CLI", style="cyan")
+                                # Update context state with natural language content AND cache
+                                context_state['natural_language_content'] = natural_language_content
+                                context_state['natural_language_prompt'] = nl_prompt
+                                context_state['cached_natural_language_prompt'] = nl_prompt
+                                debug_print(f"  → Processed and cached new results")
+                            else:
+                                print_text("❌ No content found for natural language query", style="yellow")
                         else:
-                            print_text("❌ No content found for natural language query", style="yellow")
-                    else:
-                        print_text("❌ No workspace available for natural language processing", style="yellow")
-                        
-                except Exception as e:
-                    print_text(f"❌ Error processing natural language query: {e}", style="yellow")
+                            print_text("❌ No workspace available for natural language processing", style="yellow")
+                            
+                    except Exception as e:
+                        print_text(f"❌ Error processing natural language query: {e}", style="yellow")
             elif nl_was_removed:
                 # Clear NL state when removed
                 context_state['natural_language_content'] = None
@@ -2945,31 +3100,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
             elif user_input.strip().lower().startswith('/image'):
-                # Handle image attachments
+                # Handle multiple image attachments
                 try:
                     parts = user_input.strip().split(' ', 1)
                     if len(parts) < 2:
-                        print_text("Usage: /image <path_to_image> [optional message]", style="bold yellow")
-                        print_text("Example: /image /path/to/photo.jpg What do you see in this image?", style="dim")
+                        print_text("Usage: /image <path1> [path2] [path3] ... [optional message]", style="bold yellow")
+                        print_text("Example: /image /path/to/photo1.jpg /path/to/photo2.png What do you see in these images?", style="dim")
                         continue
                     
                     image_part = parts[1].strip()
                     
-                    # Check if there's a message after the image path
-                    image_path = None
-                    message_text = ""
+                    # Parse multiple image paths and message
+                    image_paths, message_text = _parse_image_paths_and_message(image_part)
                     
-                    # Simple parsing: assume first word is the path, rest is message
-                    image_parts = image_part.split(' ', 1)
-                    image_path = image_parts[0]
+                    if not image_paths:
+                        print_text("No valid image paths found.", style="bold red")
+                        continue
                     
-                    if len(image_parts) > 1:
-                        message_text = image_parts[1]
-                    else:
-                        # Prompt for message if none provided
-                        message_text = session.prompt("Message (optional): ", style=style).strip()
-                    
-                    # Process the image
+                    # Process the images
                     from promaia.utils.image_processing import (
                         encode_image_from_path, is_vision_supported, get_model_image_limits
                     )
@@ -2980,16 +3128,42 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("Try switching to a vision-capable model with '/model'.", style="dim")
                         continue
                     
-                    # Encode the image
-                    encoded_image = encode_image_from_path(image_path)
-                    print_text(f"📸 Image loaded: {image_path}", style="bold green")
+                    # Get model limits
+                    model_limits = get_model_image_limits(current_api)
+                    max_images = model_limits['max_images']
                     
-                    # Prepare message with image
+                    # Limit images to model capacity
+                    if len(image_paths) > max_images:
+                        print_text(f"⚠️  {current_api.title()} supports max {max_images} images. Processing first {max_images} images.", style="bold yellow")
+                        image_paths = image_paths[:max_images]
+                    
+                    # Encode all images
+                    current_images = []
+                    successful_paths = []
+                    
+                    for image_path in image_paths:
+                        try:
+                            encoded_image = encode_image_from_path(image_path)
+                            current_images.append(encoded_image)
+                            successful_paths.append(image_path)
+                            print_text(f"📸 Image loaded: {image_path}", style="bold green")
+                        except Exception as img_error:
+                            print_text(f"❌ Failed to load image: {image_path} - {img_error}", style="bold red")
+                    
+                    if not current_images:
+                        print_text("No images were successfully loaded.", style="bold red")
+                        continue
+                    
+                    # Prompt for message if none provided
+                    if not message_text:
+                        message_text = session.prompt("Message (optional): ", style=style).strip()
+                    
+                    # Prepare message with images
                     user_input = message_text  # Set the text part
-                    current_images = [encoded_image]  # Store images for processing
+                    print_text(f"📸 Processing {len(current_images)} image(s) with {current_api.title()}...", style="bold green")
                     
                 except Exception as e:
-                    print_text(f"Error loading image: {e}", style="bold red")
+                    print_text(f"Error processing images: {e}", style="bold red")
                     continue
             elif user_input.strip().lower().startswith('/model'):
                 # Switch AI model
@@ -3252,6 +3426,54 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if 'current_images' not in locals():
                 current_images = []
             
+            # Auto-detect image paths in regular messages (if no images already set)
+            if not current_images:
+                cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
+                
+                if detected_paths:
+                    try:
+                        from promaia.utils.image_processing import (
+                            encode_image_from_path, is_vision_supported, get_model_image_limits
+                        )
+                        
+                        # Check if current model supports vision
+                        if not is_vision_supported(current_api):
+                            print_text(f"📸 Detected {len(detected_paths)} image path(s) but {current_api} doesn't support images.", style="bold yellow")
+                            print_text("Try switching to a vision-capable model with '/model' or use text-only.", style="dim")
+                        else:
+                            # Get model limits
+                            model_limits = get_model_image_limits(current_api)
+                            max_images = model_limits['max_images']
+                            
+                            # Limit images to model capacity
+                            if len(detected_paths) > max_images:
+                                print_text(f"📸 Detected {len(detected_paths)} images, but {current_api.title()} supports max {max_images}. Processing first {max_images}.", style="bold yellow")
+                                detected_paths = detected_paths[:max_images]
+                            
+                            # Try to encode detected images
+                            successful_images = []
+                            
+                            for image_path in detected_paths:
+                                try:
+                                    if os.path.exists(image_path):
+                                        encoded_image = encode_image_from_path(image_path)
+                                        successful_images.append(encoded_image)
+                                        print_text(f"📸 Auto-detected image: {image_path}", style="bold green")
+                                    else:
+                                        print_text(f"📸 Image path not found: {image_path}", style="dim yellow")
+                                except Exception as img_error:
+                                    print_text(f"❌ Failed to load detected image: {image_path} - {img_error}", style="bold red")
+                            
+                            if successful_images:
+                                current_images = successful_images
+                                user_input = cleaned_message  # Use cleaned message without image paths
+                                print_text(f"📸 Processing {len(current_images)} auto-detected image(s) with {current_api.title()}...", style="bold green")
+                                
+                    except Exception as e:
+                        print_text(f"Error processing detected images: {e}", style="bold red")
+                        # Continue with original message
+                        pass
+            
             # Prepare message with potential images
             if current_images:
                 debug_print(f"Processing message with {len(current_images)} images")
@@ -3289,8 +3511,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
                         response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages)
                     else:
-                        # Regular text-only message
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, messages_for_api)
+                        # Regular text-only message - clean messages to remove extra fields
+                        clean_messages = []
+                        for msg in messages_for_api:
+                            clean_msg = {"role": msg["role"], "content": msg["content"]}
+                            clean_messages.append(clean_msg)
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages)
                     if response and response.content:
                         response_text = response.content[0].text
 
@@ -3589,13 +3815,33 @@ def _format_anthropic_with_images(messages_for_api, current_message_images):
     
     # Build message history
     formatted_messages = []
+    total_images = 0
     
-    # Add all previous messages (text only)
+    # Add all previous messages (including their images)
     for msg in messages_for_api[:-1]:  # Exclude current message
-        formatted_messages.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+        if msg.get("images"):
+            # Message has images - format as multimodal content
+            msg_content = []
+            
+            # Add text if present
+            if msg.get("content"):
+                msg_content.append({"type": "text", "text": msg["content"]})
+            
+            # Add all images from this message
+            for img in msg["images"]:
+                msg_content.append(format_image_for_anthropic(img["data"], img["media_type"]))
+                total_images += 1
+            
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg_content
+            })
+        else:
+            # Text-only message
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
     
     # Add current user message with images
     current_content = []
@@ -3606,16 +3852,17 @@ def _format_anthropic_with_images(messages_for_api, current_message_images):
         if last_msg.get("content"):
             current_content.append({"type": "text", "text": last_msg["content"]})
     
-    # Add images
+    # Add current message images
     for img in current_message_images:
         current_content.append(format_image_for_anthropic(img["data"], img["media_type"]))
+        total_images += 1
     
     formatted_messages.append({
         "role": "user",
         "content": current_content
     })
     
-    debug_print(f"Calling Anthropic with {len(formatted_messages)} messages and {len(current_message_images)} images")
+    debug_print(f"Calling Anthropic with {len(formatted_messages)} messages and {total_images} total images ({len(current_message_images)} current)")
     return formatted_messages
 
 def _format_openai_with_images(system_prompt, messages_for_api, current_message_images):
@@ -3624,13 +3871,33 @@ def _format_openai_with_images(system_prompt, messages_for_api, current_message_
     
     # Start with system message
     formatted_messages = [{"role": "system", "content": system_prompt}]
+    total_images = 0
     
-    # Add all previous messages (text only)
+    # Add all previous messages (including their images)
     for msg in messages_for_api[:-1]:  # Exclude current message
-        formatted_messages.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+        if msg.get("images"):
+            # Message has images - format as multimodal content
+            msg_content = []
+            
+            # Add text if present
+            if msg.get("content"):
+                msg_content.append({"type": "text", "text": msg["content"]})
+            
+            # Add all images from this message
+            for img in msg["images"]:
+                msg_content.append(format_image_for_openai(img["data"], img["media_type"]))
+                total_images += 1
+            
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg_content
+            })
+        else:
+            # Text-only message
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
     
     # Add current user message with images
     current_content = []
@@ -3641,16 +3908,17 @@ def _format_openai_with_images(system_prompt, messages_for_api, current_message_
         if last_msg.get("content"):
             current_content.append({"type": "text", "text": last_msg["content"]})
     
-    # Add images
+    # Add current message images
     for img in current_message_images:
         current_content.append(format_image_for_openai(img["data"], img["media_type"]))
+        total_images += 1
     
     formatted_messages.append({
-        "role": "user",
+        "role": "user", 
         "content": current_content if current_content else "Please analyze the image"
     })
     
-    debug_print(f"Calling OpenAI with {len(formatted_messages)} messages and {len(current_message_images)} images")
+    debug_print(f"Calling OpenAI with {len(formatted_messages)} messages and {total_images} total images ({len(current_message_images)} current)")
     return formatted_messages
 
 def _format_gemini_with_images(system_prompt, messages_for_api, current_message_images):
@@ -3668,11 +3936,29 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
     
     # Build conversation history
     gemini_messages = []
+    total_images = 0
     
-    # Add previous messages (text only)
+    # Add previous messages (including their images)
     for msg in messages_for_api[:-1]:  # Exclude current message
         role = 'user' if msg['role'] == 'user' else 'model'
-        gemini_messages.append({'role': role, 'parts': [msg['content']]})
+        
+        if msg.get("images"):
+            # Message has images - include text and images
+            msg_parts = []
+            
+            # Add text if present
+            if msg.get("content"):
+                msg_parts.append(msg["content"])
+            
+            # Add all images from this message
+            for img in msg["images"]:
+                msg_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
+                total_images += 1
+            
+            gemini_messages.append({'role': role, 'parts': msg_parts})
+        else:
+            # Text-only message
+            gemini_messages.append({'role': role, 'parts': [msg['content']]})
     
     # Add current user message with images
     current_parts = []
@@ -3683,13 +3969,14 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
         if last_msg.get("content"):
             current_parts.append(last_msg["content"])
     
-    # Add images
+    # Add current message images
     for img in current_message_images:
         current_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
+        total_images += 1
     
     gemini_messages.append({'role': 'user', 'parts': current_parts})
     
-    debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {len(current_message_images)} images")
+    debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {total_images} total images ({len(current_message_images)} current)")
     return current_gemini_model, gemini_messages
 
 def _format_llama_with_images(system_prompt, messages_for_api, current_message_images):
@@ -3699,14 +3986,50 @@ def _format_llama_with_images(system_prompt, messages_for_api, current_message_i
     # Start with system message
     formatted_messages = [{"role": "system", "content": system_prompt}]
     
-    # Add all previous messages (text only)
-    for msg in messages_for_api[:-1]:  # Exclude current message
-        formatted_messages.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+    # Find the first image across all messages (most local vision models support only 1 image)
+    first_image = None
+    first_image_msg = None
+    total_images_available = 0
     
-    # Add current user message with images (only first image for most local vision models)
+    # Check historical messages for images
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        if msg.get("images") and not first_image:
+            first_image = msg["images"][0]  # Take first image
+            first_image_msg = msg
+        if msg.get("images"):
+            total_images_available += len(msg["images"])
+    
+    # Check current message for images
+    if current_message_images:
+        total_images_available += len(current_message_images)
+        if not first_image:
+            first_image = current_message_images[0]
+    
+    # Add all previous messages (text only, except the one with the first image)
+    for msg in messages_for_api[:-1]:  # Exclude current message
+        if msg.get("images") and msg == first_image_msg:
+            # This message has the first image we're using - format as multimodal
+            msg_content = []
+            
+            # Add text if present
+            if msg.get("content"):
+                msg_content.append({"type": "text", "text": msg["content"]})
+            
+            # Add first image
+            msg_content.append(format_image_for_llama(first_image["data"], first_image["media_type"]))
+            
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg_content
+            })
+        else:
+            # Text-only message or message with images we're not using
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+    
+    # Add current user message
     current_content = []
     
     # Add text if present
@@ -3715,8 +4038,8 @@ def _format_llama_with_images(system_prompt, messages_for_api, current_message_i
         if last_msg.get("content"):
             current_content.append({"type": "text", "text": last_msg["content"]})
     
-    # Add first image (most local vision models support only one image)
-    if current_message_images:
+    # Add image only if we haven't used one from history
+    if current_message_images and not first_image_msg:
         current_content.append(format_image_for_llama(current_message_images[0]["data"], current_message_images[0]["media_type"]))
     
     formatted_messages.append({
@@ -3724,7 +4047,8 @@ def _format_llama_with_images(system_prompt, messages_for_api, current_message_i
         "content": current_content if current_content else "Please analyze the image"
     })
     
-    debug_print(f"Calling Llama with {len(formatted_messages)} messages and {min(len(current_message_images), 1)} images")
+    images_used = 1 if first_image else 0
+    debug_print(f"Calling Llama with {len(formatted_messages)} messages and {images_used} image (from {total_images_available} available)")
     return formatted_messages
 
 def main():

@@ -17,6 +17,7 @@ from prompt_toolkit.formatted_text import HTML
 from promaia.storage.files import read_markdown_files, get_existing_page_ids
 from promaia.utils.config import get_chat_days_setting, set_chat_days_setting, load_environment
 from promaia.chat.interface import get_api_preference, create_system_prompt, display_message_with_timestamp
+from promaia.ai.models import ANTHROPIC_MODELS
 from promaia.notion.client import notion_client
 from promaia.notion.pages import get_sync_pages, get_pages_by_properties, get_page_title, get_block_content, clear_block_cache
 from promaia.markdown.converter import page_to_markdown
@@ -469,7 +470,7 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
             from anthropic import Anthropic
             client = Anthropic()
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
                 max_tokens=4000,
                 temperature=0.7,
                 system=system_prompt,
