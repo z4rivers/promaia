@@ -9,7 +9,6 @@ from openai import OpenAI
 import google.generativeai as genai
 from promaia.config.databases import get_database_manager
 from promaia.storage.files import read_markdown_files_with_registry
-from promaia.ai.models import ANTHROPIC_MODELS
 
 # Load environment variables
 from promaia.utils.config import load_environment
@@ -48,7 +47,7 @@ class PromaiLLMAdapter:
                             self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
                             # Test the client with a minimal call
                             test_response = self.client.messages.create(
-                                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
+                                model="claude-3-5-sonnet-20241022",
                                 max_tokens=10,
                                 messages=[{"role": "user", "content": "test"}]
                             )
@@ -98,7 +97,7 @@ class PromaiLLMAdapter:
             
         elif self.client_type == "anthropic":
             response = self.client.messages.create(
-                model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
+                model="claude-3-5-sonnet-20241022",
                 max_tokens=4000,
                 messages=[{"role": "user", "content": prompt.strip()}]
             )

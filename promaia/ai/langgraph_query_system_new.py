@@ -146,19 +146,19 @@ class IntelligentQueryProcessor:
                 {
                     "query_type": "Gmail - Business partner search with workspace qualifier",
                     "user_query": "all trass gmail entries that include the term mgm",
-                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace = 'trass' AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') LIMIT 1000",
+                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
                     "notes": "Gmail: JOIN unified_content with gmail_content to search actual email content (subject, message_content, sender info). Search across all relevant Gmail fields for comprehensive results."
                 },
                 {
                     "query_type": "Gmail - Content search with date filtering",
                     "user_query": "emails with the term mgm from the last 3 months",
-                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace = 'trass' AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') AND email_date >= DATE('now', '-90 days') LIMIT 1000",
+                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({gmail_db_list}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') AND g.email_date >= DATE('now', '-90 days') LIMIT 1000",
                     "notes": "Gmail: JOIN with gmail_content for full text search, use email_date for accurate date filtering. Search subject, content, and sender fields."
                 },
                 {
                     "query_type": "Gmail - General content search (no workspace qualifier)",
                     "user_query": "emails about mgm",
-                    "sql_pattern": f"SELECT page_id, subject as title, 'gmail' as database_name, email_date as created_time, workspace FROM gmail_content WHERE workspace IN ('koii', 'trass') AND (subject LIKE '%mgm%' OR message_content LIKE '%mgm%' OR sender_email LIKE '%mgm%' OR sender_name LIKE '%mgm%') LIMIT 1000",
+                    "sql_pattern": f"SELECT u.page_id, g.subject as title, u.database_name, g.email_date as created_time, u.metadata FROM unified_content u JOIN gmail_content g ON u.page_id = SUBSTR(g.page_id, 5) WHERE u.database_name IN ({all_gmail_dbs}) AND (g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.sender_email LIKE '%mgm%' OR g.sender_name LIKE '%mgm%') LIMIT 1000",
                     "notes": "Gmail: When no workspace specified, search ALL Gmail databases. JOIN with gmail_content for comprehensive email content search."
                 }
             ])
@@ -658,11 +658,18 @@ Return only the JSON object:"""
         try:
             intent = state["intent"]
             
-            # Generate SQL with rich context including workspace mapping
-            workspace_info = self.schema.get('workspace_mapping', {})
-            workspace_context = ""
-            if workspace_info:
-                workspace_context = f"""
+            # Check for temporal grouping
+            temporal_grouping = intent.get('temporal_grouping', {})
+            if temporal_grouping.get('enabled', False):
+                # Generate temporal grouping SQL
+                sql = self._generate_temporal_grouping_sql(intent)
+                state["generated_sql"] = sql
+            else:
+                # Generate regular SQL with workspace context
+                workspace_info = self.schema.get('workspace_mapping', {})
+                workspace_context = ""
+                if workspace_info:
+                    workspace_context = f"""
 === WORKSPACE-DATABASE MAPPING ===
 {workspace_info.get('naming_convention', '')}
 Default workspace: {workspace_info.get('default_workspace', 'koii')}
@@ -683,7 +690,7 @@ WORKSPACE MAPPING RULES (CRITICAL - FOLLOW EXACTLY):
 EXCLUSION LOGIC: When user specifies a workspace (koii, trass), exclude ALL databases from other workspaces.
 """
 
-            sql_prompt = f"""Generate SQLite query for: {intent['goal']}
+                sql_prompt = f"""Generate SQLite query for: {intent['goal']}
 
 === DATABASE CONTEXT ===
 Table: {self.schema['main_table']}
@@ -716,22 +723,23 @@ CRITICAL INSTRUCTIONS:
 
 Generate the SQLite query:"""
 
-            sql_response = self.llm.invoke([
-                SystemMessage(content="Generate working SQLite queries."),
-                HumanMessage(content=sql_prompt)
-            ])
-            
-            # Clean SQL
-            sql = sql_response.content.strip()
-            if "```" in sql:
-                import re
-                match = re.search(r'```(?:sql)?\s*(.*?)\s*```', sql, re.DOTALL)
-                if match:
-                    sql = match.group(1).strip()
-            
-            state["generated_sql"] = sql
-            
+                sql_response = self.llm.invoke([
+                    SystemMessage(content="Generate working SQLite queries."),
+                    HumanMessage(content=sql_prompt)
+                ])
+                
+                # Clean SQL
+                sql = sql_response.content.strip()
+                if "```" in sql:
+                    import re
+                    match = re.search(r'```(?:sql)?\s*(.*?)\s*```', sql, re.DOTALL)
+                    if match:
+                        sql = match.group(1).strip()
+                
+                state["generated_sql"] = sql
+
             # Execute SQL
+            sql = state["generated_sql"]
             if os.getenv("MAIA_DEBUG") == "1":
                 print(f"🔍 Executing: {sql}")
                 
@@ -750,6 +758,86 @@ Generate the SQLite query:"""
             print(f"❌ Execute error: {e}")
         
         return state
+
+    def _generate_temporal_grouping_sql(self, intent: Dict[str, Any]) -> str:
+        """Generate SQL for temporal grouping queries like 'X entries from every month'."""
+        temporal_grouping = intent.get('temporal_grouping', {})
+        period = temporal_grouping.get('period', 'month')
+        per_period_limit = temporal_grouping.get('per_period_limit', 3)
+        start_date = temporal_grouping.get('start_date', '2025-01-01')
+        databases = intent.get('databases', [])
+        
+        # Build database filter
+        db_filter = ""
+        if databases:
+            db_placeholders = ", ".join(f"'{db}'" for db in databases)
+            db_filter = f"AND database_name IN ({db_placeholders})"
+        
+        if period == 'month':
+            # Generate monthly grouping SQL with per-month limit
+            sql = f"""
+WITH ranked_entries AS (
+    SELECT 
+        page_id, title, database_name, created_time, metadata,
+        ROW_NUMBER() OVER (
+            PARTITION BY strftime('%Y-%m', created_time) 
+            ORDER BY created_time DESC
+        ) as rn
+    FROM unified_content
+    WHERE created_time >= '{start_date}' {db_filter}
+)
+SELECT page_id, title, database_name, created_time, metadata
+FROM ranked_entries 
+WHERE rn <= {per_period_limit}
+ORDER BY created_time DESC
+"""
+        elif period == 'week':
+            # Generate weekly grouping SQL with per-week limit
+            sql = f"""
+WITH ranked_entries AS (
+    SELECT 
+        page_id, title, database_name, created_time, metadata,
+        ROW_NUMBER() OVER (
+            PARTITION BY strftime('%Y-%W', created_time) 
+            ORDER BY created_time DESC
+        ) as rn
+    FROM unified_content
+    WHERE created_time >= '{start_date}' {db_filter}
+)
+SELECT page_id, title, database_name, created_time, metadata
+FROM ranked_entries 
+WHERE rn <= {per_period_limit}
+ORDER BY created_time DESC
+"""
+        elif period == 'day':
+            # Generate daily grouping SQL with per-day limit
+            sql = f"""
+WITH ranked_entries AS (
+    SELECT 
+        page_id, title, database_name, created_time, metadata,
+        ROW_NUMBER() OVER (
+            PARTITION BY DATE(created_time) 
+            ORDER BY created_time DESC
+        ) as rn
+    FROM unified_content
+    WHERE created_time >= '{start_date}' {db_filter}
+)
+SELECT page_id, title, database_name, created_time, metadata
+FROM ranked_entries 
+WHERE rn <= {per_period_limit}
+ORDER BY created_time DESC
+"""
+        else:
+            # Fallback to simple query
+            sql = f"""
+SELECT page_id, title, database_name, created_time, metadata
+FROM unified_content
+WHERE created_time >= '{start_date}' {db_filter}
+ORDER BY created_time DESC
+LIMIT {per_period_limit * 12}
+"""
+        
+        return sql.strip()
 
     def _measure_node(self, state: QueryState) -> QueryState:
         """MEASURE: Validate results."""
