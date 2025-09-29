@@ -344,16 +344,25 @@ You must respond with actual values in this exact structure:
     "goal": "what the user wants to find",
     "databases": ["list", "of", "relevant", "databases"],  
     "search_terms": ["key", "content", "search", "terms"],
+    "date_filter": {{"days_back": null, "description": ""}},
     "limit": 1000
 }}
 
 IMPORTANT PARSING RULES:
 - If query mentions "journal", include databases like "journal", "trass.journal", etc.
 - If query mentions "gmail/email", include "gmail", "trass.gmail", etc.
-- For "find all X entries between dates": search_terms should be empty [] (dates are handled separately)
+- For "find all X entries between dates": search_terms should be empty [] (dates are handled in date_filter)
 - For "entries containing X" or "about X": search_terms should include ["X"]
 - For "entries from person Y": search_terms should include ["Y"]
 - Don't include generic words like "entries", "between", "all" as search terms
+
+DATE FILTER RULES (CRITICAL):
+- "last N months" → date_filter: {{"days_back": N*30, "description": "last N months"}}
+- "past N weeks" → date_filter: {{"days_back": N*7, "description": "past N weeks"}}
+- "last N days" → date_filter: {{"days_back": N, "description": "last N days"}}
+- "past month" → date_filter: {{"days_back": 30, "description": "past month"}}
+- "recent" or "recently" → date_filter: {{"days_back": 7, "description": "recent (past week)"}}
+- If NO time constraint mentioned → date_filter: {{"days_back": null, "description": ""}}
 
 WORKSPACE INTELLIGENCE RULES (CRITICAL):
 {self._generate_workspace_rules(available_workspaces)}
@@ -368,9 +377,10 @@ LIMIT RULES:
 - Default: use limit 1000
 
 Examples:
-- "find all journal entries between feb-may 2025" → search_terms: [], limit: 10000
-- "recent journal entries about graham" → search_terms: ["graham"], limit: 50
-- "emails from shipbob" → search_terms: ["shipbob"], limit: 200
+- "gmail entries for the last 2 months" → search_terms: [], date_filter: {{"days_back": 60, "description": "last 2 months"}}, limit: 1000
+- "find all journal entries between feb-may 2025" → search_terms: [], date_filter: {{"days_back": null, "description": ""}}, limit: 10000
+- "recent journal entries about graham" → search_terms: ["graham"], date_filter: {{"days_back": 7, "description": "recent (past week)"}}, limit: 50
+- "emails from shipbob in the past month" → search_terms: ["shipbob"], date_filter: {{"days_back": 30, "description": "past month"}}, limit: 200
 
 Return only the JSON object:"""
 
@@ -515,7 +525,16 @@ Return only the JSON object:"""
         if intent.get('search_terms'):
             print(f"Search terms: {', '.join(intent['search_terms'])}")
         else:
-            print("Search terms: (none - using date filtering)")
+            print("Search terms: (none)")
+        
+        # Show date filter information
+        date_filter = intent.get('date_filter', {})
+        if date_filter.get('days_back'):
+            description = date_filter.get('description', f"{date_filter['days_back']} days back")
+            print(f"Date filter: {description}")
+        else:
+            print("Date filter: (none)")
+            
         print(f"Result limit: {intent['limit']}")
         
         if intent.get('_workspace_context'):
@@ -574,6 +593,12 @@ Return only the JSON object:"""
                 print(f"   📝 Goal: {modified_intent['goal']}")
                 print(f"   🗄️  Databases: {', '.join(modified_intent['databases'])}")
                 print(f"   🔍 Search terms: {', '.join(modified_intent.get('search_terms', []))}")
+                date_filter = modified_intent.get('date_filter', {})
+                if date_filter.get('days_back'):
+                    description = date_filter.get('description', f"{date_filter['days_back']} days back")
+                    print(f"   📅 Date filter: {description}")
+                else:
+                    print("   📅 Date filter: (none)")
                 print(f"   📊 Limit: {modified_intent['limit']}")
             else:
                 print("⚠️  Could not interpret modification. Returning to confirmation...")
@@ -596,6 +621,7 @@ CURRENT INTENT:
 Goal: {current_intent['goal']}
 Databases: {current_intent['databases']}
 Search terms: {current_intent.get('search_terms', [])}
+Date filter: {current_intent.get('date_filter', {})}
 Limit: {current_intent['limit']}
 
 USER MODIFICATION REQUEST: "{modification}"
@@ -607,6 +633,7 @@ Apply the user's requested changes and return the modified intent in this exact 
     "goal": "updated goal if changed",
     "databases": ["updated", "database", "list"],
     "search_terms": ["updated", "search", "terms"],
+    "date_filter": {{"days_back": null, "description": ""}},
     "limit": updated_limit_number
 }}
 
@@ -617,6 +644,12 @@ Modification rules:
 - If user mentions "only X", replace databases with just X
 - If user mentions "add X" or "include X", add X to existing list
 - If user mentions "remove X", remove X from existing list
+- Date filter rules:
+  - "last N months" → date_filter: {{"days_back": N*30, "description": "last N months"}}
+  - "past N weeks" → date_filter: {{"days_back": N*7, "description": "past N weeks"}}
+  - "last N days" → date_filter: {{"days_back": N, "description": "last N days"}}
+  - "recent" → date_filter: {{"days_back": 7, "description": "recent (past week)"}}
+  - "no date filter" or "all time" → date_filter: {{"days_back": null, "description": ""}}
 - Keep other fields unchanged unless specifically mentioned
 
 Return only the JSON object:"""
@@ -639,7 +672,11 @@ Return only the JSON object:"""
             # Validate the modification makes sense
             if (isinstance(modified_intent.get('databases'), list) and 
                 isinstance(modified_intent.get('search_terms'), list) and 
-                isinstance(modified_intent.get('limit'), int)):
+                isinstance(modified_intent.get('limit'), int) and
+                isinstance(modified_intent.get('date_filter'), dict)):
+                # Preserve current date_filter if not modified
+                if not modified_intent['date_filter'].get('days_back') and not modified_intent['date_filter'].get('description'):
+                    modified_intent['date_filter'] = current_intent.get('date_filter', {"days_back": None, "description": ""})
                 return modified_intent
             else:
                 print(f"⚠️  Invalid modification result: {modified_intent}")
@@ -690,17 +727,31 @@ WORKSPACE MAPPING RULES (CRITICAL - FOLLOW EXACTLY):
 EXCLUSION LOGIC: When user specifies a workspace (koii, trass), exclude ALL databases from other workspaces.
 """
 
+                # Build date filter constraint
+                date_constraint = ""
+                date_filter = intent.get('date_filter', {})
+                if date_filter.get('days_back'):
+                    from datetime import datetime, timedelta
+                    cutoff_date = (datetime.now() - timedelta(days=date_filter['days_back'])).isoformat()
+                    date_constraint = f"""
+=== DATE FILTERING ===
+Date constraint: {date_filter.get('description', f'{date_filter["days_back"]} days back')}
+Cutoff date: {cutoff_date}
+MUST include in WHERE clause: (u.created_time >= '{cutoff_date}' OR u.last_edited_time >= '{cutoff_date}')
+"""
+
                 sql_prompt = f"""Generate SQLite query for: {intent['goal']}
 
 === DATABASE CONTEXT ===
-Table: {self.schema['main_table']}
-Columns: {', '.join(self.schema['key_columns'])}
+Table: unified_content (always use alias 'u')
+Key Columns: u.page_id, u.title, u.database_name, u.created_time, u.last_edited_time, u.metadata
 {self.schema['date_info']}
 
 Target databases (ONLY use these):
 {chr(10).join([f"- {db_name}: {next((db['count'] for db in self.schema['databases'] if db['name'] == db_name), 'unknown')} entries" for db_name in intent['databases']])}
 
 {workspace_context}
+{date_constraint}
 
 === PROVEN QUERY TEMPLATES ===
 Here are concrete, working examples for your database:
@@ -710,21 +761,23 @@ Here are concrete, working examples for your database:
 Query goal: {intent['goal']}
 Target databases: {intent['databases']}
 Search terms: {intent['search_terms']}
+Date filter: {date_filter.get('description', 'none')}
 Result limit: {intent['limit']}
 
 CRITICAL INSTRUCTIONS:
-1. **ONLY USE TARGET DATABASES** - Use EXCLUSIVELY the databases listed in "Target databases" above
-2. **NEVER include other databases** - Even if templates show other databases, stick to target list
-3. **Follow workspace filtering** - Target databases have already been filtered for workspace logic
-4. **Generate WHERE clause** - Use: WHERE database_name IN ({', '.join([f"'{db}'" for db in intent['databases']])})
-5. **Handle limits correctly** - Use limit: {intent['limit']}
+1. **USE ALIAS 'u'** - The query MUST use the alias 'u' for the 'unified_content' table (e.g., `FROM unified_content u`).
+2. **PREFIX ALL COLUMNS** - Every column from 'unified_content' MUST be prefixed with `u.` (e.g., `u.title`, `u.created_time`).
+3. **ONLY USE TARGET DATABASES** - Use EXCLUSIVELY the databases listed in "Target databases" above.
+4. **Generate WHERE clause** - MUST include: u.database_name IN ({', '.join([f"'{db}'" for db in intent['databases']])}).
+5. **Apply date filtering** - {f"MUST include date constraint: (u.created_time >= '{cutoff_date}' OR u.last_edited_time >= '{cutoff_date}')" if date_filter.get('days_back') else "No date filtering required"}.
+6. **Handle limits correctly** - Use limit: {intent['limit']}.
 
 ⚠️  CRITICAL: The target databases list above is the FINAL filtered list. Do not add or modify databases.
 
 Generate the SQLite query:"""
 
                 sql_response = self.llm.invoke([
-                    SystemMessage(content="Generate working SQLite queries."),
+                    SystemMessage(content="Generate working SQLite queries that follow all instructions, especially table aliasing."),
                     HumanMessage(content=sql_prompt)
                 ])
                 
@@ -740,6 +793,63 @@ Generate the SQLite query:"""
 
             # Execute SQL
             sql = state["generated_sql"]
+            
+            # FIX 1: Fix ambiguous column name issues by ensuring table aliases
+            if 'unified_content' in sql and ' u' not in sql and sql.count('FROM') == 1:
+                sql = sql.replace('FROM unified_content', 'FROM unified_content u')
+                sql = sql.replace('SELECT page_id', 'SELECT u.page_id')
+                sql = sql.replace('SELECT title', 'SELECT u.title') 
+                sql = sql.replace('SELECT database_name', 'SELECT u.database_name')
+                sql = sql.replace('SELECT metadata', 'SELECT u.metadata')
+                sql = sql.replace(', page_id', ', u.page_id')
+                sql = sql.replace(', title', ', u.title')
+                sql = sql.replace(', database_name', ', u.database_name')
+                sql = sql.replace(', metadata', ', u.metadata')
+                sql = sql.replace(', created_time', ', u.created_time')
+                sql = sql.replace(', last_edited_time', ', u.last_edited_time')
+                # Fix WHERE clause references
+                sql = sql.replace('WHERE database_name', 'WHERE u.database_name')
+                sql = sql.replace('WHERE title', 'WHERE u.title')
+                sql = sql.replace('WHERE created_time', 'WHERE u.created_time')
+                sql = sql.replace('WHERE last_edited_time', 'WHERE u.last_edited_time')
+                # Fix AND clause references
+                sql = sql.replace('AND database_name', 'AND u.database_name')
+                sql = sql.replace('AND title', 'AND u.title') 
+                sql = sql.replace('AND created_time', 'AND u.created_time')
+                sql = sql.replace('AND last_edited_time', 'AND u.last_edited_time')
+                # Fix ORDER BY references
+                sql = sql.replace('ORDER BY created_time', 'ORDER BY u.created_time')
+                sql = sql.replace('ORDER BY last_edited_time', 'ORDER BY u.last_edited_time')
+            
+            # FIX 2: Ensure date filtering is actually applied when specified
+            # This is a fallback in case the LLM misses the instruction
+            date_filter = intent.get('date_filter', {})
+            if date_filter.get('days_back'):
+                from datetime import datetime, timedelta
+                cutoff_date = (datetime.now() - timedelta(days=date_filter['days_back'])).isoformat()
+                
+                # Check if the SQL already has proper date filtering
+                if 'created_time >=' not in sql and 'last_edited_time >=' not in sql:
+                    # Add date constraint to the WHERE clause with proper aliasing
+                    date_constraint = f"(u.created_time >= '{cutoff_date}' OR u.last_edited_time >= '{cutoff_date}')"
+                    
+                    if 'WHERE' in sql.upper():
+                        # Insert date constraint after existing WHERE clause
+                        sql = sql.replace(' WHERE ', f' WHERE {date_constraint} AND ')
+                    else:
+                        # Add WHERE clause with date constraint before ORDER BY
+                        if 'ORDER BY' in sql.upper():
+                            sql = sql.replace(' ORDER BY', f' WHERE {date_constraint} ORDER BY')
+                        else:
+                            # Add at the end before LIMIT
+                            if 'LIMIT' in sql.upper():
+                                sql = sql.replace(' LIMIT', f' WHERE {date_constraint} LIMIT')
+                            else:
+                                sql += f' WHERE {date_constraint}'
+                    
+                    description = date_filter.get('description', f"{date_filter['days_back']} days back")
+                    print(f"🕒 Applied date filter as fallback: {description}")
+            
             if os.getenv("MAIA_DEBUG") == "1":
                 print(f"🔍 Executing: {sql}")
                 
