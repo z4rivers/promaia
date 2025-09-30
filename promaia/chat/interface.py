@@ -2412,6 +2412,30 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Also update browse_selections to match
                     context_state['browse_selections'] = filtered_sources.copy()
                     
+                    # CRITICAL: Also filter out any filters that apply to the removed databases
+                    current_filters = context_state.get('filters', []) or []
+                    if current_filters:
+                        filtered_filters = []
+                        for filter_expr in current_filters:
+                            # Check if this filter applies to a removed database
+                            # Filter format can be: "trass.tg:7:discord_channel_name=koii-work"
+                            filter_db = filter_expr.split(':')[0] if ':' in filter_expr else filter_expr
+                            
+                            # Check if this filter's database is in the removed set
+                            should_remove_filter = False
+                            for removed_db in removed_dbs:
+                                if filter_db == removed_db or filter_db.startswith(f"{removed_db}."):
+                                    should_remove_filter = True
+                                    break
+                            
+                            if not should_remove_filter:
+                                filtered_filters.append(filter_expr)
+                            else:
+                                debug_print(f"Removing filter for removed database: {filter_expr}")
+                        
+                        context_state['filters'] = filtered_filters
+                        debug_print(f"Filtered filters after removal: {filtered_filters}")
+                    
                     update_query_command()
                     
                     if reload_context(skip_nl_cache_messages=True):
