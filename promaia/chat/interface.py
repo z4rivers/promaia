@@ -2405,6 +2405,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             debug_print(f"Removing source from removed database: {source}")
                     
                     # Update context_state with filtered sources
+                    debug_print(f"Filtered sources after removal: {filtered_sources}")
                     context_state['sources'] = filtered_sources
                     context_state['original_query_format'] = user_input
                     

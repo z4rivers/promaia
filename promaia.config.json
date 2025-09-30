@@ -31,7 +31,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-09-30T01:56:44.507623+00:00",
+      "last_sync_time": "2025-09-30T03:13:53.889302+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -58,7 +58,7 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": true,
-      "last_sync_time": "2025-09-30T01:56:44.531366+00:00",
+      "last_sync_time": "2025-09-30T03:13:53.865144+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -82,7 +82,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.964084+00:00",
+      "last_sync_time": "2025-09-30T03:13:54.412720+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -106,7 +106,7 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.418448+00:00",
+      "last_sync_time": "2025-09-30T03:13:54.578787+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -130,7 +130,7 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.876956+00:00",
+      "last_sync_time": "2025-09-30T03:13:54.368586+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -154,7 +154,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.634769+00:00",
+      "last_sync_time": "2025-09-30T03:13:57.495120+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -178,7 +178,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-09-30T01:56:47.339133+00:00",
+      "last_sync_time": "2025-09-30T03:13:53.824392+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -205,7 +205,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-09-30T01:56:44.858800+00:00",
+      "last_sync_time": "2025-09-30T03:13:55.678598+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Consumer Product"
@@ -231,7 +231,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:43.456144+00:00",
+      "last_sync_time": "2025-09-30T03:13:52.895329+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -257,7 +257,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:43.779111+00:00",
+      "last_sync_time": "2025-09-30T03:13:53.216628+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -284,7 +284,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.519898+00:00",
+      "last_sync_time": "2025-09-30T03:13:54.213720+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -308,7 +308,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:45.595175+00:00",
+      "last_sync_time": "2025-09-30T03:13:54.483026+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": "1291943271509135415"
@@ -399,7 +399,7 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-09-30T01:56:44.538409+00:00",
+      "last_sync_time": "2025-09-30T03:13:53.753944+00:00",
       "filters": {
         "Team": "Consumer Product"
       },
