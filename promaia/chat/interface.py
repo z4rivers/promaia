@@ -2079,49 +2079,39 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Compare current browse databases with original
                 browse_changed = set(browse_databases) != set(original_browse_databases)
                 
-                # Check if the browse scope expanded (new databases added)
+                # Check if the browse scope expanded (new databases added) or reduced (databases removed)
                 # Only launch browser if new databases were added, not if databases were removed
-                if not browse_changed and context_state.get('browse_selections'):
-                    current_selections = context_state.get('browse_selections', [])
-                    
-                    # Build set of database/workspace names from browse_databases and current selections
-                    browse_db_set = set()
+                if browse_changed and context_state.get('browse_selections'):
+                    # Build set of database/workspace names from NEW browse command
+                    new_browse_db_set = set()
                     for browse_db in browse_databases:
                         base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-                        browse_db_set.add(base_name)
+                        new_browse_db_set.add(base_name)
                     
-                    current_db_set = set()
-                    for selection in current_selections:
-                        # Extract the database/workspace part from selection
-                        if '#' in selection:
-                            sel_db = selection.split('#')[0]
-                        else:
-                            sel_db = selection.split(':')[0] if ':' in selection else selection
-                        
-                        # Check if covered by browse scope (workspace or direct match)
-                        for browse_name in browse_db_set:
-                            if sel_db == browse_name or sel_db.startswith(f"{browse_name}."):
-                                current_db_set.add(sel_db)
-                                break
+                    old_browse_db_set = set()
+                    for browse_db in original_browse_databases:
+                        base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                        old_browse_db_set.add(base_name)
                     
-                    # Check if NEW databases were added (scope expansion)
-                    # Ignore databases that were removed (scope reduction)
-                    new_databases_added = False
-                    for browse_db in browse_db_set:
-                        # Check if this browse database is new (not in current selections)
-                        is_new = True
-                        for current_db in current_db_set:
-                            if current_db == browse_db or current_db.startswith(f"{browse_db}."):
-                                is_new = False
-                                break
-                        if is_new:
-                            new_databases_added = True
-                            debug_print(f"Detected scope expansion: new database '{browse_db}' added")
-                            break
+                    # Determine if scope expanded (new databases) or reduced (removed databases)
+                    added_databases = new_browse_db_set - old_browse_db_set
+                    removed_databases = old_browse_db_set - new_browse_db_set
                     
-                    # Only trigger browse_changed if scope expanded, not if it reduced
-                    if new_databases_added:
+                    if added_databases and not removed_databases:
+                        # Pure expansion: new databases added, none removed
+                        debug_print(f"Detected scope expansion: new databases {added_databases} added")
                         browse_changed = True
+                    elif removed_databases and not added_databases:
+                        # Pure reduction: databases removed, none added
+                        debug_print(f"Detected scope reduction: databases {removed_databases} removed, keeping browser closed")
+                        browse_changed = False  # Don't launch browser for reductions
+                    elif added_databases and removed_databases:
+                        # Mixed: both added and removed - treat as changed, launch browser
+                        debug_print(f"Detected scope change: added {added_databases}, removed {removed_databases}")
+                        browse_changed = True
+                    else:
+                        # No actual change (shouldn't happen but handle it)
+                        browse_changed = False
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
                 browse_changed = True
