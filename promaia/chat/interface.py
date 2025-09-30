@@ -1726,8 +1726,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 )
                 parser.add_argument(
                     "--natural-language", "-nl",
-                    nargs="*",
-                    help="Use natural language to specify what content to load for chat context"
+                    action="append",
+                    nargs="+",
+                    help="Use natural language to specify what content to load for chat context. Can be used multiple times."
                 )
                 parser.add_argument(
                     "--mcp", "-mcp",
@@ -1743,11 +1744,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 natural_language_args = getattr(parsed_args, 'natural_language', None)
                 
                 if natural_language_args is not None:
-                    # Natural language mode
-                    nl_prompt = " ".join(natural_language_args) if natural_language_args else ""
-                    if not nl_prompt:
+                    # Natural language mode - handle multiple -nl queries
+                    # With action="append" and nargs="+", we get a list of lists
+                    nl_prompts = [' '.join(nl_args) for nl_args in natural_language_args if nl_args]
+                    
+                    if not nl_prompts:
                         print_text("Error: Natural language prompt is empty.", style="bold red")
                         return False
+                    
+                    # Create combined prompt for caching
+                    combined_nl_prompt = " ".join([f'-nl {prompt}' for prompt in nl_prompts])
                     
                     # Check if we already have cached results for this exact NL prompt
                     cached_nl_content = context_state.get('natural_language_content', {})
@@ -1755,30 +1761,36 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # DEBUG: Log cache check in edit context
                     debug_print(f"🔍 Edit Context NL Cache Check:")
-                    debug_print(f"  New prompt: '{nl_prompt}'")
+                    debug_print(f"  New prompt(s): {nl_prompts}")
                     debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
-                    debug_print(f"  Prompts match: {nl_prompt == cached_nl_prompt}")
+                    debug_print(f"  Prompts match: {combined_nl_prompt == cached_nl_prompt}")
                     debug_print(f"  Has cached content: {bool(cached_nl_content)}")
                     
-                    if nl_prompt == cached_nl_prompt and cached_nl_content:
+                    if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                         print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
                         natural_language_content = cached_nl_content
                         debug_print(f"  → Using cached results (edit context cache hit)")
                     else:
                         # Only clear cache if the prompt is actually different (not empty)
-                        if cached_nl_prompt and nl_prompt != cached_nl_prompt:
-                            debug_print(f"  → Prompt changed from '{cached_nl_prompt}' to '{nl_prompt}', clearing cache")
+                        if cached_nl_prompt and combined_nl_prompt != cached_nl_prompt:
+                            debug_print(f"  → Prompt changed, clearing cache")
                             context_state['natural_language_content'] = None
                             context_state['cached_natural_language_prompt'] = ''
                         elif not cached_nl_prompt:
                             debug_print(f"  → No cached prompt yet, will process and cache")
                         else:
                             debug_print(f"  → Cache miss, will re-process")
-                        # Process natural language query (only if not using cache)
+                        
+                        # Process multiple natural language queries
                         try:
                             from promaia.storage.unified_query import get_query_interface
                             
-                            print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="dim")
+                            if len(nl_prompts) > 1:
+                                print_text(f"🤖 Processing {len(nl_prompts)} separate natural language queries", style="dim")
+                                for i, prompt in enumerate(nl_prompts):
+                                    print_text(f"   {i+1}. '{prompt}'", style="dim")
+                            else:
+                                print_text(f"🤖 Processing natural language query: '{nl_prompts[0]}'", style="dim")
                             
                             # Determine workspace to use
                             workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
@@ -1802,24 +1814,47 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 print_text("Error: No workspace available for natural language query.", style="bold red")
                                 return False
                             
-                            # Process the natural language query
+                            # Process multiple natural language queries and combine results
                             query_interface = get_query_interface()
                             
                             # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
                             # Browser selections will be loaded separately and combined with NL results  
                             database_names = None  # Search all databases for maximum content discovery
-                                    
-                            # Always allow cross-workspace queries for natural language
-                            # Workspace is just a classifier/tag, not a mandatory constraint
-                            natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
                             
-                            if not natural_language_content:
-                                print_text("❌ No content found for natural language query", style="bold red")
+                            # Process each NL query separately and combine results
+                            combined_nl_content = {}
+                            total_results = 0
+                            
+                            for i, nl_prompt in enumerate(nl_prompts):
+                                print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+                                
+                                # Always allow cross-workspace queries for natural language
+                                # Workspace is just a classifier/tag, not a mandatory constraint
+                                nl_content = query_interface.natural_language_query(nl_prompt, None, database_names)
+                                
+                                if nl_content:
+                                    # Merge results from this query into combined content
+                                    for db_name, entries in nl_content.items():
+                                        if db_name not in combined_nl_content:
+                                            combined_nl_content[db_name] = []
+                                        combined_nl_content[db_name].extend(entries)
+                                    
+                                    query_results = sum(len(entries) for entries in nl_content.values())
+                                    total_results += query_results
+                                    print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                                else:
+                                    print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+                            
+                            if not combined_nl_content:
+                                print_text("❌ No content found for any natural language queries", style="bold red")
                                 return False
                             
-                            # Cache both the results and prompt for future use
+                            print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
+                            natural_language_content = combined_nl_content
+                            
+                            # Cache both the results and combined prompt for future use
                             context_state['natural_language_content'] = natural_language_content
-                            context_state['cached_natural_language_prompt'] = nl_prompt
+                            context_state['cached_natural_language_prompt'] = combined_nl_prompt
                             
                         except Exception as e:
                             print_text(f"Error processing natural language query: {e}", style="bold red")
@@ -1827,7 +1862,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Update context state for natural language mode
                     # natural_language_content is already set above (either from cache or fresh query)
-                    context_state['natural_language_prompt'] = nl_prompt
+                    context_state['natural_language_prompt'] = combined_nl_prompt
                     
                     # NOTE: Don't update cached_natural_language_prompt here!
                     # Let reload_context() handle cache updates after processing new queries
@@ -2043,6 +2078,37 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 
                 # Compare current browse databases with original
                 browse_changed = set(browse_databases) != set(original_browse_databases)
+                
+                # Also check if current browse_selections contain sources not in browse_databases
+                # This handles the case where the user removes a source like trass.tg
+                if not browse_changed and context_state.get('browse_selections'):
+                    current_selections = context_state.get('browse_selections', [])
+                    # Build set of database/workspace names from browse_databases
+                    browse_db_set = set()
+                    for browse_db in browse_databases:
+                        base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                        browse_db_set.add(base_name)
+                    
+                    # Check if any current selection is not covered by browse_databases
+                    for selection in current_selections:
+                        # Extract the database/workspace part from selection (e.g., "trass.tg#channel:7" -> "trass.tg")
+                        if '#' in selection:
+                            sel_db = selection.split('#')[0]
+                        else:
+                            sel_db = selection.split(':')[0] if ':' in selection else selection
+                        
+                        # Check if this selection's database is still in browse_databases
+                        # Also check workspace prefix (e.g., trass.tg should match workspace trass)
+                        is_covered = False
+                        for browse_name in browse_db_set:
+                            if sel_db == browse_name or sel_db.startswith(f"{browse_name}."):
+                                is_covered = True
+                                break
+                        
+                        if not is_covered:
+                            browse_changed = True
+                            debug_print(f"Detected removal: selection '{selection}' not covered by browse_databases {browse_db_set}")
+                            break
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
                 browse_changed = True
