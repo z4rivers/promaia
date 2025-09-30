@@ -1840,7 +1840,7 @@ def chat_run_browse(args):
         print_text(f"An unexpected error occurred: {e}", style="red")
 
 
-def chat_run_inline_browse(args, browse_args=None):
+def chat_run_inline_browse(args):
     """Run the chat interface with unified browser for Discord databases."""
     from promaia.cli.workspace_browser import launch_unified_browser
     from promaia.config.workspaces import get_workspace_manager
@@ -1854,8 +1854,15 @@ def chat_run_inline_browse(args, browse_args=None):
         # Resolve workspace
         resolved_workspace = original_workspace
         sources = getattr(args, 'sources', None) or []
-        # Use the flattened browse_args passed from the main function
-        browse_databases = browse_args or []
+        # Flatten nested lists from multiple -b flags: [['trass.tg'], ['trass']] -> ['trass.tg', 'trass']
+        raw_browse = getattr(args, 'browse', [])
+        browse_databases = []
+        if raw_browse:
+            for item in raw_browse:
+                if isinstance(item, list):
+                    browse_databases.extend(item)
+                else:
+                    browse_databases.append(item)
         
         # If no workspace, try to determine from sources or browse databases
         if not resolved_workspace and sources:
@@ -1867,69 +1874,38 @@ def chat_run_inline_browse(args, browse_args=None):
                         print_text(f"INFO: Using workspace '{resolved_workspace}' from source '{source}'.", style="white")
                         break
         
-        # Detect multiple workspaces from browse_databases first
-        workspace_names_found = []
-        if browse_databases:
-            from promaia.config.databases import get_database_manager  
-            db_manager = get_database_manager()
-            
-            for browse_spec in browse_databases:
-                # Remove day specification if present
-                base_name = browse_spec.split(':')[0] if ':' in browse_spec else browse_spec
-                
-                # Check if this is a workspace name directly  
-                if workspace_manager.validate_workspace(base_name):
-                    if base_name not in workspace_names_found:
-                        workspace_names_found.append(base_name)
-                # Check if this is a database name (workspace.database format)
-                elif '.' in base_name:
-                    potential_workspace = base_name.split('.')[0]
-                    if workspace_manager.validate_workspace(potential_workspace):
-                        if potential_workspace not in workspace_names_found:
-                            workspace_names_found.append(potential_workspace)
+        if not resolved_workspace and browse_databases:
+            for browse_db in browse_databases:
+                db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
+                if '.' in db_name:
+                    determined_workspace = db_name.split('.')[0]
+                    if workspace_manager.validate_workspace(determined_workspace):
+                        resolved_workspace = determined_workspace
+                        print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="white")
+                        break
         
-        # Handle multiple vs single workspace cases
-        if len(workspace_names_found) > 1:
-            # Multiple workspaces detected
-            resolved_workspace = None  # Use None to trigger multiple workspace logic in browser
-            use_workspace_expansion = False
-            print_text(f"INFO: Detected multiple workspaces: {', '.join(workspace_names_found)}", style="cyan")
-        elif len(workspace_names_found) == 1:
-            # Single workspace from browse args
-            resolved_workspace = workspace_names_found[0]
-            use_workspace_expansion = True
-            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database.", style="white")
-        else:
-            # No workspace found in browse args, try original logic
-            if not resolved_workspace and browse_databases:
-                for browse_db in browse_databases:
-                    db_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-                    if '.' in db_name:
-                        determined_workspace = db_name.split('.')[0]
-                        if workspace_manager.validate_workspace(determined_workspace):
-                            resolved_workspace = determined_workspace
-                            print_text(f"INFO: Using workspace '{resolved_workspace}' from browse database '{browse_db}'.", style="white")
-                            break
-            
-            # If still no workspace, use the default
+        # If still no workspace, use the default
+        if not resolved_workspace:
+            resolved_workspace = workspace_manager.get_default_workspace()
             if not resolved_workspace:
-                resolved_workspace = workspace_manager.get_default_workspace()
-                if not resolved_workspace:
-                    print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
-                    return
-            
-            use_workspace_expansion = True
+                print_text("No workspace specified, none could be inferred, and no default workspace is configured.", style="red")
+                return
         
-        # Validate workspace (only if not None for multiple workspace case)
-        if resolved_workspace and not workspace_manager.validate_workspace(resolved_workspace):
+        # Validate workspace
+        if not workspace_manager.validate_workspace(resolved_workspace):
             print_text(f"✗ Workspace '{resolved_workspace}' is not properly configured.", style="red")
             return
         
-        # Parse browse databases
+        # Parse browse databases and expand workspace names
         database_filter = None
         default_days = None
         
         if browse_databases:
+            from promaia.config.workspaces import get_workspace_manager
+            from promaia.config.databases import get_database_manager
+            workspace_manager = get_workspace_manager()
+            db_manager = get_database_manager()
+            
             database_filter = []
             for browse_spec in browse_databases:
                 if ':' in browse_spec:
@@ -1941,15 +1917,11 @@ def chat_run_inline_browse(args, browse_args=None):
                         
                         # Check if db_name is a workspace
                         if workspace_manager.validate_workspace(db_name):
-                            if use_workspace_expansion:
-                                # Single workspace - expand to all its databases
-                                workspace_databases = db_manager.get_workspace_databases(db_name)
-                                for db in workspace_databases:
-                                    if db.sync_enabled:  # Only include enabled databases
-                                        database_filter.append(db.get_qualified_name())
-                            else:
-                                # Multiple workspaces - keep workspace name for browser to handle
-                                database_filter.append(db_name)
+                            # Expand workspace to all its databases
+                            workspace_databases = db_manager.get_workspace_databases(db_name)
+                            for db in workspace_databases:
+                                if db.sync_enabled:  # Only include enabled databases
+                                    database_filter.append(db.get_qualified_name())
                         else:
                             database_filter.append(db_name)
                     except ValueError:
@@ -1957,15 +1929,11 @@ def chat_run_inline_browse(args, browse_args=None):
                 else:
                     # Check if this is a workspace name
                     if workspace_manager.validate_workspace(browse_spec):
-                        if use_workspace_expansion:
-                            # Single workspace - expand to all its databases
-                            workspace_databases = db_manager.get_workspace_databases(browse_spec)
-                            for db in workspace_databases:
-                                if db.sync_enabled:  # Only include enabled databases
-                                    database_filter.append(db.get_qualified_name())
-                        else:
-                            # Multiple workspaces - keep workspace name for browser to handle
-                            database_filter.append(browse_spec)
+                        # Expand workspace to all its databases
+                        workspace_databases = db_manager.get_workspace_databases(browse_spec)
+                        for db in workspace_databases:
+                            if db.sync_enabled:  # Only include enabled databases
+                                database_filter.append(db.get_qualified_name())
                     else:
                         # It's a specific database name
                         database_filter.append(browse_spec)
@@ -2053,21 +2021,23 @@ def chat_run_inline_browse(args, browse_args=None):
         
         original_browse_command = " ".join(original_command_parts)
         
-        # Store original browser selections for /e context preservation
-        original_browser_selections = []
-        if 'selected_sources' in locals() and selected_sources:
-            original_browser_selections = selected_sources.copy()  # Store ALL selections, not just Discord
+        # Store original Discord channel selections for /e context preservation
+        original_discord_selections = []
+        if 'selected_sources' in locals():
+            for source in selected_sources:
+                if '#' in source:
+                    original_discord_selections.append(source)
         
         # Start chat with selected sources
+        print_text(f"\n💬 Starting chat with selected sources...", style="white")
+        
         chat(
-            sources=all_sources,
+            sources=all_sources, 
             filters=all_filters,
             workspace=resolved_workspace,
-            resolved_workspace=resolved_workspace,
             non_interactive=getattr(args, 'non_interactive', False),
-            mcp_servers=getattr(args, 'mcp_servers', None),
             original_browse_command=original_browse_command,
-            browse_selections=original_browser_selections  # Store for /e preservation
+            browse_selections=original_discord_selections  # Store for /e preservation
         )
         
     except Exception as e:
