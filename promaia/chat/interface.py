@@ -2083,48 +2083,39 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # This handles the case where the user removes a source like trass.tg
                 if not browse_changed and context_state.get('browse_selections'):
                     current_selections = context_state.get('browse_selections', [])
-                    # Build set of database/workspace names from browse_databases
-                    browse_db_set = set()
+
+                    # Build set of all databases that should be included based on current browse_databases
+                    expected_databases = set()
                     workspace_set = set()
-                    
-                    # Separate workspaces from specific databases
+
                     for browse_db in browse_databases:
                         base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-                        browse_db_set.add(base_name)
-                        # Check if this is a workspace name
+
                         if workspace_manager.validate_workspace(base_name):
+                            # It's a workspace - add all its sync_enabled databases
                             workspace_set.add(base_name)
-                    
-                    # Check if any current selection is not covered by browse_databases
+                            from promaia.config.databases import get_database_manager
+                            db_manager = get_database_manager()
+                            workspace_databases = db_manager.get_workspace_databases(base_name)
+                            for db in workspace_databases:
+                                if db.sync_enabled:
+                                    expected_databases.add(db.get_qualified_name())
+                        else:
+                            # It's a specific database
+                            expected_databases.add(base_name)
+
+                    # Check if any current selection is not in the expected set
                     for selection in current_selections:
-                        # Extract the database/workspace part from selection (e.g., "trass.tg#channel:7" -> "trass.tg")
+                        # Extract the database part (e.g., "trass.tg#channel:7" -> "trass.tg")
                         if '#' in selection:
                             sel_db = selection.split('#')[0]
                         else:
                             sel_db = selection.split(':')[0] if ':' in selection else selection
-                        
-                        # Check if this selection's database is still in browse_databases
-                        is_covered = False
-                        
-                        # First check exact match
-                        if sel_db in browse_db_set:
-                            is_covered = True
-                        else:
-                            # Check if it would be auto-expanded from a workspace
-                            # Only consider it covered if it's from a workspace AND it's sync_enabled
-                            if '.' in sel_db:
-                                workspace_prefix = sel_db.split('.')[0]
-                                if workspace_prefix in workspace_set:
-                                    # Check if this database would be auto-expanded (sync_enabled)
-                                    from promaia.config.databases import get_database_manager
-                                    db_manager = get_database_manager()
-                                    db_config = db_manager.get_database_by_qualified_name(sel_db)
-                                    if db_config and db_config.sync_enabled:
-                                        is_covered = True
-                        
-                        if not is_covered:
+
+                        # If this database is not in the expected set, it should be removed
+                        if sel_db not in expected_databases:
                             browse_changed = True
-                            debug_print(f"Detected removal: selection '{selection}' not covered by browse_databases {browse_db_set}")
+                            debug_print(f"Detected removal: selection '{selection}' (db: {sel_db}) not in expected databases {expected_databases}")
                             break
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
