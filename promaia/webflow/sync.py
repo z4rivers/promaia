@@ -44,6 +44,7 @@ DEFAULT_FIELD_MAPPING = {
     "Description": "post-summary",      # PlainText
     "Thumbnail Image": "main-image",    # Image
     "Featured": "featured",      # Switch
+    "Is Newsletter": "is-newsletter",   # Switch
     "Webflow ID": "webflow-id"   # Internal use only
 }
 
@@ -371,6 +372,13 @@ async def notion_to_webflow_item(page: Dict[str, Any],
         featured_prop = properties["Featured"]
         if featured_prop and featured_prop.get("type") == "checkbox":
             webflow_data[featured_field] = featured_prop.get("checkbox", False)
+
+    # Process is_newsletter field (checkbox)
+    is_newsletter_field = field_mapping.get("Is Newsletter", "is-newsletter")
+    if "Is Newsletter" in properties:
+        is_newsletter_prop = properties["Is Newsletter"]
+        if is_newsletter_prop and is_newsletter_prop.get("type") == "checkbox":
+            webflow_data[is_newsletter_field] = is_newsletter_prop.get("checkbox", False)
 
     try:
         # Get page content
