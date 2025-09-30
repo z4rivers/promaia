@@ -563,17 +563,9 @@ async def handle_journal_pull(args):
                 max_sub_page_depth=max_sub_page_depth
             )
         else:
-            # Use standard journal pull
-            (journal_files, summary_files, 
-             saved_originals_count, saved_summaries_count, 
-             skipped_originals_count) = await _perform_journal_pull(
-                database_id=database_id,
-                days=days_to_process,
-                specific_date=specific_date, 
-                fetch_all=fetch_all_pages,
-                force_pull=force_pull_value,
-                summarize_flag=summarize_journal 
-            )
+            # Standard journal pull not implemented - use handle_journal_pull_with_sub_pages instead
+            logger.error("Standard journal pull without sub_pages is deprecated. Use --sub-pages flag.")
+            return
         
         if saved_originals_count > 0:
             logger.info(f"Successfully saved {saved_originals_count} new/updated original journal entries:")
@@ -614,7 +606,13 @@ async def handle_journal_pull(args):
 
 async def handle_journal_summarize_file(args):
     """Handles 'maia journal summarize-file' command to summarize a specific journal file."""
-    from promaia.summarize.interface import summarize_journal_entry, save_summary_entry
+    # Summarize functionality has been removed/deprecated
+    logger.error("Journal summarize functionality is no longer available.")
+    logger.info("This feature has been deprecated and removed from the codebase.")
+    return
+    
+    # Dead code below - keeping for reference but unreachable
+    # from promaia.summarize.interface import summarize_journal_entry, save_summary_entry
     
     file_path = args.file_path
     force = args.force
