@@ -12,7 +12,21 @@ from promaia.notion.pages import get_pages_by_date, get_pages_by_date_range, get
 from promaia.notion.pages import detect_child_pages_in_blocks, get_page_with_sub_pages, format_page_with_sub_pages, SUBPAGE_SYNC_ENABLED
 from promaia.markdown.converter import page_to_markdown
 from promaia.storage.files import save_page_to_file, get_journal_entry_filepath
-from promaia.summarize.interface import summarize_journal_entry, save_summary_entry, should_update_entry
+# Summarize functionality has been deprecated/removed
+# from promaia.summarize.interface import summarize_journal_entry, save_summary_entry, should_update_entry
+
+# Stub functions to replace removed summarize functionality
+async def summarize_journal_entry(content, title):
+    """Deprecated: summarize functionality removed."""
+    return None
+
+def save_summary_entry(content, title):
+    """Deprecated: summarize functionality removed."""
+    return None
+
+def should_update_entry(filepath, last_edited_dt):
+    """Deprecated: Always return True to process entries."""
+    return True
 from promaia.utils.ai import debug_print
 
 logger = logging.getLogger(__name__)
