@@ -2356,8 +2356,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text("❌ Failed to reload context after mixed command update", style="red")
                     return False
             
-            # Handle case where browse databases exist but didn't change (just update context)
+            # Handle case where browse databases exist but didn't change (or changed via reduction)
             elif browse_databases and not browse_changed:
+                # Check if this is a scope reduction (databases removed from browse list)
+                # In this case, we need to filter out sources and reload context
+                if set(browse_databases) != set(original_browse_databases if original_browse_databases else []):
+                    # Scope changed but browse_changed=False means it was a reduction
+                    debug_print(f"Applying scope reduction: {set(original_browse_databases) - set(browse_databases)} removed")
+                    
+                    # Update sources to only include those in the new scope
+                    # The source filtering logic in reload_context will handle the removal
+                    context_state['original_query_format'] = user_input
+                    update_query_command()
+                    
+                    if reload_context(skip_nl_cache_messages=True):
+                        print_text("Context updated successfully after scope reduction!", style="green")
+                        return True
+                    else:
+                        print_text("❌ Failed to reload context after scope reduction", style="red")
+                        return False
+                
                 # Update only natural language context without re-launching browser
                 if natural_language_content:
                     print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
