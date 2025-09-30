@@ -378,7 +378,10 @@ async def notion_to_webflow_item(page: Dict[str, Any],
     if "Is Newsletter" in properties:
         is_newsletter_prop = properties["Is Newsletter"]
         if is_newsletter_prop and is_newsletter_prop.get("type") == "checkbox":
-            webflow_data[is_newsletter_field] = is_newsletter_prop.get("checkbox", False)
+            is_newsletter_value = is_newsletter_prop.get("checkbox", False)
+            webflow_data[is_newsletter_field] = is_newsletter_value
+            # Debug: print what we're sending
+            print(f"  [DEBUG] is_newsletter: Notion property={is_newsletter_value}, Webflow field='{is_newsletter_field}', value={webflow_data[is_newsletter_field]}")
 
     try:
         # Get page content
@@ -458,6 +461,10 @@ async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: 
                 update_payload = webflow_data_payload.copy()
                 update_payload.pop("slug", None)
 
+                # Debug: Show is-newsletter in payload
+                if "is-newsletter" in update_payload:
+                    print(f"  [DEBUG] UPDATE payload includes is-newsletter = {update_payload['is-newsletter']}")
+                
                 response = get_webflow_client(silent=True).update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
                 if response:
                     # Update status: "To sync" → "Update on sync"
@@ -469,6 +476,10 @@ async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: 
 
             else:
                 # CREATE: Include slug in payload
+                # Debug: Show is-newsletter in payload
+                if "is-newsletter" in webflow_data_payload:
+                    print(f"  [DEBUG] CREATE payload includes is-newsletter = {webflow_data_payload['is-newsletter']}")
+                
                 response = get_webflow_client(silent=True).create_item(webflow_collection_id, webflow_data_payload)
                 if response and response.get("id"):
                     new_webflow_id = response["id"]
@@ -557,6 +568,13 @@ async def sync_to_webflow(notion_database_id: str = None,
     try:
         collection_fields = get_webflow_client(silent=True).get_collection_fields(webflow_collection_id) or {}
         required_fields = [slug for slug, info in collection_fields.items() if info and info.get("required")]
+        
+        # Debug: Print collection schema
+        print("\n[DEBUG] Webflow Collection Schema:")
+        for field_slug, field_info in collection_fields.items():
+            if 'newsletter' in field_slug.lower() or field_slug in ['featured', 'is-newsletter']:
+                print(f"  • {field_slug}: {field_info}")
+        print()
     except Exception:
         required_fields = []
 
