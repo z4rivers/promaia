@@ -2365,32 +2365,44 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     removed_databases = set(original_browse_databases) - set(browse_databases)
                     debug_print(f"Applying scope reduction: {removed_databases} removed")
                     
-                    # Build the new browse scope - what databases should remain
+                    # Build the new browse scope - what databases/sources should be kept
+                    # We need to check against the ACTUAL browse_selections, not all workspace databases
+                    # Because when you go from "-b trass trass.tg" to "-b trass", trass.tg should be removed
+                    # even though it's part of the trass workspace
+                    
                     from promaia.config.workspaces import get_workspace_manager
-                    from promaia.config.databases import get_database_manager
                     workspace_manager = get_workspace_manager()
-                    db_manager = get_database_manager()
                     
-                    browse_scope_db_names = set()
+                    # Determine which specific databases were in the OLD command but not in the NEW command
+                    old_db_set = set()
+                    new_db_set = set()
+                    
+                    for browse_db in original_browse_databases:
+                        old_db_set.add(browse_db.split(':')[0])
+                    
                     for browse_db in browse_databases:
-                        base_name = browse_db.split(':')[0]
-                        browse_scope_db_names.add(base_name)
-                        
-                        # If it's a workspace, add all its databases
-                        if workspace_manager.validate_workspace(base_name):
-                            workspace_databases = db_manager.get_workspace_databases(base_name)
-                            for db in workspace_databases:
-                                browse_scope_db_names.add(db.get_qualified_name())
+                        new_db_set.add(browse_db.split(':')[0])
                     
-                    # Filter sources to only keep those in the new browse scope
+                    removed_dbs = old_db_set - new_db_set
+                    debug_print(f"Databases to remove: {removed_dbs}")
+                    
+                    # Filter sources: keep only those NOT from removed databases
                     current_sources = context_state.get('sources', []) or []
                     filtered_sources = []
                     for source in current_sources:
                         source_db = source.split(':')[0] if ':' in source else source
-                        if source_db in browse_scope_db_names:
+                        
+                        # Check if this source's database is in the removed set
+                        should_remove = False
+                        for removed_db in removed_dbs:
+                            if source_db == removed_db or source_db.startswith(f"{removed_db}."):
+                                should_remove = True
+                                break
+                        
+                        if not should_remove:
                             filtered_sources.append(source)
                         else:
-                            debug_print(f"Removing source outside new scope: {source}")
+                            debug_print(f"Removing source from removed database: {source}")
                     
                     # Update context_state with filtered sources
                     context_state['sources'] = filtered_sources
