@@ -1,8 +1,11 @@
 """
 Terminal-based chat interface for interacting with AI models.
 """
+
+# Import models
 from anthropic import Anthropic
 from openai import OpenAI
+
 import os
 import sys
 import time
@@ -40,9 +43,6 @@ DEBUG_MODE = os.getenv("MAIA_DEBUG", "0") == "1"
 
 # Configuration file for API preferences
 API_PREFERENCE_FILE = os.path.join(os.path.expanduser("~"), ".maia_api_preference")
-
-# Initialize rich console for better formatting with copy-friendly settings
-console = os.getenv("MAIA_DEBUG", "0") == "1"
 
 # --- API Client Initialization ---
 
@@ -95,7 +95,7 @@ def _(event):
     """Enter key sends the message/command."""
     event.app.exit(result=event.app.current_buffer.text)
 
-@bindings.add('c-j')  # Ctrl+J for new line (and often receives Shift+Enter)
+@bindings.add('c-j')
 def _(event):
     """Ctrl+J adds a new line. On many terminals, Shift+Enter sends Ctrl+J."""
     event.current_buffer.insert_text('\n')
@@ -2083,45 +2083,31 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # This handles the case where the user removes a source like trass.tg
                 if not browse_changed and context_state.get('browse_selections'):
                     current_selections = context_state.get('browse_selections', [])
-
-                    # Build set of all databases that should be included based on current browse_databases
-                    expected_databases = set()
-                    workspace_set = set()
-
+                    # Build set of database/workspace names from browse_databases
+                    browse_db_set = set()
                     for browse_db in browse_databases:
                         base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
-
-                        if workspace_manager.validate_workspace(base_name):
-                            # It's a workspace - add all its sync_enabled databases
-                            workspace_set.add(base_name)
-                            from promaia.config.databases import get_database_manager
-                            db_manager = get_database_manager()
-                            workspace_databases = db_manager.get_workspace_databases(base_name)
-                            for db in workspace_databases:
-                                if db.sync_enabled:
-                                    expected_databases.add(db.get_qualified_name())
-                        else:
-                            # It's a specific database
-                            expected_databases.add(base_name)
-
-                    debug_print(f"DEBUG: Expected databases for browse_databases {browse_databases}: {expected_databases}")
-                    debug_print(f"DEBUG: Current selections: {current_selections}")
-
-                    # Check if any current selection is not in the expected set
+                        browse_db_set.add(base_name)
+                    
+                    # Check if any current selection is not covered by browse_databases
                     for selection in current_selections:
-                        # Extract the database part (e.g., "trass.tg#channel:7" -> "trass.tg")
+                        # Extract the database/workspace part from selection (e.g., "trass.tg#channel:7" -> "trass.tg")
                         if '#' in selection:
                             sel_db = selection.split('#')[0]
                         else:
                             sel_db = selection.split(':')[0] if ':' in selection else selection
-
-                        # If this database is not in the expected set, it should be removed
-                        if sel_db not in expected_databases:
+                        
+                        # Check if this selection's database is still in browse_databases
+                        # Also check workspace prefix (e.g., trass.tg should match workspace trass)
+                        is_covered = False
+                        for browse_name in browse_db_set:
+                            if sel_db == browse_name or sel_db.startswith(f"{browse_name}."):
+                                is_covered = True
+                                break
+                        
+                        if not is_covered:
                             browse_changed = True
-                            print_text(f"🔄 Browse change detected: removing '{sel_db}' (not in expected databases)", style="cyan")
-                            debug_print(f"DEBUG: selection '{selection}' (db: {sel_db}) not in expected databases {expected_databases}")
-                            debug_print(f"DEBUG: current_selections: {current_selections}")
-                            debug_print(f"DEBUG: browse_databases: {browse_databases}")
+                            debug_print(f"Detected removal: selection '{selection}' not covered by browse_databases {browse_db_set}")
                             break
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
@@ -2511,8 +2497,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # debug_print(f"is_workspace_browse: {is_workspace_browse}, has_previous_selections: {has_previous_selections}")
                         
                         if has_previous_selections:
-                            # Use previous selections to maintain user's choices
-                            current_sources.extend(stored_browser_selections)
+                            # Filter stored selections to only include sources from the current workspace
+                            # This prevents sources from other workspaces/databases from persisting
+                            for sel in stored_browser_selections:
+                                # Extract the database name from the selection
+                                if '#' in sel:
+                                    # Discord channel: trass.tg#channel-name:7
+                                    db_name = sel.split('#')[0]
+                                else:
+                                    # Regular database: trass.journal:7
+                                    db_name = sel.split(':')[0]
+                                
+                                # Only include if it belongs to the current workspace
+                                if db_name.startswith(workspace + '.'):
+                                    current_sources.append(sel)
                             
                             # Include regular sources that aren't part of this workspace
                             if current_regular_sources:
@@ -2557,7 +2555,39 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # For specific database browse or mixed commands, use existing logic
                         # First, get any stored Discord channel selections
                         if stored_browser_selections:
-                            current_sources.extend(stored_browser_selections)
+                            # Filter stored selections to only include sources that match the current browse scope
+                            for sel in stored_browser_selections:
+                                should_include = False
+                                
+                                # Extract the database name from the selection
+                                if '#' in sel:
+                                    # Discord channel: trass.tg#channel-name:7
+                                    db_name = sel.split('#')[0]
+                                else:
+                                    # Regular database: trass.journal:7
+                                    db_name = sel.split(':')[0]
+                                
+                                # Check if this selection matches the current browse scope
+                                if database_filter:
+                                    # If we have a database filter, check if the selection matches any filter item
+                                    for filter_item in database_filter:
+                                        filter_base = filter_item.split(':')[0]
+                                        if db_name == filter_base or db_name.startswith(filter_base + '.'):
+                                            should_include = True
+                                            break
+                                elif workspace:
+                                    # If browsing a workspace, check if the selection belongs to that workspace
+                                    if db_name.startswith(workspace + '.'):
+                                        should_include = True
+                                elif multiple_workspaces:
+                                    # If browsing multiple workspaces, check if selection belongs to any of them
+                                    for ws in multiple_workspaces:
+                                        if db_name.startswith(ws + '.'):
+                                            should_include = True
+                                            break
+                                
+                                if should_include:
+                                    current_sources.append(sel)
                         
                         # For mixed commands, we also need to include regular database sources
                         # Get current regular sources (but exclude those that are handled by Discord)
@@ -2637,32 +2667,55 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             processed_filters.append(filter_spec)
                     
                     # Update context with processed sources and filters
-                    # Intelligent approach: merge sources, only replacing those that conflict with browser selections
+                    # When browse scope changes, we need to handle sources intelligently:
+                    # 1. Keep sources that are OUTSIDE the current browse scope (e.g., other workspaces)
+                    # 2. Replace sources that are WITHIN the current browse scope with new selections
                     original_sources = context_state.get('sources', []) or []
                     final_sources = []
 
-                    # Build set of database names that are covered by new browser selections
-                    # This allows us to only replace sources that actually conflict
-                    new_db_names = set()
-                    for source in processed_sources:
-                        source_db = source.split(':')[0] if ':' in source else source
-                        new_db_names.add(source_db)
+                    # Build set of database names that are IN the current browse scope
+                    browse_scope_db_names = set()
                     
-                    # Also track Discord database names from selected_sources (before processing)
-                    discord_db_names = set()
-                    for source in selected_sources:
-                        if '#' in source:
-                            db_name = source.split('#')[0]
-                            discord_db_names.add(db_name)
+                    # Determine which databases are in scope for this browse operation
+                    if database_filter:
+                        # Specific database filter (e.g., -b trass.tg)
+                        for filter_item in database_filter:
+                            filter_base = filter_item.split(':')[0]
+                            browse_scope_db_names.add(filter_base)
+                            # Also add any databases that start with this prefix
+                            # (e.g., if filter is "trass", include "trass.journal", "trass.tg", etc.)
+                            if workspace:
+                                from promaia.config.databases import get_database_manager
+                                db_manager = get_database_manager()
+                                workspace_databases = db_manager.get_workspace_databases(workspace)
+                                for db in workspace_databases:
+                                    db_name = db.get_qualified_name()
+                                    if db_name.startswith(filter_base) or filter_base.startswith(db_name):
+                                        browse_scope_db_names.add(db_name)
+                    elif workspace:
+                        # Workspace browse (e.g., -b trass) - all databases in the workspace are in scope
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        workspace_databases = db_manager.get_workspace_databases(workspace)
+                        for db in workspace_databases:
+                            browse_scope_db_names.add(db.get_qualified_name())
+                    elif multiple_workspaces:
+                        # Multiple workspaces - all databases in those workspaces are in scope
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        for ws in multiple_workspaces:
+                            workspace_databases = db_manager.get_workspace_databases(ws)
+                            for db in workspace_databases:
+                                browse_scope_db_names.add(db.get_qualified_name())
                     
-                    # Keep original sources that don't conflict with new selections
+                    # Keep original sources that are OUTSIDE the current browse scope
                     for source in original_sources:
                         source_db = source.split(':')[0] if ':' in source else source
-                        # Keep source if it's not being replaced by new selections
-                        if source_db not in new_db_names and source_db not in discord_db_names:
+                        # Keep source only if it's NOT in the current browse scope
+                        if source_db not in browse_scope_db_names:
                             final_sources.append(source)
                     
-                    # Add the new browser selections
+                    # Add the new browser selections (which are all within the browse scope)
                     final_sources.extend(processed_sources)
                     
                     context_state['sources'] = final_sources
@@ -2795,7 +2848,45 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Determine current sources for pre-populating the browser
             current_sources = []
             if stored_browser_selections:
-                current_sources.extend(stored_browser_selections)
+                # Filter stored selections to only include sources that match the current browse scope
+                # This prevents sources from previous browse scopes (e.g., trass.tg) from persisting
+                # when browsing a different scope (e.g., just workspace 'trass')
+                filtered_selections = []
+                
+                for sel in stored_browser_selections:
+                    should_include = False
+                    
+                    # Extract the database name from the selection
+                    if '#' in sel:
+                        # Discord channel: trass.tg#channel-name:7
+                        db_name = sel.split('#')[0]
+                    else:
+                        # Regular database: trass.journal:7
+                        db_name = sel.split(':')[0]
+                    
+                    # Check if this selection matches the current browse scope
+                    if database_filter:
+                        # If we have a database filter, check if the selection matches any filter item
+                        for filter_item in database_filter:
+                            filter_base = filter_item.split(':')[0]
+                            if db_name == filter_base or db_name.startswith(filter_base + '.'):
+                                should_include = True
+                                break
+                    elif workspace:
+                        # If browsing a workspace, check if the selection belongs to that workspace
+                        if db_name.startswith(workspace + '.'):
+                            should_include = True
+                    elif multiple_workspaces:
+                        # If browsing multiple workspaces, check if selection belongs to any of them
+                        for ws in multiple_workspaces:
+                            if db_name.startswith(ws + '.'):
+                                should_include = True
+                                break
+                    
+                    if should_include:
+                        filtered_selections.append(sel)
+                
+                current_sources.extend(filtered_selections)
             else:
                 # If no selections are stored, and it's a workspace browse, populate with all sources
                 is_workspace_browse = bool(workspace and not database_filter)
@@ -2849,31 +2940,54 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Process selections and update context
             processed_sources, processed_filters = process_browser_selections(selected_sources)
             
-            # Intelligent merging: only replace sources that conflict with new selections
+            # When browse scope changes, we need to handle sources intelligently:
+            # 1. Keep sources that are OUTSIDE the current browse scope (e.g., other workspaces)
+            # 2. Replace sources that are WITHIN the current browse scope with new selections
             original_sources = context_state.get('sources', []) or []
             final_sources = []
 
-            # Build set of database names that are covered by new browser selections
-            new_db_names = set()
-            for source in processed_sources:
-                source_db = source.split(':')[0] if ':' in source else source
-                new_db_names.add(source_db)
+            # Build set of database names that are IN the current browse scope
+            browse_scope_db_names = set()
             
-            # Also track Discord database names from selected_sources (before processing)
-            discord_db_names = set()
-            for source in selected_sources:
-                if '#' in source:
-                    db_name = source.split('#')[0]
-                    discord_db_names.add(db_name)
+            # Determine which databases are in scope for this browse operation
+            if database_filter:
+                # Specific database filter (e.g., -b trass.tg)
+                for filter_item in database_filter:
+                    filter_base = filter_item.split(':')[0]
+                    browse_scope_db_names.add(filter_base)
+                    # Also add any databases that start with this prefix
+                    if workspace:
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        workspace_databases = db_manager.get_workspace_databases(workspace)
+                        for db in workspace_databases:
+                            db_name = db.get_qualified_name()
+                            if db_name.startswith(filter_base) or filter_base.startswith(db_name):
+                                browse_scope_db_names.add(db_name)
+            elif workspace:
+                # Workspace browse (e.g., -b trass) - all databases in the workspace are in scope
+                from promaia.config.databases import get_database_manager
+                db_manager = get_database_manager()
+                workspace_databases = db_manager.get_workspace_databases(workspace)
+                for db in workspace_databases:
+                    browse_scope_db_names.add(db.get_qualified_name())
+            elif multiple_workspaces:
+                # Multiple workspaces - all databases in those workspaces are in scope
+                from promaia.config.databases import get_database_manager
+                db_manager = get_database_manager()
+                for ws in multiple_workspaces:
+                    workspace_databases = db_manager.get_workspace_databases(ws)
+                    for db in workspace_databases:
+                        browse_scope_db_names.add(db.get_qualified_name())
             
-            # Keep original sources that don't conflict with new selections
+            # Keep original sources that are OUTSIDE the current browse scope
             for source in original_sources:
                 source_db = source.split(':')[0] if ':' in source else source
-                # Keep source if it's not being replaced by new selections
-                if source_db not in new_db_names and source_db not in discord_db_names:
+                # Keep source only if it's NOT in the current browse scope
+                if source_db not in browse_scope_db_names:
                     final_sources.append(source)
             
-            # Add the new browser selections
+            # Add the new browser selections (which are all within the browse scope)
             final_sources.extend(processed_sources)
             
             # Update context state with merged sources
