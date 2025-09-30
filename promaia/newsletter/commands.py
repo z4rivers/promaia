@@ -446,39 +446,13 @@ async def send_newsletter_via_resend(page: Dict[str, Any], test_mode: bool = Fal
             cover_image_url=cover_image_url
         )
         
-        # Decide between HTML and plain text approach
-        if has_inline_images:
-            print_text(f"   📧 Creating HTML newsletter with inline images...", style="white")
-            
-            # Replace Notion images with Webflow versions if available
-            processed_html_content = html_content
-            if webflow_id:
-                processed_html_content = replace_notion_images_with_webflow(html_content, webflow_id, cover_image_url)
-            
-            # Create HTML newsletter using the template
-            from promaia.newsletter.template import populate_email_template
-            email_html_content = populate_email_template(
-                content_html=processed_html_content,
-                newsletter_title=title,
-                header_image=cover_image_url,
-                subtitle=subtitle,
-                post_link=post_link
-            )
-            
-            print_text(f"   📧 Generated HTML email content length: {len(email_html_content)} characters", style="white")
-            if cover_image_url:
-                print_text(f"   📧 Including cover image: {truncate_url(cover_image_url)}", style="white")
-            print_text(f"   📧 Including inline images from content", style="white")
-            
-        else:
-            print_text(f"   📧 Creating simple newsletter (no inline images detected)...", style="white")
-            
-            # Use plain text approach, let Resend client handle HTML conversion
-            email_html_content = None
-            
-            print_text(f"   📧 Generated plain text email content length: {len(email_plain_text)} characters", style="white")
-            if cover_image_url:
-                print_text(f"   📧 Including cover image: {truncate_url(cover_image_url)}", style="white")
+        # Always use minimal plain text approach
+        print_text(f"   📧 Creating minimal plain text newsletter...", style="white")
+        
+        # Use plain text approach, let Resend client handle HTML conversion
+        email_html_content = None
+        
+        print_text(f"   📧 Generated plain text email content length: {len(email_plain_text)} characters", style="white")
         
     except Exception as e:
         return False, f"❌ Error creating newsletter content: {str(e)}", None
@@ -843,23 +817,8 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
             cover_image_url=cover_image_url
         )
 
-        # Create HTML version if needed
+        # Always use plain text - no fancy HTML template
         html_newsletter_content = None
-        if has_inline_images:
-            # Replace Notion images with Webflow versions if available
-            processed_html_content = html_content
-            if webflow_id:
-                processed_html_content = replace_notion_images_with_webflow(html_content, webflow_id, cover_image_url)
-
-            # Create HTML newsletter using the template
-            from promaia.newsletter.template import populate_email_template
-            html_newsletter_content = populate_email_template(
-                content_html=processed_html_content,
-                newsletter_title=title,
-                header_image=cover_image_url,
-                subtitle=subtitle,
-                post_link=website_url
-            )
 
         # Get safe test recipients
         test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
