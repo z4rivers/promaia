@@ -2104,6 +2104,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # It's a specific database
                             expected_databases.add(base_name)
 
+                    debug_print(f"DEBUG: Expected databases for browse_databases {browse_databases}: {expected_databases}")
+                    debug_print(f"DEBUG: Current selections: {current_selections}")
+
                     # Check if any current selection is not in the expected set
                     for selection in current_selections:
                         # Extract the database part (e.g., "trass.tg#channel:7" -> "trass.tg")
@@ -2115,7 +2118,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # If this database is not in the expected set, it should be removed
                         if sel_db not in expected_databases:
                             browse_changed = True
-                            debug_print(f"Detected removal: selection '{selection}' (db: {sel_db}) not in expected databases {expected_databases}")
+                            print_text(f"🔄 Browse change detected: removing '{sel_db}' (not in expected databases)", style="cyan")
+                            debug_print(f"DEBUG: selection '{selection}' (db: {sel_db}) not in expected databases {expected_databases}")
+                            debug_print(f"DEBUG: current_selections: {current_selections}")
+                            debug_print(f"DEBUG: browse_databases: {browse_databases}")
                             break
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
