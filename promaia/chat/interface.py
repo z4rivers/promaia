@@ -2079,36 +2079,49 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Compare current browse databases with original
                 browse_changed = set(browse_databases) != set(original_browse_databases)
                 
-                # Also check if current browse_selections contain sources not in browse_databases
-                # This handles the case where the user removes a source like trass.tg
+                # Check if the browse scope expanded (new databases added)
+                # Only launch browser if new databases were added, not if databases were removed
                 if not browse_changed and context_state.get('browse_selections'):
                     current_selections = context_state.get('browse_selections', [])
-                    # Build set of database/workspace names from browse_databases
+                    
+                    # Build set of database/workspace names from browse_databases and current selections
                     browse_db_set = set()
                     for browse_db in browse_databases:
                         base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
                         browse_db_set.add(base_name)
                     
-                    # Check if any current selection is not covered by browse_databases
+                    current_db_set = set()
                     for selection in current_selections:
-                        # Extract the database/workspace part from selection (e.g., "trass.tg#channel:7" -> "trass.tg")
+                        # Extract the database/workspace part from selection
                         if '#' in selection:
                             sel_db = selection.split('#')[0]
                         else:
                             sel_db = selection.split(':')[0] if ':' in selection else selection
                         
-                        # Check if this selection's database is still in browse_databases
-                        # Also check workspace prefix (e.g., trass.tg should match workspace trass)
-                        is_covered = False
+                        # Check if covered by browse scope (workspace or direct match)
                         for browse_name in browse_db_set:
                             if sel_db == browse_name or sel_db.startswith(f"{browse_name}."):
-                                is_covered = True
+                                current_db_set.add(sel_db)
                                 break
-                        
-                        if not is_covered:
-                            browse_changed = True
-                            debug_print(f"Detected removal: selection '{selection}' not covered by browse_databases {browse_db_set}")
+                    
+                    # Check if NEW databases were added (scope expansion)
+                    # Ignore databases that were removed (scope reduction)
+                    new_databases_added = False
+                    for browse_db in browse_db_set:
+                        # Check if this browse database is new (not in current selections)
+                        is_new = True
+                        for current_db in current_db_set:
+                            if current_db == browse_db or current_db.startswith(f"{browse_db}."):
+                                is_new = False
+                                break
+                        if is_new:
+                            new_databases_added = True
+                            debug_print(f"Detected scope expansion: new database '{browse_db}' added")
                             break
+                    
+                    # Only trigger browse_changed if scope expanded, not if it reduced
+                    if new_databases_added:
+                        browse_changed = True
             elif context_state.get('browse_selections'):
                 # If no browse databases now but we had them before, that's a change
                 browse_changed = True
