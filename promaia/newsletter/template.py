@@ -64,15 +64,20 @@ def get_email_template() -> str:
                                     </td>
                                 </tr>
                                 <!-- END HEADER IMAGE AREA -->
+                                <!-- START READ ON WEBSITE LINK -->
+                                <tr>
+                                    <td align="right" valign="top" style="padding: 8px 20px 0 20px; font-family: Arial, sans-serif;">
+                                        <p style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333; margin: 0;">
+                                            <a href="✳️POST_LINK✳️" target="_blank" style="color: #03305c; text-decoration: none;">Read on website</a>
+                                        </p>
+                                    </td>
+                                </tr>
+                                <!-- END READ ON WEBSITE LINK -->
                                 <!-- START TITLE AND SUBTITLE -->
                                 <tr>
                                     <td align="center" valign="top" style="padding: 20px 20px 0 20px; font-family: Arial, sans-serif;">
-                                        <h1 style="margin: 0 0 16px 0; font-size: 32px; line-height: 1.3; color: #1B1B1B; font-weight: bold; font-family: Arial, sans-serif;">✳️NEWSLETTER_TITLE✳️</h1>
+                                        <h1 style="margin: 0 0 16px 0; font-size: 32px; line-height: 1.3; color: #1B1B1B; font-weight: normal; font-family: Arial, sans-serif;">✳️NEWSLETTER_TITLE✳️</h1>
                                         ✳️SUBTITLE_PLACEHOLDER✳️
-                                        <p style="font-family: Arial, sans-serif; font-size: 16px; line-height: 1.5; color: #333333; margin: 16px 0 0 0;">
-                                            <a href="✳️POST_LINK✳️" target="_blank" style="color: #03305c;">Read on website</a><br>
-                                            Forwarded this email? <a href="https://www.koiibenvenutto.com/" target="_blank" style="color: #03305c;">Subscribe here</a>!
-                                        </p>
                                     </td>
                                 </tr>
                                 <!-- END TITLE AND SUBTITLE -->
@@ -81,6 +86,15 @@ def get_email_template() -> str:
                                         ✳️NEWSLETTER_CONTENT✳️
                                     </td>
                                 </tr>
+                                <!-- START FOOTER AREA -->
+                                <tr>
+                                    <td align="center" valign="top" style="padding: 0 20px 20px 20px; font-family: Arial, sans-serif;">
+                                        <p style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333; margin: 0;">
+                                            Forwarded this email? <a href="https://www.koiibenvenutto.com/" target="_blank" style="color: #03305c; text-decoration: none;">Subscribe here</a>
+                                        </p>
+                                    </td>
+                                </tr>
+                                <!-- END FOOTER AREA -->
                                 <!-- END MAIN CONTENT AREA -->
                             </table>
                         </td>
@@ -361,7 +375,7 @@ def create_plain_text_newsletter(
     
     # Include cover image if provided (simple approach)
     if cover_image_url:
-        email_parts.append(f"🖼️ {cover_image_url}")
+        email_parts.append(f"{cover_image_url}")
         email_parts.append("")
     
     # Subtitle if provided (but no title since it's in the subject)
@@ -374,12 +388,10 @@ def create_plain_text_newsletter(
     email_parts.append("")
     
     # Footer
-    email_parts.append("---")
     email_parts.append("")
     if post_link:
-        email_parts.append(f"📖 Read on website: {post_link}")
-    email_parts.append("💌 Forwarded this email? Subscribe: https://www.koiibenvenutto.com/")
-    email_parts.append("Thanks for reading!")
-    email_parts.append(f"- {sender_name}")
+        email_parts.append(f"Read on website: {post_link}")
+    email_parts.append("")
+    email_parts.append("Forwarded this email? Subscribe: https://www.koiibenvenutto.com/")
     
     return "\n".join(email_parts)

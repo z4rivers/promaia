@@ -141,21 +141,21 @@ class ResendClient:
                 continue
             
             # Lines that contain "Read on website:" - make the URL clickable
-            if "📖 Read on website:" in line:
+            if "Read on website:" in line:
                 url_match = re.search(r'https?://[^\s]+', line)
                 if url_match:
                     url = url_match.group(0)
                     # Replace the entire line with just the clickable link
-                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">📖 <a href="{url}" style="color: #007acc; text-decoration: underline; font-weight: bold;">Read on website</a></p>')
+                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;"><a href="{url}" style="color: #007acc; text-decoration: none;">Read on website</a></p>')
                     continue
             
             # Lines that contain "Subscribe:" - make the URL clickable
-            if "💌 Forwarded this email? Subscribe:" in line:
+            if "Forwarded this email? Subscribe:" in line:
                 url_match = re.search(r'https?://[^\s]+', line)
                 if url_match:
                     url = url_match.group(0)
                     # Replace the entire line with just the clickable link
-                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">💌 Forwarded this email? <a href="{url}" style="color: #007acc; text-decoration: underline; font-weight: bold;">Subscribe here</a></p>')
+                    html_lines.append(f'<p style="margin: 8px 0; line-height: 1.5; color: #333;">Forwarded this email? <a href="{url}" style="color: #007acc; text-decoration: none;">Subscribe here</a></p>')
                     continue
             
             # Regular paragraphs - check for any URLs within the text and make them clickable
