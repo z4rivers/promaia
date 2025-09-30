@@ -2085,9 +2085,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     current_selections = context_state.get('browse_selections', [])
                     # Build set of database/workspace names from browse_databases
                     browse_db_set = set()
+                    workspace_set = set()
+                    
+                    # Separate workspaces from specific databases
                     for browse_db in browse_databases:
                         base_name = browse_db.split(':')[0] if ':' in browse_db else browse_db
                         browse_db_set.add(base_name)
+                        # Check if this is a workspace name
+                        if workspace_manager.validate_workspace(base_name):
+                            workspace_set.add(base_name)
                     
                     # Check if any current selection is not covered by browse_databases
                     for selection in current_selections:
@@ -2098,12 +2104,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             sel_db = selection.split(':')[0] if ':' in selection else selection
                         
                         # Check if this selection's database is still in browse_databases
-                        # Also check workspace prefix (e.g., trass.tg should match workspace trass)
                         is_covered = False
-                        for browse_name in browse_db_set:
-                            if sel_db == browse_name or sel_db.startswith(f"{browse_name}."):
-                                is_covered = True
-                                break
+                        
+                        # First check exact match
+                        if sel_db in browse_db_set:
+                            is_covered = True
+                        else:
+                            # Check if it would be auto-expanded from a workspace
+                            # Only consider it covered if it's from a workspace AND it's sync_enabled
+                            if '.' in sel_db:
+                                workspace_prefix = sel_db.split('.')[0]
+                                if workspace_prefix in workspace_set:
+                                    # Check if this database would be auto-expanded (sync_enabled)
+                                    from promaia.config.databases import get_database_manager
+                                    db_manager = get_database_manager()
+                                    db_config = db_manager.get_database_by_qualified_name(sel_db)
+                                    if db_config and db_config.sync_enabled:
+                                        is_covered = True
                         
                         if not is_covered:
                             browse_changed = True
