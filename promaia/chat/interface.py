@@ -2362,11 +2362,43 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # In this case, we need to filter out sources and reload context
                 if set(browse_databases) != set(original_browse_databases if original_browse_databases else []):
                     # Scope changed but browse_changed=False means it was a reduction
-                    debug_print(f"Applying scope reduction: {set(original_browse_databases) - set(browse_databases)} removed")
+                    removed_databases = set(original_browse_databases) - set(browse_databases)
+                    debug_print(f"Applying scope reduction: {removed_databases} removed")
                     
-                    # Update sources to only include those in the new scope
-                    # The source filtering logic in reload_context will handle the removal
+                    # Build the new browse scope - what databases should remain
+                    from promaia.config.workspaces import get_workspace_manager
+                    from promaia.config.databases import get_database_manager
+                    workspace_manager = get_workspace_manager()
+                    db_manager = get_database_manager()
+                    
+                    browse_scope_db_names = set()
+                    for browse_db in browse_databases:
+                        base_name = browse_db.split(':')[0]
+                        browse_scope_db_names.add(base_name)
+                        
+                        # If it's a workspace, add all its databases
+                        if workspace_manager.validate_workspace(base_name):
+                            workspace_databases = db_manager.get_workspace_databases(base_name)
+                            for db in workspace_databases:
+                                browse_scope_db_names.add(db.get_qualified_name())
+                    
+                    # Filter sources to only keep those in the new browse scope
+                    current_sources = context_state.get('sources', []) or []
+                    filtered_sources = []
+                    for source in current_sources:
+                        source_db = source.split(':')[0] if ':' in source else source
+                        if source_db in browse_scope_db_names:
+                            filtered_sources.append(source)
+                        else:
+                            debug_print(f"Removing source outside new scope: {source}")
+                    
+                    # Update context_state with filtered sources
+                    context_state['sources'] = filtered_sources
                     context_state['original_query_format'] = user_input
+                    
+                    # Also update browse_selections to match
+                    context_state['browse_selections'] = filtered_sources.copy()
+                    
                     update_query_command()
                     
                     if reload_context(skip_nl_cache_messages=True):
