@@ -3472,7 +3472,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Prepare message with images
                     user_input = message_text  # Set the text part
-                    print_text(f"📸 Processing {len(current_images)} image(s) with {current_api.title()}...", style="bold green")
+                    img_word = "image" if len(current_images) == 1 else "images"
+                    print_text(f"📸 Processing {len(current_images)} {img_word} with {current_api.title()}...", style="bold green")
                     
                 except Exception as e:
                     print_text(f"Error processing images: {e}", style="bold red")
@@ -3770,7 +3771,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     if os.path.exists(image_path):
                                         encoded_image = encode_image_from_path(image_path)
                                         successful_images.append(encoded_image)
-                                        print_text(f"📸 Auto-detected image: {image_path}", style="bold green")
                                     else:
                                         print_text(f"📸 Image path not found: {image_path}", style="dim yellow")
                                 except Exception as img_error:
@@ -3779,7 +3779,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             if successful_images:
                                 current_images = successful_images
                                 user_input = cleaned_message  # Use cleaned message without image paths
-                                print_text(f"📸 Processing {len(current_images)} auto-detected image(s) with {current_api.title()}...", style="bold green")
                                 
                     except Exception as e:
                         print_text(f"Error processing detected images: {e}", style="bold red")
@@ -3805,7 +3804,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if messages and "images" in messages[-1]:
                     current_message_images = messages[-1].get("images", [])
                     if current_message_images:
-                        print_text(f"📸 Processing {len(current_message_images)} image(s) with {current_api.title()}...", style="bold green")
+                        img_word = "image" if len(current_message_images) == 1 else "images"
+                        print_text(f"📸 Processing {len(current_message_images)} {img_word} with {current_api.title()}...", style="bold green")
                         
                     # Clean messages for existing handlers (but keep full messages for image processing)
                     clean_messages = []
