@@ -442,9 +442,37 @@ def _is_likely_image_path(text: str) -> bool:
     
     # Check if it looks like a path (contains / or \ and doesn't look like a sentence)
     if ('/' in text or '\\' in text) and not text.endswith('.'):
-        # Additional checks to avoid false positives
-        if len(text.split()) == 1:  # Single word/path, not a sentence
+        # Must be a single word/path, not a sentence
+        if len(text.split()) != 1:
+            return False
+        
+        # Additional validation to avoid false positives like "VAT/EORI"
+        
+        # 1. Check if it starts with path indicators (relative/absolute paths)
+        if text.startswith(('./', '../', '~/', '/', '\\')):
             return True
+        
+        # 2. Check if it has multiple path components (not just "word/word")
+        path_parts = [p for p in text.replace('\\', '/').split('/') if p]
+        if len(path_parts) >= 3:  # At least something like "dir/subdir/file"
+            return True
+        
+        # 3. Check if any component has a file extension (even non-image)
+        for part in path_parts:
+            if '.' in part and not part.startswith('.'):
+                # Has an extension, could be a file path
+                return True
+        
+        # 4. Avoid acronym patterns (e.g., "VAT/EORI" - uppercase words with slash)
+        if all(part.isupper() or part.isdigit() for part in path_parts if part):
+            return False
+        
+        # 5. Check if it's a common path pattern with current directory
+        if len(path_parts) == 2:
+            # Could be "dir/file" - check if second part looks like a filename
+            last_part = path_parts[-1]
+            if '.' in last_part or any(char.isdigit() for char in last_part):
+                return True
     
     return False
 
