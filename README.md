@@ -39,20 +39,31 @@ Promaia provides a powerful CLI interface and Python API for syncing content fro
 git clone <repository-url>
 cd promaia
 
+# Create and activate virtual environment (recommended)
+# Install uv if you don't have it: brew install uv
+uv venv
+source venv/bin/activate
+
 # Install dependencies
-pip install -e .
+uv pip install .
+pip3 install -e .
 
 # Set up configuration
 cp docs/env.template .env
+# Edit .env and add your API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
 ```
 
 ### Initial Setup
 
+**Note**: Promaia works best with Notion integration, but you can use basic chat features (`maia chat`) without Notion by just setting up your AI API keys in the `.env` file.
+
 ```bash
-# Add a workspace
+# Add a workspace (for Notion integration)
 maia workspace add myworkspace --api-key your_notion_token
 
 # Add a Notion database
+# To get your database ID: Open the database in Notion, copy the URL
+# Extract the ID between the slash and question mark: notion.so/workspace/DATABASE_ID?v=...
 maia database add journal --id your_database_id --workspace myworkspace
 
 # Set up Discord (optional)
@@ -62,6 +73,11 @@ maia workspace discord-setup myworkspace --server-id your_discord_server_id
 maia database list
 maia database test journal
 ```
+
+**Understanding Workspaces & Databases:**
+- **Workspace**: Represents a Notion account/team (useful if you have multiple Notion accounts)
+- **Database**: Individual Notion databases within a workspace
+- Promaia adapts to any database schema - it works with any properties you've defined
 
 ### Sync Commands
 
@@ -230,6 +246,29 @@ promaia/
 
 ## 🔧 Advanced Configuration
 
+### Environment Variables & API Keys
+
+Promaia uses environment variables for API keys and configuration. The `promaia.config.json` file references these variables using template literals:
+
+```json
+{
+  "workspaces": {
+    "myworkspace": {
+      "api_key": "${NOTION_MYWORKSPACE_API_KEY}"
+    }
+  }
+}
+```
+
+These placeholders are dynamically replaced at runtime with values from your `.env` file:
+
+```bash
+# .env file
+ANTHROPIC_API_KEY=your_anthropic_key
+OPENAI_API_KEY=your_openai_key
+NOTION_MYWORKSPACE_API_KEY=your_notion_integration_token
+```
+
 ### Discord Setup
 ```bash
 # Set up Discord bot for workspace
@@ -264,13 +303,13 @@ maia chat -b workspace.discord -f 'workspace.discord:"channel_name=announcements
 ### Development Setup
 ```bash
 # Install development dependencies
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # Run tests
-python -m pytest tests/ -v
+python3 -m pytest tests/ -v
 
 # Run with coverage
-python -m pytest tests/ --cov=promaia
+python3 -m pytest tests/ --cov=promaia
 
 # Format code
 black promaia/ tests/
@@ -315,7 +354,7 @@ maia chat -s journal:1
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes with comprehensive tests
-4. Ensure all tests pass (`python -m pytest tests/ -v`)
+4. Ensure all tests pass (`python3 -m pytest tests/ -v`)
 5. Follow code formatting standards (`black promaia/ tests/`)
 6. Submit a pull request with detailed description
 

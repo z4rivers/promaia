@@ -19,7 +19,7 @@ async def handle_workspace_list(args):
     
     if not workspaces:
         print("No workspaces configured.")
-        print("Add a workspace with: maia workspace add <name> <api_key>")
+        print("Add a workspace with: maia workspace add <name> --api-key <your_notion_token>")
         return
     
     print("Configured workspaces:")
@@ -165,7 +165,7 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
     # Add workspace
     add_parser = subparsers.add_parser('add', help='Add a new workspace')
     add_parser.add_argument('name', help='Workspace name/nickname')
-    add_parser.add_argument('api_key', help='Notion API key for this workspace')
+    add_parser.add_argument('--api-key', dest='api_key', required=True, help='Notion API key for this workspace')
     add_parser.add_argument('--description', help='Optional description')
     add_parser.add_argument('--set-default', action='store_true', help='Set as default workspace')
     add_parser.set_defaults(func=handle_workspace_add)

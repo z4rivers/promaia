@@ -78,14 +78,14 @@ class WorkspaceManager:
         """Create a default workspace from environment variables."""
         notion_token = os.getenv("NOTION_TOKEN")
         if notion_token:
-            self.workspaces["koii"] = WorkspaceConfig("koii", {
+            self.workspaces["default"] = WorkspaceConfig("default", {
                 "api_key": notion_token,
-                "description": "Default koii workspace (migrated from NOTION_TOKEN)",
+                "description": "Default workspace (migrated from NOTION_TOKEN)",
                 "enabled": True
             })
-            self.default_workspace = "koii"
+            self.default_workspace = "default"
             self.save_config()
-            logger.info("Created default 'koii' workspace from NOTION_TOKEN environment variable")
+            logger.info("Created default workspace from NOTION_TOKEN environment variable")
     
     def save_config(self):
         """Save workspace configuration to file."""

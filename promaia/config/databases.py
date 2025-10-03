@@ -328,7 +328,7 @@ class DatabaseManager:
         """Add a new database configuration."""
         # Set workspace if not specified
         if workspace is None:
-            workspace = self.workspace_manager.get_default_workspace() or "koii"
+            workspace = self.workspace_manager.get_default_workspace() or "default"
         
         # Check if name is already qualified (contains workspace prefix)
         if '.' in name:
@@ -340,11 +340,11 @@ class DatabaseManager:
                 database_name = name_part
             else:
                 # Different workspace in name vs parameter - use parameter workspace
-                qualified_name = f"{workspace}.{name_part}" if workspace != "koii" else name_part
+                qualified_name = f"{workspace}.{name_part}" if workspace != "default" else name_part
                 database_name = name_part
         else:
             # Simple name, add workspace prefix if needed
-            qualified_name = f"{workspace}.{name}" if workspace != "koii" else name
+            qualified_name = f"{workspace}.{name}" if workspace != "default" else name
             database_name = name
         
         # Add workspace to config data

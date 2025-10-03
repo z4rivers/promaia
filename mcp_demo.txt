@@ -1,3 +1,0 @@
-Hello from MCP test!
-This is line 2
-And this is line 3

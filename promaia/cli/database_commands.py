@@ -2700,7 +2700,7 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     add_parser = subparsers.add_parser('add', help='Add a new database')
     add_parser.add_argument('name', nargs='?', help='Name of the database (e.g., "journal")')
     add_parser.add_argument('--source-type', help='Source type (e.g., notion)')
-    add_parser.add_argument('--database-id', help='Database ID')
+    add_parser.add_argument('--id', '--database-id', dest='database_id', help='Database ID (get from Notion URL: notion.so/workspace/DATABASE_ID?v=...)')
     add_parser.add_argument('--description', help='Database description')
     add_parser.add_argument('--workspace', help='Workspace name')
     add_parser.set_defaults(func=handle_database_add)
