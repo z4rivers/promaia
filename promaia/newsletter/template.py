@@ -1,116 +1,14 @@
 """
-Email template handling functions for newsletters - Plain Text Version.
+Email template handling functions for newsletters - Simple Markdown Version.
 """
 import html
 import re
 import os
 from typing import Optional, Dict, Any, List
 
-# Load the email template
-email_template_path = os.path.join(os.path.dirname(__file__), 'templates', 'email_template.html')
-
-def get_email_template() -> str:
-    """Get the newsletter email template HTML."""
-    # If template file exists, use it
-    if os.path.exists(email_template_path):
-        with open(email_template_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    
-    # Otherwise, return the embedded template
-    return """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>✳️NEWSLETTER_TITLE✳️</title>
-</head>
-<body style="background-color: #ffffff; margin: 0 !important; padding: 0 !important; font-family: Arial, sans-serif; font-size: 18px; line-height: 1.5; color: #333333;">
-    <div style="display: none; font-size: 1px; color: #fefefe; line-height: 1px; font-family: Arial, sans-serif; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
-        ✳️NEWSLETTER_TITLE✳️ - Your newsletter has arrived!
-    </div>
-    <!-- START CENTERED CONTAINER -->
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;" align="center">
-        <tr>
-            <td align="center" valign="top">
-                <!-- MARGIN WRAPPER -->
-                <table border="0" cellpadding="4" cellspacing="0" width="100%" style="max-width: 600px;">
-                    <tr>
-                        <td>
-                            <!-- START MAIN CONTENT AREA -->
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFFF5; border: 1px solid #333333;">
-                                <!-- START HEADER AREA -->
-                                <tr>
-                                    <td align="center" valign="middle" style="padding: 20px; border-bottom: 1px solid #333333;">
-                                        <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                                            <tr>
-                                                <td width="50%" align="left" valign="middle">
-                                                    <a href="https://www.koiibenvenutto.com/" target="_blank">
-                                                        <img src="https://cdn.prod.website-files.com/66bfca27c52b542e8bae67c3/6704c9a84b9aa737d0db1ab0_KOii_dark.png" alt="KOii Logo" style="display: block; height: 24px; width: auto;" />
-                                                    </a>
-                                                </td>
-                                                <td width="50%" align="right" valign="middle">
-                                                    <span style="color: #333333; font-size: 32px; line-height: 32px; display: inline-block;">☁️🌻🤲</span>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <!-- END HEADER AREA -->
-                                <!-- START HEADER IMAGE AREA -->
-                                <tr>
-                                    <td align="center" valign="top" style="padding: 20px 20px 0 20px;">
-                                        <img src="✳️HEADER_IMAGE✳️" alt="Header Image" style="max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 1rem; border: 1px solid #333333;" />
-                                    </td>
-                                </tr>
-                                <!-- END HEADER IMAGE AREA -->
-                                <!-- START READ ON WEBSITE LINK -->
-                                <tr>
-                                    <td align="right" valign="top" style="padding: 8px 20px 0 20px; font-family: Arial, sans-serif;">
-                                        <p style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333; margin: 0;">
-                                            <a href="✳️POST_LINK✳️" target="_blank" style="color: #03305c; text-decoration: none;">Read on website</a>
-                                        </p>
-                                    </td>
-                                </tr>
-                                <!-- END READ ON WEBSITE LINK -->
-                                <!-- START TITLE AND SUBTITLE -->
-                                <tr>
-                                    <td align="center" valign="top" style="padding: 20px 20px 0 20px; font-family: Arial, sans-serif;">
-                                        <h1 style="margin: 0 0 16px 0; font-size: 32px; line-height: 1.3; color: #1B1B1B; font-weight: normal; font-family: Arial, sans-serif;">✳️NEWSLETTER_TITLE✳️</h1>
-                                        ✳️SUBTITLE_PLACEHOLDER✳️
-                                    </td>
-                                </tr>
-                                <!-- END TITLE AND SUBTITLE -->
-                                <tr>
-                                    <td align="left" valign="top" style="padding: 20px; font-family: Arial, sans-serif; font-size: 18px; line-height: 1.5; color: #333333;">
-                                        ✳️NEWSLETTER_CONTENT✳️
-                                    </td>
-                                </tr>
-                                <!-- START FOOTER AREA -->
-                                <tr>
-                                    <td align="center" valign="top" style="padding: 0 20px 20px 20px; font-family: Arial, sans-serif;">
-                                        <p style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333; margin: 0;">
-                                            Forwarded this email? <a href="https://www.koiibenvenutto.com/" target="_blank" style="color: #03305c; text-decoration: none;">Subscribe here</a>
-                                        </p>
-                                    </td>
-                                </tr>
-                                <!-- END FOOTER AREA -->
-                                <!-- END MAIN CONTENT AREA -->
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-                <!-- END MARGIN WRAPPER -->
-            </td>
-        </tr>
-    </table>
-    <!-- END CENTERED CONTAINER -->
-</body>
-</html>"""
-
 def escape_html(text: Optional[str]) -> str:
     """
-    Escape HTML special characters (equivalent to escapeHTML in the JS code).
+    Escape HTML special characters.
     
     Args:
         text: Text to escape
@@ -122,146 +20,231 @@ def escape_html(text: Optional[str]) -> str:
         return ""
     return html.escape(text)
 
-def unitalicize_emojis(text: Optional[str]) -> str:
+def markdown_to_html(markdown_text: str) -> str:
     """
-    Prevent emojis from being italicized by wrapping them in normal style spans.
+    Convert markdown text to HTML with proper formatting.
+    
+    This is a simple implementation that supports common markdown features.
     
     Args:
-        text: Text that may contain emojis
+        markdown_text: Markdown formatted text
         
     Returns:
-        Text with emojis wrapped in normal style spans
+        HTML string
     """
-    if not text:
+    if not markdown_text:
         return ""
     
-    # Regular expression to match emoji characters (similar to the JS version)
-    emoji_regex = r'[\U0001F000-\U0001FFFF\u2600-\u27FF]'
+    # Split into lines for processing
+    lines = markdown_text.split('\n')
+    html_lines = []
+    in_code_block = False
+    code_block_lines = []
+    in_list = False
     
-    # Replace emojis with wrapped versions
-    return re.sub(
-        emoji_regex,
-        lambda match: f'<span style="font-style: normal;">{match.group(0)}</span>',
-        text
-    )
+    for line in lines:
+        # Handle code blocks
+        if line.strip().startswith('```'):
+            if in_code_block:
+                # End code block
+                html_lines.append('<pre><code>' + escape_html('\n'.join(code_block_lines)) + '</code></pre>')
+                code_block_lines = []
+                in_code_block = False
+            else:
+                # Start code block
+                in_code_block = True
+            continue
+        
+        if in_code_block:
+            code_block_lines.append(line)
+            continue
+        
+        # Handle headings
+        if line.startswith('# '):
+            html_lines.append(f'<h1>{escape_html(line[2:])}</h1>')
+            in_list = False
+        elif line.startswith('## '):
+            html_lines.append(f'<h2>{escape_html(line[3:])}</h2>')
+            in_list = False
+        elif line.startswith('### '):
+            html_lines.append(f'<h3>{escape_html(line[4:])}</h3>')
+            in_list = False
+        # Handle blockquotes
+        elif line.startswith('> '):
+            html_lines.append(f'<blockquote><p>{format_inline_markdown(line[2:])}</p></blockquote>')
+            in_list = False
+        # Handle unordered lists
+        elif line.startswith('- ') or line.startswith('* '):
+            if not in_list:
+                html_lines.append('<ul>')
+                in_list = 'ul'
+            html_lines.append(f'<li>{format_inline_markdown(line[2:])}</li>')
+        # Handle ordered lists
+        elif re.match(r'^\d+\.\s', line):
+            content = re.sub(r'^\d+\.\s', '', line)
+            if in_list != 'ol':
+                if in_list:
+                    html_lines.append(f'</{in_list}>')
+                html_lines.append('<ol>')
+                in_list = 'ol'
+            html_lines.append(f'<li>{format_inline_markdown(content)}</li>')
+        # Handle horizontal rules
+        elif line.strip() == '---' or line.strip() == '***':
+            if in_list:
+                html_lines.append(f'</{in_list}>')
+                in_list = False
+            html_lines.append('<hr />')
+        # Handle empty lines
+        elif not line.strip():
+            if in_list:
+                html_lines.append(f'</{in_list}>')
+                in_list = False
+            html_lines.append('')
+        # Regular paragraphs
+        else:
+            if in_list:
+                html_lines.append(f'</{in_list}>')
+                in_list = False
+            html_lines.append(f'<p>{format_inline_markdown(line)}</p>')
+    
+    # Close any open lists
+    if in_list:
+        html_lines.append(f'</{in_list}>')
+    
+    return '\n'.join(html_lines)
 
-def style_content(html_content: Optional[str]) -> str:
+
+def format_inline_markdown(text: str) -> str:
     """
-    Add necessary inline styles to HTML content for email compatibility.
+    Format inline markdown elements like bold, italic, links, and code.
     
     Args:
-        html_content: Raw HTML content
+        text: Text with inline markdown
         
     Returns:
-        HTML with inline styles added
+        HTML-formatted text
     """
-    if not html_content:
-        return ""
+    # Handle images: ![alt](url)
+    text = re.sub(r'!\[([^\]]*)\]\(([^\)]+)\)', r'<img src="\2" alt="\1" />', text)
     
-    # Style images for email clients
-    styled_html = re.sub(
-        r'<img',
-        '<img style="max-width: 100%; height: auto; display: block; margin: 24px auto; border-radius: 1rem; border: 1px solid #333333;"',
-        html_content
-    )
+    # Handle links: [text](url)
+    text = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', text)
     
-    # Style headings for hierarchy and consistency across email clients
-    heading_styles = {
-        "h1": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 24px; line-height: 1.3; font-weight: bold;",
-        "h2": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 22px; line-height: 1.3; font-weight: bold;",
-        "h3": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 20px; line-height: 1.3; font-weight: bold;",
-        "h4": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 18px; line-height: 1.3; font-weight: bold;",
-        "h5": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 16px; line-height: 1.3; font-weight: bold;",
-        "h6": "font-family: Arial, sans-serif; margin: 24px 0 16px 0; font-size: 14px; line-height: 1.3; font-weight: bold;"
-    }
+    # Handle bold: **text** or __text__
+    text = re.sub(r'\*\*([^\*]+)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__([^_]+)__', r'<strong>\1</strong>', text)
     
-    for tag, style in heading_styles.items():
-        styled_html = re.sub(
-            f'<{tag}([^>]*)>',
-            f'<{tag}\\1 style="{style}">',
-            styled_html
-        )
+    # Handle italic: *text* or _text_
+    text = re.sub(r'\*([^\*]+)\*', r'<em>\1</em>', text)
+    text = re.sub(r'_([^_]+)_', r'<em>\1</em>', text)
     
-    # Style paragraphs for consistent spacing
-    styled_html = re.sub(
-        r'<p',
-        '<p style="margin: 0 0 16px 0;"',
-        styled_html
-    )
+    # Handle strikethrough: ~~text~~
+    text = re.sub(r'~~([^~]+)~~', r'<del>\1</del>', text)
     
-    return styled_html
+    # Handle inline code: `code`
+    text = re.sub(r'`([^`]+)`', lambda m: f'<code>{escape_html(m.group(1))}</code>', text)
+    
+    return text
 
-def populate_email_template(
-    content_html: str,
-    newsletter_title: str,
-    header_image: Optional[str] = None,
+def create_simple_newsletter_html(
+    content_markdown: str,
+    title: str,
+    header_image_url: Optional[str] = None,
     subtitle: Optional[str] = None,
     post_link: Optional[str] = None
 ) -> str:
     """
-    Populate the email template with content.
+    Create a simple newsletter HTML from markdown content.
+    
+    This template is intentionally simple to maximize deliverability.
+    It includes:
+    - Optional header image (shows as actual image, not link)
+    - Title in h1 below the header image
+    - Properly formatted markdown content
+    - Footer with website link
     
     Args:
-        content_html: Main HTML content for the newsletter
-        newsletter_title: Title of the newsletter
-        header_image: URL for the header image
+        content_markdown: Markdown content for the newsletter body
+        title: Newsletter title (will be shown in h1)
+        header_image_url: Optional URL for header image
         subtitle: Optional subtitle text
-        post_link: URL to the original post
+        post_link: Optional link to read on website
         
     Returns:
-        Complete HTML for the email
+        Complete HTML email ready to send
     """
-    # Basic input validation
-    if not content_html or not newsletter_title:
-        raise ValueError("Missing required inputs: content and title are required")
+    # Convert markdown content to HTML
+    content_html = markdown_to_html(content_markdown)
     
-    # Get email template
-    email_template = get_email_template()
+    # Build header image section if provided
+    header_image_html = ""
+    if header_image_url:
+        header_image_html = f'''
+        <div style="margin: 0 0 20px 0;">
+            <img src="{header_image_url}" alt="Header Image" style="width: 100%; max-width: 600px; height: 400px; object-fit: cover; display: block; border-radius: 8px;" />
+        </div>
+        '''
     
-    # Prepare subtitle HTML if provided, otherwise use empty string
+    # Build subtitle section if provided
     subtitle_html = ""
     if subtitle:
-        subtitle_html = f'<p style="font-family: Arial, sans-serif; font-size: 24px; font-style: italic; color: #17191a; margin: 0 0 16px 0; line-height: 1.3;">{unitalicize_emojis(escape_html(subtitle))}</p>'
+        subtitle_html = f'<p style="font-size: 18px; color: #666; margin: 0 0 20px 0; font-style: italic;">{escape_html(subtitle)}</p>'
     
-    # Handle header image
-    # If no header image is provided, remove the entire image section
-    if not header_image:
-        # Remove the entire header image table row section
-        email_template = re.sub(
-            r'<!-- START HEADER IMAGE AREA -->.*?<!-- END HEADER IMAGE AREA -->', 
-            '', 
-            email_template, 
-            flags=re.DOTALL
-        )
+    # Build footer link section
+    footer_link_html = ""
+    if post_link:
+        footer_link_html = f'''
+        <p style="margin: 20px 0 10px 0; font-size: 14px;">
+            <a href="{post_link}" style="color: #007acc; text-decoration: none;">Read on website →</a>
+        </p>
+        '''
     
-    # Style the content
-    styled_content = style_content(content_html)
+    # Create the complete HTML email
+    html_email = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{escape_html(title)}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #ffffff;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 40px 30px;">
+        {header_image_html}
+        
+        <h1 style="font-size: 28px; font-weight: 600; color: #1a1a1a; margin: 0 0 10px 0; line-height: 1.3;">{escape_html(title)}</h1>
+        
+        {subtitle_html}
+        
+        <div style="color: #333; font-size: 16px; line-height: 1.6; margin: 20px 0;">
+            {content_html}
+        </div>
+        
+        {footer_link_html}
+        
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 14px; color: #888;">
+            <p style="margin: 0;">Forwarded this email? <a href="https://www.koiibenvenutto.com/" style="color: #007acc; text-decoration: none;">Subscribe here</a></p>
+        </div>
+    </div>
+</body>
+</html>'''
     
-    # Populate the template with the data
-    populated_email = email_template\
-        .replace("✳️NEWSLETTER_TITLE✳️", escape_html(newsletter_title))\
-        .replace("✳️HEADER_IMAGE✳️", header_image or "")\
-        .replace("✳️SUBTITLE_PLACEHOLDER✳️", subtitle_html)\
-        .replace("✳️POST_LINK✳️", post_link or "#")\
-        .replace("✳️NEWSLETTER_CONTENT✳️", styled_content)
-    
-    return populated_email
+    return html_email
 
 
-def notion_blocks_to_plain_text(blocks: List[Dict[str, Any]]) -> str:
+def notion_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
     """
-    Convert Notion blocks to plain text format with proper formatting.
+    Convert Notion blocks to markdown format.
 
     Args:
         blocks: List of Notion block objects
 
     Returns:
-        Plain text representation of the blocks
+        Markdown representation of the blocks
     """
     if not blocks:
         return ""
 
-    text_parts = []
+    markdown_parts = []
 
     for block in blocks:
         block_type = block.get("type", "")
@@ -281,64 +264,99 @@ def notion_blocks_to_plain_text(blocks: List[Dict[str, Any]]) -> str:
                     mention = text_obj.get("mention", {})
                     if mention.get("type") == "page":
                         page_id = mention.get("page", {}).get("id", "")
-                        # Convert page mentions to readable links
                         plain_text = f"[{plain_text}](https://notion.so/{page_id.replace('-', '')})"
                     elif mention.get("type") == "database":
                         database_id = mention.get("database", {}).get("id", "")
                         plain_text = f"[{plain_text}](https://notion.so/{database_id.replace('-', '')})"
-                    elif mention.get("type") == "user":
-                        # Keep user mentions as plain text for now
-                        pass
                     elif mention.get("type") == "link_preview":
                         url = mention.get("link_preview", {}).get("url", "")
                         plain_text = f"[{plain_text}]({url})"
 
-                # Apply text formatting - use plain text formatting instead of markdown
+                # Apply markdown formatting
                 if annotations.get("bold"):
-                    plain_text = plain_text.upper()  # Use uppercase for bold in plain text
+                    plain_text = f"**{plain_text}**"
                 if annotations.get("italic"):
-                    plain_text = f"*{plain_text}*"  # Keep italics as they work in most email clients
+                    plain_text = f"*{plain_text}*"
                 if annotations.get("strikethrough"):
-                    plain_text = f"---{plain_text}---"  # Use dashes for strikethrough
+                    plain_text = f"~~{plain_text}~~"
                 if annotations.get("code"):
-                    plain_text = f"\"{plain_text}\""  # Use quotes for code
+                    plain_text = f"`{plain_text}`"
+
+                # Handle links
+                if text_obj.get("href"):
+                    plain_text = f"[{plain_text}]({text_obj['href']})"
 
                 text_content += plain_text
 
         if not text_content.strip():
+            # Handle empty blocks
+            if block_type == "divider":
+                markdown_parts.append("\n---\n")
             continue
 
         # Format based on block type
         if block_type == "heading_1":
-            text_parts.append(f"\n**{text_content}**")
+            markdown_parts.append(f"\n# {text_content}\n")
         elif block_type == "heading_2":
-            text_parts.append(f"\n**{text_content}**")
+            markdown_parts.append(f"\n## {text_content}\n")
         elif block_type == "heading_3":
-            text_parts.append(f"\n**{text_content}**")
+            markdown_parts.append(f"\n### {text_content}\n")
         elif block_type == "paragraph":
-            text_parts.append(f"\n{text_content}")
+            markdown_parts.append(f"\n{text_content}\n")
         elif block_type == "bulleted_list_item":
-            text_parts.append(f"\n• {text_content}")
+            markdown_parts.append(f"- {text_content}\n")
         elif block_type == "numbered_list_item":
-            text_parts.append(f"\n1. {text_content}")
+            markdown_parts.append(f"1. {text_content}\n")
         elif block_type == "quote":
-            # Put quotes in actual quotation marks
-            text_parts.append(f'\n"{text_content}"')
+            markdown_parts.append(f"\n> {text_content}\n")
         elif block_type == "code":
-            text_parts.append(f"\n```\n{text_content}\n```")
+            language = content.get("language", "")
+            markdown_parts.append(f"\n```{language}\n{text_content}\n```\n")
         elif block_type == "divider":
-            text_parts.append(f"\n---")
+            markdown_parts.append("\n---\n")
+        elif block_type == "image":
+            # Handle images
+            image_url = ""
+            if content.get("type") == "external":
+                image_url = content.get("external", {}).get("url", "")
+            elif content.get("type") == "file":
+                image_url = content.get("file", {}).get("url", "")
+            
+            if image_url:
+                caption = ""
+                if content.get("caption"):
+                    caption_parts = [t.get("plain_text", "") for t in content.get("caption", [])]
+                    caption = "".join(caption_parts)
+                
+                markdown_parts.append(f"\n![{caption}]({image_url})\n")
         else:
             # Default formatting for other block types
-            text_parts.append(f"\n{text_content}")
+            if text_content.strip():
+                markdown_parts.append(f"\n{text_content}\n")
 
-    # Join all parts and clean up extra whitespace
-    full_text = "".join(text_parts)
+    # Join all parts
+    full_markdown = "".join(markdown_parts)
 
-    # Clean up multiple consecutive newlines
-    full_text = re.sub(r'\n{3,}', '\n\n', full_text)
+    # Clean up excessive newlines
+    full_markdown = re.sub(r'\n{3,}', '\n\n', full_markdown)
 
-    return full_text.strip()
+    return full_markdown.strip()
+
+
+def notion_blocks_to_plain_text(blocks: List[Dict[str, Any]]) -> str:
+    """
+    Convert Notion blocks to plain text format (deprecated - use notion_blocks_to_markdown instead).
+    
+    This function is kept for backward compatibility.
+
+    Args:
+        blocks: List of Notion block objects
+
+    Returns:
+        Plain text representation of the blocks
+    """
+    # Just convert to markdown which can be rendered as plain text if needed
+    return notion_blocks_to_markdown(blocks)
 
 
 def create_plain_text_newsletter(
@@ -350,15 +368,15 @@ def create_plain_text_newsletter(
     cover_image_url: Optional[str] = None
 ) -> str:
     """
-    Create a plain text newsletter from content.
+    Create a plain text newsletter from content (deprecated - kept for backward compatibility).
     
     Args:
-        content_text: Plain text content
-        newsletter_title: Title of the newsletter (used for subject, not repeated in body)
+        content_text: Plain text/markdown content
+        newsletter_title: Title of the newsletter
         subtitle: Optional subtitle
         post_link: Optional link to full post
         from_name: Optional sender name
-        cover_image_url: Optional cover image URL (will be included in plain text)
+        cover_image_url: Optional cover image URL
         
     Returns:
         Plain text newsletter ready to send
@@ -367,18 +385,19 @@ def create_plain_text_newsletter(
     if not content_text:
         raise ValueError("Missing required input: content is required")
     
-    # Get sender name from environment or use default
-    sender_name = from_name or os.getenv("RESEND_FROM_NAME", "Koii Benvenutto")
-    
     # Build the plain text email
     email_parts = []
     
-    # Include cover image if provided (simple approach)
+    # Title
+    email_parts.append(newsletter_title)
+    email_parts.append("")
+    
+    # Include cover image if provided (as URL in plain text)
     if cover_image_url:
-        email_parts.append(f"{cover_image_url}")
+        email_parts.append(f"🖼️ {cover_image_url}")
         email_parts.append("")
     
-    # Subtitle if provided (but no title since it's in the subject)
+    # Subtitle if provided
     if subtitle:
         email_parts.append(subtitle)
         email_parts.append("")

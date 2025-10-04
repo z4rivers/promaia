@@ -13,7 +13,11 @@ from promaia.notion.client import ensure_default_client
 from promaia.notion.pages import get_page_title, get_block_content
 from promaia.html_converter.converter import block_to_html, page_to_html
 from promaia.newsletter.resend_client import get_resend_client
-from promaia.newsletter.template import create_plain_text_newsletter, notion_blocks_to_plain_text
+from promaia.newsletter.template import (
+    create_plain_text_newsletter, 
+    notion_blocks_to_markdown,
+    create_simple_newsletter_html
+)
 from promaia.webflow.client import get_webflow_client
 from promaia.utils.config import get_config
 from promaia.utils.display import print_text, print_separator
@@ -30,34 +34,19 @@ def truncate_url(url: str, max_length: int = 50) -> str:
         return url
     return url[:max_length] + "..."
 
-# Function to convert Notion blocks to plain text
-async def notion_to_plain_text(page_id: str) -> str:
+# Helper function to convert Notion page to markdown
+async def notion_page_to_markdown(page_id: str) -> str:
     """
-    Convert Notion page content to plain text.
+    Convert Notion page content to markdown.
     
     Args:
         page_id: The ID of the Notion page
         
     Returns:
-        Plain text string of the page content
+        Markdown string of the page content
     """
     blocks = await get_block_content(page_id)
-    return notion_blocks_to_plain_text(blocks)
-
-# Function to convert Notion blocks to HTML (keeping for backward compatibility)
-async def notion_to_html(page_id: str) -> str:
-    """
-    Convert Notion page content to HTML.
-    DEPRECATED: Use notion_to_plain_text instead for plain text newsletters.
-    
-    Args:
-        page_id: The ID of the Notion page
-        
-    Returns:
-        HTML string of the page content
-    """
-    blocks = await get_block_content(page_id)
-    return page_to_html(blocks)
+    return notion_blocks_to_markdown(blocks)
 
 async def check_webflow_published(page: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[str]]:
     """
@@ -416,43 +405,35 @@ async def send_newsletter_via_resend(page: Dict[str, Any], test_mode: bool = Fal
         if webflow_image_url:
             cover_image_url = webflow_image_url
     
-    # Convert page content to HTML for the email template
+    # Convert page content to markdown
     try:
-        html_content = await notion_to_html(page_id)
-        print_text(f"   📄 Generated HTML content length: {len(html_content)} characters", style="white")
+        blocks = await get_block_content(page_id)
+        content_markdown = notion_blocks_to_markdown(blocks)
+        print_text(f"   📄 Generated markdown content length: {len(content_markdown)} characters", style="white")
     except Exception as e:
-        return False, f"❌ Error converting page to HTML: {str(e)}", None
+        return False, f"❌ Error converting page to markdown: {str(e)}", None
     
-    # Also create plain text version for fallback
+    # Create HTML newsletter using the new simple template
     try:
-        content_text = await notion_to_plain_text(page_id)
-        print_text(f"   📄 Generated plain text content length: {len(content_text)} characters", style="white")
-    except Exception as e:
-        return False, f"❌ Error converting page to plain text: {str(e)}", None
-
-    # Determine if we should use HTML or plain text newsletter
-    # Check if HTML content contains images (inline images, not just the cover)
-    has_inline_images = '<img' in html_content and 'src="' in html_content
-    
-    try:
-        # Always create plain text version for fallback
-        from promaia.newsletter.template import create_plain_text_newsletter
+        email_html_content = create_simple_newsletter_html(
+            content_markdown=content_markdown,
+            title=title,
+            header_image_url=cover_image_url,
+            subtitle=subtitle,
+            post_link=post_link
+        )
         
+        print_text(f"   📧 Generated HTML newsletter with proper markdown rendering", style="white")
+        print_text(f"   📧 HTML content length: {len(email_html_content)} characters", style="white")
+        
+        # Also create plain text version for fallback
         email_plain_text = create_plain_text_newsletter(
-            content_text=content_text,
+            content_text=content_markdown,
             newsletter_title=title,
             subtitle=subtitle,
             post_link=post_link,
             cover_image_url=cover_image_url
         )
-        
-        # Always use minimal plain text approach
-        print_text(f"   📧 Creating minimal plain text newsletter...", style="white")
-        
-        # Use plain text approach, let Resend client handle HTML conversion
-        email_html_content = None
-        
-        print_text(f"   📧 Generated plain text email content length: {len(email_plain_text)} characters", style="white")
         
     except Exception as e:
         return False, f"❌ Error creating newsletter content: {str(e)}", None
@@ -478,12 +459,8 @@ async def send_newsletter_via_resend(page: Dict[str, Any], test_mode: bool = Fal
             if result["success"]:
                 email_id = result["email_id"]
                 success_message = f"✅ TEST Newsletter sent successfully (Email ID: {email_id})"
-                if has_inline_images:
-                    success_message += f" with inline images"
-                    if cover_image_url:
-                        success_message += f" and cover image"
-                elif cover_image_url:
-                    success_message += f" with cover image"
+                if cover_image_url:
+                    success_message += f" with header image"
                 
                 return True, success_message, email_id
             else:
@@ -499,12 +476,8 @@ async def send_newsletter_via_resend(page: Dict[str, Any], test_mode: bool = Fal
             if result["success"]:
                 broadcast_id = result["broadcast_id"]
                 success_message = f"✅ Newsletter BROADCAST sent successfully to audience (Broadcast ID: {broadcast_id})"
-                if has_inline_images:
-                    success_message += f" with inline images"
-                    if cover_image_url:
-                        success_message += f" and cover image"
-                elif cover_image_url:
-                    success_message += f" with cover image"
+                if cover_image_url:
+                    success_message += f" with header image"
                 
                 return True, success_message, broadcast_id
             else:
@@ -738,13 +711,16 @@ async def newsletter_test_command(args):
 
     for i, page in enumerate(eligible_pages, 1):
         page_id = page["id"]
+        title = get_page_display_title(page)
 
         # Test newsletter generation (with actual TEST email sending)
         success, message, email_id = await test_newsletter_generation(page)
 
         if success:
+            print(f"   {message}")
             success_count += 1
         else:
+            print(f"   {message}")
             failure_count += 1
 
     # Clean summary
@@ -795,30 +771,30 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
         # Get page title
         title = get_page_display_title(page)
         
-        # Convert page content to both HTML and plain text
+        # Convert page content to markdown
         try:
-            html_content = await notion_to_html(page_id)
-            plain_text_content = await notion_to_plain_text(page_id)
+            blocks = await get_block_content(page_id)
+            content_markdown = notion_blocks_to_markdown(blocks)
         except Exception as e:
             return False, f"❌ Error converting page content: {str(e)}", None
 
-        # Check if we have inline images
-        has_inline_images = '<img' in html_content and 'src="' in html_content
+        # Generate newsletter content using new simple template
+        html_newsletter_content = create_simple_newsletter_html(
+            content_markdown=content_markdown,
+            title=title,
+            header_image_url=cover_image_url,
+            subtitle=subtitle,
+            post_link=website_url
+        )
 
-        # Generate newsletter content
-        from promaia.newsletter.template import create_plain_text_newsletter
-
-        # Always create plain text version
+        # Also create plain text version for fallback
         newsletter_content = create_plain_text_newsletter(
-            content_text=plain_text_content,
+            content_text=content_markdown,
             newsletter_title=title,
             subtitle=subtitle,
             post_link=website_url,
             cover_image_url=cover_image_url
         )
-
-        # Always use plain text - no fancy HTML template
-        html_newsletter_content = None
 
         # Get safe test recipients
         test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
@@ -841,12 +817,8 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
             if result["success"]:
                 email_id = result["email_id"]
                 success_message = f"✅ TEST email sent successfully (Email ID: {email_id})"
-                if has_inline_images:
-                    success_message += f" with inline images"
-                    if cover_image_url:
-                        success_message += f" and cover image"
-                elif cover_image_url:
-                    success_message += f" with cover image"
+                if cover_image_url:
+                    success_message += f" with header image"
                 return True, success_message, email_id
             else:
                 return False, f"❌ Failed to send TEST email: {result['error']}", None

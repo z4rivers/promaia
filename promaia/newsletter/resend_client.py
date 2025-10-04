@@ -58,7 +58,8 @@ class ResendClient:
             test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
             to_emails = [test_email]
         
-        # Generate simple HTML from plain text if not provided
+        # If no HTML content provided, use plain text for both
+        # (The calling code should provide proper HTML now)
         if not html_content:
             html_content = self._plain_text_to_html(plain_text)
         
@@ -217,7 +218,8 @@ class ResendClient:
         if not reply_to:
             reply_to = os.getenv("RESEND_REPLY_TO", os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com"))
         
-        # Generate simple HTML from plain text if not provided
+        # If no HTML content provided, convert plain text to simple HTML
+        # (The calling code should provide proper HTML now)
         if not html_content:
             html_content = self._plain_text_to_html(plain_text)
         
