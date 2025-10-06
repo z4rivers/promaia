@@ -158,23 +158,34 @@ llama_client = None
 def get_current_model_name():
     """Get the display name of the current model based on the current API."""
     global current_api
-    model_names = {
-        "anthropic": "Claude Opus 4.1",
-        "openai": "GPT-4o",
-        "gemini": "Gemini 2.5 Pro",
-        "llama": f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})"
-    }
-    return model_names.get(current_api, "Unknown Model")
+    from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS, LLAMA_MODELS
+    
+    # Get the actual model ID being used for each API type
+    if current_api == "anthropic":
+        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
+        return get_model_display_name(model_id, "anthropic")
+    elif current_api == "openai":
+        return get_model_display_name("gpt-4o", "openai")
+    elif current_api == "gemini":
+        model_id = GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06")
+        return get_model_display_name(model_id, "gemini")
+    elif current_api == "llama":
+        model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
+        return get_model_display_name(model_id, "llama")
+    
+    return "Unknown Model"
 
 def switch_model(target_model=None):
     """Switch to a different AI model during chat session."""
     global current_api
+    from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS
     
+    # Build available models dynamically
     available_models = {
-        "1": ("anthropic", "Claude Opus 4.1"),
-        "2": ("openai", "GPT-4o"), 
-        "3": ("gemini", "Gemini 2.5 Pro"),
-        "4": ("llama", f"Local Llama ({os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')})")
+        "1": ("anthropic", get_model_display_name(ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929"), "anthropic")),
+        "2": ("openai", get_model_display_name("gpt-4o", "openai")), 
+        "3": ("gemini", get_model_display_name(GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06"), "gemini")),
+        "4": ("llama", get_model_display_name(os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest'), "llama"))
     }
     
     # Check availability of each model
@@ -337,12 +348,12 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
     from promaia.ai.models import ANTHROPIC_MODELS
     
     # Determine which model to use based on current selection
-    # Check if we're using Claude Opus 4.1 via the display name
+    # Check if we're using Claude Opus via the display name
     current_model_name = get_current_model_name()
     if "Opus" in current_model_name:
         model_to_use = ANTHROPIC_MODELS.get("opus", "claude-opus-4-1-20250805")
     else:
-        model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514")
+        model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
     
     debug_print(f"Using Anthropic model: {model_to_use} (selected: {current_model_name})")
     
@@ -1154,6 +1165,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # For plain "maia chat" with no args, start with blank slate instead of loading defaults
             debug_print(f"No arguments provided, starting with blank slate (no default databases loaded).")
             print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
+            context_state['blank_slate_message_shown'] = True  # Track that we've shown this message
         elif len(combined_multi_source_data) > 0 and not current_sources:
             debug_print(f"Have natural language content only (no browser selections) - using NL content only")
             # Only skip regular sources if we don't have browser selections
@@ -1440,7 +1452,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text("❌ No content could be loaded from any source", style="bold red")
                 print_text("💡 MCP tools are available for interaction", style="cyan")
             else:
-                print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
+                # Only show blank slate message if we haven't already shown it
+                if not context_state.get('blank_slate_message_shown'):
+                    print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
                 # Continue with blank slate - don't return False
         
         # Update context state

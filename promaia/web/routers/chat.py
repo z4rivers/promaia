@@ -455,13 +455,10 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
     
     debug_print(f"Calling Anthropic with {len(anthropic_messages)} messages and {len(images)} images")
     
-    # Use the retry utility - select model based on preference
-    if preferred_model == "anthropic":
-        # For web interface, check if specifically requesting Opus vs Sonnet
-        # Default to Opus for "anthropic" preference to match CLI behavior
-        model_name = ANTHROPIC_MODELS.get("opus", "claude-opus-4-1-20250805")
-    else:
-        model_name = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514")
+    # Use the retry utility - default to Sonnet 4.5
+    from promaia.ai.models import get_model_display_name
+    # Default to Sonnet 4.5 (faster, cheaper, and now the standard)
+    model_name = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
     
     debug_print(f"Using Anthropic model: {model_name}")
     response_content = await call_anthropic_with_retry(
@@ -479,7 +476,7 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
     estimated_prompt = _improved_token_estimate(system_prompt + str(anthropic_messages))
     estimated_response = _improved_token_estimate(response_content)
     
-    cost_data = calculate_ai_cost(estimated_prompt, estimated_response, "claude-sonnet-4")
+    cost_data = calculate_ai_cost(estimated_prompt, estimated_response, model_name)
     
     from promaia.web.models import TokenUsage
     token_usage_data = TokenUsage(
@@ -487,7 +484,7 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
         response_tokens=estimated_response,
         total_tokens=estimated_prompt + estimated_response,
         cost=cost_data["total_cost"],
-        model="Claude Opus 4.1"
+        model=get_model_display_name(model_name, "anthropic")
     )
     
     return response_content, token_usage_data
@@ -652,17 +649,31 @@ async def get_available_models():
     }
     
     available_models = []
+    from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS
+    import os
+    
     for model_type, available in model_clients.items():
         if available:
             limits = get_model_image_limits(model_type)
+            
+            # Get the display name dynamically based on actual model ID
+            if model_type == "anthropic":
+                model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
+                display_name = get_model_display_name(model_id, "anthropic")
+            elif model_type == "gemini":
+                model_id = GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06")
+                display_name = get_model_display_name(model_id, "gemini")
+            elif model_type == "openai":
+                display_name = get_model_display_name("gpt-4o", "openai")
+            elif model_type == "llama":
+                model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
+                display_name = get_model_display_name(model_id, "llama")
+            else:
+                display_name = model_type
+            
             model_info = {
                 "type": model_type,
-                "name": {
-                    "gemini": "Gemini 2.5 Pro",
-                    "anthropic": "Claude Opus 4.1", 
-                    "openai": "GPT-4o",
-                    "llama": "Local Llama"
-                }.get(model_type, model_type),
+                "name": display_name,
                 "vision_supported": is_vision_supported(model_type),
                 "max_images": limits["max_images"],
                 "supported_formats": limits["supported_formats"]

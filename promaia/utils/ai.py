@@ -152,6 +152,7 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
         "claude-opus-4-1-20250805": "claude-opus-4",
         "claude-opus-4-20250514": "claude-opus-4",
         "claude-sonnet-4-20250514": "claude-sonnet-4",
+        "claude-sonnet-4-5-20250929": "claude-sonnet-4",
         "claude-3-5-sonnet-20241022": "claude-3.5-sonnet",
     }
     
@@ -194,7 +195,7 @@ async def call_anthropic_with_retry(
     client: AsyncAnthropic,
     system_prompt: str, 
     messages: list, 
-    model_name: str = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-20250514"),
+    model_name: str = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929"),
     max_tokens: int = 1024,
     temperature: float = 0.7, 
     max_retries: int = 3
