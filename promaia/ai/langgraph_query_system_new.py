@@ -535,19 +535,40 @@ Return only the JSON object:"""
         # Get user choice
         while True:
             try:
-                choice = input("\n👉 Continue? (c)ontinue, (m)odify, (q)uit: ").strip().lower()
+                user_input = input("\n👉 Press enter to continue, or describe changes (q to quit): ").strip()
                 
-                if choice in ['c', 'continue', '']:
-                    print("Proceeding with execution...")
+                if user_input == '':
+                    # Empty input = accept and continue
+                    print("✅ Proceeding with execution...")
                     return state
-                elif choice in ['m', 'modify']:
-                    return self._handle_modification(state)
-                elif choice in ['q', 'quit']:
+                elif user_input.lower() in ['q', 'quit']:
+                    # Quit
                     print("❌ Query cancelled by user")
                     state["errors"] = ["Query cancelled by user"]
                     return state
                 else:
-                    print("⚠️  Please enter 'c' (continue), 'm' (modify), or 'q' (quit)")
+                    # Anything else is treated as a modification request
+                    print(f"\n🗣️  Interpreting your modification: '{user_input}'")
+                    intent = state["intent"]
+                    modified_intent = self._interpret_modification(intent, user_input)
+                    
+                    if modified_intent:
+                        state["intent"] = modified_intent
+                        print("\n✅ Applied your changes:")
+                        print(f"   📝 Goal: {modified_intent['goal']}")
+                        print(f"   🗄️  Databases: {', '.join(modified_intent['databases'])}")
+                        print(f"   🔍 Search terms: {', '.join(modified_intent.get('search_terms', []))}")
+                        date_filter = modified_intent.get('date_filter', {})
+                        if date_filter.get('days_back'):
+                            description = date_filter.get('description', f"{date_filter['days_back']} days back")
+                            print(f"   📅 Date filter: {description}")
+                        else:
+                            print("   📅 Date filter: (none)")
+                        # Loop back to ask again
+                        continue
+                    else:
+                        print("⚠️  Could not interpret modification. Try again.")
+                        continue
                     
             except KeyboardInterrupt:
                 print("\n❌ Query cancelled by user")
@@ -556,48 +577,6 @@ Return only the JSON object:"""
             except EOFError:
                 print("\n✅ Proceeding with execution...")
                 return state
-    
-    def _handle_modification(self, state: QueryState) -> QueryState:
-        """Handle user request to modify the parsed intent using natural language."""
-        print("\n🗣️  Tell me what to change in natural language:")
-        print("   Examples:")
-        print("   • 'only search journal database'")
-        print("   • 'search for meetings instead of graham'")
-        print("   • 'include trass workspace too'")
-        print("   • 'cancel' or 'back' to return")
-        
-        try:
-            modification = input("\n👉 What would you like to change? ").strip()
-            
-            if modification.lower() in ['cancel', 'back', 'quit', '']:
-                print("Returning to confirmation...")
-                return self._confirm_node(state)
-                
-            # Use AI to interpret the modification
-            intent = state["intent"]
-            modified_intent = self._interpret_modification(intent, modification)
-            
-            if modified_intent:
-                state["intent"] = modified_intent
-                print("✅ Applied your changes:")
-                print(f"   📝 Goal: {modified_intent['goal']}")
-                print(f"   🗄️  Databases: {', '.join(modified_intent['databases'])}")
-                print(f"   🔍 Search terms: {', '.join(modified_intent.get('search_terms', []))}")
-                date_filter = modified_intent.get('date_filter', {})
-                if date_filter.get('days_back'):
-                    description = date_filter.get('description', f"{date_filter['days_back']} days back")
-                    print(f"   📅 Date filter: {description}")
-                else:
-                    print("   📅 Date filter: (none)")
-            else:
-                print("⚠️  Could not interpret modification. Returning to confirmation...")
-                
-            # Return to confirmation after modification
-            return self._confirm_node(state)
-            
-        except (KeyboardInterrupt, EOFError):
-            print("\n❌ Modification cancelled")
-            return self._confirm_node(state)
 
     def _interpret_modification(self, current_intent: dict, modification: str) -> dict:
         """Use AI to interpret natural language modifications to the intent."""
