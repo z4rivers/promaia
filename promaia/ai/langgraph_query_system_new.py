@@ -344,8 +344,7 @@ You must respond with actual values in this exact structure:
     "goal": "what the user wants to find",
     "databases": ["list", "of", "relevant", "databases"],  
     "search_terms": ["key", "content", "search", "terms"],
-    "date_filter": {{"days_back": null, "description": ""}},
-    "limit": 1000
+    "date_filter": {{"days_back": null, "description": ""}}
 }}
 
 IMPORTANT PARSING RULES:
@@ -370,17 +369,11 @@ WORKSPACE INTELLIGENCE RULES (CRITICAL):
 - Default workspace ({workspace_info.get('default_workspace', 'koii')}) is used when no workspace specified
 - User feedback will refine database selection after initial parsing
 
-LIMIT RULES:
-- If query says "find ALL" or "all entries": use limit 10000 (very high)
-- If query says "recent" or "few": use limit 50
-- If query asks for specific person/topic: use limit 200
-- Default: use limit 1000
-
 Examples:
-- "gmail entries for the last 2 months" → search_terms: [], date_filter: {{"days_back": 60, "description": "last 2 months"}}, limit: 1000
-- "find all journal entries between feb-may 2025" → search_terms: [], date_filter: {{"days_back": null, "description": ""}}, limit: 10000
-- "recent journal entries about graham" → search_terms: ["graham"], date_filter: {{"days_back": 7, "description": "recent (past week)"}}, limit: 50
-- "emails from shipbob in the past month" → search_terms: ["shipbob"], date_filter: {{"days_back": 30, "description": "past month"}}, limit: 200
+- "gmail entries for the last 2 months" → search_terms: [], date_filter: {{"days_back": 60, "description": "last 2 months"}}
+- "find all journal entries between feb-may 2025" → search_terms: [], date_filter: {{"days_back": null, "description": ""}}
+- "recent journal entries about graham" → search_terms: ["graham"], date_filter: {{"days_back": 7, "description": "recent (past week)"}}
+- "emails from shipbob in the past month" → search_terms: ["shipbob"], date_filter: {{"days_back": 30, "description": "past month"}}
 
 Return only the JSON object:"""
 
@@ -534,8 +527,6 @@ Return only the JSON object:"""
             print(f"Date filter: {description}")
         else:
             print("Date filter: (none)")
-            
-        print(f"Result limit: {intent['limit']}")
         
         if intent.get('_workspace_context'):
             print(f"Workspace: {intent['_workspace_context']}")
@@ -571,7 +562,6 @@ Return only the JSON object:"""
         print("\n🗣️  Tell me what to change in natural language:")
         print("   Examples:")
         print("   • 'only search journal database'")
-        print("   • 'increase limit to 5000'") 
         print("   • 'search for meetings instead of graham'")
         print("   • 'include trass workspace too'")
         print("   • 'cancel' or 'back' to return")
@@ -599,7 +589,6 @@ Return only the JSON object:"""
                     print(f"   📅 Date filter: {description}")
                 else:
                     print("   📅 Date filter: (none)")
-                print(f"   📊 Limit: {modified_intent['limit']}")
             else:
                 print("⚠️  Could not interpret modification. Returning to confirmation...")
                 
@@ -622,7 +611,6 @@ Goal: {current_intent['goal']}
 Databases: {current_intent['databases']}
 Search terms: {current_intent.get('search_terms', [])}
 Date filter: {current_intent.get('date_filter', {})}
-Limit: {current_intent['limit']}
 
 USER MODIFICATION REQUEST: "{modification}"
 
@@ -633,14 +621,12 @@ Apply the user's requested changes and return the modified intent in this exact 
     "goal": "updated goal if changed",
     "databases": ["updated", "database", "list"],
     "search_terms": ["updated", "search", "terms"],
-    "date_filter": {{"days_back": null, "description": ""}},
-    "limit": updated_limit_number
+    "date_filter": {{"days_back": null, "description": ""}}
 }}
 
 Modification rules:
 - If user mentions specific databases, update the databases list
 - If user mentions search terms/keywords, update search_terms
-- If user mentions numbers/limits, update the limit  
 - If user mentions "only X", replace databases with just X
 - If user mentions "add X" or "include X", add X to existing list
 - If user mentions "remove X", remove X from existing list
@@ -671,8 +657,7 @@ Return only the JSON object:"""
             
             # Validate the modification makes sense
             if (isinstance(modified_intent.get('databases'), list) and 
-                isinstance(modified_intent.get('search_terms'), list) and 
-                isinstance(modified_intent.get('limit'), int) and
+                isinstance(modified_intent.get('search_terms'), list) and
                 isinstance(modified_intent.get('date_filter'), dict)):
                 # Preserve current date_filter if not modified
                 if not modified_intent['date_filter'].get('days_back') and not modified_intent['date_filter'].get('description'):
@@ -762,7 +747,6 @@ Query goal: {intent['goal']}
 Target databases: {intent['databases']}
 Search terms: {intent['search_terms']}
 Date filter: {date_filter.get('description', 'none')}
-Result limit: {intent['limit']}
 
 CRITICAL INSTRUCTIONS:
 1. **USE ALIAS 'u'** - The query MUST use the alias 'u' for the 'unified_content' table (e.g., `FROM unified_content u`).
@@ -770,7 +754,6 @@ CRITICAL INSTRUCTIONS:
 3. **ONLY USE TARGET DATABASES** - Use EXCLUSIVELY the databases listed in "Target databases" above.
 4. **Generate WHERE clause** - MUST include: u.database_name IN ({', '.join([f"'{db}'" for db in intent['databases']])}).
 5. **Apply date filtering** - {f"MUST include date constraint: (u.created_time >= '{cutoff_date}' OR u.last_edited_time >= '{cutoff_date}')" if date_filter.get('days_back') else "No date filtering required"}.
-6. **Handle limits correctly** - Use limit: {intent['limit']}.
 
 ⚠️  CRITICAL: The target databases list above is the FINAL filtered list. Do not add or modify databases.
 

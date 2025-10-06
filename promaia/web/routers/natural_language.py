@@ -60,7 +60,6 @@ async def process_natural_language(request: NaturalLanguageRequest):
                     databases=intent_data.get("databases", []),
                     search_terms=intent_data.get("search_terms", []),
                     time_range=intent_data.get("time_range"),
-                    limit=intent_data.get("limit", 50),
                     complexity_level=intent_data.get("complexity_level", "Unknown"),
                     user_goal=intent_data.get("user_goal", "Unknown")
                 )

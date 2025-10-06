@@ -14,7 +14,6 @@ class NaturalLanguageRequest(BaseModel):
     query: str
     workspace: Optional[str] = None
     scope_databases: Optional[List[str]] = None
-    limit: Optional[int] = None
 
 
 class QueryIntent(BaseModel):
@@ -23,7 +22,6 @@ class QueryIntent(BaseModel):
     databases: List[str]
     search_terms: List[str]
     time_range: Optional[str] = None
-    limit: int
     complexity_level: str
     user_goal: str
 
