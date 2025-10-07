@@ -615,9 +615,11 @@ def process_browser_selections(selected_sources):
     for db_spec, channels in discord_db_groups.items():
         processed_sources.append(db_spec)
         if len(channels) == 1:
-            filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
+            # Use period separator for simple filters (days.property=value format)
+            filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
             processed_filters.append(filter_spec)
         else:
+            # Use colon separator for complex filters with parentheses (days:(expression) format)
             channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
             combined_filter = " or ".join(channel_conditions)
             filter_spec = f"{db_spec}:({combined_filter})"
@@ -1252,7 +1254,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                 # Add source-specific filters
                 if source in source_specific_filters:
-                    applicable_filters.extend(source_specific_filters[source])
+                    # Filter out __COMPLEX_EXPR__ filters - they're handled separately in Discord filter processing
+                    # and should not be reconstructed using dot notation
+                    non_complex_filters = [f for f in source_specific_filters[source] if not f.startswith('__COMPLEX_EXPR__')]
+                    applicable_filters.extend(non_complex_filters)
 
                 # Add global filters (only in single-source scenarios or backward compatibility)
                 if len(current_sources) == 1 or not source_specific_filters:
@@ -1271,8 +1276,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     processed_sources.append(source_with_filters)
                     debug_print(f"Created filtered source spec: {source_with_filters}")
                 else:
-                    processed_sources.append(source)
-                    debug_print(f"Using unfiltered source: {source}")
+                    # No applicable filters, add source as-is
+                    # Note: Discord filters with __COMPLEX_EXPR__ are handled separately below
+                    # and should not be added here to avoid duplication
+                    if source not in [s.split('.')[0] for s in processed_sources]:
+                        processed_sources.append(source)
+                        debug_print(f"Using unfiltered source: {source}")
 
         # Log final filter application
         if DEBUG_MODE and (source_specific_filters or global_filters):
@@ -2788,11 +2797,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         
                         # Create filter for channels
                         if len(channels) == 1:
-                            # Single channel
-                            filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
+                            # Single channel - use period separator (days.property=value format)
+                            filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
                             processed_filters.append(filter_spec)
                         else:
-                            # Multiple channels - use OR logic
+                            # Multiple channels - use OR logic with colon separator (days:(expression) format)
                             channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
                             combined_filter = " or ".join(channel_conditions)
                             filter_spec = f"{db_spec}:({combined_filter})"
