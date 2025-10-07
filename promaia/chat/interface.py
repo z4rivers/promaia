@@ -601,25 +601,52 @@ def process_browser_selections(selected_sources):
     processed_filters = []
     discord_db_groups = {}
     
+    # Group Discord channels by database (not by database+days)
     for source in selected_sources:
         if '#' in source:
             db_channel, days_part = source.rsplit(':', 1)
             db_name, channel_name = db_channel.split('#', 1)
-            db_key = f"{db_name}:{days_part}"
-            if db_key not in discord_db_groups:
-                discord_db_groups[db_key] = []
-            discord_db_groups[db_key].append(channel_name)
+            
+            # Group by database only, track max days and all channels
+            if db_name not in discord_db_groups:
+                discord_db_groups[db_name] = {'max_days': 0, 'channels': [], 'has_all': False}
+            
+            # Track maximum days (or 'all' which takes precedence)
+            if days_part == 'all':
+                discord_db_groups[db_name]['has_all'] = True  # 'all' overrides any specific days
+            else:
+                try:
+                    current_days = int(days_part)
+                    if not discord_db_groups[db_name]['has_all']:  # Only track max if no 'all' seen yet
+                        discord_db_groups[db_name]['max_days'] = max(discord_db_groups[db_name]['max_days'], current_days)
+                except ValueError:
+                    pass  # Invalid days format, skip
+            
+            discord_db_groups[db_name]['channels'].append(channel_name)
         else:
             processed_sources.append(source)
-            
-    for db_spec, channels in discord_db_groups.items():
+    
+    # Create single source per database with max days and OR filter for all channels
+    for db_name, group_info in discord_db_groups.items():
+        has_all = group_info['has_all']
+        max_days = group_info['max_days']
+        channels = group_info['channels']
+        
+        # Build source spec with max days (or 'all' if any channel had 'all')
+        if has_all:
+            db_spec = f"{db_name}:all"
+        else:
+            db_spec = f"{db_name}:{max_days}"
+        
         processed_sources.append(db_spec)
+        
+        # Build filter with OR logic for all channels
         if len(channels) == 1:
-            # Use period separator for simple filters (days.property=value format)
+            # Single channel - use period separator
             filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
             processed_filters.append(filter_spec)
         else:
-            # Use colon separator for complex filters with parentheses (days:(expression) format)
+            # Multiple channels - use OR logic with colon separator
             channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
             combined_filter = " or ".join(channel_conditions)
             filter_spec = f"{db_spec}:({combined_filter})"
@@ -2779,37 +2806,60 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
                     
-                    # Process Discord channel sources and convert to database + filter format (same logic as cli.py)
+                    # Process Discord channel sources and convert to database + filter format
+                    # Use same logic as process_browser_selections
                     processed_sources = []
                     processed_filters = []
                     discord_db_groups = {}
                     
+                    # Group Discord channels by database (not by database+days)
                     for source in selected_sources:
                         if '#' in source:
                             # Discord channel: trass.tg#customer-support:7
                             db_channel, days_part = source.rsplit(':', 1)
                             db_name, channel_name = db_channel.split('#', 1)
                             
-                            # Group by database + days combination
-                            db_key = f"{db_name}:{days_part}"
-                            if db_key not in discord_db_groups:
-                                discord_db_groups[db_key] = []
-                            discord_db_groups[db_key].append(channel_name)
+                            # Group by database only, track max days and all channels
+                            if db_name not in discord_db_groups:
+                                discord_db_groups[db_name] = {'max_days': 0, 'channels': [], 'has_all': False}
+                            
+                            # Track maximum days (or 'all' which takes precedence)
+                            if days_part == 'all':
+                                discord_db_groups[db_name]['has_all'] = True
+                            else:
+                                try:
+                                    current_days = int(days_part)
+                                    if not discord_db_groups[db_name]['has_all']:
+                                        discord_db_groups[db_name]['max_days'] = max(discord_db_groups[db_name]['max_days'], current_days)
+                                except ValueError:
+                                    pass
+                            
+                            discord_db_groups[db_name]['channels'].append(channel_name)
                         else:
                             # Regular database source
                             processed_sources.append(source)
                     
-                    # Convert Discord groups to source + filter combinations
-                    for db_spec, channels in discord_db_groups.items():
+                    # Create single source per database with max days and OR filter for all channels
+                    for db_name, group_info in discord_db_groups.items():
+                        has_all = group_info['has_all']
+                        max_days = group_info['max_days']
+                        channels = group_info['channels']
+                        
+                        # Build source spec with max days (or 'all' if any channel had 'all')
+                        if has_all:
+                            db_spec = f"{db_name}:all"
+                        else:
+                            db_spec = f"{db_name}:{max_days}"
+                        
                         processed_sources.append(db_spec)
                         
-                        # Create filter for channels
+                        # Build filter with OR logic for all channels
                         if len(channels) == 1:
-                            # Single channel - use period separator (days.property=value format)
+                            # Single channel - use period separator
                             filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
                             processed_filters.append(filter_spec)
                         else:
-                            # Multiple channels - use OR logic with colon separator (days:(expression) format)
+                            # Multiple channels - use OR logic with colon separator
                             channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
                             combined_filter = " or ".join(channel_conditions)
                             filter_spec = f"{db_spec}:({combined_filter})"
