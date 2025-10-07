@@ -1445,12 +1445,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Use qualified name to avoid collisions between workspaces
                     unique_key = db_config.get_qualified_name()
                     
-                    # Append pages if key exists (e.g., multiple Discord channels with different days)
-                    # Deduplicate by page_id to avoid duplicates from overlapping date ranges
+                    # Store pages (no need for deduplication since we now load database only once
+                    # with OR filter for all channels)
                     if unique_key in new_multi_source_data:
-                        existing_page_ids = {p.get('page_id') for p in new_multi_source_data[unique_key]}
-                        new_pages = [p for p in pages if p.get('page_id') not in existing_page_ids]
-                        new_multi_source_data[unique_key].extend(new_pages)
+                        # This shouldn't happen with the new grouping logic, but handle it gracefully
+                        new_multi_source_data[unique_key].extend(pages)
                     else:
                         new_multi_source_data[unique_key] = pages
                     # Don't increment total here - calculate from final data to ensure consistency
