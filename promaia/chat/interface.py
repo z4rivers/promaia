@@ -1417,7 +1417,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     )
                     # Use qualified name to avoid collisions between workspaces
                     unique_key = db_config.get_qualified_name()
-                    new_multi_source_data[unique_key] = pages
+                    
+                    # Append pages if key exists (e.g., multiple Discord channels with different days)
+                    # Otherwise create new entry
+                    if unique_key in new_multi_source_data:
+                        new_multi_source_data[unique_key].extend(pages)
+                    else:
+                        new_multi_source_data[unique_key] = pages
                     # Don't increment total here - calculate from final data to ensure consistency
 
                     # Only mark as successful if we actually got pages
