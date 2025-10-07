@@ -725,6 +725,16 @@ class HybridContentRegistry:
                 created_time = content_data.get('created_time')
                 last_edited_time = content_data.get('last_edited_time') or created_time
                 
+                # Validate that database_id is present
+                database_id = content_data.get('database_id')
+                if not database_id:
+                    logger.warning(
+                        f"⚠️  database_id is missing for {content_data.get('database_name', 'unknown')} "
+                        f"(page_id: {content_data.get('page_id', 'unknown')}). "
+                        f"This will cause issues when loading content. "
+                        f"Please ensure database_config.database_id is set during sync."
+                    )
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO generic_content (
                         page_id, workspace, database_id, database_name, content_type, file_path, title,
@@ -733,7 +743,7 @@ class HybridContentRegistry:
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
-                    content_data.get('database_id'),
+                    database_id,
                     content_data['database_name'],
                     content_data.get('content_type', content_data['database_name']),
                     content_data['file_path'],

@@ -2506,6 +2506,60 @@ async def handle_validate_registry(args):
         print(f"Error: {e}")
         raise
 
+async def handle_migrate_database_ids(args):
+    """Handle 'maia database migrate-database-ids' command."""
+    from promaia.storage.migrate_database_ids import migrate_null_database_ids, check_missing_database_ids
+    import logging
+    
+    # Setup logging for migration
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s'
+    )
+    
+    try:
+        dry_run = getattr(args, 'dry_run', False)
+        
+        if dry_run:
+            print("🔍 DRY RUN MODE - No changes will be made\n")
+        
+        print("=" * 60)
+        print("Database ID Migration Tool")
+        print("=" * 60)
+        
+        # First check what needs to be migrated
+        print("\n📊 Checking for entries with NULL database_id...\n")
+        missing = check_missing_database_ids()
+        
+        if not missing:
+            print("✅ No entries with NULL database_id found!")
+            return
+        
+        print(f"Found {len(missing)} database(s) with NULL database_id entries:\n")
+        for entry in missing:
+            print(f"  • {entry['workspace']}.{entry['database_name']}")
+            print(f"    Type: {entry['content_type']}")
+            print(f"    Count: {entry['count']} entries")
+            print(f"    Latest sync: {entry['latest_sync']}\n")
+        
+        # Run migration
+        print("\n🔧 Running migration...\n")
+        results = migrate_null_database_ids(dry_run=dry_run)
+        
+        print("\n" + "=" * 60)
+        if dry_run:
+            print("DRY RUN COMPLETED")
+            print("Run without --dry-run to apply changes")
+        else:
+            print("MIGRATION COMPLETED")
+            total_updated = sum(results.values())
+            print(f"Total entries updated: {total_updated}")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        raise
+
 async def handle_register_markdown_files(args):
     """Handle 'maia database register-markdown-files' command."""
     import glob
@@ -2822,3 +2876,8 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     register_parser.add_argument('--database', help='Database nickname to register files for (optional)')
     register_parser.add_argument('--dry-run', action='store_true', help='Show what would be registered without making changes')
     register_parser.set_defaults(func=handle_register_markdown_files)
+    
+    # Migrate database IDs command
+    migrate_parser = subparsers.add_parser('migrate-database-ids', help='Fix NULL database_id values in registry (run after config updates)')
+    migrate_parser.add_argument('--dry-run', action='store_true', help='Show what would be migrated without making changes')
+    migrate_parser.set_defaults(func=handle_migrate_database_ids)

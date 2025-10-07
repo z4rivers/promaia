@@ -31,7 +31,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-06T07:47:42.594500+00:00",
+      "last_sync_time": "2025-10-07T22:00:23.450371+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -58,7 +58,7 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": true,
-      "last_sync_time": "2025-10-06T07:47:41.181321+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.210105+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -82,7 +82,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:42.476292+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.697684+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -106,7 +106,7 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:40.761140+00:00",
+      "last_sync_time": "2025-10-07T22:00:15.628954+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -130,7 +130,7 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:40.768441+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.683496+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -154,7 +154,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:41.325335+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.207827+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -178,7 +178,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-06T07:47:41.556113+00:00",
+      "last_sync_time": "2025-10-07T22:00:18.890635+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -205,7 +205,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-06T07:47:41.221220+00:00",
+      "last_sync_time": "2025-10-07T22:00:15.359135+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Consumer Product"
@@ -231,7 +231,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:39.948359+00:00",
+      "last_sync_time": "2025-10-07T22:00:15.524683+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -257,7 +257,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:40.297020+00:00",
+      "last_sync_time": "2025-10-07T22:00:09.463291+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -284,7 +284,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:47.705165+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.214234+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -308,7 +308,7 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:41.644783+00:00",
+      "last_sync_time": "2025-10-07T22:00:12.123656+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": "1291943271509135415"
@@ -363,19 +363,20 @@
       "nickname": "yp",
       "description": "Yeeps 2.0 Discord server",
       "workspace": "trass",
-      "sync_enabled": false,
+      "sync_enabled": true,
       "include_properties": true,
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-08-06T02:52:20.818458+00:00",
+      "last_sync_time": "2025-10-07T22:10:57.256149+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": [
           "1197585118148165722",
           "1257791479460397177",
           "1203844590575296572",
-          "1357769148117160147"
+          "1357769148117160147",
+          "1257791601997250710"
         ]
       },
       "date_filters": {},
@@ -399,7 +400,7 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-10-06T07:47:41.537337+00:00",
+      "last_sync_time": "2025-10-07T22:00:10.682672+00:00",
       "filters": {
         "Team": "Consumer Product"
       },
