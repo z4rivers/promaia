@@ -704,14 +704,13 @@ def create_channel_or_filter(channel_names: List[str]) -> Dict[str, Any]:
     
     if len(channel_names) == 1:
         # Single channel - return simple filter
-        # Use 'channel_name' to match metadata field
-        return {'channel_name': channel_names[0]}
+        return {'discord_channel_name': channel_names[0]}
     
     # Multiple channels - create complex filter with OR logic
     or_clauses = []
     for channel_name in channel_names:
         or_clauses.append([{
-            'property': 'channel_name',  # Use 'channel_name' to match metadata field
+            'property': 'discord_channel_name',
             'operator': '=', 
             'value': channel_name
         }])
@@ -804,9 +803,9 @@ def read_markdown_files_with_registry(
         project_root = get_project_root()
         
         # Get markdown directory for fallback lookups
+        # Ensure md_dir is an absolute path
         md_dir = database_config.markdown_directory
-        # Make sure md_dir is absolute
-        if md_dir and not os.path.isabs(md_dir):
+        if not os.path.isabs(md_dir):
             md_dir = os.path.join(project_root, md_dir)
         
         for page_id, title, created_time, last_edited_time, synced_time, file_path, metadata in registry_entries:
@@ -815,11 +814,11 @@ def read_markdown_files_with_registry(
                 md_files = []
                 
                 # First try: Use registry file_path if available and exists
-                # Make sure to check with project root since file_path is relative
+                # Resolve relative paths against project_root
                 if file_path:
-                    absolute_file_path = os.path.join(project_root, file_path) if not os.path.isabs(file_path) else file_path
-                    if os.path.exists(absolute_file_path):
-                        md_files = [absolute_file_path]
+                    full_path = file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
+                    if os.path.exists(full_path):
+                        md_files = [full_path]
                 
                 if not md_files:
                     # Second try: Build expected path from page_id and check if it exists
@@ -1190,6 +1189,20 @@ def extract_property_value(prop_data: Dict[str, Any]) -> Any:
     return None
 
 
+def normalize_discord_channel_name(channel_name: str) -> str:
+    """Normalize Discord channel name by removing emojis and special characters."""
+    if not isinstance(channel_name, str):
+        return str(channel_name)
+    
+    import re
+    # Remove emojis and Discord-specific separators
+    normalized = re.sub(r'[^\w\s-]', '', channel_name)
+    # Remove extra whitespace and normalize hyphens
+    normalized = re.sub(r'\s+', '-', normalized.strip())
+    # Remove leading/trailing hyphens
+    normalized = normalized.strip('-')
+    return normalized.lower()
+
 def evaluate_condition(actual_value: Any, operator: str, expected_value: str) -> bool:
     """
     Evaluate a single condition against property values.
@@ -1241,8 +1254,9 @@ def evaluate_condition(actual_value: Any, operator: str, expected_value: str) ->
             # Note: We can't easily pass context here, so we'll check if both values look like channel names
             if (actual_value.count('-') > 0 or actual_value.count('・') > 0 or 
                 expected_value.count('-') > 0 or expected_value.count('・') > 0):
-                # Looks like Discord channel names - use exact matching
-                return actual_value.lower() == expected_value.lower()
+                # Looks like Discord channel names - normalize and compare
+                # This handles emojis and special characters: "💬・plush-and-merch-general" == "plush-and-merch-general"
+                return normalize_discord_channel_name(actual_value) == normalize_discord_channel_name(expected_value)
             else:
                 # Gmail-style partial matching for emails
                 return expected_value.lower() in actual_value.lower()
