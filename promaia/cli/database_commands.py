@@ -1638,10 +1638,11 @@ def parse_filter_expression(filter_expr: str) -> Dict[str, Any]:
     """
     filter_expr = filter_expr.strip()
     
-    # Check for source prefix (source:filter_expression)
+    # Check for source prefix (source:filter_expression or source.filter_expression)
     # But exclude global contains:"..." syntax which doesn't have a source prefix
     # Updated regex to handle day specifications in source names (e.g., trass.yeeps_discord:30, trass.yp:all)
-    source_match = re.match(r'^([a-zA-Z0-9_.-]+(?::[0-9]+|:all)?):\s*(.+)$', filter_expr)
+    # Also handle period separator for simple filters (e.g., trass.yp:14.discord_channel_name=value)
+    source_match = re.match(r'^([a-zA-Z0-9_.-]+(?::[0-9]+|:all)?)[:.](.+)$', filter_expr)
     if source_match and not (filter_expr.startswith('contains:"') and ':' not in filter_expr[9:]):
         source = source_match.group(1)
         filter_part = source_match.group(2)
