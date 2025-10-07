@@ -1419,9 +1419,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     unique_key = db_config.get_qualified_name()
                     
                     # Append pages if key exists (e.g., multiple Discord channels with different days)
-                    # Otherwise create new entry
+                    # Deduplicate by page_id to avoid duplicates from overlapping date ranges
                     if unique_key in new_multi_source_data:
-                        new_multi_source_data[unique_key].extend(pages)
+                        existing_page_ids = {p.get('page_id') for p in new_multi_source_data[unique_key]}
+                        new_pages = [p for p in pages if p.get('page_id') not in existing_page_ids]
+                        new_multi_source_data[unique_key].extend(new_pages)
                     else:
                         new_multi_source_data[unique_key] = pages
                     # Don't increment total here - calculate from final data to ensure consistency
