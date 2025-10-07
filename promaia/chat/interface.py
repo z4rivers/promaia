@@ -1276,6 +1276,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Build processed sources with appropriate filters
         if current_sources:
             for source in current_sources:
+                # Skip sources that have Discord filters - they're handled separately
+                # Check if any discord_filter starts with this source (e.g., "trass.tg:14.")
+                is_discord_source = any(df.startswith(source + '.') or df.startswith(source + ':') for df in discord_filters)
+                if is_discord_source:
+                    debug_print(f"Skipping source {source} - handled in discord_filters")
+                    continue
+                
                 # Determine which filters apply to this source
                 applicable_filters = []
 
