@@ -704,13 +704,14 @@ def create_channel_or_filter(channel_names: List[str]) -> Dict[str, Any]:
     
     if len(channel_names) == 1:
         # Single channel - return simple filter
-        return {'discord_channel_name': channel_names[0]}
+        # Use 'channel_name' to match metadata field
+        return {'channel_name': channel_names[0]}
     
     # Multiple channels - create complex filter with OR logic
     or_clauses = []
     for channel_name in channel_names:
         or_clauses.append([{
-            'property': 'discord_channel_name',
+            'property': 'channel_name',  # Use 'channel_name' to match metadata field
             'operator': '=', 
             'value': channel_name
         }])
