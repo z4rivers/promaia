@@ -1034,6 +1034,22 @@ def chat_run(args):
         args.browse = [workspace_arg]
         args.workspace = None  # Clear original workspace arg
     
+    # ========================================================================
+    # ⚠️  CRITICAL BROWSE ARGUMENT PARSING - KEEP IN SYNC WITH EDIT MODE ⚠️
+    # ========================================================================
+    # This section parses -b (browse) arguments for the TOP-LEVEL browser.
+    # The EDIT MODE browser (in chat/interface.py) must parse stored browse
+    # commands using THE SAME LOGIC to maintain consistency.
+    #
+    # When modifying this parsing:
+    # 1. Update handle_manual_browse_edit() in promaia/chat/interface.py
+    # 2. Update handle_browse_in_edit_context() in promaia/chat/interface.py
+    # 3. Test both: `maia chat -b X` AND /e editing with browse commands
+    #
+    # See: promaia/chat/interface.py - handle_manual_browse_edit()
+    # See: promaia/chat/interface.py - handle_browse_in_edit_context()
+    # ========================================================================
+    
     # Handle browse option for workspace or Discord channel selection
     raw_browse_args = getattr(args, 'browse', None)
     sources = getattr(args, 'sources', None)
@@ -1841,7 +1857,38 @@ def chat_run_browse(args):
 
 
 def chat_run_inline_browse(args):
-    """Run the chat interface with unified browser for Discord databases."""
+    """
+    Run the chat interface with unified browser for Discord databases.
+    
+    ⚠️  CRITICAL: TOP-LEVEL BROWSER - KEEP IN SYNC WITH EDIT MODE BROWSER ⚠️
+    
+    This function implements the TOP-LEVEL browser used when starting chat with -b flag.
+    It has a TWIN in promaia/chat/interface.py called handle_browse_in_edit_context() and
+    handle_manual_browse_edit() that implement the EDIT MODE browser (accessed via /e).
+    
+    IMPORTANT SYNCHRONIZATION RULES FOR AI ASSISTANTS:
+    1. These two browsers MUST work identically - same arguments, same database parsing, same behavior
+    2. When you modify THIS function's argument parsing or database handling, you MUST update the
+       edit mode browser functions in chat/interface.py with the same logic
+    3. When you modify browse-related args.browse parsing here, update it in edit mode too
+    4. The context_state dict in chat/interface.py stores browse info - keep format consistent
+    5. Both use launch_unified_browser() - any changes to that affect both
+    
+    BEFORE MODIFYING THIS FUNCTION:
+    - Read handle_browse_in_edit_context() in promaia/chat/interface.py
+    - Read handle_manual_browse_edit() in promaia/chat/interface.py  
+    - Understand how they parse commands and launch browsers
+    - Make parallel changes to keep them synchronized
+    
+    TEST REQUIREMENTS:
+    - Test both: `maia chat -b trass.tg` AND using /e to change browse context
+    - Verify workspace names work: `maia chat -b trass` AND /e with workspace
+    - Verify Discord servers work: `maia chat -b trass.tg` AND /e with servers
+    - Verify multi-workspace: `maia chat -b trass koii` AND /e with multiple
+    
+    See: promaia/chat/interface.py - handle_browse_in_edit_context()
+    See: promaia/chat/interface.py - handle_manual_browse_edit()
+    """
     from promaia.cli.workspace_browser import launch_unified_browser
     from promaia.config.workspaces import get_workspace_manager
     from promaia.chat.interface import chat

@@ -2069,7 +2069,34 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             return False
     
     def handle_manual_browse_edit(user_input):
-        """Handle manually edited browse commands."""
+        """
+        Handle manually edited browse commands.
+        
+        ⚠️  CRITICAL: EDIT MODE BROWSER - KEEP IN SYNC WITH TOP-LEVEL BROWSER ⚠️
+        
+        This function implements browse command parsing for EDIT MODE (/e).
+        It has a TWIN in promaia/cli.py called chat_run_inline_browse() that
+        implements the TOP-LEVEL browser (used when starting chat with -b flag).
+        
+        IMPORTANT SYNCHRONIZATION RULES FOR AI ASSISTANTS:
+        1. This MUST parse browse commands identically to how cli.py does it
+        2. When you modify argument parsing here, update chat_run_inline_browse() in cli.py
+        3. When cli.py changes how it handles -b arguments, update this function
+        4. Database expansion, workspace detection, and filtering must match exactly
+        
+        BEFORE MODIFYING THIS FUNCTION:
+        - Read chat_run_inline_browse() in promaia/cli.py
+        - Understand how it parses args.browse and handles databases
+        - Make parallel changes to keep them synchronized
+        
+        TEST REQUIREMENTS:
+        - After editing command with /e, verify same behavior as starting with -b
+        - Test: Start with `-b trass.tg`, use /e to change it, verify it works
+        - Test: Start with `-b trass koii`, use /e to modify, verify consistency
+        
+        See: promaia/cli.py - chat_run_inline_browse()
+        See: handle_browse_in_edit_context() below (Ctrl+B path)
+        """
         try:
             # Import CLI functions we need
             import argparse
@@ -2892,7 +2919,36 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             return False
     
     def handle_browse_in_edit_context():
-        """Handle unified browse mode selection within edit context."""
+        """
+        Handle unified browse mode selection within edit context.
+        
+        ⚠️  CRITICAL: EDIT MODE BROWSER - KEEP IN SYNC WITH TOP-LEVEL BROWSER ⚠️
+        
+        This function implements browse mode for EDIT MODE (accessed via /e then Ctrl+B).
+        It has a TWIN in promaia/cli.py called chat_run_inline_browse() that
+        implements the TOP-LEVEL browser (used when starting chat with -b flag).
+        
+        IMPORTANT SYNCHRONIZATION RULES FOR AI ASSISTANTS:
+        1. This function re-launches the browser PRESERVING previous selections
+        2. It must parse stored browse context the same way cli.py parses -b args
+        3. When cli.py changes database expansion or workspace handling, update this
+        4. The stored browser selections in context_state['browse_selections'] must
+           match the format that cli.py produces and stores
+        
+        BEFORE MODIFYING THIS FUNCTION:
+        - Read chat_run_inline_browse() in promaia/cli.py
+        - Understand how it stores browse selections in context_state
+        - Make parallel changes to keep them synchronized
+        
+        TEST REQUIREMENTS:
+        - Start with `-b trass.tg`, select channels, press /e, press Ctrl+B
+        - Verify previous selections are preserved
+        - Change selections, verify they work correctly
+        - Test with multiple workspaces: `-b trass koii`
+        
+        See: promaia/cli.py - chat_run_inline_browse()
+        See: handle_manual_browse_edit() above (manual edit path)
+        """
         try:
             # Initialize variables
             database_filter = None
