@@ -1478,7 +1478,7 @@ def chat_run(args):
                 return chat_run_workspace_browse(args, browse_target)
             else:
                 # Treat as Discord database browse
-                return chat_run_inline_browse(args, browse_args)
+                return chat_run_inline_browse(args)
         # Check if this is a multi-workspace browse
         elif browse_args is not None and len(browse_args) > 1:
             from promaia.config.workspaces import get_workspace_manager
@@ -1492,10 +1492,10 @@ def chat_run(args):
                 return chat_run_multi_workspace_browse(args, browse_args)
             else:
                 # Mixed or Discord database browse
-                return chat_run_inline_browse(args, browse_args)
+                return chat_run_inline_browse(args)
         # Otherwise, handle inline browse functionality (Discord)
         elif browse_args is not None:  # browse_args could be empty list or list with databases
-            return chat_run_inline_browse(args, browse_args)
+            return chat_run_inline_browse(args)
     
     # Handle regular commands (no browse)
     sources = getattr(args, 'sources', None)
