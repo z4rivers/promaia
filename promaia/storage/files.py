@@ -804,6 +804,9 @@ def read_markdown_files_with_registry(
         
         # Get markdown directory for fallback lookups
         md_dir = database_config.markdown_directory
+        # Make sure md_dir is absolute
+        if md_dir and not os.path.isabs(md_dir):
+            md_dir = os.path.join(project_root, md_dir)
         
         for page_id, title, created_time, last_edited_time, synced_time, file_path, metadata in registry_entries:
             try:
@@ -811,9 +814,13 @@ def read_markdown_files_with_registry(
                 md_files = []
                 
                 # First try: Use registry file_path if available and exists
-                if file_path and os.path.exists(file_path):
-                    md_files = [file_path]
-                else:
+                # Make sure to check with project root since file_path is relative
+                if file_path:
+                    absolute_file_path = os.path.join(project_root, file_path) if not os.path.isabs(file_path) else file_path
+                    if os.path.exists(absolute_file_path):
+                        md_files = [absolute_file_path]
+                
+                if not md_files:
                     # Second try: Build expected path from page_id and check if it exists
                     expected_paths = [
                         os.path.join(md_dir, f"{page_id}.md"),
