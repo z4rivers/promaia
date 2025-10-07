@@ -615,10 +615,12 @@ def process_browser_selections(selected_sources):
     for db_spec, channels in discord_db_groups.items():
         processed_sources.append(db_spec)
         if len(channels) == 1:
-            filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
+            # Use 'channel_name' not 'discord_channel_name' to match metadata field
+            filter_spec = f"{db_spec}:channel_name={channels[0]}"
             processed_filters.append(filter_spec)
         else:
-            channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
+            # Use 'channel_name' not 'discord_channel_name' to match metadata field
+            channel_conditions = [f"channel_name={ch}" for ch in channels]
             combined_filter = " or ".join(channel_conditions)
             filter_spec = f"{db_spec}:({combined_filter})"
             processed_filters.append(filter_spec)
@@ -1201,8 +1203,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         source_parts = source.split(':')
                         source_has_days = (len(source_parts) > 1 and 
                                          (source_parts[-1].isdigit() or source_parts[-1] == 'all'))
-                        filter_is_discord = ('discord_channel_name' in filter_spec or 
-                                           ('(' in filter_spec and 'discord_channel_name' in filter_spec))
+                        # Check for Discord channel filters (channel_name or discord_channel_name for backwards compatibility)
+                        filter_is_discord = ('channel_name' in filter_spec or 'discord_channel_name' in filter_spec or 
+                                           ('(' in filter_spec and ('channel_name' in filter_spec or 'discord_channel_name' in filter_spec)))
                         
                         if source_has_days and filter_is_discord:
                             # This is a complete Discord filter - handle separately
