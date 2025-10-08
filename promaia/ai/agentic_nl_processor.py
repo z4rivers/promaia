@@ -65,12 +65,12 @@ class SchemaExplorer:
                     row_count = cursor.fetchone()[0]
                     
                     # Get sample rows to help LLM understand the data
-                    # Simple approach: SELECT * with all columns, let LLM infer semantics
+                    # Heavy on dynamic context, light on instruction - show multiple examples
                     samples = []
                     if row_count > 0:
                         try:
-                            # Get ALL columns for complete picture
-                            cursor.execute(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 2")
+                            # Get 3 recent samples to demonstrate data patterns
+                            cursor.execute(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 3")
                             for row in cursor.fetchall():
                                 sample = {}
                                 for i, col in enumerate(columns):

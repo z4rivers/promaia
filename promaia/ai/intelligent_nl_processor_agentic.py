@@ -412,31 +412,30 @@ Please adjust the query to fix this issue.
                 print_text(f"   Previous attempt failed: {intent.get('_validation_feedback', 'Unknown')}", style="dim")
                 print_text(f"   Strategy: Adjusting query based on feedback", style="dim")
         
-        prompt = f"""Generate a SQLite query based on this intent:
-
-{schema_summary}
+        # Build concise prompt
+        intent_line = f"Goal: {intent['goal']}"
+        if intent.get('search_terms'):
+            intent_line += f" | Terms: {', '.join(intent.get('search_terms', []))}"
+        if intent.get('date_filter', {}).get('description', 'none') != 'none':
+            intent_line += f" | Date: {intent.get('date_filter', {}).get('description')}"
+        
+        prompt = f"""{schema_summary}
 
 {learned_patterns}
 
 {validation_feedback}
 
-INTENT:
-Goal: {intent['goal']}
-Target Databases: {intent['databases']}
-Search Terms: {intent.get('search_terms', [])}
-Date Filter: {intent.get('date_filter', {}).get('description', 'none')}
+QUERY: {intent_line}
+TARGET: {', '.join(intent['databases'])}
 
-INSTRUCTIONS:
-1. Use table aliases (e.g., FROM unified_content u)
-2. ALWAYS SELECT these essential display fields: u.page_id, u.title, u.created_time, u.database_name
-3. Review sample data above to understand which fields contain searchable content
-4. For content searches, look at the sample values to identify text-heavy fields
-5. JOIN with specialized tables (gmail_content, etc.) to access full content
-6. Apply date filtering using appropriate timestamp columns
-7. Use LIKE '%term%' for text searches, and search ALL relevant text fields
-8. Limit results to 1000
+Return SQLite query that:
+- SELECTs: u.page_id, u.title, u.created_time, u.database_name (+ any other needed fields)
+- JOINs specialized tables (gmail_content, etc.) for full-text search
+- Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
+- Applies date filters on created_time/email_date columns
+- LIMIT 5000
 
-Generate the SQL query (return only the SQL, no markdown):"""
+SQL only (no markdown):"""
         
         if self.debug:
             print_text(f"\n📤 SQL Generation Prompt:", style="cyan")
