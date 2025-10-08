@@ -1,0 +1,52 @@
+Natural Language Query Summary
+Generated: 2025-10-07 22:00:05
+
+USER QUERY: trass gmail with term mgm from last 2 days
+
+INTENT PARSED:
+  Goal: search gmail messages containing mgm
+  Databases: trass.gmail, gmail
+  Search Terms: mgm
+  Date Filter: last 2 days
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+g.subject,
+g.body_snippet,
+g.message_content,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.database_name IN ('trass.gmail', 'gmail')
+AND u.created_time >= datetime('now', '-2 days')
+AND (
+  LOWER(g.subject) LIKE '%mgm%'
+  OR LOWER(g.body_snippet) LIKE '%mgm%'
+  OR LOWER(g.message_content) LIKE '%mgm%'
+  OR LOWER(g.sender_email) LIKE '%mgm%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 14
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 14 entries
+
+  Sample Results (first 5):
+    1. RE: Patches project v1 (gmail)
+       Date: 2025-10-08
+    2. RE: Kit Card v2 (the one with needles) (gmail)
+       Date: 2025-10-08
+    3. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-08
+    4. Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-06
+    5. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-06

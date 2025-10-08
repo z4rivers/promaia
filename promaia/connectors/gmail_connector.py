@@ -1344,6 +1344,18 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         to_addr = headers.get('to', '')
         date_str = headers.get('date', '')
         
+        # Parse date to ISO format for database consistency
+        from email.utils import parsedate_to_datetime
+        try:
+            date_obj = parsedate_to_datetime(date_str)
+            if date_obj.tzinfo is None:
+                date_obj = date_obj.replace(tzinfo=timezone.utc)
+            date_iso = date_obj.isoformat()
+        except Exception:
+            # Fallback to current time if parsing fails
+            date_obj = datetime.now(timezone.utc)
+            date_iso = date_obj.isoformat()
+        
         # Create unique page_id for this individual message
         page_id = f"msg_{message_id}"
         
@@ -1377,8 +1389,9 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         metadata = {
             "page_id": page_id,
             "title": f"{subject} (Message {message_index + 1})",
-            "created_time": date_str,
-            "last_edited_time": thread.get('date'),  # Thread's latest message date
+            "created_time": date_iso,  # ISO format for database consistency
+            "last_edited_time": thread.get('date'),  # Thread's latest message date (already ISO)
+            "email_date": date_iso,  # Email date in ISO format
             "thread_id": thread_id,
             "message_id": message_id,
             "subject": subject,
@@ -1391,8 +1404,7 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             "body_snippet": message.get('snippet', ''),
             "message_content": clean_content,
             "thread_position": message_index,
-            "is_latest_in_thread": is_latest,
-            "email_date": date_str
+            "is_latest_in_thread": is_latest
         }
         
         return {

@@ -1,0 +1,122 @@
+{
+  "user_query": "trass gmail with term mgm from last 1.5 months",
+  "intent": {
+    "goal": "search gmail messages containing 'mgm'",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": 45,
+      "description": "last 1.5 months"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\ng.subject,\ng.body_snippet,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.content_type = 'gmail'\nAND u.created_time >= datetime('now', '-45 days')\nAND (\n  g.message_content LIKE '%mgm%'\n  OR g.subject LIKE '%mgm%'\n  OR g.sender_email LIKE '%mgm%'\n  OR g.sender_name LIKE '%mgm%'\n  OR g.recipient_emails LIKE '%mgm%'\n  OR g.body_snippet LIKE '%mgm%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000;",
+  "result_count": 945,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 945
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197f24fd443bbb31",
+      "title": "Re: Pets Design 2025-07-06",
+      "created_time": "Wed, 9 Jul 2025 20:09:54 -0700",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "subject": "Re: Pets Design 2025-07-06",
+      "body_snippet": "Fionn: Notes inline below in green. On Jul 9, 2025, at 2:39 AM, Fionn Ng &lt;fionnng@mgmproduction.com.hk&gt; wrote: Dear Koii and Jayshay, I&#39;m writing to inform you that we&#39;ve sent the",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197f002e16e5a5c1",
+      "title": "RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "created_time": "Wed, 9 Jul 2025 16:26:40 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "body_snippet": "Dear Koii &amp; Steve, I hope this message finds you well. I would like to draw your attention to the pending invoice from QIMA, which is currently overdue. QIMA has inquired about the status of this",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197efa3a4f8794dd",
+      "title": "[Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 14:42:28 +0000",
+      "sender_email": "Qima LabTesting Group <labtesting@qima.com>",
+      "subject": "[Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass",
+      "body_snippet": "",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197f0c779e3e78e3",
+      "title": "Re: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "created_time": "Wed, 9 Jul 2025 13:01:32 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "body_snippet": "Hi Fionn and Jose, Thanks for the follow-up. I&#39;ve just settled the outstanding QIMA invoice. This should resolve the service suspension. Please confirm that you&#39;ve received the payment and our",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ee8df2cec6740",
+      "title": "RE: Pets Design 2025-07-06",
+      "created_time": "Wed, 9 Jul 2025 09:39:21 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: Pets Design 2025-07-06",
+      "body_snippet": "Dear Koii and Jayshay, I&#39;m writing to inform you that we&#39;ve sent the following samples today via FedEx (Tracking No.: 8826 2771 7889): Contents of the Package: Chicken \u2013 1 pc Dog \u2013 1 pc (Please",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ed130c1602af3",
+      "title": "RE: [Draft Report] PLUSH TOYS/ACCESSORY SET_ T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 02:45:31 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: [Draft Report] PLUSH TOYS/ACCESSORY SET_ T-24328905-06-R_Pass",
+      "body_snippet": "Dear Wanna, Yes, you may proceed to issue the final report for R5 and R6 of Batch 2025-07. Regarding the Technical File, I need your guidance on Safety Assessment, specifically report no. T-25061926-R1",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961c3faf7048a11",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 20:30:47 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "subject": "Re: Insane tariffs and our partnership",
+      "body_snippet": "Jaysay : The following idea outlines our current thinking : Reduce the effective tariff impact on Yeeps plush toys by allocating part of the $34.99 retail price to digital game content (which is not",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961d83b55b45893",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 19:24:40 -0700",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "subject": "Re: Insane tariffs and our partnership",
+      "body_snippet": "FYI: I&#39;ll use this email as a template and probably send it tomorrow. Right now, I&#39;m waiting on John&#39;s reply re: customs value used in tariff calculations. On Apr 9, 2025, at 10:35 AM, Koii",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961d7c3574bcf84",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 19:16:28 -0700",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "subject": "Re: Insane tariffs and our partnership",
+      "body_snippet": "John: You are scaring me in your assumption that tariff is calculated on the retail price, like $34.95. Everything I know says the tariff is calculated on the declared customs value, which is the",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961bbf789416428",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 18:10:45 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "subject": "Re: Insane tariffs and our partnership",
+      "body_snippet": "Dear Jaysay, I&#39;ve been thinking\u2014since Yeeps already has the in-game coupon system, maybe we could bundle the plush with a digital reward. Something like offering a $15 game credit along with the",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 945 entries from 1 databases"
+  },
+  "retries": 0
+}
