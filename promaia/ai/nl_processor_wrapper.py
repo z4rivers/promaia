@@ -47,7 +47,6 @@ def process_natural_language_to_content(
         
         # Check if user chose to quit (exit to terminal)
         if result.get("action") == "quit":
-            print_text("👋 Exiting to terminal...", style="dim")
             return {}  # Return empty results to prevent chat from loading
         
         if result["success"] and result["results"]:

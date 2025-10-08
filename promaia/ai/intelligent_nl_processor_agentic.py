@@ -184,7 +184,7 @@ class AgenticNLQueryProcessor:
                     user_query = modified_query
                     # Loop will re-run with new query
                 except (KeyboardInterrupt, EOFError):
-                    print_text("\n   Modification cancelled, exiting to terminal.", style="dim")
+                    print_text("\n   Quitting...", style="dim")
                     result['action'] = 'quit'  # Change to quit action
                     return result
             else:
@@ -645,13 +645,13 @@ SQL only (no markdown):"""
             if response == 'm':
                 return 'modify'
             elif response == 'q':
-                print_text("   Exiting to terminal...", style="dim")
+                print_text("   Quitting...", style="dim")
                 return 'quit'
             else:  # Enter or any other key = accept
                 return 'save'
         
         except (KeyboardInterrupt, EOFError):
-            print_text("\n   Exiting to terminal...", style="dim")
+            print_text("\n   Quitting...", style="dim")
             return 'quit'
     
     def _format_schema_for_prompt(self, schema: Dict[str, Any]) -> str:
