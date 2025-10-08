@@ -167,8 +167,12 @@ class AgenticNLQueryProcessor:
         while True:
             result = self.process_query(user_query, workspace, max_retries)
             
+            # If user wants to quit, return immediately (exit to terminal)
+            if result.get('action') == 'quit':
+                return result
+            
             # If user wants to modify, ask for new query and loop
-            if result.get('action') == 'modify':
+            elif result.get('action') == 'modify':
                 print_text("\n✏️  Modify your query (edit and press Enter, or Ctrl+C to cancel):", style="bold cyan")
                 try:
                     # Pre-fill input with original query for editing
@@ -180,11 +184,11 @@ class AgenticNLQueryProcessor:
                     user_query = modified_query
                     # Loop will re-run with new query
                 except (KeyboardInterrupt, EOFError):
-                    print_text("\n   Modification cancelled.", style="dim")
-                    result.pop('action')  # Remove 'modify' action
+                    print_text("\n   Modification cancelled, exiting to terminal.", style="dim")
+                    result['action'] = 'quit'  # Change to quit action
                     return result
             else:
-                # Normal completion
+                # Normal completion (user pressed Enter to save)
                 return result
     
     def _get_input_with_prefill(self, prompt: str, prefill: str) -> str:
@@ -381,6 +385,17 @@ class AgenticNLQueryProcessor:
                 "intent": intent,
                 "sql": generated_sql,
                 "validation": validation_result
+            }
+        elif user_action == 'quit':
+            # User wants to exit to terminal (don't continue to chat)
+            return {
+                "success": True,
+                "action": "quit",
+                "results": grouped_results,
+                "intent": intent,
+                "sql": generated_sql,
+                "summary": summary,
+                "learned": False
             }
         
         return {
@@ -615,29 +630,29 @@ SQL only (no markdown):"""
         Ask user if the query was successful and should be learned.
         
         Returns:
-            'save' - Save the pattern
+            'save' - Save the pattern and continue
             'modify' - Modify the query and try again
-            'skip' - Skip saving
+            'quit' - Exit to terminal (don't continue to chat)
         """
         try:
             print_text("\n💭 Save this query pattern for future learning?", style="bold cyan")
             print_text("   • Press Enter to accept and save", style="dim")
             print_text("   • Type 'm' to modify the query", style="dim")
-            print_text("   • Type 'q' to skip saving", style="dim")
+            print_text("   • Type 'q' to quit (exit to terminal)", style="dim")
             
             response = input("\n   Your choice [Enter/m/q]: ").strip().lower()
             
             if response == 'm':
                 return 'modify'
             elif response == 'q':
-                print_text("   Pattern not saved.", style="dim")
-                return 'skip'
+                print_text("   Exiting to terminal...", style="dim")
+                return 'quit'
             else:  # Enter or any other key = accept
                 return 'save'
         
         except (KeyboardInterrupt, EOFError):
-            print_text("\n   Skipped learning step.", style="dim")
-            return 'skip'
+            print_text("\n   Exiting to terminal...", style="dim")
+            return 'quit'
     
     def _format_schema_for_prompt(self, schema: Dict[str, Any]) -> str:
         """Format schema with sample rows - let LLM infer semantics from examples."""

@@ -45,6 +45,11 @@ def process_natural_language_to_content(
         # Process the query with the agentic system (includes modification support)
         result = processor.process_query_with_modification(nl_prompt, workspace=workspace, max_retries=2)
         
+        # Check if user chose to quit (exit to terminal)
+        if result.get("action") == "quit":
+            print_text("👋 Exiting to terminal...", style="dim")
+            return {}  # Return empty results to prevent chat from loading
+        
         if result["success"] and result["results"]:
             total_count = sum(len(items) for items in result["results"].values())
             
