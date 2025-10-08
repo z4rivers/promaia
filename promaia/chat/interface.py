@@ -1194,8 +1194,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             selected_sources = launch_workspace_browser(actual_workspace)
             
             if selected_sources:
-                current_sources = selected_sources
+                # Process browser selections to handle Discord channels correctly
+                processed_sources, processed_filters = process_browser_selections(selected_sources)
+                
+                # Store processed sources and filters
+                current_sources = processed_sources
+                current_filters = processed_filters if processed_filters else []
+                
                 context_state['sources'] = current_sources
+                context_state['filters'] = current_filters if current_filters else []
+                context_state['browse_selections'] = selected_sources  # Store raw selections for /e functionality
+                
                 # Store the original workspace command for display  
                 context_state['original_query_format'] = f"maia chat -b {actual_workspace}"
                 print_text(f"📦 Selected {len(selected_sources)} sources from workspace '{actual_workspace}'", style="cyan")
