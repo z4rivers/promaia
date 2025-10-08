@@ -804,21 +804,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         original_mixed_command = " ".join(query_parts)
         print_text(f"📝 Preserving original command format: {original_mixed_command}", style="dim")
         
-        # Step 4: Combine all sources for the main chat flow
-        all_sources = list(sources)  # Start with regular sources like journal:30
-        
+        # Step 4: Process browser selections to handle Discord channels correctly
+        # This separates Discord channels into database+filter format
+        processed_browser_sources = []
+        processed_browser_filters = []
         if selected_sources:
-            # Add all browser selections to sources for the main chat flow
-            for selected in selected_sources:
-                # Only add if not already in sources
-                source_base = selected.split(':')[0].split('#')[0]
-                already_in_sources = any(source_base in existing for existing in sources)
-                if not already_in_sources:
-                    all_sources.append(selected)
+            processed_browser_sources, processed_browser_filters = process_browser_selections(selected_sources)
+            print_text(f"🔍 Processed browser selections: {len(processed_browser_sources)} sources, {len(processed_browser_filters)} filters", style="dim")
         
-        # Update sources to include all selections for the main chat flow
+        # Step 5: Combine all sources and filters for the main chat flow
+        all_sources = list(sources)  # Start with regular sources like journal:30
+        all_filters = list(filters) if filters else []
+        
+        # Add processed browser sources (Discord channels converted to database specs)
+        for processed_source in processed_browser_sources:
+            # Check if not already in sources
+            source_base = processed_source.split(':')[0]
+            already_in_sources = any(source_base in existing.split(':')[0] for existing in all_sources)
+            if not already_in_sources:
+                all_sources.append(processed_source)
+        
+        # Add processed browser filters (Discord channel filters)
+        all_filters.extend(processed_browser_filters)
+        
+        # Update sources and filters for the main chat flow
         sources = all_sources
-        print_text(f"🔗 Combined sources: {len(sources)} total sources for chat", style="blue")
+        filters = all_filters if all_filters else None
+        print_text(f"🔗 Combined sources: {len(sources)} sources, {len(filters) if filters else 0} filters", style="blue")
         
         # Set these for context state initialization
         original_browse_command = f"maia chat {original_browse_command}" if original_browse_command else None
