@@ -1197,6 +1197,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Process browser selections to handle Discord channels correctly
                 processed_sources, processed_filters = process_browser_selections(selected_sources)
                 
+                debug_print(f"🔍 Browser returned: {selected_sources}")
+                debug_print(f"🔍 Processed to sources: {processed_sources}")
+                debug_print(f"🔍 Processed to filters: {processed_filters}")
+                
                 # Store processed sources and filters
                 current_sources = processed_sources
                 current_filters = processed_filters if processed_filters else []
