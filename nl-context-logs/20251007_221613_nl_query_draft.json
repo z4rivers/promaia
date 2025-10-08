@@ -1,0 +1,132 @@
+{
+  "user_query": "trass gmail with term shipbob last 3 days",
+  "intent": {
+    "goal": "find gmail messages related to shipbob",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "shipbob"
+    ],
+    "date_filter": {
+      "days_back": 3,
+      "description": "last 3 days"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\ng.subject,\ng.body_snippet,\ng.message_content,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name LIKE '%gmail%'\nAND (\n    LOWER(g.subject) LIKE '%shipbob%' \n    OR LOWER(g.body_snippet) LIKE '%shipbob%'\n    OR LOWER(g.message_content) LIKE '%shipbob%'\n    OR LOWER(g.sender_email) LIKE '%shipbob%'\n)\nAND (\n    u.created_time >= datetime('now', '-3 days')\n    OR g.email_date >= datetime('now', '-3 days')\n)\nORDER BY u.created_time DESC\nLIMIT 5000;",
+  "result_count": 22,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 22
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199c1c563c217d7d",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-08T03:02:34+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Thank you for sharing and for the clear explanation. We have discussed the situation with the warehouse and confirmed that the ShipBob stickers can only be prepared once the VAT/EORI numbers",
+      "message_content": "Dear Koii, \u00a0 Thank you for sharing and for the clear explanation. We have discussed the situation with the warehouse and confirmed that the ShipBob stickers can only be prepared once the VAT/EORI numbers are in place. The warehouse will handle this accordingly, so no worries about the process as we have arranged everything. \u00a0 There is no need to proceed with manually readdressing the WRO labels, as we have already coordinated this with the warehouse. \u00a0 We\u2019ll await your update once the VAT/EORI numbers are available. Thank you. \u00a0 Thanks with best regards Fionn Ng ******************************* MGM Industries & Co. Tel :\u00a0\u00a0\u00a0(852) 2545 0375 Fax : \u00a0(852) 2541 0362 \u00a0 From: Koii Benvenutto <koii@trassgames.com> Sent: Wednesday, October 8, 2025 5:09 AM To: Fionn Ng <fionnng@mgmproduction.com.hk> Cc: jayshay <jayshay@trassgames.com>; John Chiu <johnchiu@mgmproduction.com.hk>; Steve Shockey <steve@trassgames.com> Subject: Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 \u00a0 Dear Fionn, Thank you for your patience while we worked through this with ShipBob. Unfortunately, ShipBob has confirmed they cannot grant us access to create UK WROs without our VAT/EORI numbers in place. Given this constraint, I'd like to propose we proceed with manually readdressing the WRO labels I've provided (the Moreno Valley FC labels with UK quantities): Then we'll transfer them to the temporary storage facility John has sourced Once, our VAT/EORI numbers arrive (expected end of October), we'll coordinate with ShipBob to address any label corrections needed for final delivery to their UK FC I recognize this creates an additional step in the process. Does this approach work from your perspective, or do you see any issues that prevent\u00a0it from working? My thoughts are that this would allow us to get the pallets into the correct physical configuration regardless of which ShipBob FC they're destined for. It's universal. Let me know your thoughts. Best regards, Koii \u00a0 \u00a0 Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199c02e5cab00118",
+      "title": "Peak Season Surcharges Phase 2 + New Ship Option for Cost Savings",
+      "created_time": "2025-10-07T14:38:07-05:00",
+      "sender_email": "ShipBob <hello@shipbob.com>",
+      "subject": "Peak Season Surcharges Phase 2 + New Ship Option for Cost Savings",
+      "body_snippet": "All of our major carrier partners we use for shipments originating from the US (including UPS, FedEx, and OnTrac) will implement peak surcharges for the 2025 holiday season. ShipBob logo Greetings from",
+      "message_content": "Peak Season Surcharges Phase 2 + New Ship Option for Cost Savings 96 <!-- All of our major carrier partners we use for shipments originating from the US (including UPS, FedEx, and OnTrac) will implement peak surcharges for the 2025 holiday season. \u00a0 Greetings from ShipBob, \u00a0 \u00a0 All of the major shipping carrier partners we use for shipments originating from the US (including UPS , FedEx , and OnTrac ) will implement peak surcharges for the 2025 holiday season.\u00a0\u00a0\u00a0 \u00a0 ShipBob will be passing on these surcharges at cost or absorbing some of these costs, as we recognize the impact these types of surcharges have on our merchants.\u00a0\u00a0 \u00a0 As communicated at the end of August, Phase 1 of US-based peak surcharges (for USPS) went in effect on October 5, 2025, whereas Phase 2 of these surcharges (shared below) will go into effect on October 25, 2025. Both phases will end on January 18, 2026. \u00a0 View your peak surcharges here: https://shipbobconnect.sharepoint.com/:b:/s/ClientCommunication/EeYjAi1wEmdDvB8_jKHkdEQBMK6bzvDM-N73p6mnXTgk4A?e=aTPMf9 As a reminder from Phase 1, there will be increases to the Additional Handling Surcharge and Large Package Surcharge, which will apply only to qualifying orders originating from the US and can be viewed below.\u00a0 \u00a0 For any questions, please use the chat feature in your dashboard , create a case with ShipBob\u2019s Merchant Care team, or reach out to your Merchant Success Manager.\u00a0 \u00a0 Sincerely,\u00a0\u00a0 The ShipBob Team\u00a0 \u00a0 ShipBob Inc. | 120 N. Racine Ave., Chicago, IL 60607 | (844) 474-4726 | www.ShipBob.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199c0818b91684b0",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-07T14:08:58-07:00",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Fionn, Thank you for your patience while we worked through this with ShipBob. Unfortunately, ShipBob has confirmed they cannot grant us access to create UK WROs without our VAT/EORI numbers in",
+      "message_content": "Dear Fionn, Thank you for your patience while we worked through this with ShipBob. Unfortunately, ShipBob has confirmed they cannot grant us access to create UK WROs without our VAT/EORI numbers in place. Given this constraint, I'd like to propose we proceed with manually readdressing the WRO labels I've provided (the Moreno Valley FC labels with UK quantities): Then we'll transfer them to the temporary storage facility John has sourced Once, our VAT/EORI numbers arrive (expected end of October), we'll coordinate with ShipBob to address any label corrections needed for final delivery to their UK FC I recognize this creates an additional step in the process. Does this approach work from your perspective, or do you see any issues that prevent it from working? My thoughts are that this would allow us to get the pallets into the correct physical configuration regardless of which ShipBob FC they're destined for. It's universal. Let me know your thoughts. Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bd094e62f7ceb",
+      "title": "RE: Urgent: WRO Access Needed before FC access   thread::u3bOJA_KfBmUWPkZMG8ARD0::",
+      "created_time": "2025-10-07T04:58:47+00:00",
+      "sender_email": "Merchant Care Support <support@shipbob.com>",
+      "subject": "RE: Urgent: WRO Access Needed before FC access   thread::u3bOJA_KfBmUWPkZMG8ARD0::",
+      "body_snippet": "Dear Koii, Thank you for reaching out and providing the context regarding your urgent UK shipment for Batch 2025-07. I understand the time-sensitive nature of this situation and the need to keep your",
+      "message_content": "Dear Koii, Thank you for reaching out and providing the context regarding your urgent UK shipment for Batch 2025-07. I understand the time-sensitive nature of this situation and the need to keep your logistics moving smoothly. Unfortunately, at this time, we are unable to grant access to create WROs for the UK fulfillment center without a valid UK VAT/EORI number. This is a requirement to ensure compliance with UK regulations and to facilitate seamless operations within our UK facilities. As you mentioned that your VAT/EORI numbers are expected by the end of October, I recommend completing this step first. Once you have the numbers, please submit a request for access to the UK site through the following link: Request Fulfillment Center Access When filling out the form, ensure you provide the necessary details, including: Your email address ( koii@trassgames.com ) Selection of \"UK\" as the region Relevant details about your shipment, storage needs, and expectations Once your request is submitted, we will escalate it to our site approvals team, who will coordinate with our UK team to grant access as quickly as possible. I understand the urgency of this matter, and we are here to assist you in ensuring a smooth transition once your VAT/EORI numbers are in place. Please don\u2019t hesitate to reach out if you have any further questions or need additional support. Regards, Wasim Asghar Merchant Care Specialist || ShipBob ? Exciting News! ? We\u2019ve made it even easier for you to get quick resolutions and faster reimbursements! ? Check out our new Claims Form and Missing/Wrong Item Form for a seamless experience. [Link to Claims Form] | [Link to Missing/Wrong Item Form] We're here to help \u2013 for any questions, feel free to reach out!? --------------- Original Message ---------------",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bbb300a4ea7eb",
+      "title": "Urgent: WRO Access Needed before FC access   thread::u3bOJA_KfBmUWPkZMG8ARD0::",
+      "created_time": "2025-10-06T22:44:53+00:00",
+      "sender_email": "Merchant Care Support <support@shipbob.com>",
+      "subject": "Urgent: WRO Access Needed before FC access   thread::u3bOJA_KfBmUWPkZMG8ARD0::",
+      "body_snippet": "Hello, Hello, Your case and all related correspondence have successfully been routed to our Support Team, who will review this inquiry shortly. To help us assist you as quickly and efficiently as",
+      "message_content": "Hello, Hello, Your case and all related correspondence have successfully been routed to our Support Team, who will review this inquiry shortly. To help us assist you as quickly and efficiently as possible, we encourage you to reply to this email with any additional details, screenshots, or context that may be relevant to your request. The more information you can provide, the better we can tailor our support and reach a resolution faster. We appreciate your patience and will be in touch as soon",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bb7a55bac0ffe",
+      "title": "Fwd: Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)   thread::4kZhqvWOeh-CEn_ZLY9Glj0::",
+      "created_time": "2025-10-06T21:42:59+00:00",
+      "sender_email": "Merchant Care Support <support@shipbob.com>",
+      "subject": "Fwd: Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)   thread::4kZhqvWOeh-CEn_ZLY9Glj0::",
+      "body_snippet": "Hello, Hello, Your case and all related correspondence have successfully been routed to our Support Team, who will review this inquiry shortly. To help us assist you as quickly and efficiently as",
+      "message_content": "Hello, Hello, Your case and all related correspondence have successfully been routed to our Support Team, who will review this inquiry shortly. To help us assist you as quickly and efficiently as possible, we encourage you to reply to this email with any additional details, screenshots, or context that may be relevant to your request. The more information you can provide, the better we can tailor our support and reach a resolution faster. We appreciate your patience and will be in touch as soon as we have an update. Thank you. Best regards, ShipBob Support Team thread::4kZhqvWOeh-CEn_ZLY9Glj0::",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bb6c741ca607b",
+      "title": "Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "created_time": "2025-10-06T21:27:47+00:00",
+      "sender_email": "Andrew Costello <acostello@shipbob.com>",
+      "subject": "Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "body_snippet": "Hello! I am currently OOO on paternity leave and will return on Tuesday, October 14th. Please contact your support manager for any further questions. Thanks, Andrew Costello",
+      "message_content": "Hello! I am currently OOO on paternity leave and will return on Tuesday, October 14th. Please contact your support manager for any further questions. Thanks, Andrew Costello",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bbb228f86511c",
+      "title": "Re: Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "created_time": "2025-10-06T15:43:58-07:00",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: Automatic reply: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "body_snippet": "I thought the context would be in the thread, I was wrong here&#39;s the context: We have an urgent situation with our UK shipment for Batch 2025-07 that requires your immediate assistance. The Issue",
+      "message_content": "I thought the context would be in the thread, I was wrong here's the context: We have an urgent situation with our UK shipment for Batch 2025-07 that requires your immediate assistance. The Issue Our UK shipment has arrived and is currently at our freight forwarder's facility. We need to generate the WRO and pallet labels now so we can apply them before transferring the pallets to temporary storage. However, we're currently blocked from creating WROs because we don't yet have our UK VAT/EORI numbers. What We Need We need immediate access to create WROs for the UK fulfillment center, even if we can't actually deliver to ShipBob yet. The labels are critical for our logistics chain\u2014without them, we can't properly mark and transfer our inventory to temporary storage. Our Plan Generate WRO and apply pallet labels at FF facility Transfer pallets to temporary UK storage warehouse Once VAT/EORI numbers are received (expected by end of October), coordinate delivery to ShipBob Timeline This is time-sensitive. Our freight forwarder is waiting on these labels to complete the transfer, and storage costs are accumulating daily. Can you please grant us access to create WROs for the UK FC today ? This would allow us to keep our logistics moving while the tax registration finalizes. Thanks for your help on this. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bb78e70213602",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T14:41:25-07:00",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Fionn, Thank you for your patience as we work through this situation. I have reached out to Andrew at ShipBob with an urgent request to unblock WRO access. In the meantime, I realize there may",
+      "message_content": "Dear Fionn, Thank you for your patience as we work through this situation. I have reached out to Andrew at ShipBob with an urgent request to unblock WRO access. In the meantime, I realize there may have been some confusion on my part regarding the labeling process. Could you please confirm my understanding: 1. The WROs are not required to transfer the shipment from the current location to the temporary storage facility. 2. However, we need to apply the pallet labels now while the shipment is still with MGM/SGIFF agents, because we won't have another opportunity to label the pallets once they've been moved to temporary storage. Is this correct? If so, then there is no way for us to move forward without first getting access from ShipBob. However, if it is possible that the WRO labels could be applied at any point during the temporary storage period then, please fill me in as to why they need to be provided at this time? Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bb6df569dbbab",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T14:29:28-07:00",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Fionn, Thank you for bearing with us while we navigate this situation. I have reached out to Andrew at ShipBob with an urgent request to get the WROs unblocked. In the meantime, I realized a",
+      "message_content": "Dear Fionn, Thank you for bearing with us while we navigate this situation. I have reached out to Andrew at ShipBob with an urgent request to get the WROs unblocked. In the meantime, I realized a source of confusion on my part. Could you please confirm the following: Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 22 entries from 1 databases"
+  },
+  "retries": 0
+}

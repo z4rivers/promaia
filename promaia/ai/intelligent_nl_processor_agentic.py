@@ -169,13 +169,15 @@ class AgenticNLQueryProcessor:
             
             # If user wants to modify, ask for new query and loop
             if result.get('action') == 'modify':
-                print_text("\n✏️  Enter modified query (or press Ctrl+C to cancel):", style="bold cyan")
+                print_text("\n✏️  Modify your query (edit and press Enter, or Ctrl+C to cancel):", style="bold cyan")
                 try:
-                    user_query = input("   Query: ").strip()
-                    if not user_query:
+                    # Pre-fill input with original query for editing
+                    modified_query = self._get_input_with_prefill("   Query: ", user_query)
+                    if not modified_query:
                         print_text("   Empty query, returning to previous results.", style="yellow")
                         result.pop('action')  # Remove 'modify' action
                         return result
+                    user_query = modified_query
                     # Loop will re-run with new query
                 except (KeyboardInterrupt, EOFError):
                     print_text("\n   Modification cancelled.", style="dim")
@@ -184,6 +186,29 @@ class AgenticNLQueryProcessor:
             else:
                 # Normal completion
                 return result
+    
+    def _get_input_with_prefill(self, prompt: str, prefill: str) -> str:
+        """Get user input with pre-filled text for editing."""
+        try:
+            import readline
+            
+            # Set up readline to pre-fill the input buffer
+            def startup_hook():
+                readline.insert_text(prefill)
+                readline.redisplay()
+            
+            readline.set_startup_hook(startup_hook)
+            try:
+                user_input = input(prompt)
+            finally:
+                readline.set_startup_hook()  # Clear the hook
+            
+            return user_input.strip()
+        
+        except ImportError:
+            # readline not available (Windows), fallback to showing the original
+            print_text(f"   Original: {prefill}", style="dim")
+            return input(prompt).strip()
     
     def process_query(
         self,
