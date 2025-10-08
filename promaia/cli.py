@@ -2373,17 +2373,24 @@ def chat_run_workspace_browse(args, workspace_name):
             print_text(f"No sources selected from workspace '{workspace_name}'. Chat will lack context.", style="bold yellow")
             # Continue anyway, but with empty sources
             final_sources = sources
+            final_filters = filters
             browse_selections = []
         else:
             print_text(f"📦 Selected {len(selected_sources)} sources from workspace '{workspace_name}'", style="cyan")
-            # Process the selected sources 
-            final_sources = sources + selected_sources  # Combine with any regular sources
-            browse_selections = selected_sources.copy()  # Store for /e preservation
+            
+            # Process browser selections to handle Discord channels correctly
+            from promaia.chat.interface import process_browser_selections
+            processed_sources, processed_filters = process_browser_selections(selected_sources)
+            
+            # Combine with any regular sources and filters
+            final_sources = sources + processed_sources
+            final_filters = filters + processed_filters
+            browse_selections = selected_sources.copy()  # Store raw selections for /e preservation
         
         # Call the chat function with workspace and original command format
         chat(
             sources=final_sources,
-            filters=filters,
+            filters=final_filters,
             workspace=workspace_name,
             resolved_workspace=workspace_name,
             non_interactive=getattr(args, 'non_interactive', False),
