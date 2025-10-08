@@ -42,8 +42,8 @@ def process_natural_language_to_content(
     try:
         processor = get_nl_processor()
         
-        # Process the query with the agentic system
-        result = processor.process_query(nl_prompt, workspace=workspace, max_retries=2)
+        # Process the query with the agentic system (includes modification support)
+        result = processor.process_query_with_modification(nl_prompt, workspace=workspace, max_retries=2)
         
         if result["success"] and result["results"]:
             total_count = sum(len(items) for items in result["results"].values())

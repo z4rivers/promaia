@@ -1,0 +1,54 @@
+Natural Language Query Summary
+Generated: 2025-10-07 22:13:50
+
+USER QUERY: trass gmail with term avask from last month
+
+INTENT PARSED:
+  Goal: search trass gmail content for term avask
+  Databases: trass.gmail, gmail
+  Search Terms: avask
+  Date Filter: last month
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+g.subject,
+g.body_snippet,
+g.message_content,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.workspace = 'trass'
+AND u.database_name IN ('trass.gmail', 'gmail')
+AND (
+    g.subject LIKE '%avask%'
+    OR g.body_snippet LIKE '%avask%' 
+    OR g.message_content LIKE '%avask%'
+    OR g.sender_email LIKE '%avask%'
+    OR g.sender_name LIKE '%avask%'
+)
+AND u.created_time >= date('now', '-1 month')
+ORDER BY u.created_time DESC
+LIMIT 5000
+
+RESULTS:
+  Total Entries: 22
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 22 entries
+
+  Sample Results (first 5):
+    1. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-06
+    2. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-06
+    3. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-06
+    4. Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-05
+    5. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-03

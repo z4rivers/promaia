@@ -144,6 +144,47 @@ class AgenticNLQueryProcessor:
         if self.debug:
             print_text("🐛 Debug mode enabled - showing chain of thought", style="yellow")
     
+    def process_query_with_modification(
+        self,
+        user_query: str,
+        workspace: Optional[str] = None,
+        max_retries: int = 2
+    ) -> Dict[str, Any]:
+        """
+        Process NL query with support for user modification.
+        
+        If user chooses to modify the query (presses 'm'), prompts for
+        a new query and re-runs with same schema context.
+        
+        Args:
+            user_query: The natural language query from the user
+            workspace: Optional workspace filter
+            max_retries: Maximum number of retry attempts if validation fails
+        
+        Returns:
+            Dictionary with results, SQL, intent, and learning info
+        """
+        while True:
+            result = self.process_query(user_query, workspace, max_retries)
+            
+            # If user wants to modify, ask for new query and loop
+            if result.get('action') == 'modify':
+                print_text("\n✏️  Enter modified query (or press Ctrl+C to cancel):", style="bold cyan")
+                try:
+                    user_query = input("   Query: ").strip()
+                    if not user_query:
+                        print_text("   Empty query, returning to previous results.", style="yellow")
+                        result.pop('action')  # Remove 'modify' action
+                        return result
+                    # Loop will re-run with new query
+                except (KeyboardInterrupt, EOFError):
+                    print_text("\n   Modification cancelled.", style="dim")
+                    result.pop('action')  # Remove 'modify' action
+                    return result
+            else:
+                # Normal completion
+                return result
+    
     def process_query(
         self,
         user_query: str,
@@ -284,10 +325,18 @@ class AgenticNLQueryProcessor:
         if summary_file:
             print_text(f"📄 Summary saved to: {summary_file}", style="dim")
         
-        # Ask user if query was successful
-        should_learn = self._ask_user_confirmation(summary)
+        # Group results by database for compatibility with existing code
+        grouped_results = {}
+        for result in results:
+            db = result.get('database_name', 'unknown')
+            if db not in grouped_results:
+                grouped_results[db] = []
+            grouped_results[db].append(result)
         
-        if should_learn:
+        # Ask user if query was successful
+        user_action = self._ask_user_confirmation(summary)
+        
+        if user_action == 'save':
             # Save to learning index
             pattern = {
                 "user_query": user_query,
@@ -298,14 +347,16 @@ class AgenticNLQueryProcessor:
                 "notes": f"Validated successfully. {validation_result['message']}"
             }
             self.learning_system.save_successful_pattern(pattern)
-        
-        # Group results by database for compatibility with existing code
-        grouped_results = {}
-        for result in results:
-            db = result.get('database_name', 'unknown')
-            if db not in grouped_results:
-                grouped_results[db] = []
-            grouped_results[db].append(result)
+        elif user_action == 'modify':
+            # User wants to modify the query - signal to wrapper
+            return {
+                "success": True,
+                "action": "modify",
+                "results": grouped_results,
+                "intent": intent,
+                "sql": generated_sql,
+                "validation": validation_result
+            }
         
         return {
             "success": True,
@@ -313,7 +364,7 @@ class AgenticNLQueryProcessor:
             "intent": intent,
             "sql": generated_sql,
             "summary": summary,
-            "learned": should_learn
+            "learned": (user_action == 'save')
         }
     
     def _parse_intent(
@@ -534,8 +585,15 @@ SQL only (no markdown):"""
             print_text(f"   Date Filter: {date_filter['description']}", style="white")
         print()
     
-    def _ask_user_confirmation(self, summary: Dict[str, Any]) -> bool:
-        """Ask user if the query was successful and should be learned."""
+    def _ask_user_confirmation(self, summary: Dict[str, Any]) -> str:
+        """
+        Ask user if the query was successful and should be learned.
+        
+        Returns:
+            'save' - Save the pattern
+            'modify' - Modify the query and try again
+            'skip' - Skip saving
+        """
         try:
             print_text("\n💭 Save this query pattern for future learning?", style="bold cyan")
             print_text("   • Press Enter to accept and save", style="dim")
@@ -545,18 +603,16 @@ SQL only (no markdown):"""
             response = input("\n   Your choice [Enter/m/q]: ").strip().lower()
             
             if response == 'm':
-                print_text("\n   Query modification not yet implemented.", style="yellow")
-                print_text("   Pattern not saved.", style="dim")
-                return False
+                return 'modify'
             elif response == 'q':
                 print_text("   Pattern not saved.", style="dim")
-                return False
+                return 'skip'
             else:  # Enter or any other key = accept
-                return True
+                return 'save'
         
         except (KeyboardInterrupt, EOFError):
             print_text("\n   Skipped learning step.", style="dim")
-            return False
+            return 'skip'
     
     def _format_schema_for_prompt(self, schema: Dict[str, Any]) -> str:
         """Format schema with sample rows - let LLM infer semantics from examples."""
