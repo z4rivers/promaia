@@ -428,12 +428,13 @@ Date Filter: {intent.get('date_filter', {}).get('description', 'none')}
 
 INSTRUCTIONS:
 1. Use table aliases (e.g., FROM unified_content u)
-2. Review sample data above to understand which fields contain searchable content
-3. For content searches, look at the sample values to identify text-heavy fields
-4. JOIN with specialized tables (gmail_content, etc.) to access full content
-5. Apply date filtering using appropriate timestamp columns
-6. Use LIKE '%term%' for text searches, and search ALL relevant text fields
-7. Limit results to 1000
+2. ALWAYS SELECT these essential display fields: u.page_id, u.title, u.created_time, u.database_name
+3. Review sample data above to understand which fields contain searchable content
+4. For content searches, look at the sample values to identify text-heavy fields
+5. JOIN with specialized tables (gmail_content, etc.) to access full content
+6. Apply date filtering using appropriate timestamp columns
+7. Use LIKE '%term%' for text searches, and search ALL relevant text fields
+8. Limit results to 1000
 
 Generate the SQL query (return only the SQL, no markdown):"""
         

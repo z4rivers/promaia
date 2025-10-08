@@ -1,0 +1,122 @@
+{
+  "user_query": "trass gmail with term mgm from last 2 weeks",
+  "intent": {
+    "goal": "find emails containing MGM",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": 14,
+      "description": "last 2 weeks"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\ng.subject,\ng.body_snippet,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.content_type = 'gmail'\nAND u.created_time >= datetime('now', '-14 days')\nAND (\n  LOWER(g.sender_email) LIKE '%mgm%'\n  OR LOWER(g.subject) LIKE '%mgm%'\n  OR LOWER(g.body_snippet) LIKE '%mgm%'\n  OR LOWER(g.message_content) LIKE '%mgm%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 37,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 37
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199c203635c06dc0",
+      "title": "RE: Patches project v1",
+      "created_time": "2025-10-08T04:10:18+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: Patches project v1",
+      "body_snippet": "Dear Jayshay, We found that the width measurement shown on the PDF file does not match the details in the Patches Project V1. Could you please clarify which one we should follow? Thank you. Thanks with",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199c1c702f7dc335",
+      "title": "RE: Kit Card v2 (the one with needles)",
+      "created_time": "2025-10-08T03:04:22+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: Kit Card v2 (the one with needles)",
+      "body_snippet": "Dear Jayshay, Got the below 2 files and will work on it. Thanks. Thanks with best regards Fionn Ng ******************************* MGM Industries &amp; Co. Tel : (852) 2545 0375 Fax : (852) 2541 0362",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199c1c563c217d7d",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-08T03:02:34+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Thank you for sharing and for the clear explanation. We have discussed the situation with the warehouse and confirmed that the ShipBob stickers can only be prepared once the VAT/EORI numbers",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199bb78e70213602",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T14:41:25-07:00",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Fionn, Thank you for your patience as we work through this situation. I have reached out to Andrew at ShipBob with an urgent request to unblock WRO access. In the meantime, I realize there may",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b8b4e2ece8563",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T08:47:59+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Thank you for your detailed information, that helps clarify the situation. I&#39;m still a bit unsure why the UK shipment is linked to the US FC warehouse, as this hasn&#39;t happened with",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b899b3a745285",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T08:18:16+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, You mean the ShipBob system doesn&#39;t allow you to generate stickers with the UK warehouse address, and you&#39;d like us to manually correct the address by hand? Just to confirm \u2014 does",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b88aacaf8735a",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T08:01:44+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Sorry, I&#39;m a bit confused. We&#39;re requesting the ShipBob sticker for the UK shipment, not the US one. I&#39;ve resent the palletizing details for the UK shipment for your reference.",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b81618d4592bc",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T05:54:33+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Thank you for approval on the storage fee. However, we do need the ShipBob sticker. Could you please provide today or tomorrow latest. Thank you. Thanks with best regards Fionn Ng **********",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b804bf3eb272b",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T05:35:36+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, John has just confirmed the storage fee with another warehouse at the lowest available rate. The storage fee will be \u00a322 per pallet per week (or part thereof) \u00d7 26 pallets = \u00a3572 GBP per",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199b7ce192fdce65",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-06T04:35:53+00:00",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "body_snippet": "Dear Koii, Kindly share the ShipBob sticker with us. We&#39;ll need to place it on the pallet no matter which warehouse will handle the storage. Thanks for your help. Thanks with best regards Fionn Ng",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 37 entries from 1 databases"
+  },
+  "retries": 0
+}

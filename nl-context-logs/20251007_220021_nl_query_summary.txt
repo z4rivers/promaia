@@ -1,0 +1,52 @@
+Natural Language Query Summary
+Generated: 2025-10-07 22:00:21
+
+USER QUERY: trass gmail with term mgm from last 2 weeks
+
+INTENT PARSED:
+  Goal: find gmail content containing MGM references in trass workspace
+  Databases: trass.gmail, gmail
+  Search Terms: mgm
+  Date Filter: last 2 weeks
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.created_time,
+g.sender_email,
+g.subject,
+g.body_snippet,
+g.message_content,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.workspace = 'trass' 
+AND u.database_name LIKE '%gmail%'
+AND u.created_time >= datetime('now', '-14 days')
+AND (
+    g.subject LIKE '%mgm%' 
+    OR g.body_snippet LIKE '%mgm%'
+    OR g.message_content LIKE '%mgm%'
+    OR g.sender_email LIKE '%mgm%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 37
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 37 entries
+
+  Sample Results (first 5):
+    1. Untitled (gmail)
+       Date: 2025-10-08
+    2. Untitled (gmail)
+       Date: 2025-10-08
+    3. Untitled (gmail)
+       Date: 2025-10-08
+    4. Untitled (gmail)
+       Date: 2025-10-06
+    5. Untitled (gmail)
+       Date: 2025-10-06
