@@ -1,0 +1,55 @@
+Natural Language Query Summary
+Generated: 2025-10-08 00:23:07
+
+USER QUERY: trass gmail with term mgm from last 1 week
+
+INTENT PARSED:
+  Goal: search for emails containing mgm term
+  Databases: trass.gmail, gmail
+  Search Terms: mgm
+  Date Filter: last 1 week
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+u.database_name,
+g.sender_email,
+g.subject,
+g.body_snippet,
+g.message_content
+FROM unified_content u
+LEFT JOIN gmail_content g ON g.page_id = u.page_id
+WHERE u.workspace = 'trass' 
+AND u.database_name = 'gmail'
+AND u.created_time >= datetime('now', '-7 days')
+AND (
+  g.sender_email LIKE '%mgm%'
+  OR g.subject LIKE '%mgm%'
+  OR g.body_snippet LIKE '%mgm%'
+  OR g.message_content LIKE '%mgm%'
+  OR g.sender_name LIKE '%mgm%'
+  OR g.recipient_emails LIKE '%mgm%'
+)
+ORDER BY u.created_time DESC
+LIMIT 5000;
+
+RESULTS:
+  Total Entries: 39
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 39 entries
+
+  Sample Results (first 5):
+    1. RE: MAKER KIT SAMPLE - FEDEX 8847 8314 3392 SENT ON 9.30 (gmail)
+       Date: 2025-10-08
+    2. RE: MAKER KIT SAMPLE - FEDEX 8847 8314 3392 SENT ON 9.30 (gmail)
+       Date: 2025-10-08
+    3. RE: Patches project v1 (gmail)
+       Date: 2025-10-08
+    4. RE: Patches project v1 (gmail)
+       Date: 2025-10-08
+    5. RE: Kit Card v2 (the one with needles) (gmail)
+       Date: 2025-10-08

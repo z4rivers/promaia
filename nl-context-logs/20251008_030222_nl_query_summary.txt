@@ -1,0 +1,36 @@
+Natural Language Query Summary
+Generated: 2025-10-08 03:02:22
+
+USER QUERY: trass stories about international launch
+
+INTENT PARSED:
+  Goal: find stories about international launch
+  Databases: trass.stories, trass.journal, trass.cpj, trass.gmail, trass.discord
+  Search Terms: international, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 277
+  Databases Found: stories, tg, cpj, yp, gmail
+  
+  Breakdown by Database:
+    • tg: 2 entries
+    • cpj: 1 entries
+    • gmail: 255 entries
+    • yp: 2 entries
+    • stories: 17 entries
+
+  Sample Results (first 5):
+    1. 2025-10-08_01-18-47_gus.dc_So a launch in_msg_msg_1425291303595540692 (tg)
+       Date: 2025-10-08
+    2. Yeeps International Launch Announcement (cpj)
+       Date: 2025-10-07
+    3. Gus made updates in Trass Games (gmail)
+       Date: 2025-10-07
+    4. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-02
+    5. 2025-10-01_23-07-09_yameen_gamer8_international s_msg_msg_1423083849352482856 (yp)
+       Date: 2025-10-01

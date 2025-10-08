@@ -1530,12 +1530,7 @@ def chat_run(args):
         # With action="append" and nargs="+", we get a list of lists
         # Each inner list contains the tokens for one -nl argument
         nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
-        if len(nl_prompts) > 1:
-            print_text(f"🤖 Processing {len(nl_prompts)} separate natural language queries", style="white")
-            for i, prompt in enumerate(nl_prompts):
-                print_text(f"   {i+1}. '{prompt}'", style="dim")
-        elif nl_prompts:
-            print_text(f"🤖 Processing natural language query: '{nl_prompts[0]}'", style="white")
+        # Note: Don't print "Processing..." messages here - the processor handles output
 
         try:
             from promaia.storage.unified_query import get_query_interface
@@ -1561,7 +1556,9 @@ def chat_run(args):
             total_results = 0
 
             for i, nl_prompt in enumerate(nl_prompts):
-                print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+                # Show query number only for multiple queries
+                if len(nl_prompts) > 1:
+                    print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
 
                 # Always allow cross-workspace queries for natural language
                 # Workspace is just a classifier/tag, not a mandatory constraint
@@ -1576,15 +1573,18 @@ def chat_run(args):
 
                     query_results = sum(len(entries) for entries in nl_content.values())
                     total_results += query_results
-                    print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                    if len(nl_prompts) > 1:
+                        print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                 else:
-                    print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+                    if len(nl_prompts) > 1:
+                        print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
 
             if not combined_nl_content:
                 print_text("❌ No content found for any natural language queries", style="red")
                 return
 
-            print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
+            if len(nl_prompts) > 1:
+                print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
             natural_language_content = combined_nl_content
 
             # Keep both regular sources and natural language content
@@ -1598,6 +1598,82 @@ def chat_run(args):
             return
     else:
         natural_language_content = None
+    
+    # Process vector search queries (similar to natural language but uses semantic search)
+    vs_prompts = []
+    if hasattr(args, 'vector_search') and args.vector_search:
+        vs_prompts = [' '.join(vs_args) for vs_args in args.vector_search if vs_args]
+        
+        try:
+            from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+            
+            # Resolve workspace first for vector search processing
+            workspace_manager = get_workspace_manager()
+            if original_workspace:
+                if not workspace_manager.validate_workspace(original_workspace):
+                    print_text(f"✗ Workspace '{original_workspace}' is not properly configured.", style="red")
+                    return
+                resolved_workspace = original_workspace
+            else:
+                resolved_workspace = workspace_manager.get_default_workspace()
+                if not resolved_workspace:
+                    print_text("No workspace specified and no default workspace configured.", style="red")
+                    return
+            
+            # Process each vector search query separately and combine results
+            combined_vs_content = {}
+            total_results = 0
+            
+            for i, vs_prompt in enumerate(vs_prompts):
+                # Show query number only for multiple queries
+                if len(vs_prompts) > 1:
+                    print_text(f"🔍 Processing query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
+                
+                # Process vector search
+                vs_content = process_vector_search_to_content(
+                    vs_prompt, 
+                    workspace=None,  # Allow cross-workspace searches
+                    verbose=False  # Use non-verbose mode by default
+                )
+                
+                if vs_content:
+                    # Merge results from this query into combined content
+                    for db_name, entries in vs_content.items():
+                        if db_name not in combined_vs_content:
+                            combined_vs_content[db_name] = []
+                        combined_vs_content[db_name].extend(entries)
+                    
+                    query_results = sum(len(entries) for entries in vs_content.values())
+                    total_results += query_results
+                    if len(vs_prompts) > 1:
+                        print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                else:
+                    if len(vs_prompts) > 1:
+                        print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+            
+            if not combined_vs_content:
+                print_text("❌ No content found for any vector search queries", style="red")
+                return
+            
+            if len(vs_prompts) > 1:
+                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
+            
+            # Merge vector search results into natural_language_content or create new
+            if natural_language_content:
+                # Merge VS results with NL results
+                for db_name, entries in combined_vs_content.items():
+                    if db_name not in natural_language_content:
+                        natural_language_content[db_name] = []
+                    natural_language_content[db_name].extend(entries)
+            else:
+                natural_language_content = combined_vs_content
+        
+        except ImportError as e:
+            print_text(f"Error importing vector search processor: {e}", style="red")
+            return
+        except Exception as e:
+            print_text(f"Error processing vector search query: {e}", style="red")
+            return
     
     # Non-interactive mode for the desktop app
     if not sys.stdout.isatty():
@@ -2635,6 +2711,12 @@ def main():
     # 1. Edit mode parsing in promaia/chat/interface.py (lines ~1872-1900)
     # 2. Top-level processing above (lines ~1507-1520)
     # These are two sides of one feature and must handle multiple -nl arguments identically.
+    chat_parser.add_argument(
+        "--vector-search", "-vs",
+        action="append",
+        nargs="+",
+        help="Use semantic vector search to find similar content. Can be used multiple times for separate queries. Example: maia chat -vs 'international launch stories' -vs 'product planning discussions'"
+    )
     chat_parser.add_argument(
         "--mcp", "-mcp",
         action="append",

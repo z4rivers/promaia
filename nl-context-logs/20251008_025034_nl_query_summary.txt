@@ -1,0 +1,28 @@
+Natural Language Query Summary
+Generated: 2025-10-08 02:50:34
+
+USER QUERY: entries in the trass.stories database with term UK
+
+INTENT PARSED:
+  Goal: find entries containing 'UK' in trass.stories database
+  Databases: trass.stories
+  Search Terms: UK
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 3
+  Databases Found: trass.stories
+  
+  Breakdown by Database:
+    • trass.stories: 3 entries
+
+  Sample Results (first 5):
+    1. UK (trass.stories)
+       Date: 2025-05-24
+    2. UK_ (trass.stories)
+       Date: 2025-05-05
+    3. UK (trass.stories)
+       Date: 2025-04-21

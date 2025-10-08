@@ -1,0 +1,59 @@
+Natural Language Query Summary
+Generated: 2025-10-08 02:08:55
+
+USER QUERY: entries in the trass.stories database with term UK
+
+INTENT PARSED:
+  Goal: find entries in trass.stories database that mention UK
+  Databases: trass.stories
+  Search Terms: UK
+  Date Filter: 
+
+GENERATED SQL:
+SELECT DISTINCT
+u.page_id,
+u.title,
+u.created_time,
+u.database_name,
+g.message_content,
+g.subject,
+g.body_snippet
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+LEFT JOIN generic_content c ON u.page_id = c.page_id
+WHERE u.workspace = 'trass'
+AND (
+    u.database_name LIKE '%stories%'
+    OR g.database_id LIKE '%stories%'
+    OR c.database_name LIKE '%stories%'
+)
+AND (
+    LOWER(u.title) LIKE '%uk%'
+    OR LOWER(g.subject) LIKE '%uk%' 
+    OR LOWER(g.message_content) LIKE '%uk%'
+    OR LOWER(g.body_snippet) LIKE '%uk%'
+    OR LOWER(c.title) LIKE '%uk%'
+    OR LOWER(c.metadata) LIKE '%uk%'
+)
+ORDER BY u.created_time DESC
+LIMIT 5000
+
+RESULTS:
+  Total Entries: 17
+  Databases Found: trass.stories, stories
+  
+  Breakdown by Database:
+    • stories: 14 entries
+    • trass.stories: 3 entries
+
+  Sample Results (first 5):
+    1. UK 2025-07 Temp Storage (stories)
+       Date: 2025-10-01
+    2. UK VAT received (stories)
+       Date: 2025-09-23
+    3. 🎯 get all UK tax registration assets to Laura (Avask) (stories)
+       Date: 2025-05-28
+    4. UK vessel arrives (stories)
+       Date: 2025-05-24
+    5. UK (trass.stories)
+       Date: 2025-05-24

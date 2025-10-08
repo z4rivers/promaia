@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 03:03:43
+
+USER QUERY: stories from trass workspace
+
+INTENT PARSED:
+  Goal: find stories content from trass workspace
+  Databases: trass.stories
+  Search Terms: stories
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 361
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 361 entries
+
+  Sample Results (first 5):
+    1. Get access to music provider from Steve (stories)
+       Date: 2025-10-03
+    2. CP Story test (stories)
+       Date: 2025-10-02
+    3. CP Story (stories)
+       Date: 2025-10-02
+    4. CP Story (stories)
+       Date: 2025-10-02
+    5. CP Story (stories)
+       Date: 2025-10-02

@@ -8,6 +8,7 @@ This replaces the hardcoded example-based system with a fully agentic approach:
 - User confirmation with detailed summaries
 """
 import os
+import json
 from typing import List, Dict, Any, Optional
 
 # Load environment variables
@@ -120,29 +121,108 @@ class AgenticNLQueryProcessor:
     """
     Agentic NL query processor that learns and adapts.
     
-    Key differences from basic system:
+    Supports both SQL and vector search modes:
+    - SQL mode: Generates SQL queries, learns from patterns
+    - Vector mode: Uses semantic embeddings for similarity search
+    
+    Key features:
     1. Uses PRAGMA to discover schema dynamically
-    2. Learns from successful queries (rolling index of 20)
+    2. Learns from successful queries (rolling index of 20) - SQL mode only
     3. Validates results and retries if needed
     4. Saves context logs for user inspection
     5. Asks for user confirmation before saving patterns
     """
     
-    def __init__(self, db_path: str = "data/hybrid_metadata.db", debug: bool = False):
+    def __init__(self, db_path: str = "data/hybrid_metadata.db", query_mode: str = "sql", 
+                 debug: bool = False, verbose: bool = False):
         self.db_path = db_path
+        self.query_mode = query_mode  # "sql" or "vector"
         self.debug = debug or os.getenv("MAIA_DEBUG") == "1"
+        self.verbose = verbose or self.debug  # Verbose mode includes debug info
         
         # Initialize agentic components
         self.schema_explorer = SchemaExplorer(db_path)
-        self.learning_system = QueryLearningSystem()
+        self.learning_system = QueryLearningSystem()  # Only used in SQL mode
         self.context_logger = NLContextLogger()
         self.validator = ResultValidator()
         
+        # Load workspace config for AI context
+        self.workspace_config = self._load_workspace_config()
+        
+        # Initialize vector DB if in vector mode
+        if self.query_mode == "vector":
+            from promaia.storage.vector_db import VectorDBManager
+            self.vector_db = VectorDBManager()
+            if self.verbose:
+                print_text(f"✅ Initialized agentic NL processor in VECTOR mode", style="green")
+        else:
+            self.vector_db = None
+            if self.verbose:
+                print_text(f"✅ Initialized agentic NL processor in SQL mode", style="green")
+        
         # Initialize LLM
         self.llm = PromaiLLMAdapter(client_type="auto")
-        print_text(f"✅ Initialized agentic NL processor with {self.llm.client_type}", style="green")
+        if self.verbose:
+            print_text(f"   Using {self.llm.client_type} for query generation", style="dim")
         if self.debug:
             print_text("🐛 Debug mode enabled - showing chain of thought", style="yellow")
+    
+    def _load_workspace_config(self, config_file: str = "promaia.config.json") -> Dict[str, Any]:
+        """Load workspace configuration to provide context to AI."""
+        try:
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    # Filter out sensitive info and return just structure
+                    return {
+                        'workspaces': list(config.get('workspaces', {}).keys()),
+                        'default_workspace': config.get('default_workspace'),
+                        'databases': {
+                            name: {
+                                'nickname': db.get('nickname'),
+                                'description': db.get('description'),
+                                'workspace': db.get('workspace'),
+                                'source_type': db.get('source_type'),
+                                'default_include': db.get('default_include', False),
+                                'default_days': db.get('default_days')
+                            }
+                            for name, db in config.get('databases', {}).items()
+                        }
+                    }
+        except Exception as e:
+            if self.debug:
+                print_text(f"⚠️  Could not load workspace config: {e}", style="yellow")
+        
+        return {}
+    
+    def _format_workspace_config(self) -> str:
+        """Format workspace config for AI prompt."""
+        if not self.workspace_config:
+            return "No workspace configuration available."
+        
+        output = "=== WORKSPACE CONFIGURATION ===\n\n"
+        
+        # Workspaces
+        output += f"Workspaces: {', '.join(self.workspace_config.get('workspaces', []))}\n"
+        output += f"Default: {self.workspace_config.get('default_workspace', 'N/A')}\n\n"
+        
+        # Databases grouped by workspace
+        databases = self.workspace_config.get('databases', {})
+        by_workspace = {}
+        for name, db in databases.items():
+            workspace = db.get('workspace', 'unknown')
+            if workspace not in by_workspace:
+                by_workspace[workspace] = []
+            by_workspace[workspace].append((name, db))
+        
+        output += "Databases by Workspace:\n"
+        for workspace, dbs in sorted(by_workspace.items()):
+            output += f"\n  {workspace.upper()} workspace:\n"
+            for name, db in dbs:
+                output += f"    • {name} ({db.get('nickname')}): {db.get('description', 'N/A')}\n"
+                output += f"      Type: {db.get('source_type')}, Default: {db.get('default_include')}\n"
+        
+        return output
     
     def process_query_with_modification(
         self,
@@ -194,25 +274,34 @@ class AgenticNLQueryProcessor:
     def _get_input_with_prefill(self, prompt: str, prefill: str) -> str:
         """Get user input with pre-filled text for editing."""
         try:
-            import readline
+            from prompt_toolkit import prompt as pt_prompt
             
-            # Set up readline to pre-fill the input buffer
-            def startup_hook():
-                readline.insert_text(prefill)
-                readline.redisplay()
-            
-            readline.set_startup_hook(startup_hook)
-            try:
-                user_input = input(prompt)
-            finally:
-                readline.set_startup_hook()  # Clear the hook
-            
+            # Use prompt_toolkit for reliable pre-filling
+            user_input = pt_prompt(prompt, default=prefill)
             return user_input.strip()
         
         except ImportError:
-            # readline not available (Windows), fallback to showing the original
-            print_text(f"   Original: {prefill}", style="dim")
-            return input(prompt).strip()
+            # Fallback to readline if prompt_toolkit not available
+            try:
+                import readline
+                
+                # Set up readline to pre-fill the input buffer
+                def startup_hook():
+                    readline.insert_text(prefill)
+                    readline.redisplay()
+                
+                readline.set_startup_hook(startup_hook)
+                try:
+                    user_input = input(prompt)
+                finally:
+                    readline.set_startup_hook()  # Clear the hook
+                
+                return user_input.strip()
+            
+            except ImportError:
+                # No readline available (Windows), show the original and get fresh input
+                print_text(f"   Original: {prefill}", style="dim")
+                return input(prompt).strip()
     
     def process_query(
         self,
@@ -231,14 +320,19 @@ class AgenticNLQueryProcessor:
         Returns:
             Dictionary with results, SQL, intent, and learning info
         """
-        print_text(f"\n🤖 Processing query: '{user_query}'", style="cyan")
+        if self.verbose:
+            print_text(f"\n🤖 Processing query: '{user_query}'", style="cyan")
+        else:
+            print_text("🤖 Processing natural language query...", style="cyan")
         
         # Step 1: Explore schema dynamically
-        print_text("🔍 Step 1: Exploring database schema...", style="dim")
+        if self.verbose:
+            print_text("🔍 Step 1: Exploring database schema...", style="dim")
         schema = self.schema_explorer.explore_schema()
         
         # Step 2: Parse intent
-        print_text("🧠 Step 2: Parsing intent...", style="dim")
+        if self.verbose:
+            print_text("🧠 Step 2: Parsing intent...", style="dim")
         intent = self._parse_intent(user_query, schema, workspace)
         
         if not intent:
@@ -248,36 +342,46 @@ class AgenticNLQueryProcessor:
                 "results": {}
             }
         
-        # Show parsed intent to user
-        self._display_intent(intent)
+        # Show parsed intent to user (only in verbose mode)
+        if self.verbose:
+            self._display_intent(intent)
         
         # Step 3: Generate and execute query (with retries)
         attempt = 0
         results = None
-        generated_sql = None
+        generated_query = None
         validation_result = None
         
         while attempt <= max_retries:
-            if attempt > 0:
+            if attempt > 0 and self.verbose:
                 print_text(f"\n🔄 Retry attempt {attempt}/{max_retries}", style="yellow")
             
-            print_text("⚙️  Step 3: Generating SQL query...", style="dim")
-            generated_sql = self._generate_sql(intent, schema, attempt)
+            if self.verbose:
+                query_type = "vector search parameters" if self.query_mode == "vector" else "SQL query"
+                print_text(f"⚙️  Step 3: Generating {query_type}...", style="dim")
+            generated_query = self._generate_query(intent, schema, attempt)
             
-            if not generated_sql:
+            if not generated_query:
                 attempt += 1
                 continue
             
-            # Always show generated SQL
-            print_text(f"\n📝 Generated SQL:", style="cyan")
-            print_text(generated_sql if len(generated_sql) < 300 else generated_sql[:300] + "...", style="dim")
+            # Show generated query only in verbose mode
+            if self.verbose:
+                if self.query_mode == "sql":
+                    print_text(f"\n📝 Generated SQL:", style="cyan")
+                    print_text(generated_query if len(generated_query) < 300 else generated_query[:300] + "...", style="dim")
+                else:
+                    print_text(f"\n📝 Vector Search Parameters:", style="cyan")
+                    print_text(f"   Search: {generated_query.get('search_text', 'N/A')}", style="dim")
             
-            print_text(f"\n🔍 Executing query...", style="dim")
-            results, sql_error = self._execute_sql(generated_sql)
+            if self.verbose:
+                print_text(f"\n🔍 Executing query...", style="dim")
+            results, sql_error = self._execute_query(generated_query)
             
             # If SQL error, use that as validation feedback
             if sql_error:
-                print_text(f"❌ SQL Error during execution", style="red")
+                if self.verbose:
+                    print_text(f"❌ SQL Error during execution", style="red")
                 intent['_validation_feedback'] = sql_error
                 attempt += 1
                 continue
@@ -287,7 +391,8 @@ class AgenticNLQueryProcessor:
                 continue
             
             # Step 4: Validate results
-            print_text("✅ Step 4: Validating results...", style="dim")
+            if self.verbose:
+                print_text("✅ Step 4: Validating results...", style="dim")
             is_valid, message = self.validator.validate_results(intent, results)
             validation_result = {"is_valid": is_valid, "message": message}
             
@@ -309,10 +414,12 @@ class AgenticNLQueryProcessor:
                 print_text(f"   Reason: {message}", style="dim")
             
             if is_valid:
-                print_text(f"✅ {message}", style="green")
+                if self.verbose:
+                    print_text(f"✅ {message}", style="green")
                 break
             else:
-                print_text(f"⚠️  {message}", style="yellow")
+                if self.verbose:
+                    print_text(f"⚠️  {message}", style="yellow")
                 # Update intent with validation feedback for retry
                 intent['_validation_feedback'] = message
                 attempt += 1
@@ -323,7 +430,7 @@ class AgenticNLQueryProcessor:
                 "success": False,
                 "error": validation_result['message'] if validation_result else "Query execution failed",
                 "intent": intent,
-                "sql": generated_sql,
+                "query": generated_query,
                 "results": {}
             }
         
@@ -334,7 +441,8 @@ class AgenticNLQueryProcessor:
         query_info = {
             "user_query": user_query,
             "intent": intent,
-            "generated_sql": generated_sql,
+            "generated_query": generated_query,
+            "query_mode": self.query_mode,
             "result_count": summary['total_count'],
             "databases_in_results": summary['databases'],
             "database_breakdown": summary['database_breakdown'],
@@ -346,36 +454,65 @@ class AgenticNLQueryProcessor:
         log_file = self.context_logger.save_draft_context(query_info)
         summary_file = self.context_logger.save_summary(query_info)
         
-        # Step 7: Show summary and ask for user confirmation
-        print_text(format_result_summary_for_user(summary, intent), style="white")
+        # Step 7: Show summary (verbose or compact mode)
+        if self.verbose:
+            print_text(format_result_summary_for_user(summary, intent), style="white")
+            
+            if log_file:
+                print_text(f"📝 Draft context saved to: {log_file}", style="dim")
+            if summary_file:
+                print_text(f"📄 Summary saved to: {summary_file}", style="dim")
+        else:
+            # Compact summary for non-verbose mode
+            print_text("✅ Query processed successfully\n", style="green")
+            self._display_compact_summary(summary, intent)
         
-        if log_file:
-            print_text(f"📝 Draft context saved to: {log_file}", style="dim")
-        if summary_file:
-            print_text(f"📄 Summary saved to: {summary_file}", style="dim")
-        
-        # Group results by database for compatibility with existing code
+        # Step 8: Group results by database with minimal metadata
+        # Return only page_id and content_type for the adapter to load content
+        # Use qualified names (workspace.database) to avoid collisions
         grouped_results = {}
         for result in results:
-            db = result.get('database_name', 'unknown')
-            if db not in grouped_results:
-                grouped_results[db] = []
-            grouped_results[db].append(result)
+            workspace = result.get('workspace', '')
+            db_name = result.get('database_name', 'unknown')
+            
+            # Create qualified key: workspace.database (unless already qualified)
+            if workspace and '.' not in db_name:
+                qualified_key = f"{workspace}.{db_name}"
+            else:
+                qualified_key = db_name
+            
+            if qualified_key not in grouped_results:
+                grouped_results[qualified_key] = []
+            
+            # Return minimal metadata: page_id and content_type
+            grouped_results[qualified_key].append({
+                'page_id': result.get('page_id'),
+                'content_type': result.get('content_type', db_name),
+                'database_name': db_name,
+                'workspace': workspace,
+                'created_time': result.get('created_time'),
+                'title': result.get('title', '')  # Include title for display
+            })
+        
+        if self.verbose:
+            total_pages = sum(len(pages) for pages in grouped_results.values())
+            print_text(f"📋 Prepared {total_pages} page references for adapter to load", style="dim")
         
         # Ask user if query was successful
         user_action = self._ask_user_confirmation(summary)
         
         if user_action == 'save':
-            # Save to learning index
-            pattern = {
-                "user_query": user_query,
-                "intent": intent,
-                "generated_sql": generated_sql,
-                "result_count": summary['total_count'],
-                "databases": summary['databases'],
-                "notes": f"Validated successfully. {validation_result['message']}"
-            }
-            self.learning_system.save_successful_pattern(pattern)
+            # Save to learning index (only for SQL mode)
+            if self.query_mode == "sql":
+                pattern = {
+                    "user_query": user_query,
+                    "intent": intent,
+                    "generated_sql": generated_query,
+                    "result_count": summary['total_count'],
+                    "databases": summary['databases'],
+                    "notes": f"Validated successfully. {validation_result['message']}"
+                }
+                self.learning_system.save_successful_pattern(pattern)
         elif user_action == 'modify':
             # User wants to modify the query - signal to wrapper
             return {
@@ -383,7 +520,8 @@ class AgenticNLQueryProcessor:
                 "action": "modify",
                 "results": grouped_results,
                 "intent": intent,
-                "sql": generated_sql,
+                "query": generated_query,
+                "query_mode": self.query_mode,
                 "validation": validation_result
             }
         elif user_action == 'quit':
@@ -393,7 +531,8 @@ class AgenticNLQueryProcessor:
                 "action": "quit",
                 "results": grouped_results,
                 "intent": intent,
-                "sql": generated_sql,
+                "query": generated_query,
+                "query_mode": self.query_mode,
                 "summary": summary,
                 "learned": False
             }
@@ -402,7 +541,8 @@ class AgenticNLQueryProcessor:
             "success": True,
             "results": grouped_results,
             "intent": intent,
-            "sql": generated_sql,
+            "query": generated_query,
+            "query_mode": self.query_mode,
             "summary": summary,
             "learned": (user_action == 'save')
         }
@@ -416,9 +556,14 @@ class AgenticNLQueryProcessor:
         """Parse user query into structured intent using LLM."""
         available_dbs = schema.get('available_databases', [])
         
+        workspace_context = self._format_workspace_config()
+        
         prompt = f"""Parse this natural language query into structured intent:
 
 Query: "{user_query}"
+{f'Workspace filter: {workspace}' if workspace else ''}
+
+{workspace_context}
 
 Available databases: {available_dbs}
 
@@ -435,6 +580,7 @@ Respond with JSON in this exact format:
 
 Rules:
 - Include ALL relevant databases that might contain the data
+- Use the workspace configuration above to understand which databases belong to which workspace
 - Extract specific search terms from the query
 - Parse date expressions: "last N months" → days_back: N*30, "past week" → days_back: 7
 - If no date mentioned, set days_back: null
@@ -470,7 +616,26 @@ Return ONLY the JSON object:"""
             print_text(f"❌ Intent parsing failed: {e}", style="red")
             return None
     
-    def _generate_sql(
+    def _generate_query(
+        self,
+        intent: Dict[str, Any],
+        schema: Dict[str, Any],
+        retry_attempt: int = 0
+    ) -> Optional[Any]:
+        """
+        Generate query based on mode.
+        
+        SQL mode: Returns SQL string
+        Vector mode: Returns dict with search_text and filters
+        """
+        if self.query_mode == "sql":
+            return self._generate_sql_query(intent, schema, retry_attempt)
+        elif self.query_mode == "vector":
+            return self._generate_vector_query(intent, schema, retry_attempt)
+        else:
+            raise ValueError(f"Unknown query_mode: {self.query_mode}")
+    
+    def _generate_sql_query(
         self,
         intent: Dict[str, Any],
         schema: Dict[str, Any],
@@ -510,19 +675,36 @@ Please adjust the query to fix this issue.
         if intent.get('date_filter', {}).get('description', 'none') != 'none':
             intent_line += f" | Date: {intent.get('date_filter', {}).get('description')}"
         
-        prompt = f"""{schema_summary}
+        workspace_context = self._format_workspace_config()
+        
+        # Normalize database names: strip workspace prefixes for SQL
+        # e.g., "trass.stories" -> "stories" because database_name column stores nicknames only
+        def normalize_db_name(db_name: str) -> str:
+            if '.' in db_name:
+                return db_name.split('.')[-1]
+            return db_name
+        
+        target_dbs = [normalize_db_name(db) for db in intent['databases']]
+        
+        prompt = f"""{workspace_context}
+
+{schema_summary}
 
 {learned_patterns}
 
 {validation_feedback}
 
 QUERY: {intent_line}
-TARGET: {', '.join(intent['databases'])}
+TARGET: {', '.join(target_dbs)}
+
+IMPORTANT: The database_name column stores ONLY the nickname (e.g., "stories", not "trass.stories")
 
 Return SQLite query that:
-- SELECTs: u.page_id, u.title, u.created_time, u.database_name (+ any other needed fields)
+- SELECTs: u.page_id, u.workspace, u.database_name, u.title, u.created_time (+ any other needed fields)
+- IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
 - JOINs specialized tables (gmail_content, etc.) for full-text search
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
+- Filters database_name using ONLY the nickname (no workspace prefix)
 - Applies date filters on created_time/email_date columns
 - LIMIT 5000
 
@@ -531,17 +713,19 @@ SQL only (no markdown):"""
         if self.debug:
             print_text(f"\n📤 SQL Generation Prompt:", style="cyan")
             print_text(f"   Intent: {intent['goal']}", style="dim")
-            print_text(f"   Databases: {', '.join(intent['databases'])}", style="dim")
+            print_text(f"   Databases (original): {', '.join(intent['databases'])}", style="dim")
+            print_text(f"   Databases (normalized for SQL): {', '.join(target_dbs)}", style="dim")
             print_text(f"   Search terms: {', '.join(intent.get('search_terms', []))}", style="dim")
             print_text(f"   Using {len(self.learning_system.load_successful_patterns())} learned patterns", style="dim")
         
         try:
-            # Always log what we're asking the AI
-            if retry_attempt == 0:
-                print_text(f"\n💬 Asking AI to generate SQL for: {intent['goal']}", style="cyan")
-            else:
-                print_text(f"\n💬 Asking AI to retry SQL generation with feedback:", style="yellow")
-                print_text(f"   Previous feedback: {intent.get('_validation_feedback', 'N/A')}", style="dim")
+            # Log AI generation only in verbose mode
+            if self.verbose:
+                if retry_attempt == 0:
+                    print_text(f"\n💬 Asking AI to generate SQL for: {intent['goal']}", style="cyan")
+                else:
+                    print_text(f"\n💬 Asking AI to retry SQL generation with feedback:", style="yellow")
+                    print_text(f"   Previous feedback: {intent.get('_validation_feedback', 'N/A')}", style="dim")
             
             response = self.llm.invoke([{"role": "user", "content": prompt}])
             sql = response.content.strip()
@@ -563,7 +747,126 @@ SQL only (no markdown):"""
             print_text(f"❌ SQL generation failed: {e}", style="red")
             return None
     
-    def _execute_sql(self, sql: str) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    def _generate_vector_query(
+        self,
+        intent: Dict[str, Any],
+        schema: Dict[str, Any],
+        retry_attempt: int = 0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generate vector search parameters from intent.
+        
+        Extracts:
+        - search_text: Core semantic query (cleaned of metadata)
+        - filters: Metadata filters for ChromaDB (workspace, databases, date range)
+        """
+        if self.debug:
+            print_text("\n" + "=" * 70, style="dim")
+            print_text(f"⚙️  CHAIN OF THOUGHT: Vector Query Generation (Attempt {retry_attempt + 1})", style="bold yellow")
+            print_text("=" * 70, style="dim")
+        
+        # Build prompt to extract search text from intent
+        workspace_context = self._format_workspace_config()
+        
+        prompt = f"""Extract semantic search parameters from this intent:
+
+{workspace_context}
+
+Intent:
+- Goal: {intent['goal']}
+- Databases: {', '.join(intent.get('databases', []))}
+- Search Terms: {', '.join(intent.get('search_terms', []))}
+- Date Filter: {intent.get('date_filter', {}).get('description', 'none')}
+
+Return JSON with:
+{{
+    "search_text": "core semantic query for embedding (just the content to search, not metadata)",
+    "explanation": "brief reasoning for search text choice"
+}}
+
+Example:
+Intent: "find stories about international launch in trass workspace"
+Output: {{"search_text": "international launch stories", "explanation": "removed workspace metadata"}}
+
+Use the workspace configuration above to understand database context.
+
+Return ONLY the JSON object:"""
+        
+        try:
+            if self.verbose:
+                if retry_attempt == 0:
+                    print_text(f"\n💬 Extracting search text for: {intent['goal']}", style="cyan")
+                else:
+                    print_text(f"\n💬 Retrying search text extraction", style="yellow")
+            
+            response = self.llm.invoke([{"role": "user", "content": prompt}])
+            content = response.content.strip()
+            
+            if self.debug:
+                print_text(f"\n📥 LLM Response:", style="cyan")
+                print_text(content[:200] + "..." if len(content) > 200 else content, style="dim")
+            
+            # Clean JSON
+            if content.startswith('```json'):
+                content = content[7:-3].strip()
+            elif content.startswith('```'):
+                content = content[3:-3].strip()
+            
+            import json
+            extracted = json.loads(content)
+            search_text = extracted.get('search_text', ' '.join(intent.get('search_terms', [])))
+            
+            # Build metadata filters for ChromaDB
+            filters = {}
+            
+            # Database filter
+            databases = intent.get('databases', [])
+            if databases:
+                if len(databases) == 1:
+                    filters['database_name'] = databases[0]
+                else:
+                    filters['database_name'] = {"$in": databases}
+            
+            # Date filter (if needed in future)
+            # date_filter = intent.get('date_filter', {})
+            # if date_filter.get('days_back'):
+            #     # Could add date filtering here
+            
+            query_params = {
+                'search_text': search_text,
+                'filters': filters if filters else None
+            }
+            
+            if self.debug:
+                print_text(f"\n📝 Vector Query Parameters:", style="cyan")
+                print_text(f"   Search text: {search_text}", style="dim")
+                print_text(f"   Filters: {filters}", style="dim")
+            
+            return query_params
+        
+        except Exception as e:
+            print_text(f"❌ Vector query generation failed: {e}", style="red")
+            return None
+    
+    def _execute_query(self, query: Any) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+        """
+        Execute query based on mode.
+        
+        SQL mode: query is SQL string
+        Vector mode: query is dict with search_text and filters
+        
+        Returns: (results, error_message)
+        - On success: ([{...}], None)
+        - On error: (None, "error message")
+        """
+        if self.query_mode == "sql":
+            return self._execute_sql_query(query)
+        elif self.query_mode == "vector":
+            return self._execute_vector_query(query)
+        else:
+            return None, f"Unknown query_mode: {self.query_mode}"
+    
+    def _execute_sql_query(self, sql: str) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
         """
         Execute SQL query and return results with optional error message.
         Returns: (results, error_message)
@@ -591,11 +894,12 @@ SQL only (no markdown):"""
                     if results:
                         print_text(f"   Sample row keys: {list(results[0].keys())[:5]}", style="dim")
                 
-                # Always show execution results
-                print_text(f"✅ Execution successful: {len(results)} rows returned", style="green" if results else "yellow")
-                if results and len(results) > 0:
-                    sample = results[0]
-                    print_text(f"   Sample columns: {list(sample.keys())[:6]}", style="dim")
+                # Show execution results only in verbose mode
+                if self.verbose:
+                    print_text(f"✅ Execution successful: {len(results)} rows returned", style="green" if results else "yellow")
+                    if results and len(results) > 0:
+                        sample = results[0]
+                        print_text(f"   Sample columns: {list(sample.keys())[:6]}", style="dim")
                 
                 return results, None
         
@@ -613,8 +917,72 @@ SQL only (no markdown):"""
             print_text(f"❌ {error_msg}", style="red")
             return None, error_msg
     
+    def _execute_vector_query(self, query_params: Dict[str, Any]) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+        """
+        Execute vector search and return results.
+        
+        Returns: (results, error_message)
+        - On success: ([{page_id, similarity_score, ...}], None)
+        - On error: (None, "error message")
+        """
+        if self.debug:
+            print_text("\n" + "=" * 70, style="dim")
+            print_text("⚡ CHAIN OF THOUGHT: Vector Search Execution", style="bold yellow")
+            print_text("=" * 70, style="dim")
+            print_text(f"\n🔍 Searching with: {query_params.get('search_text')}", style="cyan")
+        
+        try:
+            # Get config for defaults - load from main config file
+            import json
+            config_path = "promaia.config.json"
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            vector_config = config.get('global', {}).get('vector_search', {})
+            n_results = vector_config.get('default_n_results', 20)
+            min_similarity = vector_config.get('default_similarity_threshold', 0.75)
+            
+            # Execute vector search
+            search_results = self.vector_db.search(
+                query_text=query_params['search_text'],
+                filters=query_params.get('filters'),
+                n_results=n_results,
+                min_similarity=min_similarity
+            )
+            
+            if self.debug:
+                print_text(f"\n✅ Search successful", style="green")
+                print_text(f"   Returned {len(search_results)} results above {min_similarity} similarity", style="dim")
+                if search_results:
+                    print_text(f"   Top score: {search_results[0].get('similarity_score', 0):.3f}", style="dim")
+            
+            if self.verbose:
+                print_text(f"✅ Execution successful: {len(search_results)} results returned", style="green" if search_results else "yellow")
+                if search_results:
+                    print_text(f"   Similarity range: {search_results[-1].get('similarity_score', 0):.3f} - {search_results[0].get('similarity_score', 0):.3f}", style="dim")
+            
+            # Convert to unified_content-like format for compatibility
+            results = []
+            for result in search_results:
+                results.append({
+                    'page_id': result['page_id'],
+                    'similarity_score': result['similarity_score'],
+                    'database_name': result['metadata'].get('database_name', ''),
+                    'workspace': result['metadata'].get('workspace', ''),
+                    'created_time': result['metadata'].get('created_time', ''),
+                    'content_type': result['metadata'].get('content_type', ''),
+                })
+            
+            return results, None
+        
+        except Exception as e:
+            error_msg = f"Vector search error: {str(e)}"
+            if self.debug:
+                print_text(f"\n❌ {error_msg}", style="red")
+            print_text(f"❌ {error_msg}", style="red")
+            return None, error_msg
+    
     def _display_intent(self, intent: Dict[str, Any]):
-        """Display parsed intent to user."""
+        """Display parsed intent to user (verbose mode only)."""
         print_text("\n🎯 Parsed Intent:", style="cyan")
         print_text(f"   Goal: {intent['goal']}", style="white")
         print_text(f"   Databases: {', '.join(intent['databases'])}", style="white")
@@ -624,6 +992,27 @@ SQL only (no markdown):"""
         if date_filter.get('days_back'):
             print_text(f"   Date Filter: {date_filter['description']}", style="white")
         print()
+    
+    def _display_compact_summary(self, summary: Dict[str, Any], intent: Dict[str, Any]):
+        """Display a compact summary of query results (non-verbose mode)."""
+        total = summary['total_count']
+        
+        # Format database breakdown compactly
+        db_breakdown = []
+        for db, count in summary['database_breakdown'].items():
+            # Shorten database name if needed
+            short_db = db.split('.')[-1] if '.' in db else db
+            db_breakdown.append(f"{short_db}: {count}")
+        
+        print_text("📊 Results Summary:", style="bold white")
+        print_text(f"• Total: {total} entries ({', '.join(db_breakdown)})", style="white")
+        
+        # Show date filter if present
+        date_filter = intent.get('date_filter', {})
+        if date_filter.get('description'):
+            print_text(f"• Date Filter: {date_filter['description']}", style="white")
+        
+        print()  # Blank line before prompt
     
     def _ask_user_confirmation(self, summary: Dict[str, Any]) -> str:
         """

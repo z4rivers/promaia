@@ -313,7 +313,17 @@ class ResultValidator:
         intended_databases = set(intent.get('databases', []))
         result_databases = set(r.get('database_name') for r in results)
         
-        if intended_databases and not result_databases.intersection(intended_databases):
+        # Normalize database names for comparison (handle both "stories" and "trass.stories" formats)
+        def normalize_db_name(db_name: str) -> str:
+            """Extract the nickname from qualified names like 'trass.stories' -> 'stories'"""
+            if '.' in db_name:
+                return db_name.split('.')[-1]  # Get last part after dot
+            return db_name
+        
+        normalized_intended = {normalize_db_name(db) for db in intended_databases}
+        normalized_results = {normalize_db_name(db) for db in result_databases}
+        
+        if intended_databases and not normalized_results.intersection(normalized_intended):
             return False, f"Results don't match intended databases. Got {result_databases}, expected {intended_databases}"
         
         # Check if date filtering worked

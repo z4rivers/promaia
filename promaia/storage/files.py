@@ -620,9 +620,207 @@ def load_json_files_with_property_filter(property_filters: Dict[str, Any], json_
     
     return matching_page_ids
 
+def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_metadata.db", expand_gmail_threads: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Universal adapter to load full markdown content for specific page IDs using the registry.
+    
+    This function serves as a bridge between query results (which contain page_ids) and 
+    the chat interface (which needs full content). It handles:
+    - Gmail thread expansion (all messages in a thread)
+    - Loading markdown content from disk
+    - Grouping by database for chat interface compatibility
+    
+    Args:
+        page_ids: List of page IDs to load
+        db_path: Path to the hybrid metadata database
+        expand_gmail_threads: If True, expands Gmail page_ids to include entire threads
+        
+    Returns:
+        Dict mapping database_name -> list of page dictionaries with full content
+        (Same format as read_markdown_files_with_registry for compatibility)
+    """
+    if not page_ids:
+        return {}
+    
+    from promaia.storage.hybrid_storage import get_hybrid_registry
+    
+    try:
+        registry = get_hybrid_registry(db_path)
+        project_root = get_project_root()
+        
+        # Step 1: Get registry entries for the requested page_ids
+        with sqlite3.connect(registry.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Build query with placeholders for all page_ids
+            # Use DISTINCT ON page_id to avoid duplicates from inconsistent database_name storage
+            placeholders = ','.join('?' * len(page_ids))
+            query = f"""
+                SELECT page_id, workspace, database_name, database_id, content_type, 
+                       title, created_time, last_edited_time, synced_time, file_path, metadata
+                FROM unified_content 
+                WHERE page_id IN ({placeholders})
+                GROUP BY page_id
+                HAVING MAX(last_edited_time)
+                ORDER BY last_edited_time DESC
+            """
+            
+            cursor.execute(query, page_ids)
+            registry_entries = list(cursor.fetchall())
+            
+            # Step 2: Gmail thread expansion (if enabled)
+            if expand_gmail_threads:
+                gmail_thread_ids = set()
+                for entry in registry_entries:
+                    if entry['database_name'] == 'gmail' and entry['metadata']:
+                        try:
+                            import json
+                            metadata = json.loads(entry['metadata']) if isinstance(entry['metadata'], str) else entry['metadata']
+                            thread_id = metadata.get('thread_id')
+                            if thread_id:
+                                gmail_thread_ids.add(thread_id)
+                        except:
+                            pass
+                
+                # Fetch all messages in those threads
+                if gmail_thread_ids:
+                    thread_placeholders = ','.join('?' * len(gmail_thread_ids))
+                    gmail_query = f"""
+                        SELECT page_id, workspace, database_name, database_id, content_type,
+                               title, created_time, last_edited_time, synced_time, file_path, metadata
+                        FROM unified_content 
+                        WHERE database_name = 'gmail' 
+                        AND json_extract(metadata, '$.thread_id') IN ({thread_placeholders})
+                        ORDER BY last_edited_time DESC
+                    """
+                    cursor.execute(gmail_query, list(gmail_thread_ids))
+                    gmail_entries = cursor.fetchall()
+                    
+                    # Merge with original entries (avoid duplicates)
+                    existing_page_ids = {entry['page_id'] for entry in registry_entries}
+                    for gmail_entry in gmail_entries:
+                        if gmail_entry['page_id'] not in existing_page_ids:
+                            registry_entries.append(gmail_entry)
+                            existing_page_ids.add(gmail_entry['page_id'])
+        
+        # Step 3: Load actual markdown content for each entry
+        # Use the same logic as read_markdown_files_with_registry for consistency
+        grouped_results = {}
+        
+        for entry in registry_entries:
+            page_id = entry['page_id']
+            database_name = entry['database_name']
+            title = entry['title'] or "Untitled"
+            
+            try:
+                # Find the markdown file (same logic as read_markdown_files_with_registry)
+                file_path = entry['file_path']
+                md_file = None
+                
+                if file_path:
+                    full_path = file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
+                    if os.path.exists(full_path):
+                        md_file = full_path
+                
+                # If not found, try to locate it
+                if not md_file:
+                    from promaia.config.databases import get_database_manager
+                    db_manager = get_database_manager()
+                    
+                    workspace = entry['workspace']
+                    
+                    # Get the database config using qualified name or simple name
+                    db_config = None
+                    if workspace and '.' not in database_name:
+                        # Try qualified name first
+                        qualified_name = f"{workspace}.{database_name}"
+                        db_config = db_manager.get_database_by_qualified_name(qualified_name)
+                    
+                    # If not found, try simple database name lookup
+                    if not db_config:
+                        db_config = db_manager.get_database(database_name, workspace)
+                    
+                    if db_config:
+                        md_dir = db_config.markdown_directory
+                        if not os.path.isabs(md_dir):
+                            md_dir = os.path.join(project_root, md_dir)
+                        
+                        # Try common patterns
+                        expected_paths = [
+                            os.path.join(md_dir, f"{page_id}.md"),
+                            os.path.join(md_dir, f"{page_id}_{title}.md"),
+                            os.path.join(md_dir, f"{title}_{page_id}.md")
+                        ]
+                        
+                        for expected_path in expected_paths:
+                            if os.path.exists(expected_path):
+                                md_file = expected_path
+                                break
+                
+                if not md_file:
+                    # Skip if we can't find the file
+                    continue
+                
+                # Read the markdown content
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Parse created_time
+                try:
+                    if entry['created_time']:
+                        date_obj = datetime.fromisoformat(entry['created_time'].replace("Z", "+00:00"))
+                    else:
+                        date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
+                except (ValueError, TypeError):
+                    date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
+                
+                # Create page data structure compatible with chat interface
+                # (Same format as read_markdown_files_with_registry returns)
+                page_data = {
+                    'page_id': page_id,
+                    'date': date_obj.strftime("%Y-%m-%d"),
+                    'date_obj': date_obj,
+                    'content': content,
+                    'file_path': md_file,
+                    'filename': os.path.basename(md_file),
+                    'title': title,
+                    'created_time': entry['created_time'],
+                    'last_edited_time': entry['last_edited_time'],
+                    'synced_time': entry['synced_time'],
+                    'metadata': entry['metadata'],
+                    'database_name': database_name
+                }
+                
+                # Group by qualified name (workspace.database) to avoid collisions
+                workspace = entry['workspace']
+                if workspace and '.' not in database_name:
+                    qualified_key = f"{workspace}.{database_name}"
+                else:
+                    qualified_key = database_name
+                
+                if qualified_key not in grouped_results:
+                    grouped_results[qualified_key] = []
+                grouped_results[qualified_key].append(page_data)
+                
+            except Exception as e:
+                print(f"Warning: Error loading content for page {page_id}: {e}")
+                continue
+        
+        return grouped_results
+        
+    except Exception as e:
+        print(f"Error loading content by page IDs: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
+
 def read_markdown_files_by_page_ids(page_ids: List[str], directory_path: str, days: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     Read specific markdown files by page IDs from a directory.
+    
+    DEPRECATED: Use load_content_by_page_ids() instead for registry-based loading.
     
     Args:
         page_ids: List of page IDs to load

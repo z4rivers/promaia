@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 03:04:49
+
+USER QUERY: entries in the trass stories database with term UK
+
+INTENT PARSED:
+  Goal: find entries containing 'UK' in the Trass Games stories database
+  Databases: trass.stories
+  Search Terms: UK
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 15
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 15 entries
+
+  Sample Results (first 5):
+    1.  (stories)
+       Date: 2025-06-10
+    2. UK: Get “technical file” to Expandly for them to store (stories)
+       Date: 2025-05-05
+    3. batch 2025-05 Original Splits UK, CA, AU (With % of players by country) (stories)
+       Date: 2025-05-05
+    4. UK Warehouse Setup (stories)
+       Date: 2025-04-21
+    5. Get batch 2025-05 packaging artwork with UK address to Fionn (stories)
+       Date: 2025-04-03

@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 03:06:33
+
+USER QUERY: entries in the trass stories database with term UK
+
+INTENT PARSED:
+  Goal: find entries containing UK in the trass stories database
+  Databases: trass.stories
+  Search Terms: UK
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 14
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 14 entries
+
+  Sample Results (first 5):
+    1. UK 2025-07 Temp Storage (stories)
+       Date: 2025-10-01
+    2. UK VAT received (stories)
+       Date: 2025-09-23
+    3. 🎯 get all UK tax registration assets to Laura (Avask) (stories)
+       Date: 2025-05-28
+    4. UK vessel arrives (stories)
+       Date: 2025-05-24
+    5. UK: Get “technical file” to Expandly for them to store (stories)
+       Date: 2025-05-05

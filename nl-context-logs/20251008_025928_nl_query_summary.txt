@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 02:59:28
+
+USER QUERY: journal entries from last 3 days
+
+INTENT PARSED:
+  Goal: find journal entries from the last 3 days
+  Databases: journal
+  Search Terms: 
+  Date Filter: last 3 days
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 7
+  Databases Found: journal
+  
+  Breakdown by Database:
+    • journal: 7 entries
+
+  Sample Results (first 5):
+    1. 2025-10-08 (journal)
+       Date: 2025-10-08
+    2. 2025-10-08 (journal)
+       Date: 2025-10-08
+    3. 2025-10-07 (journal)
+       Date: 2025-10-07
+    4. 2025-10-07 (journal)
+       Date: 2025-10-07
+    5. 2025-10-06 (journal)
+       Date: 2025-10-06

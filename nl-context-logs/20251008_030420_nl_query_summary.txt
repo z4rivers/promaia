@@ -1,0 +1,34 @@
+Natural Language Query Summary
+Generated: 2025-10-08 03:04:20
+
+USER QUERY: trass stories about international launch
+
+INTENT PARSED:
+  Goal: find stories related to international launch
+  Databases: trass.stories, trass.journal, trass.cpj, trass.gmail
+  Search Terms: international, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 331
+  Databases Found: gmail, cpj, stories
+  
+  Breakdown by Database:
+    • cpj: 1 entries
+    • gmail: 313 entries
+    • stories: 17 entries
+
+  Sample Results (first 5):
+    1. Yeeps International Launch Announcement (cpj)
+       Date: 2025-10-07
+    2. Gus made updates in Trass Games (gmail)
+       Date: 2025-10-07
+    3. Re: Next week? (gmail)
+       Date: 2025-10-05
+    4. Your Monthly Wealthfront Brokerage Statement (gmail)
+       Date: 2025-10-05
+    5. [TEST] This is for white queer people. (gmail)
+       Date: 2025-10-03

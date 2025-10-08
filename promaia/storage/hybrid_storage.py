@@ -760,16 +760,86 @@ class HybridContentRegistry:
         
         # Route to appropriate table based on content type
         if database_name == 'gmail' or 'gmail' in database_name:
-            return self.add_gmail_content(content_data)
+            sql_success = self.add_gmail_content(content_data)
         elif database_name == 'journal':
-            return self.add_notion_journal(content_data)
+            sql_success = self.add_notion_journal(content_data)
         elif database_name == 'stories':
-            return self.add_notion_stories(content_data)
+            sql_success = self.add_notion_stories(content_data)
         elif database_name == 'cms':
-            return self.add_notion_cms(content_data)
+            sql_success = self.add_notion_cms(content_data)
         else:
             # Use generic table for unknown types
-            return self.add_generic_content(content_data)
+            sql_success = self.add_generic_content(content_data)
+        
+        # If SQL insertion succeeded, also embed to ChromaDB (if enabled)
+        if sql_success:
+            self._embed_to_vector_db(content_data)
+        
+        return sql_success
+    
+    def _embed_to_vector_db(self, content_data: Dict[str, Any]) -> bool:
+        """
+        Embed content to ChromaDB for vector search.
+        
+        This is called after successful SQL insertion and runs silently
+        to avoid disrupting the sync flow if vector DB is unavailable.
+        """
+        try:
+            # Check if vector search is enabled - load from main config file
+            import json
+            config_path = "promaia.config.json"
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            vector_config = config.get('global', {}).get('vector_search', {})
+            
+            if not vector_config.get('enabled', False):
+                return False  # Vector search disabled, skip silently
+            
+            # Get required fields
+            page_id = content_data.get('page_id')
+            file_path = content_data.get('file_path')
+            
+            if not page_id or not file_path:
+                return False  # Missing required fields
+            
+            # Read markdown content
+            if not os.path.exists(file_path):
+                return False  # File doesn't exist
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content_text = f.read()
+            
+            if not content_text or len(content_text.strip()) < 10:
+                return False  # Content too short or empty
+            
+            # Initialize vector DB and embed
+            from promaia.storage.vector_db import VectorDBManager
+            vector_db = VectorDBManager(chroma_path=vector_config.get('chroma_path', 'chroma_db'))
+            
+            # Prepare metadata
+            metadata = {
+                'database_name': content_data.get('database_name', ''),
+                'workspace': content_data.get('workspace', ''),
+                'created_time': content_data.get('created_time', ''),
+                'content_type': content_data.get('content_type', ''),
+            }
+            
+            # Add to vector DB
+            success = vector_db.add_content(
+                page_id=page_id,
+                content_text=content_text,
+                metadata=metadata
+            )
+            
+            if success:
+                logger.debug(f"✅ Embedded to vector DB: {page_id}")
+            
+            return success
+        
+        except Exception as e:
+            # Silently log errors - don't disrupt sync if vector DB has issues
+            logger.debug(f"Could not embed to vector DB for {content_data.get('page_id', 'unknown')}: {e}")
+            return False
     
     def add_content_batch(self, content_list: List[Dict[str, Any]]) -> List[bool]:
         """Add multiple content items efficiently - significant performance improvement."""

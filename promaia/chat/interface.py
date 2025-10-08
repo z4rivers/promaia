@@ -263,31 +263,18 @@ def display_message_with_timestamp(role, content):
         print_text(content, style="yellow")
 
 def generate_source_breakdown(multi_source_data):
-    """Generate a dictionary of source names to page counts."""
+    """Generate a dictionary of source names to page counts.
+    
+    Always uses qualified names (workspace.database) for clarity.
+    """
     if not multi_source_data:
         return None
     
     breakdown = {}
     for source_key, pages in multi_source_data.items():
-        # Create a display name that avoids collisions
-        if '.' in source_key:
-            workspace, source = source_key.split('.', 1)
-            # Check if we need to include workspace to avoid collision
-            base_source = source
-            potential_collision = any(
-                other_key != source_key and 
-                (other_key.endswith('.' + source) or other_key == source)
-                for other_key in multi_source_data.keys()
-            )
-            
-            if potential_collision:
-                # Include workspace prefix to disambiguate
-                source_name = f"{workspace}.{source}"
-            else:
-                # No collision, use just the source name
-                source_name = source
-        else:
-            source_name = source_key
+        # Always use the full qualified name (workspace.database)
+        # This provides clarity about which workspace each database belongs to
+        source_name = source_key
             
         breakdown[source_name] = len(pages)
     
@@ -1918,8 +1905,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("Error: Natural language prompt is empty.", style="bold red")
                         return False
                     
-                    # Create combined prompt for caching
-                    combined_nl_prompt = " ".join([f'-nl {prompt}' for prompt in nl_prompts])
+                    # Create combined prompt for caching (without -nl prefixes for consistency with cli.py)
+                    # This matches the format used in cli.py line 1458, 1641
+                    combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else ""
                     
                     # Check if we already have cached results for this exact NL prompt
                     cached_nl_content = context_state.get('natural_language_content', {})
