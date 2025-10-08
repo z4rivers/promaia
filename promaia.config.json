@@ -24,7 +24,12 @@
       "embedding_model": "text-embedding-3-small",
       "chroma_path": "chroma_db",
       "default_n_results": 20,
-      "default_similarity_threshold": 0.75
+      "default_similarity_threshold": 0.75,
+      "chunking": {
+        "enabled": true,
+        "max_tokens_per_chunk": 6000,
+        "strategy": "hybrid"
+      }
     }
   },
   "databases": {

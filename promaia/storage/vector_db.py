@@ -151,6 +151,108 @@ class VectorDBManager:
             logger.error(f"❌ Failed to add content for {page_id}: {e}")
             return False
     
+    def estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count for given text.
+        
+        Args:
+            text: Input text to estimate tokens for
+            
+        Returns:
+            Estimated token count
+        """
+        if self.embedding_provider == "openai":
+            try:
+                import tiktoken
+                encoding = tiktoken.get_encoding("cl100k_base")
+                return len(encoding.encode(text))
+            except ImportError:
+                logger.warning("tiktoken not available, using rough estimation")
+                return len(text) // 4
+        else:
+            # Rough estimation for other providers
+            return len(text) // 4
+    
+    def add_content_with_chunking(
+        self,
+        page_id: str,
+        content_text: str,
+        metadata: Dict[str, Any],
+        chunks: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        Add content to ChromaDB with chunking support.
+        
+        Embeds each chunk separately with chunk-specific metadata.
+        
+        Args:
+            page_id: Unique page identifier
+            content_text: Full markdown content (not used, chunks used instead)
+            metadata: Base metadata dict (database_name, workspace, etc.)
+            chunks: List of chunk dicts from page_chunker.chunk_page_content()
+                    Each contains: chunk_id, content, chunk_index, total_chunks, etc.
+            
+        Returns:
+            True if all chunks embedded successfully, False otherwise
+        """
+        try:
+            # First, remove any existing embeddings for this page
+            # (including old chunks or non-chunked versions)
+            try:
+                self.collection.delete(where={"page_id": page_id})
+            except:
+                pass  # May not exist, that's okay
+            
+            # Embed each chunk
+            success_count = 0
+            for chunk in chunks:
+                try:
+                    chunk_id = chunk['chunk_id']
+                    chunk_content = chunk['content']
+                    
+                    # Generate embedding for this chunk
+                    embedding = self.generate_embedding(chunk_content)
+                    
+                    # Prepare chunk-specific metadata
+                    chunk_metadata = {
+                        **metadata,  # Include base metadata
+                        'page_id': page_id,  # Store original page_id for retrieval
+                        'chunk_id': chunk_id,
+                        'chunk_index': chunk['chunk_index'],
+                        'total_chunks': chunk['total_chunks'],
+                        'is_chunk': True,  # Flag to indicate this is a chunk
+                        'estimated_tokens': chunk.get('estimated_tokens', 0)
+                    }
+                    
+                    # Add to collection with chunk_id as the ID
+                    self.collection.add(
+                        ids=[chunk_id],
+                        documents=[chunk_content],
+                        embeddings=[embedding],
+                        metadatas=[chunk_metadata]
+                    )
+                    
+                    success_count += 1
+                    logger.debug(f"✅ Added chunk {chunk['chunk_index'] + 1}/{chunk['total_chunks']} for page {page_id}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to embed chunk {chunk.get('chunk_id')}: {e}")
+                    # Continue with other chunks even if one fails
+            
+            if success_count == len(chunks):
+                logger.info(f"✅ Successfully embedded all {success_count} chunks for page {page_id}")
+                return True
+            elif success_count > 0:
+                logger.warning(f"⚠️  Partially embedded {success_count}/{len(chunks)} chunks for page {page_id}")
+                return True  # Consider partial success as success
+            else:
+                logger.error(f"❌ Failed to embed any chunks for page {page_id}")
+                return False
+        
+        except Exception as e:
+            logger.error(f"❌ Failed to add chunked content for {page_id}: {e}")
+            return False
+    
     def search(
         self,
         query_text: str,

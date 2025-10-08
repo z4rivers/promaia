@@ -198,6 +198,36 @@ class HybridContentRegistry:
                 )
             """)
             
+            # Create notion page chunks table for large page handling
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notion_page_chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    page_id TEXT NOT NULL,
+                    chunk_id TEXT UNIQUE NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    total_chunks INTEGER NOT NULL,
+                    workspace TEXT NOT NULL,
+                    database_name TEXT NOT NULL,
+                    
+                    -- Chunk boundaries
+                    char_start INTEGER,
+                    char_end INTEGER,
+                    estimated_tokens INTEGER,
+                    
+                    -- Date-based chunking metadata
+                    date_boundary TEXT,  -- YYYY-MM-DD if split by date
+                    
+                    -- References
+                    parent_file_path TEXT NOT NULL,
+                    
+                    -- Timestamps
+                    created_time TEXT,
+                    synced_time TEXT NOT NULL,
+                    
+                    UNIQUE(chunk_id)
+                )
+            """)
+            
             # Create unified view that combines all tables with direct column access
             # Drop and recreate to ensure latest schema (CREATE VIEW IF NOT EXISTS doesn't update)
             cursor.execute("DROP VIEW IF EXISTS unified_content")
@@ -416,6 +446,10 @@ class HybridContentRegistry:
         # Generic indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_generic_workspace ON generic_content (workspace, database_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_generic_type ON generic_content (content_type)")
+        
+        # Chunks indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_page_id ON notion_page_chunks (page_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON notion_page_chunks (workspace, database_name)")
     
     def add_gmail_content(self, content_data: Dict[str, Any]) -> bool:
         """Add Gmail content with optimized schema."""
@@ -812,7 +846,7 @@ class HybridContentRegistry:
             if not content_text or len(content_text.strip()) < 10:
                 return False  # Content too short or empty
             
-            # Initialize vector DB and embed
+            # Initialize vector DB
             from promaia.storage.vector_db import VectorDBManager
             vector_db = VectorDBManager(chroma_path=vector_config.get('chroma_path', 'chroma_db'))
             
@@ -824,17 +858,79 @@ class HybridContentRegistry:
                 'content_type': content_data.get('content_type', ''),
             }
             
-            # Add to vector DB
-            success = vector_db.add_content(
-                page_id=page_id,
-                content_text=content_text,
-                metadata=metadata
-            )
+            # Check chunking configuration
+            chunking_config = vector_config.get('chunking', {})
+            chunking_enabled = chunking_config.get('enabled', True)
+            max_tokens = chunking_config.get('max_tokens_per_chunk', 6000)
             
-            if success:
-                logger.debug(f"✅ Embedded to vector DB: {page_id}")
+            # Estimate tokens in content
+            estimated_tokens = vector_db.estimate_tokens(content_text)
             
-            return success
+            # Determine if chunking is needed
+            if chunking_enabled and estimated_tokens > max_tokens:
+                # Content exceeds token limit, use chunking
+                logger.info(f"Page {page_id} has {estimated_tokens} tokens (> {max_tokens}), using chunking")
+                
+                from promaia.storage.page_chunker import chunk_page_content
+                from datetime import datetime
+                
+                # Generate chunks
+                chunks = chunk_page_content(
+                    markdown_content=content_text,
+                    page_id=page_id,
+                    block_metadata=None,  # Could be enhanced with block timestamps
+                    max_tokens=max_tokens,
+                    provider=vector_db.embedding_provider
+                )
+                
+                if not chunks:
+                    logger.warning(f"Failed to chunk page {page_id}")
+                    return False
+                
+                # Store chunks in database
+                synced_time = datetime.utcnow().isoformat()
+                for chunk in chunks:
+                    chunk_data = {
+                        'chunk_id': chunk['chunk_id'],
+                        'page_id': page_id,
+                        'chunk_index': chunk['chunk_index'],
+                        'total_chunks': chunk['total_chunks'],
+                        'workspace': content_data.get('workspace', ''),
+                        'database_name': content_data.get('database_name', ''),
+                        'char_start': chunk['char_start'],
+                        'char_end': chunk['char_end'],
+                        'estimated_tokens': chunk['estimated_tokens'],
+                        'date_boundary': chunk.get('date_boundary'),
+                        'parent_file_path': file_path,
+                        'created_time': content_data.get('created_time'),
+                        'synced_time': synced_time
+                    }
+                    self.add_page_chunk(chunk_data)
+                
+                # Embed chunks to vector DB
+                success = vector_db.add_content_with_chunking(
+                    page_id=page_id,
+                    content_text=content_text,
+                    metadata=metadata,
+                    chunks=chunks
+                )
+                
+                if success:
+                    logger.info(f"✅ Embedded {len(chunks)} chunks to vector DB for page: {page_id}")
+                
+                return success
+            else:
+                # Content fits in single embedding, use standard flow
+                success = vector_db.add_content(
+                    page_id=page_id,
+                    content_text=content_text,
+                    metadata=metadata
+                )
+                
+                if success:
+                    logger.debug(f"✅ Embedded to vector DB: {page_id} ({estimated_tokens} tokens)")
+                
+                return success
         
         except Exception as e:
             # Silently log errors - don't disrupt sync if vector DB has issues
@@ -1037,6 +1133,98 @@ class HybridContentRegistry:
         except sqlite3.Error as e:
             print(f"Database error while clearing generic_content for {database_name}: {e}")
             return 0
+    
+    def add_page_chunk(self, chunk_data: Dict[str, Any]) -> bool:
+        """
+        Add a page chunk to the database.
+        
+        Args:
+            chunk_data: Dict containing chunk metadata
+                Required: chunk_id, page_id, chunk_index, total_chunks, 
+                         workspace, database_name, parent_file_path, synced_time
+                Optional: char_start, char_end, estimated_tokens, date_boundary, created_time
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO notion_page_chunks (
+                        chunk_id, page_id, chunk_index, total_chunks,
+                        workspace, database_name, char_start, char_end,
+                        estimated_tokens, date_boundary, parent_file_path,
+                        created_time, synced_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    chunk_data['chunk_id'],
+                    chunk_data['page_id'],
+                    chunk_data['chunk_index'],
+                    chunk_data['total_chunks'],
+                    chunk_data['workspace'],
+                    chunk_data['database_name'],
+                    chunk_data.get('char_start'),
+                    chunk_data.get('char_end'),
+                    chunk_data.get('estimated_tokens'),
+                    chunk_data.get('date_boundary'),
+                    chunk_data['parent_file_path'],
+                    chunk_data.get('created_time'),
+                    chunk_data['synced_time']
+                ))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error adding page chunk {chunk_data.get('chunk_id')}: {e}")
+            return False
+    
+    def get_chunks_for_page(self, page_id: str) -> List[Dict[str, Any]]:
+        """
+        Retrieve all chunks for a given page.
+        
+        Args:
+            page_id: Page identifier
+        
+        Returns:
+            List of chunk metadata dicts, ordered by chunk_index
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM notion_page_chunks 
+                    WHERE page_id = ?
+                    ORDER BY chunk_index
+                """, (page_id,))
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error retrieving chunks for page {page_id}: {e}")
+            return []
+    
+    def remove_chunks_for_page(self, page_id: str) -> bool:
+        """
+        Remove all chunks for a given page.
+        
+        Args:
+            page_id: Page identifier
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM notion_page_chunks WHERE page_id = ?", (page_id,))
+                conn.commit()
+                deleted_count = cursor.rowcount
+                if deleted_count > 0:
+                    logger.debug(f"Removed {deleted_count} chunks for page {page_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Error removing chunks for page {page_id}: {e}")
+            return False
             
     def close(self):
         """Close the database connection."""

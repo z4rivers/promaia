@@ -143,12 +143,27 @@ def process_vector_search_to_content(
             return {}  # Return empty results to prevent chat from loading
         
         if result["success"] and result["results"]:
-            # Extract page IDs from the results
+            # Extract page IDs from the results (handling both chunks and full pages)
             page_ids = []
+            chunk_matches = {}  # Map page_id -> list of matched chunk indices
+            
             for db_name, entries in result["results"].items():
                 for entry in entries:
-                    if entry.get('page_id'):
-                        page_ids.append(entry['page_id'])
+                    # Check if this is a chunk (chunk_id exists in metadata)
+                    metadata = entry.get('metadata', {})
+                    page_id = metadata.get('page_id') or entry.get('page_id')
+                    
+                    if page_id:
+                        if page_id not in page_ids:
+                            page_ids.append(page_id)
+                        
+                        # Track chunk matches
+                        if metadata.get('is_chunk'):
+                            chunk_index = metadata.get('chunk_index', 0)
+                            if page_id not in chunk_matches:
+                                chunk_matches[page_id] = []
+                            if chunk_index not in chunk_matches[page_id]:
+                                chunk_matches[page_id].append(chunk_index)
             
             if not page_ids:
                 if verbose:
@@ -157,7 +172,8 @@ def process_vector_search_to_content(
             
             # Use the universal adapter to load full content
             if verbose:
-                print_text(f"📄 Loading full content for {len(page_ids)} pages...", style="dim")
+                chunks_info = f" (with {len(chunk_matches)} chunked pages)" if chunk_matches else ""
+                print_text(f"📄 Loading full content for {len(page_ids)} pages{chunks_info}...", style="dim")
             
             from promaia.storage.files import load_content_by_page_ids
             
@@ -166,6 +182,27 @@ def process_vector_search_to_content(
                 db_path="data/hybrid_metadata.db",
                 expand_gmail_threads=True
             )
+            
+            # Enhance results with chunk match information
+            if chunk_matches:
+                from promaia.storage.hybrid_storage import get_hybrid_registry
+                registry = get_hybrid_registry()
+                
+                for db_name, pages in full_content.items():
+                    for page in pages:
+                        page_id = page.get('page_id')
+                        if page_id in chunk_matches:
+                            # Add chunk match metadata
+                            page['matched_chunks'] = sorted(chunk_matches[page_id])
+                            
+                            # Get chunk boundaries for reference
+                            chunks_data = registry.get_chunks_for_page(page_id)
+                            if chunks_data:
+                                page['chunk_boundaries'] = [
+                                    (c['char_start'], c['char_end']) 
+                                    for c in chunks_data
+                                ]
+                                page['total_chunks'] = len(chunks_data)
             
             if full_content:
                 total_loaded = sum(len(pages) for pages in full_content.values())
