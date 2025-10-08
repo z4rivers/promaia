@@ -159,8 +159,8 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     current_enabled_set.add(db_name)
         
         for db in workspace_databases:
-            # Skip disabled databases unless they're specifically requested in the filter
-            if not db.sync_enabled and not (database_filter and db.get_qualified_name() in database_filter):
+            # Skip databases not included in browser unless they're specifically requested in the filter
+            if not db.browser_include and not (database_filter and db.get_qualified_name() in database_filter):
                 continue
                 
             qualified_name = db.get_qualified_name()
@@ -234,15 +234,15 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
         if not all_entries:
             # Provide more specific error messaging
             if database_filter:
-                disabled_dbs = [db for db in workspace_databases if not db.sync_enabled and db.get_qualified_name() in database_filter]
-                if disabled_dbs:
-                    db_names = [db.get_qualified_name() for db in disabled_dbs]
-                    console.print(f"❌ Requested databases are disabled: {', '.join(db_names)}", style="red")
-                    console.print(f"💡 Enable them in config or sync some channels first", style="yellow")
+                hidden_dbs = [db for db in workspace_databases if not db.browser_include and db.get_qualified_name() in database_filter]
+                if hidden_dbs:
+                    db_names = [db.get_qualified_name() for db in hidden_dbs]
+                    console.print(f"❌ Requested databases are hidden from browser: {', '.join(db_names)}", style="red")
+                    console.print(f"💡 Set 'browser_include': true in config to show them", style="yellow")
                 else:
                     console.print(f"❌ No databases found matching filter: {', '.join(database_filter)}", style="red")
             else:
-                console.print(f"❌ No enabled databases or channels in workspace '{workspace}'", style="red")
+                console.print(f"❌ No databases or channels available in workspace '{workspace}'", style="red")
             return []
         
         # Sort entries: regular databases first, then Discord channels, alphabetically within each group
@@ -281,11 +281,16 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
         
         for entry in all_entries:
             # Determine group for this entry
-            entry_group = 'databases' if entry['type'] == 'database' else 'discord'
+            # For Discord entries, group by database (server), for regular databases group together
+            if entry['type'] == 'database':
+                entry_group = 'databases'
+            else:
+                # Group Discord channels by their server (database name)
+                entry_group = entry['database']
             
             # Add group header if this is a new group
             if current_group != entry_group:
-                # Add spacing before Discord group (but not before first group)
+                # Add spacing before new group (but not before first group)
                 if current_group is not None:
                     spacer_window = Window(height=1)
                     source_windows.append(spacer_window)
@@ -293,7 +298,8 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                 if entry_group == 'databases':
                     header_text = "📄 Regular Databases:"
                 else:
-                    header_text = "💬 Discord Channels:"
+                    # For Discord groups, capitalize the server name nicely
+                    header_text = f"💬 {entry_group.title()}:"
                 
                 # Create header window (non-focusable)
                 header_window = Window(

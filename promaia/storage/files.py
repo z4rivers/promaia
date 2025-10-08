@@ -928,10 +928,6 @@ def read_markdown_files_with_registry(
         pages = apply_simple_property_filters(pages, property_filters)
         filters_applied = True
     
-    # Report filtering results
-    if filters_applied and len(pages) != initial_page_count:
-        print(f"Applied property filters: {len(pages)} pages remain after filtering")
-    
     # Registry-first: if no results, that's the authoritative answer
     if len(pages) == 0:
         # Use database_id for the error message since that's what we actually queried
