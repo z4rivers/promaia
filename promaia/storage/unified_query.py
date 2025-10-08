@@ -257,17 +257,17 @@ class HybridQueryInterface:
             return []
     
     def natural_language_query(self, nl_prompt: str, workspace: str = None, database_names: List[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Process natural language queries using pattern-based processing."""
+        """Process natural language queries using the agentic system with retry logic."""
         try:
-            from promaia.ai.intelligent_nl_processor import process_natural_language_to_content
+            from promaia.ai.nl_processor_wrapper import process_natural_language_to_content
         except ImportError as e:
             print(f"❌ Natural language processing not available: {e}")
-            return []
+            return {}
         
         # For cross-workspace queries, we don't need specific workspace context
-        # The AI will handle workspace filtering in the SQL when specifically mentioned
+        # The agentic AI will handle workspace filtering in the SQL when specifically mentioned
         
-        # Process using clean pattern-based approach
+        # Process using new agentic system (with schema exploration, learning, retry)
         return process_natural_language_to_content(nl_prompt, workspace, database_names)
     
     def get_database_context(self, workspace: str) -> Dict[str, Any]:

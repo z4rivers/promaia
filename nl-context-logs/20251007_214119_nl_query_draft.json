@@ -1,0 +1,122 @@
+{
+  "user_query": "trass gmail with term avask from within last 2 months",
+  "intent": {
+    "goal": "search for emails containing 'avask'",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "avask"
+    ],
+    "date_filter": {
+      "days_back": 60,
+      "description": "last 2 months"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\ng.subject,\ng.body_snippet,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.content_type = 'gmail'\nAND (\n  g.subject LIKE '%avask%'\n  OR g.body_snippet LIKE '%avask%'\n  OR g.message_content LIKE '%avask%'\n)\nAND u.created_time >= date('now', '-2 months')\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 107,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 107
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197f080756b9e788",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 9 Jul 2025 18:43:45 +0000",
+      "sender_email": "Laura West <laura.west@avaskgroup.com>",
+      "subject": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "Good Afternoon Koii, Thats great that you are still able to progress in Australia, I just resent the quote to both you and Steve, please confirm you are happy with it via the link in the email, I can",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1973bf7fab825f6c",
+      "title": "Re: Trass Games - ShipBob Expansion",
+      "created_time": "Wed, 4 Jun 2025 17:23:11 +0000",
+      "sender_email": "Andrew Costello <acostello@shipbob.com>",
+      "subject": "Re: Trass Games - ShipBob Expansion",
+      "body_snippet": "Hi Jayshay, Thanks for getting back to me. What stage of the process are you with Avask? We also provide fulfillment for Canada and Australia too. It would be beneficial to setup a call and get a",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1991189d5a0133d1",
+      "title": "Re: Trass Games International part 2: Canada FC access and linking ShipBob accounts",
+      "created_time": "Wed, 3 Sep 2025 14:44:28 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: Trass Games International part 2: Canada FC access and linking ShipBob accounts",
+      "body_snippet": "Hi Andrew, Here&#39;s where we are: - Canada: Per Canusa, the Canadian tax office is processing applications submitted about three weeks ahead of ours. Based on that cadence, they estimate we have 2-3",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1990ee185e658c59",
+      "title": "RE: HMRC more info request",
+      "created_time": "Wed, 3 Sep 2025 09:21:10 +0000",
+      "sender_email": "Karen Faleiro <karen.faleiro@avaskgroup.com>",
+      "subject": "RE: HMRC more info request",
+      "body_snippet": "Hi Steve, Good morning!! Thank you for the email. This is a normal process followed by HMRC, we submit the application online where we have to attach the director&#39;s passport &amp; 2 latest address",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a89e635e6e57a",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 20:43:47 +0100",
+      "sender_email": "Steve Shockey <steve@trassgames.com>",
+      "subject": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "Koii, Is there an email string I can get in for these docs? I thought I sent everything to Avask already. Best, Steve On Jun 25, 2025, at 8:30 PM, Koii Benvenutto &lt;koii@trassgames.com&gt; wrote: \ufeff",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a89ef5f72f5f9",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:44:38 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "They&#39;re included in the forward if you scroll to bottom of thread. thank you On Wed, Jun 25, 2025 at 12:44 PM Steve Shockey &lt;steve@trassgames.com&gt; wrote: Koii, Is there an email string I can",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a891d62646e85",
+      "title": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:30:18 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "Hey Steve, Could you please take over these two items for the AVASK UK VAT registration? 1. **Screenshot:** Karen Faleiro is still waiting for a screenshot of the &quot;Seller Account Info - Backend to",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a88225cb856d2",
+      "title": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:13:09 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "subject": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "Hey Gus, Could you please handle this for Karen Faleiro at AVASK? She&#39;s been waiting on a specific screenshot for our UK VAT registration. It needs to be of the &quot;Seller Account Info - Backend",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a6dbf1ebe19dd",
+      "title": "RE: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 11:31:44 +0000",
+      "sender_email": "Karen Faleiro <karen.faleiro@avaskgroup.com>",
+      "subject": "RE: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "body_snippet": "Hi Koii, Good afternoon!! Hope you doing well. We are still waiting for the below: Screenshot of the account details (Seller Account Info - Backend to show your entity name / ownership of this account.",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1997d21b66a786b1",
+      "title": "Re: Check-in on UK & AU registrations",
+      "created_time": "Wed, 24 Sep 2025 19:09:14 +0000",
+      "sender_email": "Gianfranco Calandriello <gian.calandriello@avaskgroup.com>",
+      "subject": "Re: Check-in on UK & AU registrations",
+      "body_snippet": "Hi Steve, Thank you so much for sending it over so quickly. I&#39;ve gone ahead and forwarded Jack&#39;s ID and also asked for an expected timeframe. Once I receive a response, I&#39;ll keep you posted",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 107 entries from 1 databases"
+  },
+  "retries": 0
+}

@@ -1,0 +1,104 @@
+{
+  "user_query": "gmail with term test",
+  "intent": {
+    "goal": "find gmail messages containing 'test'",
+    "databases": [
+      "gmail",
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "test"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name IN ('gmail', 'trass.gmail')\nAND (\n    LOWER(u.title) LIKE '%test%'\n    OR LOWER(g.subject) LIKE '%test%'\n    OR LOWER(g.sender_name) LIKE '%test%'\n    OR LOWER(g.sender_email) LIKE '%test%'\n    OR LOWER(g.recipient_emails) LIKE '%test%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 158,
+  "databases_in_results": [
+    "trass.gmail",
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 153,
+    "trass.gmail": 5
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197efa3a4f8794dd",
+      "title": "[Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 14:42:28 +0000",
+      "sender_email": "Qima LabTesting Group <labtesting@qima.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1985d10a0fe173f2",
+      "title": "Check out the latest from your saved sellers",
+      "created_time": "Wed, 30 Jul 2025 20:40:24 +0000 (UTC)",
+      "sender_email": "eBay <ebay@ebay.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19686865dec31331",
+      "title": "[Test Report] LT of PLUSH TOYS AND ACCESSORY SET is Pass (ref: T-24328905-06-R /  / International Order : PO: P-0004 (Batch 2025-05))",
+      "created_time": "Wed, 30 Apr 2025 11:47:52 +0000",
+      "sender_email": "wanna.peng@qima.com",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199114bd7d589dbc",
+      "title": "Here's your latest Credit Summary",
+      "created_time": "Wed, 3 Sep 2025 20:36:44 +0000 (UTC)",
+      "sender_email": "Chase Credit Journey <no.reply.alerts@chase.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19719f3d219ea69b",
+      "title": "Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th",
+      "created_time": "Wed, 28 May 2025 19:51:38 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19719cc74ad1982b",
+      "title": "Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th",
+      "created_time": "Wed, 28 May 2025 19:08:26 -0700",
+      "sender_email": "George <grafidi13@gmail.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197183e508b4b9ee",
+      "title": "Yeeps Maker Tester Session 3 Invitation Email",
+      "created_time": "Wed, 28 May 2025 11:53:46 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1971838d54b13d0d",
+      "title": "Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th",
+      "created_time": "Wed, 28 May 2025 11:47:47 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19718385c6990a5a",
+      "title": "Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th",
+      "created_time": "Wed, 28 May 2025 11:47:16 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1971836d064395cc",
+      "title": "Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th",
+      "created_time": "Wed, 28 May 2025 11:45:34 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 158 entries from 2 databases"
+  },
+  "retries": 0
+}

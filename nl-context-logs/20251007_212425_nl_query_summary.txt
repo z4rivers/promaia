@@ -1,0 +1,49 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:24:25
+
+USER QUERY: gmail with term test
+
+INTENT PARSED:
+  Goal: find gmail emails containing the word test
+  Databases: gmail, trass.gmail
+  Search Terms: test
+  Date Filter: 
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.database_name IN ('gmail', 'trass.gmail')
+AND (
+    LOWER(u.title) LIKE '%test%'
+    OR LOWER(g.subject) LIKE '%test%'
+    OR LOWER(g.sender_email) LIKE '%test%'
+    OR LOWER(g.sender_name) LIKE '%test%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 158
+  Databases Found: trass.gmail, gmail
+  
+  Breakdown by Database:
+    • gmail: 153 entries
+    • trass.gmail: 5 entries
+
+  Sample Results (first 5):
+    1. [Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass (gmail)
+       Date: Wed, 9 Jul
+    2. Check out the latest from your saved sellers (gmail)
+       Date: Wed, 30 Ju
+    3. [Test Report] LT of PLUSH TOYS AND ACCESSORY SET is Pass (ref: T-24328905-06-R /  / International Order : PO: P-0004 (Batch 2025-05)) (gmail)
+       Date: Wed, 30 Ap
+    4. Here's your latest Credit Summary (gmail)
+       Date: Wed, 3 Sep
+    5. Re: Join us for Yeeps Maker Testing Session 3 - Sunday, June 8th (gmail)
+       Date: Wed, 28 Ma

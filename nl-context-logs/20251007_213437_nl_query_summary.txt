@@ -1,0 +1,39 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:34:37
+
+USER QUERY: trass stories from the last 3 mondays
+
+INTENT PARSED:
+  Goal: find trass stories content from the last 3 mondays
+  Databases: trass.stories, stories, trass.journal, trass.cpj
+  Search Terms: stories
+  Date Filter: last 3 mondays
+
+GENERATED SQL:
+SELECT DISTINCT
+  u.page_id,
+  u.title,
+  u.created_time,
+  u.database_name
+FROM unified_content u
+WHERE u.database_name IN ('trass.stories', 'stories')
+AND date(u.created_time) IN (
+  date('now', 'weekday 1', '-14 days'),
+  date('now', 'weekday 1', '-7 days'),
+  date('now', 'weekday 1')
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 2
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 2 entries
+
+  Sample Results (first 5):
+    1. Promaia CMS newsletter vs blog Post handling (stories)
+       Date: 2025-09-29
+    2. P (stories)
+       Date: 2025-09-29

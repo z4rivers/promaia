@@ -1,0 +1,49 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:36:16
+
+USER QUERY: trass gmail with term test
+
+INTENT PARSED:
+  Goal: search gmail content in trass workspace
+  Databases: trass.gmail
+  Search Terms: test
+  Date Filter: 
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.database_name = 'trass.gmail'
+AND (
+    LOWER(u.title) LIKE '%test%'
+    OR LOWER(g.subject) LIKE '%test%'
+    OR LOWER(g.sender_name) LIKE '%test%'
+    OR LOWER(g.sender_email) LIKE '%test%'
+    OR LOWER(g.recipient_emails) LIKE '%test%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 5
+  Databases Found: trass.gmail
+  
+  Breakdown by Database:
+    • trass.gmail: 5 entries
+
+  Sample Results (first 5):
+    1. test (trass.gmail)
+       Date: 2025-07-16
+    2. _Test (trass.gmail)
+       Date: 2025-07-16
+    3. _Test (trass.gmail)
+       Date: 2025-07-16
+    4. _Test (trass.gmail)
+       Date: 2025-07-16
+    5. _TEST_ (trass.gmail)
+       Date: 2025-07-16

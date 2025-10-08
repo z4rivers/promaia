@@ -1,0 +1,66 @@
+{
+  "user_query": "trass gmail with term test",
+  "intent": {
+    "goal": "search gmail content in trass workspace",
+    "databases": [
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "test"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name = 'trass.gmail'\nAND (\n    LOWER(u.title) LIKE '%test%'\n    OR LOWER(g.subject) LIKE '%test%'\n    OR LOWER(g.sender_name) LIKE '%test%'\n    OR LOWER(g.sender_email) LIKE '%test%'\n    OR LOWER(g.recipient_emails) LIKE '%test%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 5,
+  "databases_in_results": [
+    "trass.gmail"
+  ],
+  "database_breakdown": {
+    "trass.gmail": 5
+  },
+  "sample_results": [
+    {
+      "page_id": "195dabfc39d55449",
+      "title": "test",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    },
+    {
+      "page_id": "196f81974118d8b9",
+      "title": "_Test",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    },
+    {
+      "page_id": "197efa3a4f8794dd",
+      "title": "_Test",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    },
+    {
+      "page_id": "19686865dec31331",
+      "title": "_Test",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    },
+    {
+      "page_id": "195eee2c6923c7ec",
+      "title": "_TEST_",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 5 entries from 1 databases"
+  },
+  "retries": 0
+}

@@ -1,0 +1,102 @@
+{
+  "user_query": "trass gmail with term mgm from last 2 months",
+  "intent": {
+    "goal": "find gmail content containing 'mgm' in trass workspace",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": 60,
+      "description": "last 2 months"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \n  u.page_id,\n  u.title,\n  u.created_time,\n  g.sender_email,\n  u.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE (u.database_name LIKE 'trass.gmail' OR u.database_name = 'gmail')\nAND (u.title LIKE '%mgm%' OR g.subject LIKE '%mgm%')\nAND u.created_time >= date('now', '-2 months')\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 10,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 10
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197c958980abc379",
+      "title": "Meeting Summary for MGM x Trass Next Meeting: Tuesday 8pm PDT / Wednesday 11am HKT",
+      "created_time": "Wed, 02 Jul 2025 04:15:14 +0000 (UTC)",
+      "sender_email": "\"Fionn Ng via Otter.ai\" <no-reply@otter.ai>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197c94f5b5893830",
+      "title": "Meeting Summary for MGM x Trass Next Meeting: Tuesday 8pm PDT / Wednesday 11am HKT",
+      "created_time": "Wed, 02 Jul 2025 04:05:08 +0000 (UTC)",
+      "sender_email": "\"John Chiu via Otter.ai\" <no-reply@otter.ai>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197c9156171235de",
+      "title": "Fionn Ng shared MGM x Trass Next Meeting: Tuesday 8pm PDT / Wednesday 11am HKT in Otter",
+      "created_time": "Wed, 02 Jul 2025 03:01:49 +0000 (UTC)",
+      "sender_email": "\"Fionn Ng via Otter.ai\" <no-reply@otter.ai>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197c915187be3a98",
+      "title": "John Chiu shared MGM x Trass Next Meeting: Tuesday 8pm PDT / Wednesday 11am HKT in Otter",
+      "created_time": "Wed, 02 Jul 2025 03:01:31 +0000 (UTC)",
+      "sender_email": "\"John Chiu via Otter.ai\" <no-reply@otter.ai>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197aed1d3e13163b",
+      "title": "MGM x Trass Next Meeting: Monday 8pm PDT / Tuesday 11am HKT",
+      "created_time": "Thu, 26 Jun 2025 17:37:55 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197b3e35afd6c560",
+      "title": "MGM x Trass Next Meeting: Tuesday 8pm PDT / Wednesday 11am HKT",
+      "created_time": "Sat, 28 Jun 2025 00:15:03 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1967d92e42178026",
+      "title": "Accepted: Christine Koii Plush Pets MGM V1 design document @ Mon Apr 28, 2025 11am - 12:30pm (PDT) (koii@trassgames.com)",
+      "created_time": "Mon, 28 Apr 2025 18:05:00 +0000",
+      "sender_email": "Christine Co <christine@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197b280b5d85e171",
+      "title": "Re: MGM x Trass Next Meeting: Monday 8pm PDT / Tuesday 11am HKT",
+      "created_time": "Fri, 27 Jun 2025 10:47:48 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197b20cc37e8fe0d",
+      "title": "Re: MGM x Trass Next Meeting: Monday 8pm PDT / Tuesday 11am HKT",
+      "created_time": "Fri, 27 Jun 2025 08:40:57 -0700",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197afa3ffc207308",
+      "title": "RE: MGM x Trass Next Meeting: Monday 8pm PDT / Tuesday 11am HKT",
+      "created_time": "Fri, 27 Jun 2025 04:27:22 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 10 entries from 1 databases"
+  },
+  "retries": 0
+}

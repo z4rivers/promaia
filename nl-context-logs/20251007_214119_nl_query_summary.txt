@@ -1,0 +1,50 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:41:19
+
+USER QUERY: trass gmail with term avask from within last 2 months
+
+INTENT PARSED:
+  Goal: search for emails containing 'avask'
+  Databases: trass.gmail, gmail
+  Search Terms: avask
+  Date Filter: last 2 months
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+g.subject,
+g.body_snippet,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.content_type = 'gmail'
+AND (
+  g.subject LIKE '%avask%'
+  OR g.body_snippet LIKE '%avask%'
+  OR g.message_content LIKE '%avask%'
+)
+AND u.created_time >= date('now', '-2 months')
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 107
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 107 entries
+
+  Sample Results (first 5):
+    1. Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process. (gmail)
+       Date: Wed, 9 Jul
+    2. Re: Trass Games - ShipBob Expansion (gmail)
+       Date: Wed, 4 Jun
+    3. Re: Trass Games International part 2: Canada FC access and linking ShipBob accounts (gmail)
+       Date: Wed, 3 Sep
+    4. RE: HMRC more info request (gmail)
+       Date: Wed, 3 Sep
+    5. Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process. (gmail)
+       Date: Wed, 25 Ju

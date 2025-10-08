@@ -1,0 +1,45 @@
+{
+  "user_query": "trass emails with term mgm",
+  "intent": {
+    "goal": "find emails containing 'mgm'",
+    "databases": [
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \n    u.page_id,\n    u.title,\n    u.created_time,\n    g.sender_email,\n    u.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name = 'trass.gmail'\nAND (\n    u.title LIKE '%mgm%'\n    OR g.subject LIKE '%mgm%'\n    OR g.sender_email LIKE '%mgm%'\n    OR g.sender_name LIKE '%mgm%'\n    OR g.recipient_emails LIKE '%mgm%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 2,
+  "databases_in_results": [
+    "trass.gmail"
+  ],
+  "database_breakdown": {
+    "trass.gmail": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "197aed1d3e13163b",
+      "title": "MGM",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    },
+    {
+      "page_id": "197b3e35afd6c560",
+      "title": "MGM",
+      "created_time": "2025-07-16T00:00:00Z",
+      "sender_email": null,
+      "database_name": "trass.gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 2 entries from 1 databases"
+  },
+  "retries": 0
+}

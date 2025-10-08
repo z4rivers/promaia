@@ -1,0 +1,45 @@
+{
+  "user_query": "trass stories from the last 3 mondays",
+  "intent": {
+    "goal": "find Trass stories from the last 3 Mondays",
+    "databases": [
+      "trass.stories",
+      "stories"
+    ],
+    "search_terms": [
+      "trass",
+      "stories"
+    ],
+    "date_filter": {
+      "days_back": 21,
+      "description": "last 3 Mondays"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT\n  u.page_id,\n  u.title,\n  u.created_time,\n  u.database_name\nFROM unified_content u\nWHERE u.database_name IN ('trass.stories', 'stories')\n  AND date(u.created_time) IN (\n    date('now', '-14 days'),\n    date('now', '-7 days'),\n    date('now', 'weekday 1')\n  )\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 2,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "27fce8f7-317a-80fb-a270-ca7800acfed2",
+      "title": "UK 2025-07 Temp Storage",
+      "created_time": "2025-10-01T20:50:00.000Z",
+      "database_name": "stories"
+    },
+    {
+      "page_id": "278ce8f7-317a-8074-bd65-d2e34aa30a30",
+      "title": "plush pets series 1 copy",
+      "created_time": "2025-09-24T19:48:00.000Z",
+      "database_name": "stories"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 2 entries from 1 databases"
+  },
+  "retries": 0
+}

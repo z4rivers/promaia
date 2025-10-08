@@ -1,0 +1,92 @@
+{
+  "user_query": "journal from last week",
+  "intent": {
+    "goal": "find journal entries from the past week",
+    "databases": [
+      "journal",
+      "trass.journal"
+    ],
+    "search_terms": [
+      "journal"
+    ],
+    "date_filter": {
+      "days_back": 7,
+      "description": "last week"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT\n    u.page_id,\n    u.title,\n    u.created_time,\n    u.database_name\nFROM unified_content u\nWHERE u.database_name IN ('journal', 'trass.journal')\n    AND u.created_time >= date('now', '-7 days')\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 16,
+  "databases_in_results": [
+    "journal"
+  ],
+  "database_breakdown": {
+    "journal": 16
+  },
+  "sample_results": [
+    {
+      "page_id": "285ce8f7-317a-8186-9c52-f7b71c149567",
+      "title": "2025-10-07",
+      "created_time": "2025-10-07T07:05:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "285d1339-6967-81c3-a763-f8084fc5dfb8",
+      "title": "2025-10-07",
+      "created_time": "2025-10-07T04:15:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "284ce8f7-317a-81e5-a4a0-d61cdbdc88b0",
+      "title": "2025-10-06",
+      "created_time": "2025-10-06T07:00:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "284ce8f7-317a-807b-84eb-dc7b58b9752d",
+      "title": "2025-10-06",
+      "created_time": "2025-10-06T04:54:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "284d1339-6967-81bb-b74a-e42f1b20b0e0",
+      "title": "2025-10-06",
+      "created_time": "2025-10-06T04:45:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "283d1339-6967-81b5-a21f-d0a6af20ddbd",
+      "title": "2025-10-05",
+      "created_time": "2025-10-05T04:10:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "282ce8f7-317a-8023-a100-e127732ed166",
+      "title": "2025-10-04",
+      "created_time": "2025-10-04T16:44:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "282d1339-6967-809c-9b58-e9eb0aad7884",
+      "title": "\u201cThis is for queer people\u201d Work",
+      "created_time": "2025-10-04T04:59:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "282d1339-6967-8162-8ae0-f6d257683048",
+      "title": "2025-10-04",
+      "created_time": "2025-10-04T04:44:00.000Z",
+      "database_name": "journal"
+    },
+    {
+      "page_id": "281ce8f7-317a-8132-a142-fed20d52856a",
+      "title": "2025-10-03",
+      "created_time": "2025-10-03T07:01:00.000Z",
+      "database_name": "journal"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 16 entries from 1 databases"
+  },
+  "retries": 0
+}

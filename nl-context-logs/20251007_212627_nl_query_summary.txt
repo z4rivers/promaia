@@ -1,0 +1,39 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:26:27
+
+USER QUERY: trass stories from the last 3 mondays
+
+INTENT PARSED:
+  Goal: find Trass stories from the last 3 Mondays
+  Databases: trass.stories, stories
+  Search Terms: trass, stories
+  Date Filter: last 3 Mondays
+
+GENERATED SQL:
+SELECT DISTINCT
+  u.page_id,
+  u.title,
+  u.created_time,
+  u.database_name
+FROM unified_content u
+WHERE u.database_name IN ('trass.stories', 'stories')
+  AND date(u.created_time) IN (
+    date('now', '-14 days'),
+    date('now', '-7 days'),
+    date('now', 'weekday 1')
+  )
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 2
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 2 entries
+
+  Sample Results (first 5):
+    1. UK 2025-07 Temp Storage (stories)
+       Date: 2025-10-01
+    2. plush pets series 1 copy (stories)
+       Date: 2025-09-24

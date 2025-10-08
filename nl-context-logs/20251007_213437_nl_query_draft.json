@@ -1,0 +1,46 @@
+{
+  "user_query": "trass stories from the last 3 mondays",
+  "intent": {
+    "goal": "find trass stories content from the last 3 mondays",
+    "databases": [
+      "trass.stories",
+      "stories",
+      "trass.journal",
+      "trass.cpj"
+    ],
+    "search_terms": [
+      "stories"
+    ],
+    "date_filter": {
+      "days_back": 21,
+      "description": "last 3 mondays"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT\n  u.page_id,\n  u.title,\n  u.created_time,\n  u.database_name\nFROM unified_content u\nWHERE u.database_name IN ('trass.stories', 'stories')\nAND date(u.created_time) IN (\n  date('now', 'weekday 1', '-14 days'),\n  date('now', 'weekday 1', '-7 days'),\n  date('now', 'weekday 1')\n)\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 2,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "27dd1339-6967-8047-ac26-e84caf8808ce",
+      "title": "Promaia CMS newsletter vs blog Post handling",
+      "created_time": "2025-09-29T20:47:00.000Z",
+      "database_name": "stories"
+    },
+    {
+      "page_id": "27dd1339-6967-80b5-b733-f04dc17c14a8",
+      "title": "P",
+      "created_time": "2025-09-29T19:05:00.000Z",
+      "database_name": "stories"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 2 entries from 1 databases"
+  },
+  "retries": 0
+}

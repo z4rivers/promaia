@@ -1,0 +1,51 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:11:28
+
+USER QUERY: trass gmail with term mgm from last month
+
+INTENT PARSED:
+  Goal: find gmail communications with MGM
+  Databases: trass.gmail, gmail
+  Search Terms: mgm
+  Date Filter: last month
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+g.sender_name,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE (u.database_name IN ('gmail', 'trass.gmail'))
+AND (
+  LOWER(u.title) LIKE '%mgm%'
+  OR LOWER(g.subject) LIKE '%mgm%'
+  OR LOWER(g.sender_email) LIKE '%mgm%'
+  OR LOWER(g.sender_name) LIKE '%mgm%'
+  OR LOWER(g.recipient_emails) LIKE '%mgm%'
+)
+AND u.created_time >= DATE('now', '-30 days')
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 870
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 870 entries
+
+  Sample Results (first 5):
+    1. Re: Pets Design 2025-07-06 (gmail)
+       Date: Wed, 9 Jul
+    2. RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s) (gmail)
+       Date: Wed, 9 Jul
+    3. [Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass (gmail)
+       Date: Wed, 9 Jul
+    4. Re: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s) (gmail)
+       Date: Wed, 9 Jul
+    5. RE: Pets Design 2025-07-06 (gmail)
+       Date: Wed, 9 Jul

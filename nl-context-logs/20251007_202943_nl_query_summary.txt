@@ -1,0 +1,48 @@
+Natural Language Query Summary
+Generated: 2025-10-07 20:29:43
+
+USER QUERY: trass gmail from last month with term avask
+
+INTENT PARSED:
+  Goal: find Gmail messages containing 'avask' from trass workspace from last month
+  Databases: trass.gmail, gmail
+  Search Terms: avask
+  Date Filter: last month
+
+GENERATED SQL:
+SELECT DISTINCT 
+  u.page_id,
+  u.title,
+  u.created_time,
+  g.sender_email,
+  u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE (u.database_name IN ('trass.gmail', 'gmail'))
+AND (u.title LIKE '%avask%' 
+  OR g.subject LIKE '%avask%'
+  OR g.sender_email LIKE '%avask%'
+  OR g.sender_name LIKE '%avask%'
+  OR g.recipient_emails LIKE '%avask%')
+AND u.created_time >= DATE('now', '-1 month')
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 106
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 106 entries
+
+  Sample Results (first 5):
+    1. Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process. (gmail)
+       Date: Wed, 9 Jul
+    2. Re: HMRC more info request (gmail)
+       Date: Wed, 3 Sep
+    3. RE: HMRC more info request (gmail)
+       Date: Wed, 3 Sep
+    4. Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process. (gmail)
+       Date: Wed, 25 Ju
+    5. Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process. (gmail)
+       Date: Wed, 25 Ju

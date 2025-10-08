@@ -1,0 +1,43 @@
+Natural Language Query Summary
+Generated: 2025-10-07 20:40:58
+
+USER QUERY: trass emails with term mgm
+
+INTENT PARSED:
+  Goal: find emails containing 'mgm'
+  Databases: trass.gmail
+  Search Terms: mgm
+  Date Filter: 
+
+GENERATED SQL:
+SELECT DISTINCT 
+    u.page_id,
+    u.title,
+    u.created_time,
+    g.sender_email,
+    u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE u.database_name = 'trass.gmail'
+AND (
+    u.title LIKE '%mgm%'
+    OR g.subject LIKE '%mgm%'
+    OR g.sender_email LIKE '%mgm%'
+    OR g.sender_name LIKE '%mgm%'
+    OR g.recipient_emails LIKE '%mgm%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 2
+  Databases Found: trass.gmail
+  
+  Breakdown by Database:
+    • trass.gmail: 2 entries
+
+  Sample Results (first 5):
+    1. MGM (trass.gmail)
+       Date: 2025-07-16
+    2. MGM (trass.gmail)
+       Date: 2025-07-16

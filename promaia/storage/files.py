@@ -764,8 +764,7 @@ def read_markdown_files_with_registry(
             allowed_props = ["created_time", "last_edited_time", "synced_time"] # Use columns that exist in unified_content view
             if date_filter_prop not in allowed_props:
                 # If the configured property is not a direct column, use last_edited_time as fallback
-                if DEBUG_MODE:
-                    print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'last_edited_time' for query.")
+                print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'last_edited_time' for query.")
                 date_filter_prop = "last_edited_time"
 
             # Query the unified_content view for this database
@@ -928,10 +927,6 @@ def read_markdown_files_with_registry(
     if property_filters:
         pages = apply_simple_property_filters(pages, property_filters)
         filters_applied = True
-    
-    # Report filtering results
-    if filters_applied and len(pages) != initial_page_count:
-        print(f"Applied property filters: {len(pages)} pages remain after filtering")
     
     # Registry-first: if no results, that's the authoritative answer
     if len(pages) == 0:

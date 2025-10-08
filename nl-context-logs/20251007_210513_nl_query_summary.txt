@@ -1,0 +1,49 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:05:13
+
+USER QUERY: gmail with term mgm from last 2 months
+
+INTENT PARSED:
+  Goal: find gmail messages containing term 'mgm'
+  Databases: gmail, trass.gmail
+  Search Terms: mgm
+  Date Filter: last 2 months
+
+GENERATED SQL:
+SELECT DISTINCT 
+u.page_id,
+u.title,
+u.created_time,
+g.sender_email,
+u.database_name
+FROM unified_content u
+LEFT JOIN gmail_content g ON u.page_id = g.page_id
+WHERE (u.database_name IN ('gmail', 'trass.gmail'))
+AND (u.created_time >= DATE('now', '-2 months'))
+AND (
+    LOWER(u.title) LIKE '%mgm%'
+    OR LOWER(g.subject) LIKE '%mgm%'
+    OR LOWER(g.sender_email) LIKE '%mgm%'
+    OR LOWER(g.sender_name) LIKE '%mgm%'
+)
+ORDER BY u.created_time DESC
+LIMIT 1000;
+
+RESULTS:
+  Total Entries: 457
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 457 entries
+
+  Sample Results (first 5):
+    1. RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s) (gmail)
+       Date: Wed, 9 Jul
+    2. RE: Pets Design 2025-07-06 (gmail)
+       Date: Wed, 9 Jul
+    3. RE: [Draft Report] PLUSH TOYS/ACCESSORY SET_ T-24328905-06-R_Pass (gmail)
+       Date: Wed, 9 Jul
+    4. Re: Insane tariffs and our partnership (gmail)
+       Date: Wed, 9 Apr
+    5. Re: Insane tariffs and our partnership (gmail)
+       Date: Wed, 9 Apr

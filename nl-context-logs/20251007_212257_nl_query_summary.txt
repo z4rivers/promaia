@@ -1,0 +1,41 @@
+Natural Language Query Summary
+Generated: 2025-10-07 21:22:57
+
+USER QUERY: journal from last week
+
+INTENT PARSED:
+  Goal: find journal entries from the past week
+  Databases: journal, trass.journal
+  Search Terms: journal
+  Date Filter: last week
+
+GENERATED SQL:
+SELECT DISTINCT
+    u.page_id,
+    u.title,
+    u.created_time,
+    u.database_name
+FROM unified_content u
+WHERE u.database_name IN ('journal', 'trass.journal')
+    AND u.created_time >= date('now', '-7 days')
+ORDER BY u.created_time DESC
+LIMIT 1000
+
+RESULTS:
+  Total Entries: 16
+  Databases Found: journal
+  
+  Breakdown by Database:
+    • journal: 16 entries
+
+  Sample Results (first 5):
+    1. 2025-10-07 (journal)
+       Date: 2025-10-07
+    2. 2025-10-07 (journal)
+       Date: 2025-10-07
+    3. 2025-10-06 (journal)
+       Date: 2025-10-06
+    4. 2025-10-06 (journal)
+       Date: 2025-10-06
+    5. 2025-10-06 (journal)
+       Date: 2025-10-06

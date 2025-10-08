@@ -31,13 +31,11 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-08T00:00:06.886490+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:10.783205+00:00",
       "filters": {},
       "property_filters": {},
-      "date_filters": {
-        "property": "last_edited_time",
-        "type": "date"
-      },
+      "date_filters": {},
       "markdown_directory": "data/md/notion/koii/journal",
       "primary_format": "markdown",
       "save_markdown": true,
@@ -58,7 +56,8 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": true,
-      "last_sync_time": "2025-10-08T00:00:06.852795+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.386824+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -82,7 +81,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:07.962275+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.339571+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -106,7 +106,8 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:06.602934+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.329906+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -130,7 +131,8 @@
       "sync_frequency": "daily",
       "default_days": "all",
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:06.609536+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:08.960145+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -154,7 +156,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:06.861951+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.335986+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -178,13 +181,11 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-08T00:00:06.862966+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.776243+00:00",
       "filters": {},
       "property_filters": {},
-      "date_filters": {
-        "property": "Created time",
-        "type": "created_time"
-      },
+      "date_filters": {},
       "markdown_directory": "data/md/notion/trass/journal",
       "primary_format": "markdown",
       "save_markdown": true,
@@ -205,7 +206,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": true,
-      "last_sync_time": "2025-10-08T00:00:09.294201+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.566412+00:00",
       "filters": {},
       "property_filters": {
         "Team": "Consumer Product"
@@ -231,7 +233,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:10.603417+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:11.186885+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {
@@ -257,13 +260,11 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:06.105742+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:06.854455+00:00",
       "filters": {},
       "property_filters": {},
-      "date_filters": {
-        "property": "last_edited_time",
-        "type": "date"
-      },
+      "date_filters": {},
       "markdown_directory": "data/md/gmail/koiiTrass",
       "primary_format": "markdown",
       "save_markdown": true,
@@ -284,7 +285,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:16.896829+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.587347+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -308,7 +310,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:07.722496+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:08.050507+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": "1291943271509135415"
@@ -334,7 +337,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-09-23T22:20:54.745999+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T01:44:14.291605+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": [
@@ -343,7 +347,6 @@
           "1346935909689458708",
           "1351629843439288473",
           "1271261308574236776",
-          "1351317345330663474",
           "1230001715680645305"
         ]
       },
@@ -368,7 +371,8 @@
       "sync_frequency": "daily",
       "default_days": 7,
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:14.225236+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:14.393910+00:00",
       "filters": {},
       "property_filters": {
         "channel_id": [
@@ -400,7 +404,8 @@
       "sync_frequency": "daily",
       "default_days": "7",
       "default_include": false,
-      "last_sync_time": "2025-10-08T00:00:06.645236+00:00",
+      "browser_include": true,
+      "last_sync_time": "2025-10-08T04:30:07.337776+00:00",
       "filters": {
         "Team": "Consumer Product"
       },

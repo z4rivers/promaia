@@ -1178,7 +1178,7 @@ def chat_run(args):
                                     # Single workspace - expand to all its databases
                                     workspace_databases = db_manager.get_workspace_databases(browse_spec)
                                     for db in workspace_databases:
-                                        if db.sync_enabled:
+                                        if db.browser_include:
                                             database_filter.append(db.get_qualified_name())
                                 else:
                                     # Multiple workspaces - keep workspace name for browser to handle
@@ -1214,7 +1214,7 @@ def chat_run(args):
                         # Get all databases for this workspace
                         workspace_databases = db_manager.get_workspace_databases(workspace_name)
                         for db in workspace_databases:
-                            if db.sync_enabled:
+                            if db.browser_include:
                                 qualified_name = db.get_qualified_name()
 
                                 # Only add if not already specified by user and has default_include=true
@@ -1353,7 +1353,7 @@ def chat_run(args):
                                     # Single workspace - expand to all its databases
                                     workspace_databases = db_manager.get_workspace_databases(browse_spec)
                                     for db in workspace_databases:
-                                        if db.sync_enabled:
+                                        if db.browser_include:
                                             database_filter.append(db.get_qualified_name())
                                 else:
                                     # Multiple workspaces - keep workspace name for browser to handle
@@ -1376,7 +1376,7 @@ def chat_run(args):
                     for workspace_name in workspace_names_found:
                         workspace_databases = db_manager.get_workspace_databases(workspace_name)
                         for db in workspace_databases:
-                            if db.sync_enabled:
+                            if db.browser_include:
                                 qualified_name = db.get_qualified_name()
                                 
                                 # Check if this database should be pre-selected based on default_include
@@ -1505,9 +1505,13 @@ def chat_run(args):
     nl_prompt = None
     
     # Handle natural language processing
+    # NOTE: This -nl parsing MUST stay in sync with:
+    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~1872-1900)
+    # 2. safe_split_command() function in interface.py (line ~514)
+    # These are two sides of one feature and must handle multiple -nl arguments identically.
     nl_prompts = []
     if hasattr(args, 'natural_language') and args.natural_language:
-                # With action="append" and nargs="+", we get a list of lists
+        # With action="append" and nargs="+", we get a list of lists
         # Each inner list contains the tokens for one -nl argument
         nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
         if len(nl_prompts) > 1:
@@ -1677,6 +1681,8 @@ def chat_run_recents(args):
                 raw_args = safe_split_command(raw_command)
 
                 # Pre-process to handle multiple -nl arguments
+                # NOTE: This logic MUST match edit mode in promaia/chat/interface.py
+                # Both edit mode and top-level query are two sides of one feature.
                 processed_args = []
                 nl_arguments = []
                 i = 0
@@ -1920,7 +1926,7 @@ def chat_run_inline_browse(args):
                             # Expand workspace to all its databases
                             workspace_databases = db_manager.get_workspace_databases(db_name)
                             for db in workspace_databases:
-                                if db.sync_enabled:  # Only include enabled databases
+                                if db.browser_include:  # Only include databases visible in browser
                                     database_filter.append(db.get_qualified_name())
                         else:
                             database_filter.append(db_name)
@@ -1932,7 +1938,7 @@ def chat_run_inline_browse(args):
                         # Expand workspace to all its databases
                         workspace_databases = db_manager.get_workspace_databases(browse_spec)
                         for db in workspace_databases:
-                            if db.sync_enabled:  # Only include enabled databases
+                            if db.browser_include:  # Only include databases visible in browser
                                 database_filter.append(db.get_qualified_name())
                     else:
                         # It's a specific database name
@@ -2578,6 +2584,10 @@ def main():
         nargs="+",
         help="Use natural language to specify what content to load for chat context. Can be used multiple times for separate queries. Example: maia chat -nl 'emails about avask' -nl 'stories about canada'"
     )
+    # NOTE: This -nl argument definition MUST stay in sync with:
+    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~1872-1900)
+    # 2. Top-level processing above (lines ~1507-1520)
+    # These are two sides of one feature and must handle multiple -nl arguments identically.
     chat_parser.add_argument(
         "--mcp", "-mcp",
         action="append",

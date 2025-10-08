@@ -1,0 +1,102 @@
+{
+  "user_query": "trass gmail with term avask from within last 2 months",
+  "intent": {
+    "goal": "search gmail content for term 'avask'",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "avask"
+    ],
+    "date_filter": {
+      "days_back": 60,
+      "description": "within last 2 months"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name IN ('trass.gmail', 'gmail')\nAND u.created_time >= DATE('now', '-2 months')\nAND (\n    LOWER(u.title) LIKE '%avask%'\n    OR LOWER(g.subject) LIKE '%avask%'\n    OR LOWER(g.sender_email) LIKE '%avask%'\n    OR LOWER(g.sender_name) LIKE '%avask%'\n    OR LOWER(g.recipient_emails) LIKE '%avask%'\n)\nORDER BY u.created_time DESC\nLIMIT 1000;",
+  "result_count": 106,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 106
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197f080756b9e788",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 9 Jul 2025 18:43:45 +0000",
+      "sender_email": "Laura West <laura.west@avaskgroup.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19910b97886f491b",
+      "title": "Re: HMRC more info request",
+      "created_time": "Wed, 3 Sep 2025 11:56:41 -0600",
+      "sender_email": "Steve Shockey <steve@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1990ee185e658c59",
+      "title": "RE: HMRC more info request",
+      "created_time": "Wed, 3 Sep 2025 09:21:10 +0000",
+      "sender_email": "Karen Faleiro <karen.faleiro@avaskgroup.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a89e635e6e57a",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 20:43:47 +0100",
+      "sender_email": "Steve Shockey <steve@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a89ef5f72f5f9",
+      "title": "Re: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:44:38 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a891d62646e85",
+      "title": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:30:18 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a88225cb856d2",
+      "title": "Fwd: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 12:13:09 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197a6dbf1ebe19dd",
+      "title": "RE: AVASK Global Compliance -Trass Games Inc - UK VAT registration & EORI process.",
+      "created_time": "Wed, 25 Jun 2025 11:31:44 +0000",
+      "sender_email": "Karen Faleiro <karen.faleiro@avaskgroup.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1997d21b66a786b1",
+      "title": "Re: Check-in on UK & AU registrations",
+      "created_time": "Wed, 24 Sep 2025 19:09:14 +0000",
+      "sender_email": "Gianfranco Calandriello <gian.calandriello@avaskgroup.com>",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1997c9798dbf12e5",
+      "title": "Re: Check-in on UK & AU registrations",
+      "created_time": "Wed, 24 Sep 2025 16:38:29 +0000",
+      "sender_email": "Gianfranco Calandriello <gian.calandriello@avaskgroup.com>",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 106 entries from 1 databases"
+  },
+  "retries": 0
+}

@@ -1,0 +1,112 @@
+{
+  "user_query": "trass gmail with term mgm from last 2 months",
+  "intent": {
+    "goal": "find gmail content related to MGM",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": 60,
+      "description": "last 2 months"
+    }
+  },
+  "generated_sql": "SELECT DISTINCT\n  u.page_id,\n  u.title,\n  u.created_time,\n  g.sender_email,\n  g.sender_name,\n  u.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id \nWHERE \n  (u.database_name IN ('trass.gmail', 'gmail'))\n  AND (u.title LIKE '%mgm%' OR g.subject LIKE '%mgm%' OR g.sender_email LIKE '%mgm%')\n  AND u.created_time >= date('now', '-2 months')\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 457,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 457
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197f002e16e5a5c1",
+      "title": "RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "created_time": "Wed, 9 Jul 2025 16:26:40 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ee8df2cec6740",
+      "title": "RE: Pets Design 2025-07-06",
+      "created_time": "Wed, 9 Jul 2025 09:39:21 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ed130c1602af3",
+      "title": "RE: [Draft Report] PLUSH TOYS/ACCESSORY SET_ T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 02:45:31 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961c3faf7048a11",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 20:30:47 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "sender_name": "John Chiu",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961bbf789416428",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 18:10:45 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "sender_name": "John Chiu",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19619d581f777d15",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 09:15:35 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "sender_name": "John Chiu",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19619c93c69687e5",
+      "title": "RE: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 09:02:13 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19618c0772e012fb",
+      "title": "RE: Samples and photos of YP2 and YP4",
+      "created_time": "Wed, 9 Apr 2025 04:13:01 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_19618a11ad6f38e4",
+      "title": "RE: BATCH 2025-05  BARCODE SYSTEM FOR US / CA / UK / AU",
+      "created_time": "Wed, 9 Apr 2025 03:38:48 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_199c1c702f7dc335",
+      "title": "RE: Kit Card v2 (the one with needles)",
+      "created_time": "Wed, 8 Oct 2025 03:04:22 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 457 entries from 1 databases"
+  },
+  "retries": 0
+}

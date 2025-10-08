@@ -514,29 +514,72 @@ def _detect_image_paths_in_message(user_input: str) -> tuple[str, list[str]]:
 def safe_split_command(user_input):
     """
     Safely split command arguments, handling natural language queries with apostrophes.
+    
+    NOTE: This implementation must stay in sync with the edit mode -nl parsing (around line 1845).
+    Both edit mode and top-level query handling must support multiple -nl arguments identically.
+    See also: promaia/cli.py lines 1507-1512 and 1674-1693 for the CLI-side implementation.
     """
     # Clean up whitespace first
     cleaned = ' '.join(user_input.split())
     
     # For natural language queries, handle them specially
+    # IMPORTANT: Must support multiple -nl arguments (e.g., "-nl query1 -nl query2")
     if '-nl' in cleaned:
-        # Split on -nl and handle the parts separately
-        parts = cleaned.split('-nl', 1)
-        if len(parts) == 2:
-            pre_nl, post_nl = parts
+        # Use a different approach: find all -nl positions and extract content between them
+        result = []
+        current_pos = 0
+        
+        while current_pos < len(cleaned):
+            # Find next -nl occurrence
+            nl_pos = cleaned.find('-nl', current_pos)
             
-            # Parse the pre-nl part normally (should be safe)
-            try:
-                pre_args = shlex.split(pre_nl.strip()) if pre_nl.strip() else []
-            except ValueError:
-                # If even the pre-nl part fails, fall back to simple split
-                pre_args = pre_nl.strip().split() if pre_nl.strip() else []
+            if nl_pos == -1:
+                # No more -nl flags, process the rest normally if we haven't found any yet
+                if not result or result[-1] == '-nl':
+                    # We're in a natural language section, add the rest
+                    remaining = cleaned[current_pos:].strip()
+                    if remaining:
+                        result.extend(remaining.split())
+                else:
+                    # Process remaining non-NL arguments
+                    remaining = cleaned[current_pos:].strip()
+                    if remaining:
+                        try:
+                            result.extend(shlex.split(remaining))
+                        except ValueError:
+                            result.extend(remaining.split())
+                break
             
-            # For the post-nl part (natural language), just strip and keep as-is
-            nl_prompt = post_nl.strip()
+            # Process the part before -nl
+            before_nl = cleaned[current_pos:nl_pos].strip()
             
-            # Combine them
-            return pre_args + ['-nl'] + nl_prompt.split()
+            # Check if this is a real -nl flag (preceded by space or at start, followed by space or end)
+            is_real_flag = (nl_pos == 0 or cleaned[nl_pos-1].isspace()) and \
+                          (nl_pos + 3 >= len(cleaned) or cleaned[nl_pos+3].isspace())
+            
+            if not is_real_flag:
+                # Not a real flag, keep searching
+                current_pos = nl_pos + 1
+                continue
+            
+            if before_nl:
+                if not result or result[-1] == '-nl':
+                    # Previous section was NL, add as-is
+                    result.extend(before_nl.split())
+                else:
+                    # This is regular arguments before first -nl
+                    try:
+                        result.extend(shlex.split(before_nl))
+                    except ValueError:
+                        result.extend(before_nl.split())
+            
+            # Add the -nl flag
+            result.append('-nl')
+            
+            # Move past this -nl flag
+            current_pos = nl_pos + 3
+        
+        return result
     
     # For non-natural language commands, try normal shlex first
     try:
@@ -752,7 +795,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # For workspace browse, add all workspace databases as selected by default
             workspace_databases = db_manager.get_workspace_databases(browse_workspace)
             for db in workspace_databases:
-                if db.sync_enabled:  # Only include enabled databases
+                if db.browser_include:  # Only include databases visible in browser
                     if default_days:
                         source_with_days = f"{db.get_qualified_name()}:{default_days}"
                     else:
@@ -1847,6 +1890,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     nargs="+",
                     help="Use natural language to specify what content to load for chat context. Can be used multiple times."
                 )
+                # NOTE: This -nl parsing MUST stay in sync with:
+                # 1. Top-level CLI parsing in promaia/cli.py (lines ~1507-1520, 1674-1693, 2576-2579)
+                # 2. safe_split_command() function above (line ~514)
+                # These are two sides of one feature and must handle multiple -nl arguments identically.
                 parser.add_argument(
                     "--mcp", "-mcp",
                     action="append",
@@ -1862,6 +1909,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 
                 if natural_language_args is not None:
                     # Natural language mode - handle multiple -nl queries
+                    # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
+                    # Both edit mode and top-level query are two sides of one feature.
                     # With action="append" and nargs="+", we get a list of lists
                     nl_prompts = [' '.join(nl_args) for nl_args in natural_language_args if nl_args]
                     
@@ -2162,7 +2211,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("--filter", "-f", action="append", dest="filters") 
             parser.add_argument("--workspace", "-ws", dest="workspace")
             parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
-            parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
+            # NOTE: This MUST match the other -nl parsers (top-level CLI and normal edit mode)
+            parser.add_argument("--natural-language", "-nl", action="append", nargs="+", dest="natural_language")
             
             parsed_args = parser.parse_args(args_list)
             
@@ -2179,7 +2229,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         browse_databases.append(item)
             original_filters = parsed_args.filters or []
             workspace = parsed_args.workspace or context_state.get('workspace')
-            natural_language_parts = parsed_args.natural_language or []
+            # NOTE: With action="append" and nargs="+", natural_language is a list of lists
+            # Convert to list of strings, matching the other implementations
+            natural_language_raw = parsed_args.natural_language or []
+            natural_language_parts = [' '.join(nl_args) for nl_args in natural_language_raw if nl_args] if natural_language_raw else []
             
             # Detect if the browse part of the command actually changed
             original_command = context_state.get('original_query_format', '')
@@ -2242,31 +2295,39 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Capture NL sources before any state changes
                 nl_sources_to_remove = set(context_state.get('natural_language_content', {}).keys() if context_state.get('natural_language_content') else [])
                 
-            # Process natural language query if present
+            # Process natural language query if present (supports multiple -nl queries)
             nl_prompt = None
             natural_language_content = None
             if natural_language_parts:
-                nl_prompt = ' '.join(natural_language_parts)
+                # Create combined prompt for caching (matching other implementations)
+                combined_nl_prompt = " ".join([f'-nl {prompt}' for prompt in natural_language_parts])
                 
                 # Check cache first - similar logic to edit_context
                 cached_nl_content = context_state.get('natural_language_content', {})
                 cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
                 
                 debug_print(f"🔍 Manual Browse Edit NL Cache Check:")
-                debug_print(f"  New prompt: '{nl_prompt}'")
+                debug_print(f"  New prompt(s): {natural_language_parts}")
                 debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
-                debug_print(f"  Prompts match: {nl_prompt == cached_nl_prompt}")
+                debug_print(f"  Prompts match: {combined_nl_prompt == cached_nl_prompt}")
                 debug_print(f"  Has cached content: {bool(cached_nl_content)}")
                 
-                if nl_prompt == cached_nl_prompt and cached_nl_content:
+                if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                     print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="cyan")
                     natural_language_content = cached_nl_content
                     debug_print(f"  → Using cached results (browse edit cache hit)")
                 else:
                     debug_print(f"  → Cache miss, will re-process query")
-                    print_text(f"🤖 Processing natural language query: '{nl_prompt}'", style="cyan")
                     
-                    # Process the natural language query
+                    # Display processing message
+                    if len(natural_language_parts) > 1:
+                        print_text(f"🤖 Processing {len(natural_language_parts)} separate natural language queries", style="cyan")
+                        for i, prompt in enumerate(natural_language_parts):
+                            print_text(f"   {i+1}. '{prompt}'", style="dim")
+                    else:
+                        print_text(f"🤖 Processing natural language query: '{natural_language_parts[0]}'", style="cyan")
+                    
+                    # Process the natural language queries (multiple prompts supported)
                     try:
                         from promaia.storage.unified_query import get_query_interface
                         
@@ -2278,24 +2339,47 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             nl_workspace = workspace_manager.get_default_workspace()
                         
                         if nl_workspace:
-                            # Process the natural language query
+                            # Process each natural language query separately and combine results
                             query_interface = get_query_interface()
+                            combined_nl_content = {}
                             
-                            # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
-                            # Browser selections will be loaded separately and combined with NL results
-                            database_names = None  # Search all databases for maximum content discovery
+                            for i, nl_query in enumerate(natural_language_parts):
+                                if len(natural_language_parts) > 1:
+                                    print_text(f"🔍 Processing query {i+1}/{len(natural_language_parts)}: '{nl_query}'", style="dim")
                                 
-                            natural_language_content = query_interface.natural_language_query(nl_prompt, nl_workspace, database_names)
+                                # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
+                                # Browser selections will be loaded separately and combined with NL results
+                                database_names = None  # Search all databases for maximum content discovery
+                                    
+                                query_results = query_interface.natural_language_query(nl_query, nl_workspace, database_names)
+                                
+                                # Merge results from this query into combined results
+                                if query_results:
+                                    for db_name, pages in query_results.items():
+                                        if db_name in combined_nl_content:
+                                            # Combine pages, avoiding duplicates
+                                            existing_ids = {p.get('id') for p in combined_nl_content[db_name] if isinstance(p, dict) and 'id' in p}
+                                            for page in pages:
+                                                if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                                                    combined_nl_content[db_name].append(page)
+                                                    if isinstance(page, dict) and 'id' in page:
+                                                        existing_ids.add(page['id'])
+                                        else:
+                                            combined_nl_content[db_name] = pages
+                            
+                            natural_language_content = combined_nl_content
                             
                             if natural_language_content:
+                                total_results = sum(len(pages) for pages in natural_language_content.values())
+                                print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
                                 print_text("🔄 Using natural language results from CLI", style="cyan")
                                 # Update context state with natural language content AND cache
                                 context_state['natural_language_content'] = natural_language_content
-                                context_state['natural_language_prompt'] = nl_prompt
-                                context_state['cached_natural_language_prompt'] = nl_prompt
+                                context_state['natural_language_prompt'] = combined_nl_prompt
+                                context_state['cached_natural_language_prompt'] = combined_nl_prompt
                                 debug_print(f"  → Processed and cached new results")
                             else:
-                                print_text("❌ No content found for natural language query", style="yellow")
+                                print_text("❌ No content found for natural language queries", style="yellow")
                         else:
                             print_text("❌ No workspace available for natural language processing", style="yellow")
                             
@@ -2739,7 +2823,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             
                             # Add all workspace databases with their default days
                             for db in workspace_databases:
-                                if db.sync_enabled:  # Only include enabled databases
+                                if db.browser_include:  # Only include databases visible in browser
                                     if default_days:
                                         source_with_days = f"{db.get_qualified_name()}:{default_days}"
                                     else:
@@ -3125,7 +3209,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     db_manager = get_database_manager()
                     workspace_databases = db_manager.get_workspace_databases(workspace)
                     for db in workspace_databases:
-                        if db.sync_enabled:
+                        if db.browser_include:
                             days = default_days if default_days is not None else 7
                             current_sources.append(f"{db.get_qualified_name()}:{days}")
 

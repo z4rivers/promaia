@@ -1,0 +1,113 @@
+{
+  "user_query": "trass gmail with term mgm from last month",
+  "intent": {
+    "goal": "find gmail communications with MGM",
+    "databases": [
+      "trass.gmail",
+      "gmail"
+    ],
+    "search_terms": [
+      "mgm"
+    ],
+    "date_filter": {
+      "days_back": 30,
+      "description": "last month"
+    },
+    "_validation_feedback": "No results found. Try broadening the search terms or date range."
+  },
+  "generated_sql": "SELECT DISTINCT \nu.page_id,\nu.title,\nu.created_time,\ng.sender_email,\ng.sender_name,\nu.database_name\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE (u.database_name IN ('gmail', 'trass.gmail'))\nAND (\n  LOWER(u.title) LIKE '%mgm%'\n  OR LOWER(g.subject) LIKE '%mgm%'\n  OR LOWER(g.sender_email) LIKE '%mgm%'\n  OR LOWER(g.sender_name) LIKE '%mgm%'\n  OR LOWER(g.recipient_emails) LIKE '%mgm%'\n)\nAND u.created_time >= DATE('now', '-30 days')\nORDER BY u.created_time DESC\nLIMIT 1000",
+  "result_count": 870,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 870
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_197f24fd443bbb31",
+      "title": "Re: Pets Design 2025-07-06",
+      "created_time": "Wed, 9 Jul 2025 20:09:54 -0700",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "sender_name": "jayshay",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197f002e16e5a5c1",
+      "title": "RE: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "created_time": "Wed, 9 Jul 2025 16:26:40 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197efa3a4f8794dd",
+      "title": "[Test Report] PLUSH TOYS AND ACCESSORY SET_T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 14:42:28 +0000",
+      "sender_email": "Qima LabTesting Group <labtesting@qima.com>",
+      "sender_name": "Qima LabTesting Group",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197f0c779e3e78e3",
+      "title": "Re: [Action Required] Trass Games Inc.: Second Payment Reminder for Invoice(s)",
+      "created_time": "Wed, 9 Jul 2025 13:01:32 -0700",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "sender_name": "Koii Benvenutto",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ee8df2cec6740",
+      "title": "RE: Pets Design 2025-07-06",
+      "created_time": "Wed, 9 Jul 2025 09:39:21 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_197ed130c1602af3",
+      "title": "RE: [Draft Report] PLUSH TOYS/ACCESSORY SET_ T-24328905-06-R_Pass",
+      "created_time": "Wed, 9 Jul 2025 02:45:31 +0000",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "sender_name": "Fionn Ng",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961c3faf7048a11",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 20:30:47 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "sender_name": "John Chiu",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961d7c3574bcf84",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 19:16:28 -0700",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "sender_name": "Jeff Southard",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961bbf789416428",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 18:10:45 +0000",
+      "sender_email": "John Chiu <johnchiu@mgmproduction.com.hk>",
+      "sender_name": "John Chiu",
+      "database_name": "gmail"
+    },
+    {
+      "page_id": "msg_1961bfb49ce68f5e",
+      "title": "Re: Insane tariffs and our partnership",
+      "created_time": "Wed, 9 Apr 2025 12:16:02 -0700",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "sender_name": "Jeff Southard",
+      "database_name": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 870 entries from 1 databases"
+  },
+  "retries": 1
+}
