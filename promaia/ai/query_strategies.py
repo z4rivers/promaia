@@ -290,8 +290,9 @@ class VectorQueryStrategy(QueryStrategy):
             print_text("=" * 70, style="dim")
             print_text(f"\n📤 Vector Search Parameter Extraction:", style="cyan")
             print_text(f"   Intent: {intent['goal']}", style="dim")
-            print_text(f"   Databases: {', '.join(intent.get('databases', []))}", style="dim")
+            print_text(f"   Databases (from intent): {', '.join(intent.get('databases', []))}", style="dim")
             print_text(f"   Search terms: {', '.join(intent.get('search_terms', []))}", style="dim")
+            print_text(f"   Will normalize qualified names (e.g., 'trass.gmail' -> workspace='trass', database='gmail')", style="yellow")
         
         prompt = f"""Extract semantic search parameters from this intent:
 
@@ -341,15 +342,37 @@ Return ONLY the JSON object:"""
             search_text = extracted.get('search_text', ' '.join(intent.get('search_terms', [])))
             
             # Build metadata filters for ChromaDB
+            # IMPORTANT: Normalize qualified database names (e.g., "trass.gmail" -> "gmail" + workspace filter)
             filters = {}
             
-            # Database filter
-            databases = intent.get('databases', [])
-            if databases:
-                if len(databases) == 1:
-                    filters['database_name'] = databases[0]
+            # Extract workspace and normalize database names from qualified names
+            # (Same logic as SQLQueryStrategy for consistency)
+            target_workspaces = set()
+            target_dbs = []
+            
+            for db_name in intent.get('databases', []):
+                if '.' in db_name:
+                    # Qualified name: extract workspace and db nickname
+                    workspace_part, db_nickname = db_name.rsplit('.', 1)
+                    target_workspaces.add(workspace_part)
+                    target_dbs.append(db_nickname)
                 else:
-                    filters['database_name'] = {"$in": databases}
+                    # Simple name: just the database nickname
+                    target_dbs.append(db_name)
+            
+            # Add workspace filter if we extracted workspaces from qualified names
+            if target_workspaces:
+                if len(target_workspaces) == 1:
+                    filters['workspace'] = list(target_workspaces)[0]
+                else:
+                    filters['workspace'] = {"$in": list(target_workspaces)}
+            
+            # Add database filter (using normalized nicknames)
+            if target_dbs:
+                if len(target_dbs) == 1:
+                    filters['database_name'] = target_dbs[0]
+                else:
+                    filters['database_name'] = {"$in": target_dbs}
             
             query_params = {
                 'search_text': search_text,
@@ -359,7 +382,12 @@ Return ONLY the JSON object:"""
             if debug:
                 print_text(f"\n📝 Vector Query Parameters:", style="cyan")
                 print_text(f"   Search text: {search_text}", style="dim")
-                print_text(f"   Filters: {filters}", style="dim")
+                print_text(f"   Databases (original): {', '.join(intent.get('databases', []))}", style="dim")
+                if target_dbs:
+                    print_text(f"   Databases (normalized): {', '.join(target_dbs)}", style="dim")
+                if target_workspaces:
+                    print_text(f"   Workspaces (extracted): {', '.join(sorted(target_workspaces))}", style="yellow")
+                print_text(f"   Final filters: {filters}", style="dim")
             
             return query_params
         
@@ -380,11 +408,29 @@ Return ONLY the JSON object:"""
             # Display filters if present
             if filters:
                 print_text(f"\nMetadata Filters:", style="white")
-                for key, value in filters.items():
-                    if isinstance(value, dict) and '$in' in value:
-                        print_text(f"  {key} IN ({', '.join(value['$in'])})", style="dim")
+                # Show workspace first (most important scope filter)
+                if 'workspace' in filters:
+                    ws_value = filters['workspace']
+                    if isinstance(ws_value, dict) and '$in' in ws_value:
+                        print_text(f"  workspace IN ({', '.join(ws_value['$in'])})", style="dim")
                     else:
-                        print_text(f"  {key} = {value}", style="dim")
+                        print_text(f"  workspace = {ws_value}", style="dim")
+                
+                # Then show database
+                if 'database_name' in filters:
+                    db_value = filters['database_name']
+                    if isinstance(db_value, dict) and '$in' in db_value:
+                        print_text(f"  database_name IN ({', '.join(db_value['$in'])})", style="dim")
+                    else:
+                        print_text(f"  database_name = {db_value}", style="dim")
+                
+                # Show any other filters
+                for key, value in filters.items():
+                    if key not in ['workspace', 'database_name']:
+                        if isinstance(value, dict) and '$in' in value:
+                            print_text(f"  {key} IN ({', '.join(value['$in'])})", style="dim")
+                        else:
+                            print_text(f"  {key} = {value}", style="dim")
             else:
                 print_text(f"Metadata Filters: None (searching all databases)", style="dim")
     
