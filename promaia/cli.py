@@ -1126,12 +1126,7 @@ def chat_run(args):
                 else:
                     vs_prompts = []
 
-                if len(vs_prompts) > 1:
-                    print_text(f"🔍 Will process {len(vs_prompts)} vector search queries after browser", style="white")
-                    for i, prompt in enumerate(vs_prompts):
-                        print_text(f"   {i+1}. '{prompt}'", style="dim")
-                elif vs_prompts:
-                    print_text(f"🔍 Will process vector search query after browser: '{vs_prompts[0]}'", style="white")
+                # Vector search prompts will be shown later when processing with selected sources
             
             # Build original browse command to preserve user command for display
             original_command_parts = ["maia", "chat"]
@@ -1489,14 +1484,7 @@ def chat_run(args):
                 # Use vector search prompt as natural language prompt if no NL prompt exists
                 final_nl_prompt = combined_nl_prompt or combined_vs_prompt
 
-                if len(nl_prompts) > 1:
-                    print_text(f"🤖 Will process {len(nl_prompts)} natural language queries with selected sources", style="white")
-                elif nl_prompts:
-                    print_text(f"🤖 Will process natural language query with selected sources: '{combined_nl_prompt}'", style="white")
-                elif len(vs_prompts) > 1:
-                    print_text(f"🔍 Will process {len(vs_prompts)} vector search queries with selected sources", style="white")
-                elif vs_prompts:
-                    print_text(f"🔍 Will process vector search query with selected sources: '{combined_vs_prompt}'", style="white")
+                # Queries will be processed with detailed output when chat function runs
 
                 # Pass prompts to chat - let chat handle the processing with selected sources
                 chat(
