@@ -675,45 +675,47 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                 # Count Gmail messages in initial results
                 gmail_messages_in_results = sum(1 for e in registry_entries if e['database_name'] == 'gmail')
                 
-                gmail_thread_ids = set()
-                for entry in registry_entries:
-                    if entry['database_name'] == 'gmail' and entry['metadata']:
-                        try:
-                            import json
-                            metadata = json.loads(entry['metadata']) if isinstance(entry['metadata'], str) else entry['metadata']
-                            thread_id = metadata.get('thread_id')
-                            if thread_id:
-                                gmail_thread_ids.add(thread_id)
-                        except:
-                            pass
-                
-                # Fetch all messages in those threads
-                if gmail_thread_ids:
-                    print(f"📧 Expanding Gmail threads: {gmail_messages_in_results} messages → {len(gmail_thread_ids)} threads")
+                if gmail_messages_in_results > 0:
+                    # Get thread IDs from gmail_content table (not from metadata)
+                    gmail_page_ids = [e['page_id'] for e in registry_entries if e['database_name'] == 'gmail']
+                    placeholders = ','.join('?' * len(gmail_page_ids))
                     
-                    thread_placeholders = ','.join('?' * len(gmail_thread_ids))
-                    gmail_query = f"""
-                        SELECT page_id, workspace, database_name, database_id, content_type,
-                               title, created_time, last_edited_time, synced_time, file_path, metadata
-                        FROM unified_content 
-                        WHERE database_name = 'gmail' 
-                        AND json_extract(metadata, '$.thread_id') IN ({thread_placeholders})
-                        ORDER BY last_edited_time DESC
+                    thread_query = f"""
+                        SELECT DISTINCT thread_id
+                        FROM gmail_content
+                        WHERE page_id IN ({placeholders})
+                        AND thread_id IS NOT NULL
                     """
-                    cursor.execute(gmail_query, list(gmail_thread_ids))
-                    gmail_entries = cursor.fetchall()
+                    cursor.execute(thread_query, gmail_page_ids)
+                    gmail_thread_ids = {row[0] for row in cursor.fetchall()}
                     
-                    # Merge with original entries (avoid duplicates)
-                    existing_page_ids = {entry['page_id'] for entry in registry_entries}
-                    added_count = 0
-                    for gmail_entry in gmail_entries:
-                        if gmail_entry['page_id'] not in existing_page_ids:
-                            registry_entries.append(gmail_entry)
-                            existing_page_ids.add(gmail_entry['page_id'])
-                            added_count += 1
-                    
-                    if added_count > 0:
-                        print(f"   ➕ Added {added_count} thread messages ({initial_count} → {len(registry_entries)} total pages)")
+                    # Fetch all messages in those threads
+                    if gmail_thread_ids:
+                        print(f"📧 Expanding Gmail threads: {gmail_messages_in_results} messages → {len(gmail_thread_ids)} threads")
+                        
+                        thread_placeholders = ','.join('?' * len(gmail_thread_ids))
+                        gmail_query = f"""
+                            SELECT DISTINCT u.page_id, u.workspace, u.database_name, u.database_id, u.content_type,
+                                   u.title, u.created_time, u.last_edited_time, u.synced_time, u.file_path, u.metadata
+                            FROM unified_content u
+                            JOIN gmail_content g ON u.page_id = g.page_id
+                            WHERE g.thread_id IN ({thread_placeholders})
+                            ORDER BY u.last_edited_time DESC
+                        """
+                        cursor.execute(gmail_query, list(gmail_thread_ids))
+                        gmail_entries = cursor.fetchall()
+                        
+                        # Merge with original entries (avoid duplicates)
+                        existing_page_ids = {entry['page_id'] for entry in registry_entries}
+                        added_count = 0
+                        for gmail_entry in gmail_entries:
+                            if gmail_entry['page_id'] not in existing_page_ids:
+                                registry_entries.append(gmail_entry)
+                                existing_page_ids.add(gmail_entry['page_id'])
+                                added_count += 1
+                        
+                        if added_count > 0:
+                            print(f"   ➕ Added {added_count} thread messages ({initial_count} → {len(registry_entries)} total pages)")
         
         # Step 3: Load actual markdown content for each entry
         # Use the same logic as read_markdown_files_with_registry for consistency
