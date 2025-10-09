@@ -23,7 +23,7 @@ import traceback
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-from promaia.storage.files import read_markdown_files_with_registry
+from promaia.storage.files import load_database_pages_with_filters
 from promaia.utils.config import load_environment, get_last_sync_time
 from promaia.config.workspaces import get_workspace_manager
 from promaia.ai.prompts import create_system_prompt
@@ -1506,7 +1506,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Don't use days constraint if complex filter already has date conditions
                     days_to_use = None if has_date_filter_in_complex else source_conf.get('days')
 
-                    pages = read_markdown_files_with_registry(
+                    pages = load_database_pages_with_filters(
                         db_config,
                         days=days_to_use,
                         comparison_filters=source_conf.get('comparison_filters', {}),

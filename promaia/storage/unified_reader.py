@@ -112,7 +112,7 @@ def _read_markdown_content(
     """Read markdown content using existing reader."""
     try:
         # Try to use registry-based reading first if database config is available
-        from promaia.storage.files import read_markdown_files_with_registry
+        from promaia.storage.files import load_database_pages_with_filters
         from promaia.config.databases import get_database_manager
         
         db_manager = get_database_manager()
@@ -120,7 +120,7 @@ def _read_markdown_content(
         
         if db_config:
             # Use registry-based reader for proper database handling
-            md_data = read_markdown_files_with_registry(db_config, days=days)
+            md_data = load_database_pages_with_filters(db_config, days=days)
         else:
             # Fallback to legacy reader
             md_data = read_markdown_files(

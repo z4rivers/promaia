@@ -1,0 +1,120 @@
+{
+  "user_query": "entries in trass stories database",
+  "intent": {
+    "goal": "find entries from the stories database in the trass workspace",
+    "databases": [
+      "trass.stories"
+    ],
+    "search_terms": [],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nu.file_path,\nu.file_size\nFROM unified_content u\nWHERE (\n    u.database_name = 'stories'\n    AND u.workspace IN ('trass')\n)\nORDER BY u.created_time DESC\nLIMIT 1200",
+  "query_mode": "sql",
+  "result_count": 361,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 361
+  },
+  "sample_results": [
+    {
+      "page_id": "281ce8f7-317a-8057-b5ae-cf6a2c9764bf",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Get access to music provider from Steve",
+      "created_time": "2025-10-03T22:11:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-03 Get access to music provider from Steve 281ce8f7-317a-8057-b5ae-cf6a2c9764bf.md",
+      "file_size": 228
+    },
+    {
+      "page_id": "280ce8f7-317a-80aa-80cd-e8b5ae90eff5",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story test",
+      "created_time": "2025-10-02T01:07:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story test 280ce8f7-317a-80aa-80cd-e8b5ae90eff5.md",
+      "file_size": 307
+    },
+    {
+      "page_id": "280ce8f7-317a-803a-9bae-e8043dca9237",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story",
+      "created_time": "2025-10-02T01:07:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story 280ce8f7-317a-803a-9bae-e8043dca9237.md",
+      "file_size": 292
+    },
+    {
+      "page_id": "280ce8f7-317a-80fa-a3cd-fa64839966a7",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story",
+      "created_time": "2025-10-02T00:56:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story 280ce8f7-317a-80fa-a3cd-fa64839966a7.md",
+      "file_size": 307
+    },
+    {
+      "page_id": "280ce8f7-317a-80ce-bcf7-d9c9caf6de01",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story",
+      "created_time": "2025-10-02T00:56:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story 280ce8f7-317a-80ce-bcf7-d9c9caf6de01.md",
+      "file_size": 305
+    },
+    {
+      "page_id": "27fce8f7-317a-80fb-a270-ca7800acfed2",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK 2025-07 Temp Storage",
+      "created_time": "2025-10-01T20:50:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-01 UK 2025-07 Temp Storage 27fce8f7-317a-80fb-a270-ca7800acfed2.md",
+      "file_size": 17675
+    },
+    {
+      "page_id": "27ace8f7-317a-8051-b1a8-d92e883843d7",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Mod Market Tester Raffle",
+      "created_time": "2025-09-26T00:33:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-26 Mod Market Tester Raffle 27ace8f7-317a-8051-b1a8-d92e883843d7.md",
+      "file_size": 307
+    },
+    {
+      "page_id": "279ce8f7-317a-804a-b8a3-d134cefbd3ed",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Project Boxes",
+      "created_time": "2025-09-25T15:22:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-25 Project Boxes 279ce8f7-317a-804a-b8a3-d134cefbd3ed.md",
+      "file_size": 502
+    },
+    {
+      "page_id": "279ce8f7-317a-80bc-9cb9-d61fd4a23e6f",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Kit Card (with needles)",
+      "created_time": "2025-09-25T15:12:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-25 Kit Card _with needles_ 279ce8f7-317a-80bc-9cb9-d61fd4a23e6f.md",
+      "file_size": 424
+    },
+    {
+      "page_id": "279ce8f7-317a-809f-8f98-fab15b639187",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Patches",
+      "created_time": "2025-09-25T15:12:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-25 Patches 279ce8f7-317a-809f-8f98-fab15b639187.md",
+      "file_size": 323
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 361 entries from 1 databases"
+  },
+  "retries": 0
+}

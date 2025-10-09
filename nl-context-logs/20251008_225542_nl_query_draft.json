@@ -1,0 +1,123 @@
+{
+  "user_query": "koii journals about travel",
+  "intent": {
+    "goal": "find journal entries about travel",
+    "databases": [
+      "journal",
+      "trass.journal"
+    ],
+    "search_terms": [
+      "travel"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "travel journal entries",
+    "filters": {
+      "database_name": {
+        "$in": [
+          "journal",
+          "trass.journal"
+        ]
+      }
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 20,
+  "databases_in_results": [
+    "journal"
+  ],
+  "database_breakdown": {
+    "journal": 20
+  },
+  "sample_results": [
+    {
+      "page_id": "240ce8f7-317a-81c9-bfb6-c1eb8d29cf6d",
+      "similarity_score": 0.37427759170532227,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-07-30T07:02:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "23fce8f7-317a-8175-a706-cc1cc9c4e8e9",
+      "similarity_score": 0.36180806159973145,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-07-29T07:04:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "270ce8f7-317a-8144-90af-d44ee8ffcb5b",
+      "similarity_score": 0.3546068072319031,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-09-16T07:02:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "241ce8f7-317a-8163-b6e4-eadf40248ed2",
+      "similarity_score": 0.3452605605125427,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-07-31T07:02:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "229ce8f7-317a-81cc-b751-e0d7b18a9ff8",
+      "similarity_score": 0.3393663167953491,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-07-07T07:07:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "2025-02-17-1223-45_chunk_0",
+      "similarity_score": 0.32986879348754883,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-02-17T00:00:00Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "19dd1339-6967-8057-ab05-f467101dc185_chunk_0",
+      "similarity_score": 0.32986879348754883,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-02-17T20:23:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "255ce8f7-317a-8166-ad59-f1dac4735d6c",
+      "similarity_score": 0.32489144802093506,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-08-20T07:01:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "227ce8f7-317a-80be-9ccb-f8c188438bc2",
+      "similarity_score": 0.32368195056915283,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-07-05T07:42:00.000Z",
+      "content_type": "notion_journal"
+    },
+    {
+      "page_id": "24fce8f7-317a-81c7-b573-ed498d5ae840",
+      "similarity_score": 0.32174402475357056,
+      "database_name": "journal",
+      "workspace": "trass",
+      "created_time": "2025-08-14T07:06:00.000Z",
+      "content_type": "notion_journal"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 20 entries from 1 databases"
+  },
+  "retries": 0
+}

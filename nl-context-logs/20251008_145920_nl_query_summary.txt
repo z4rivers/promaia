@@ -1,0 +1,33 @@
+Natural Language Query Summary
+Generated: 2025-10-08 14:59:20
+
+USER QUERY: trass stories and gmail with terms international launch uk au ca tax registration
+
+INTENT PARSED:
+  Goal: Find content about international tax/business registration in UK, Australia, and Canada
+  Databases: trass.stories, trass.gmail
+  Search Terms: international, launch, uk, au, ca, tax, registration
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 3345
+  Databases Found: stories, gmail
+  
+  Breakdown by Database:
+    • gmail: 3273 entries
+    • stories: 72 entries
+
+  Sample Results (first 5):
+    1. Welcome to Tech Week 2025! (gmail)
+       Date: 2025-10-08
+    2. Your payment USD 6729.66 USD at 2025-10-08 18:26:12 has been received, thanks! (gmail)
+       Date: 2025-10-08
+    3. View updates to your PayPal account (gmail)
+       Date: 2025-10-08
+    4. Accepted: Eric Koii @ Wed Oct 8, 2025 4pm - 4:30pm (PDT) (koii@trassgames.com) (gmail)
+       Date: 2025-10-08
+    5. Introducing rent-to-own for Ableton Live Suite (gmail)
+       Date: 2025-10-08

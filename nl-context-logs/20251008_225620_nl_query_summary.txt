@@ -1,0 +1,24 @@
+Natural Language Query Summary
+Generated: 2025-10-08 22:56:20
+
+USER QUERY: koii journal database graham
+
+INTENT PARSED:
+  Goal: find journal entries containing graham
+  Databases: journal, trass.journal
+  Search Terms: graham
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 1
+  Databases Found: journal
+  
+  Breakdown by Database:
+    • journal: 1 entries
+
+  Sample Results (first 5):
+    1. Graham x Koii Chicago Vacation 2024 (journal)
+       Date: 2024-08-29

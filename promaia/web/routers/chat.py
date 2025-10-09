@@ -10,7 +10,7 @@ from promaia.utils.image_processing import (
 )
 from promaia.ai.models import GOOGLE_MODELS, ANTHROPIC_MODELS
 from promaia.config.databases import get_database_manager
-from promaia.storage.files import read_markdown_files_with_registry
+from promaia.storage.files import load_database_pages_with_filters
 
 import os
 import traceback
@@ -121,7 +121,7 @@ async def get_initial_message():
         db_manager = get_database_manager()
         cms_db_config = db_manager.get_database("cms") # Assuming 'cms' is the nickname
         if cms_db_config:
-            cms_data = read_markdown_files_with_registry(cms_db_config)
+            cms_data = load_database_pages_with_filters(cms_db_config)
             multi_source_data['cms'] = cms_data
             debug_print(f"Loaded {len(cms_data)} CMS entries.")
         else:
@@ -248,7 +248,7 @@ async def handle_chat_message(chat_input: ChatMessageInput):
         db_manager = get_database_manager()
         cms_db_config = db_manager.get_database("cms") # Assuming 'cms' is the nickname
         if cms_db_config:
-            cms_data = read_markdown_files_with_registry(cms_db_config)
+            cms_data = load_database_pages_with_filters(cms_db_config)
             multi_source_data['cms'] = cms_data
             debug_print(f"Loaded {len(cms_data)} CMS entries.")
         else:

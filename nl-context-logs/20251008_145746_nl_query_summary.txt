@@ -1,0 +1,34 @@
+Natural Language Query Summary
+Generated: 2025-10-08 14:57:46
+
+USER QUERY: trass stories with terms international launch uk au ca tax registration
+
+INTENT PARSED:
+  Goal: find stories related to international launch tax registration details for UK, Australia, and Canada
+  Databases: trass.stories, trass.journal, trass.cpj
+  Search Terms: international, launch, uk, au, ca, tax, registration
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 165
+  Databases Found: cpj, journal, stories
+  
+  Breakdown by Database:
+    • cpj: 1 entries
+    • stories: 115 entries
+    • journal: 49 entries
+
+  Sample Results (first 5):
+    1. Yeeps International Launch Announcement (cpj)
+       Date: 2025-10-07
+    2. CP Story (stories)
+       Date: 2025-10-02
+    3. CP Story (stories)
+       Date: 2025-10-02
+    4. UK 2025-07 Temp Storage (stories)
+       Date: 2025-10-01
+    5. Switch from identifying properties by name to ID (stories)
+       Date: 2025-09-30

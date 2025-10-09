@@ -1,0 +1,151 @@
+{
+  "user_query": "trass stories and gmail with terms international launch uk au ca tax registration",
+  "intent": {
+    "goal": "Find content about international tax/business registration in UK, Australia, and Canada",
+    "databases": [
+      "trass.stories",
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "international",
+      "launch",
+      "uk",
+      "au",
+      "ca",
+      "tax",
+      "registration"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nCOALESCE(g.subject, '') as subject,\nCOALESCE(g.sender_name, '') as sender,\nCOALESCE(g.body_snippet, '') as snippet,\nCOALESCE(g.message_content, '') as content\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name IN ('stories', 'gmail')\nAND (\n    LOWER(u.title) LIKE '%international%' OR\n    LOWER(u.title) LIKE '%launch%' OR \n    LOWER(u.title) LIKE '%uk%' OR\n    LOWER(u.title) LIKE '%au%' OR\n    LOWER(u.title) LIKE '%ca%' OR\n    LOWER(u.title) LIKE '%tax%' OR\n    LOWER(u.title) LIKE '%registration%' OR\n    LOWER(g.subject) LIKE '%international%' OR\n    LOWER(g.subject) LIKE '%launch%' OR\n    LOWER(g.subject) LIKE '%uk%' OR\n    LOWER(g.subject) LIKE '%au%' OR\n    LOWER(g.subject) LIKE '%ca%' OR\n    LOWER(g.subject) LIKE '%tax%' OR\n    LOWER(g.subject) LIKE '%registration%' OR\n    LOWER(g.body_snippet) LIKE '%international%' OR\n    LOWER(g.body_snippet) LIKE '%launch%' OR\n    LOWER(g.body_snippet) LIKE '%uk%' OR\n    LOWER(g.body_snippet) LIKE '%au%' OR\n    LOWER(g.body_snippet) LIKE '%ca%' OR\n    LOWER(g.body_snippet) LIKE '%tax%' OR\n    LOWER(g.body_snippet) LIKE '%registration%' OR\n    LOWER(g.message_content) LIKE '%international%' OR\n    LOWER(g.message_content) LIKE '%launch%' OR\n    LOWER(g.message_content) LIKE '%uk%' OR\n    LOWER(g.message_content) LIKE '%au%' OR\n    LOWER(g.message_content) LIKE '%ca%' OR\n    LOWER(g.message_content) LIKE '%tax%' OR\n    LOWER(g.message_content) LIKE '%registration%'\n)\nORDER BY u.created_time DESC\nLIMIT 5000;",
+  "query_mode": "sql",
+  "result_count": 3345,
+  "databases_in_results": [
+    "stories",
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 3273,
+    "stories": 72
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199c562dd8fb0e38",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "Welcome to Tech Week 2025!",
+      "created_time": "2025-10-08T19:53:31+00:00",
+      "subject": "Welcome to Tech Week 2025!",
+      "sender": "Katia Ameri",
+      "snippet": "\ud83c\udf89 Welcome to the Tech Week community! Tech Week 2025 Dates: \ud83c\udf01 SF: Oct 6\u201312 \ud83c\udf34 LA: Oct 13\u201319 Interested in hosting? Please submit your event here to be included in the SF/LA Tech Week lineup this October",
+      "content": "96 Welcome to Tech Week 2025! \ud83c\udf89 Welcome to the Tech Week community! Tech Week 2025 Dates: \ud83c\udf01 SF: Oct 6\u201312 \ud83c\udf34 LA: Oct 13\u201319 Interested in hosting?\u00a0 Please submit your event here \u00a0to be included in the SF/LA Tech Week lineup this October. More information about hosting in our FAQs\u00a0 here . Interested in attending? The SF/LA calendar is now LIVE! Browse the\u00a0 Official Calendar here \u00a0and register for events that interest you. Cheers, Katia Ameri\u00a0 Partner, a16z | \u00a0 Twitter Want me to stop sending you upd"
+    },
+    {
+      "page_id": "msg_199c512f52ac8ba2",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Your payment USD 6729.66 USD at 2025-10-08 18:26:12 has been received, thanks!",
+      "created_time": "2025-10-08T18:26:16+00:00",
+      "subject": "Your payment USD 6729.66 USD at 2025-10-08 18:26:12 has been received, thanks!",
+      "sender": "QIMA Order",
+      "snippet": "Dear Jeff/Koii, We have successfully received your payment - thank you! Please find your payment confirmation details below. Payment Details : ADYEN fees 258.83 USD 2/ Lab Testing Invoice: T-25371320-",
+      "content": "Dear Jeff/Koii, We have successfully received your payment - thank you! Please find your payment confirmation details below. Payment Details : ADYEN fees 258.83 USD 2/ Lab Testing Invoice: T-25371320-06-I1 5921.84 USD 1/ Lab Testing Invoice: T-25371338-06-I1 548.99 USD Total Amount: 6729.66 USD Should you have any questions, please do not hesitate to contact us . A friendly reminder: you can use your online account to view unpaid orders , as well as manage your payments and bookings. Best regard"
+    },
+    {
+      "page_id": "msg_199c50de1603241e",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "View updates to your PayPal account",
+      "created_time": "2025-10-08T18:20:44+00:00",
+      "subject": "View updates to your PayPal account",
+      "sender": "PayPal",
+      "snippet": "Koii Benvenutto - stay informed about your account updates. View Online PayPal Logo Updates to your PayPal account We wanted to let you know about some recent changes related to your PayPal account.",
+      "content": "PayPal 96 Koii Benvenutto - stay informed about your account updates. View Online Updates to your PayPal account We wanted to let you know about some recent changes related to your PayPal account. Capabilities and features In the PayPal app, you can now instantly add funds to your PayPal balance and set up automatic transfers at regularly scheduled intervals or when your balance runs low. This may help avoid transaction declines when spending from your PayPal balance. No action is required unless otherwise stated above. Help | Partners | Logos | Privacy/Cookies | Resources Please do not reply to this email. We are unable to respond to inquiries sent to this address. For immediate answers to your questions, visit our Help Center by clicking \"Help\" located on any PayPal page or email. PayPal, Inc. is Licensed as a Money Transmitter by the New York State Department of Financial Services. PayPal, Inc., NMLS #910457, License #FT3345, Massachusetts Foreign Transmittal License. PayPal, Inc., Transmit Money By Check, Draft or Money Order By The Department of Banking, Commonwealth of Pennsylvania. PayPal, Inc. Rhode Island Licensed Money Transferor. PAYPAL, INC., NMLS #910457, LICENSE #34967, IS LICENSED BY THE GEORGIA DEPARTMENT OF BANKING AND FINANCE. PayPal, Inc. is Licensed by the State of Connecticut Department of Banking to perform Money Transmission, NMLS #910457, License Number MT-910457. PayPal is committed to your Privacy and the responsible handling of all personal data. To learn more, read our Privacy Statement . Copyright \u00a9 2025 PayPal, Inc. All rights reserved. PayPal is located at 2211 N. First St., San Jose, CA 95131. 4f7ff53d-88ae-4e5c-bafc-8dc6dbd2a103"
+    },
+    {
+      "page_id": "msg_199c4dad968f5f10",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Accepted: Eric Koii @ Wed Oct 8, 2025 4pm - 4:30pm (PDT) (koii@trassgames.com)",
+      "created_time": "2025-10-08T17:24:59+00:00",
+      "subject": "Accepted: Eric Koii @ Wed Oct 8, 2025 4pm - 4:30pm (PDT) (koii@trassgames.com)",
+      "sender": "Eric Huynh",
+      "snippet": "Eric Koii Eric Huynh has accepted this invitation. When Wednesday Oct 8, 2025 \u22c5 4pm \u2013 4:30pm (Pacific Time - Los Angeles) Guests koii@trassgames.com - organizer Eric Huynh View all guest info",
+      "content": "<!-- 96 <!-- <!-- Eric Koii \u00a0 Eric Huynh has accepted this invitation. \u00a0 When Wednesday Oct 8, 2025 \u22c5 4pm \u2013 4:30pm (Pacific Time - Los Angeles) Guests koii@trassgames.com - organizer Eric Huynh View all guest info Invitation from Google Calendar You are receiving this email because you are subscribed to calendar notifications. To stop receiving these emails, go to Calendar settings , select this calendar, and change \"Other notifications\". Forwarding this invitation could allow any recipient to send a response to the organizer, be added to the guest list, invite others regardless of their own invitation status, or modify your RSVP. Learn more"
+    },
+    {
+      "page_id": "msg_199c43a92b6105bc",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "Introducing rent-to-own for Ableton Live Suite",
+      "created_time": "2025-10-08T16:29:51+02:00",
+      "subject": "Introducing rent-to-own for Ableton Live Suite",
+      "sender": "Ableton Newsletter",
+      "snippet": "Live has never been more affordable. Ableton View this email in your browser \u203a Make music without the upfront cost Start your rent-to-own plan today \u203a Live 12 Suite is now available on a rent-to-own",
+      "content": "96 Live has never been more affordable. <!-- --> View this email in your browser\u00a0\u203a <!-- --><!-- --> Make music without the upfront cost Start your rent-to-own plan today \u00a0\u203a <!-- --><!-- --> <!-- --><!-- --> Live 12 Suite is now available on a rent-to-own plan, making it more affordable than ever to create and perform music with all of Live\u2019s instruments, effects and features. Spread the usual cost of Live Suite over 24 months, with no interest or extra charges, and pause or cancel anytime. You\u2019l"
+    },
+    {
+      "page_id": "msg_199c4799e0c77351",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "Important: Native ID is now your iZotope login",
+      "created_time": "2025-10-08T15:38:46+00:00",
+      "subject": "Important: Native ID is now your iZotope login",
+      "sender": "no-reply@izotope.com",
+      "snippet": "iZotope logo One login for all your accounts. Native ID is now your iZotope login Hi there, Great news! Your iZotope account has now been unified with your Native ID. This reduces your logins and makes",
+      "content": "Auth0 Confirm Email 96 <!-- <!-- One login for all your accounts. Native ID is now your iZotope login Hi there, Great news! Your iZotope account has now been unified with your Native ID. This reduces your logins and makes it easier to access your products and services across our brands. You will now use your Native ID to log in across iZotope and Native Instruments platforms \u2013 going forward, your old iZotope credentials are no longer supported. To learn more and find answers to FAQs, click the link below. \u2013 Your iZotope team MORE INFO Follow us iZotope is now part of Native Instruments \u2014 Learn more"
+    },
+    {
+      "page_id": "msg_199c470420471a1f",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "Graham Rubin requests $170.89",
+      "created_time": "2025-10-08T15:28:33+00:00",
+      "subject": "Graham Rubin requests $170.89",
+      "sender": "Venmo",
+      "snippet": "Graham Rubin requests $170.89 Graham Rubin requests $ 170 . 89 Bday hokas :) See Request Transaction details Requested by @GrahamRubin Requested from @koiib Make sure you know how to spot payment scams",
+      "content": "Graham Rubin requests $170.89 Graham Rubin requests $170.89 Graham Rubin requests $ 170 . 89 Bday hokas :) See Request Transaction details Requested by @GrahamRubin Requested from @koiib Make sure you know how to spot payment scams - you might not get your money back if someone scams you. Venmo is a service of PayPal, Inc., a licensed provider of money transfer services. All money transmission is provided by PayPal, Inc. pursuant to PayPal, Inc.'s licenses . (NMLS ID #: 910457) PayPal is located"
+    },
+    {
+      "page_id": "msg_199c42865d92e15c",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: HMRC more info request",
+      "created_time": "2025-10-08T14:09:50+00:00",
+      "subject": "RE: HMRC more info request",
+      "sender": "Karen Faleiro",
+      "snippet": "Hello Steve, Good afternoon! Attached is your VAT certificate, below is the EORI number. EORI number: GB501459222000 VAT Number: GB501459222 We will shortly introduce you to your allocated indirect tax",
+      "content": "Hello Steve, \u00a0 Good afternoon! \u00a0 Attached is your VAT certificate, below is the EORI number. \u00a0 EORI number: GB501459222000 \u00a0 VAT Number: GB501459222 \u00a0 \u00a0 \u00a0 We will shortly introduce you to your allocated indirect tax consultant who would assist you with filings &other obligations. \u00a0 Your effective date is 01 07 2025. \u00a0 Customs Support \u2013 AVASK Customs Department For assistance with customs clearances, you can contact our dedicated customs team: Email : customs@avaskgroup.com Schedule a call : https://outlook.office.com/book/CustomsOnboarding@avaskgroup.com/ Logistics Support \u2013 KATA Global Logistics For logistics-related questions or support, please reach out to our sister company: Email : enquiries@katagloballogistics.com Schedule a call : https://outlook.office.com/book/CustomsOnboarding@avaskgroup.com/ \u00a0 Feel free to reach out if you have any more questions on the process. \u00a0 Best regards Karen\u00a0Faleiro \u200b \u200b \u200b \u200b Business\u00a0Development\u00a0Administrator +44\u00a0(0)23\u00a08060\u00a00120 ext:\u00a0 1455 First\u00a0Floor,\u00a0Oceana\u00a0House,\u00a039\u201149\u00a0Commercial\u00a0Road Southampton ,\u00a0 Hampshire ,\u00a0 United\u00a0Kingdom ,\u00a0 SO15\u00a01GA www.avask.com Book\u00a0an\u00a0appointment\u00a0here:\u00a0https://calendly.com/karen-faleiro-avaskgroup This e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorized disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. AVASK Global Compliance Ltd. is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. If you receive this email in error, please contact the sender and permanently delete this email. Any use, copying or dissemination of this email or any information contained in it to anyone other than an intended recipient is prohibited. Any accounting, business or tax advice contained in this communication, including attachments and enclosures, is not intended as a thorough, in-depth analysis of specific issues, nor a substitute for a formal opinion, nor is it sufficient to avoid tax-related penalties. If desired, our firm would be pleased to perform the requisite research and provide you with a detailed written analysis. Such an engagement may be the subject of a separate engagement letter that would define the scope and limits of the desired consultation services. \u200bAny and all communications sent to us may be monitored and/or stored by us to ensure compliance with relevant legislation, rules, and policies. All communications are handled in full compliance with current data protection legislation including, but not limited to, EU Regulation 2016/679 General Data Protection Regulation (\u201cGDPR\u201d). For further information please refer to our Privacy Policy https://www.avaskaccounting.co.uk/legal/ and our website Terms and Conditions https://www.avask.com/legal/ . From: Steve Shockey <steve@trassgames.com> Sent: Monday, September 29, 2025 5:41 PM To: Karen Faleiro <karen.faleiro@avaskgroup.com> Cc: Koii Benvenutto <koii@trassgames.com> Subject: Re: HMRC more info request \u00a0 CAUTION: This email originated from outside of the organisation. Do not click links or open attachments unless you recognise the sender and know the content is safe. \u00a0 Hi Karen, \u00a0 Ok, sounds good. We'll keep an eye out for the letter and let you know. I'll also set a reminder to call in October if we haven't\u00a0received any news.\u00a0 \u00a0 Best,\u00a0 Steve"
+    },
+    {
+      "page_id": "msg_199c42801ac27af7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: HMRC more info request",
+      "created_time": "2025-10-08T14:09:04+00:00",
+      "subject": "RE: HMRC more info request",
+      "sender": "Karen Faleiro",
+      "snippet": "Hello Steve, Good afternoon! Attached is your VAT certificate, below is the EORI number. EORI number: GB501459222000 VAT Number: GB501459222 We will shortly introduce you to your allocated indirect tax",
+      "content": "Hello Steve, \u00a0 Good afternoon! \u00a0 Attached is your VAT certificate, below is the EORI number. \u00a0 EORI number: GB501459222000 \u00a0 VAT Number: GB501459222 \u00a0 \u00a0 \u00a0 We will shortly introduce you to your allocated indirect tax consultant who would assist you with filings &other obligations. \u00a0 Your effective date is 01 07 2025. \u00a0 Feel free to reach out if you have any more questions on the process. \u00a0 Best regards Karen\u00a0Faleiro \u200b \u200b \u200b \u200b Business\u00a0Development\u00a0Administrator +44\u00a0(0)23\u00a08060\u00a00120 ext:\u00a0 1455 First\u00a0Floor,\u00a0Oceana\u00a0House,\u00a039\u201149\u00a0Commercial\u00a0Road Southampton ,\u00a0 Hampshire ,\u00a0 United\u00a0Kingdom ,\u00a0 SO15\u00a01GA www.avask.com Book\u00a0an\u00a0appointment\u00a0here:\u00a0https://calendly.com/karen-faleiro-avaskgroup This e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorized disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. AVASK Global Compliance Ltd. is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. If you receive this email in error, please contact the sender and permanently delete this email. Any use, copying or dissemination of this email or any information contained in it to anyone other than an intended recipient is prohibited. Any accounting, business or tax advice contained in this communication, including attachments and enclosures, is not intended as a thorough, in-depth analysis of specific issues, nor a substitute for a formal opinion, nor is it sufficient to avoid tax-related penalties. If desired, our firm would be pleased to perform the requisite research and provide you with a detailed written analysis. Such an engagement may be the subject of a separate engagement letter that would define the scope and limits of the desired consultation services. \u200bAny and all communications sent to us may be monitored and/or stored by us to ensure compliance with relevant legislation, rules, and policies. All communications are handled in full compliance with current data protection legislation including, but not limited to, EU Regulation 2016/679 General Data Protection Regulation (\u201cGDPR\u201d). For further information please refer to our Privacy Policy https://www.avaskaccounting.co.uk/legal/ and our website Terms and Conditions https://www.avask.com/legal/ . From: Steve Shockey <steve@trassgames.com> Sent: Monday, September 29, 2025 5:41 PM To: Karen Faleiro <karen.faleiro@avaskgroup.com> Cc: Koii Benvenutto <koii@trassgames.com> Subject: Re: HMRC more info request \u00a0 CAUTION: This email originated from outside of the organisation. Do not click links or open attachments unless you recognise the sender and know the content is safe. \u00a0 Hi Karen, \u00a0 Ok, sounds good. We'll keep an eye out for the letter and let you know. I'll also set a reminder to call in October if we haven't\u00a0received any news.\u00a0 \u00a0 Best,\u00a0 Steve"
+    },
+    {
+      "page_id": "msg_199c4357a3912612",
+      "workspace": "koii",
+      "database_name": "gmail",
+      "title": "Poem of the Day: I Love You, Love You Anyhow",
+      "created_time": "2025-10-08T14:00:48+00:00",
+      "subject": "Poem of the Day: I Love You, Love You Anyhow",
+      "sender": "Poetry Foundation",
+      "snippet": "I Love You, Love You Anyhow BY Cheryl Clarke Appears in July/August 2024 Poetry Cover View Issue Can&#39;t stand it cuz you put me down. \u2014Nina Simone, \u201cI Put a Spell on You\u201d I could use a good ole",
+      "content": "96 I Love You, Love You Anyhow BY Cheryl Clarke Appears in View Issue Can\u2019t stand it cuz you put me down. \u2014Nina Simone, \u201cI Put a Spell on You\u201d I could use a good ole R&B lyric right about now to face this hard absence. Only its terse verse can approximate the testament. Or the big arms of \u201cthese arms\u201d circling my wide waist to close the space after all the years of absence these big arms once more once more to close the space. I could use a good ole R&B lyric right about now to face this hard ab"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 3345 entries from 2 databases"
+  },
+  "retries": 0
+}

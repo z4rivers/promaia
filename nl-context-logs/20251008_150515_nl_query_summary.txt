@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 15:05:15
+
+USER QUERY: trass gmail with term mgm avask canusa international tax registration within last 30 days
+
+INTENT PARSED:
+  Goal: find gmail messages about MGM Avask Canusa International tax registration
+  Databases: trass.gmail
+  Search Terms: mgm, avask, canusa, international, tax, registration
+  Date Filter: within last 30 days
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 219
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 219 entries
+
+  Sample Results (first 5):
+    1. RE: HMRC more info request (gmail)
+       Date: 2025-10-08
+    2. RE: HMRC more info request (gmail)
+       Date: 2025-10-08
+    3. RE: Kit Card v2 (the one with needles) (gmail)
+       Date: 2025-10-08
+    4. RE: [Man-day updated] PSI of Yeeps Pet Plush Toy on 15-Oct-2025 (your ref: PO-0006 (Batch 2025-08)) (gmail)
+       Date: 2025-10-08
+    5. RE: MAKER KIT SAMPLE - FEDEX 8847 8314 3392 SENT ON 9.30 (gmail)
+       Date: 2025-10-08

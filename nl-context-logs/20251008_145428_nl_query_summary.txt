@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 14:54:28
+
+USER QUERY: trass stories with terms international launch uk au ca tax registration
+
+INTENT PARSED:
+  Goal: find stories about international launch and tax registration in UK, Australia, Canada
+  Databases: trass.stories
+  Search Terms: international, launch, uk, au, ca, tax, registration
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 72
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 72 entries
+
+  Sample Results (first 5):
+    1. UK 2025-07 Temp Storage (stories)
+       Date: 2025-10-01
+    2. Duplicate conversation (stories)
+       Date: 2025-09-26
+    3. Kit Card (with needles) (stories)
+       Date: 2025-09-25
+    4. International Mod Market Testers (stories)
+       Date: 2025-09-23
+    5. UK VAT received (stories)
+       Date: 2025-09-23

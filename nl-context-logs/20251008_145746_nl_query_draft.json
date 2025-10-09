@@ -1,0 +1,134 @@
+{
+  "user_query": "trass stories with terms international launch uk au ca tax registration",
+  "intent": {
+    "goal": "find stories related to international launch tax registration details for UK, Australia, and Canada",
+    "databases": [
+      "trass.stories",
+      "trass.journal",
+      "trass.cpj"
+    ],
+    "search_terms": [
+      "international",
+      "launch",
+      "uk",
+      "au",
+      "ca",
+      "tax",
+      "registration"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nu.file_path,\nu.file_size\nFROM unified_content u\nWHERE (\n    u.database_name IN ('stories', 'journal', 'cpj')\n    AND (\n        u.title LIKE '%international%' OR u.title LIKE '%launch%' OR u.title LIKE '%uk%' \n        OR u.title LIKE '%au%' OR u.title LIKE '%ca%' OR u.title LIKE '%tax%' \n        OR u.title LIKE '%registration%'\n        OR u.file_path LIKE '%international%' OR u.file_path LIKE '%launch%' \n        OR u.file_path LIKE '%uk%' OR u.file_path LIKE '%au%' OR u.file_path LIKE '%ca%'\n        OR u.file_path LIKE '%tax%' OR u.file_path LIKE '%registration%'\n    )\n)\nORDER BY u.created_time DESC\nLIMIT 5000;",
+  "query_mode": "sql",
+  "result_count": 165,
+  "databases_in_results": [
+    "cpj",
+    "journal",
+    "stories"
+  ],
+  "database_breakdown": {
+    "cpj": 1,
+    "stories": 115,
+    "journal": 49
+  },
+  "sample_results": [
+    {
+      "page_id": "285ce8f7-317a-8002-9af8-c2de11f3a09d",
+      "workspace": "trass",
+      "database_name": "cpj",
+      "title": "Yeeps International Launch Announcement",
+      "created_time": "2025-10-07T23:17:00.000Z",
+      "file_path": "data/md/notion/trass/cpj/2025-10-07 Yeeps International Launch Announcement 285ce8f7-317a-8002-9af8-c2de11f3a09d.md",
+      "file_size": 2544
+    },
+    {
+      "page_id": "280ce8f7-317a-803a-9bae-e8043dca9237",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story",
+      "created_time": "2025-10-02T01:07:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story 280ce8f7-317a-803a-9bae-e8043dca9237.md",
+      "file_size": 292
+    },
+    {
+      "page_id": "280ce8f7-317a-80ce-bcf7-d9c9caf6de01",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "CP Story",
+      "created_time": "2025-10-02T00:56:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-02 CP Story 280ce8f7-317a-80ce-bcf7-d9c9caf6de01.md",
+      "file_size": 305
+    },
+    {
+      "page_id": "27fce8f7-317a-80fb-a270-ca7800acfed2",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK 2025-07 Temp Storage",
+      "created_time": "2025-10-01T20:50:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-01 UK 2025-07 Temp Storage 27fce8f7-317a-80fb-a270-ca7800acfed2.md",
+      "file_size": 17675
+    },
+    {
+      "page_id": "27ed1339-6967-8053-af88-d91cfd9c7ca9",
+      "workspace": "koii",
+      "database_name": "stories",
+      "title": "Switch from identifying properties by name to ID",
+      "created_time": "2025-09-30T17:41:00.000Z",
+      "file_path": "data/md/notion/koii/stories/2025-09-30 Switch from identifying properties by name to ID 27ed1339-6967-8053-af88-d91cfd9c7ca9.md",
+      "file_size": 207
+    },
+    {
+      "page_id": "27dd1339-6967-8047-ac26-e84caf8808ce",
+      "workspace": "koii",
+      "database_name": "stories",
+      "title": "Promaia CMS newsletter vs blog Post handling",
+      "created_time": "2025-09-29T20:47:00.000Z",
+      "file_path": "data/md/notion/koii/stories/2025-09-29 Promaia CMS newsletter vs blog Post handling 27dd1339-6967-8047-ac26-e84caf8808ce.md",
+      "file_size": 336
+    },
+    {
+      "page_id": "27ad1339-6967-80a5-b2c6-ff7a5365e67f",
+      "workspace": "koii",
+      "database_name": "stories",
+      "title": "Duplicate conversation",
+      "created_time": "2025-09-26T00:15:00.000Z",
+      "file_path": "data/md/notion/koii/stories/2025-09-26 Duplicate conversation 27ad1339-6967-80a5-b2c6-ff7a5365e67f.md",
+      "file_size": 249
+    },
+    {
+      "page_id": "279ce8f7-317a-804c-bcac-e780916ee9a1",
+      "workspace": "trass",
+      "database_name": "journal",
+      "title": "2025-09-25",
+      "created_time": "2025-09-25T18:30:00.000Z",
+      "file_path": "data/md/notion/trass/journal/2025-09-25 2025-09-25 279ce8f7-317a-804c-bcac-e780916ee9a1.md",
+      "file_size": 3217
+    },
+    {
+      "page_id": "279ce8f7-317a-80bc-9cb9-d61fd4a23e6f",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Kit Card (with needles)",
+      "created_time": "2025-09-25T15:12:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-25 Kit Card _with needles_ 279ce8f7-317a-80bc-9cb9-d61fd4a23e6f.md",
+      "file_size": 424
+    },
+    {
+      "page_id": "279d1339-6967-814b-a388-d7a1116caf48",
+      "workspace": "koii",
+      "database_name": "journal",
+      "title": "2025-09-25",
+      "created_time": "2025-09-25T04:52:00.000Z",
+      "file_path": "data/md/notion/koii/journal/2025-09-25 2025-09-25 279d1339-6967-814b-a388-d7a1116caf48.md",
+      "file_size": 2798
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 165 entries from 3 databases"
+  },
+  "retries": 0
+}

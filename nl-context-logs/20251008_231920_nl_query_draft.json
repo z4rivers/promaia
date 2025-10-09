@@ -1,0 +1,52 @@
+{
+  "user_query": "trass stories database entries with the term avask uk and au",
+  "intent": {
+    "goal": "find database entries in Trass stories database containing avask, uk, and au",
+    "databases": [
+      "trass.stories"
+    ],
+    "search_terms": [
+      "avask",
+      "uk",
+      "au"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nu.file_path,\nu.file_size\nFROM unified_content u\nWHERE (\n    u.database_name = 'stories'\n    AND u.workspace IN ('trass')\n    AND (\n        LOWER(u.title) LIKE '%avask%' OR\n        LOWER(u.file_path) LIKE '%avask%'\n    )\n    AND (\n        LOWER(u.title) LIKE '%uk%' OR\n        LOWER(u.file_path) LIKE '%uk%'\n    )\n    AND (\n        LOWER(u.title) LIKE '%au%' OR\n        LOWER(u.file_path) LIKE '%au%'\n    )\n)\nORDER BY u.created_time DESC\nLIMIT 5000;",
+  "query_mode": "sql",
+  "result_count": 2,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "201ce8f7-317a-804c-b225-eebef9975e29",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "\ud83c\udfaf\u00a0get all UK tax registration assets to Laura (Avask)",
+      "created_time": "2025-05-28T22:35:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-28 __get all UK tax registration assets to Laura _Avask_ 201ce8f7-317a-804c-b225-eebef9975e29.md",
+      "file_size": 1023
+    },
+    {
+      "page_id": "1dcce8f7-317a-809e-9275-deb38349999b",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "\ud83c\uddec\ud83c\udde7\ud83c\udde6\ud83c\uddfa\u00a0UK, AU Tax Registration w/Avask",
+      "created_time": "2025-04-21T19:28:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-04-21 _____UK_ AU Tax Registration w_Avask 1dcce8f7-317a-809e-9275-deb38349999b.md",
+      "file_size": 12927
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 2 entries from 1 databases"
+  },
+  "retries": 0
+}

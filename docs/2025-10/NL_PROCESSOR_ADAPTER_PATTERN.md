@@ -95,7 +95,7 @@ return full_content
 - Grouping by database
 - Registry-based file path resolution
 
-**Returns**: Same format as `read_markdown_files_with_registry()` for compatibility
+**Returns**: Same format as `load_database_pages_with_filters()` for compatibility
 
 ```python
 {

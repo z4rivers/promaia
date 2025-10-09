@@ -1,0 +1,137 @@
+{
+  "user_query": "trass stories international launch uk au ca tax registration",
+  "intent": {
+    "goal": "find information about international launch and tax registration in UK, Australia, and Canada",
+    "databases": [
+      "trass.stories",
+      "trass.journal",
+      "trass.cpj",
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "international",
+      "launch",
+      "UK",
+      "AU",
+      "CA",
+      "tax",
+      "registration"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "international launch tax registration business UK Australia Canada",
+    "filters": {
+      "database_name": {
+        "$in": [
+          "trass.stories",
+          "trass.journal",
+          "trass.cpj",
+          "trass.gmail"
+        ]
+      }
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 20,
+  "databases_in_results": [
+    "trass.cpj",
+    "trass.stories",
+    "trass.gmail"
+  ],
+  "database_breakdown": {
+    "trass.cpj": 3,
+    "trass.gmail": 16,
+    "trass.stories": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "225ce8f7-317a-809d-950b-fdc0407cb736",
+      "similarity_score": 0.46019089221954346,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-03T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "198c32dac91a8781",
+      "similarity_score": 0.3969370126724243,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-19T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198e1a5afda3fa4e",
+      "similarity_score": 0.3899271488189697,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-25T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198c32920063ba65",
+      "similarity_score": 0.38839054107666016,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-19T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "1990a928c1c60e76",
+      "similarity_score": 0.38559967279434204,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-09-02T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198c26152784fd09",
+      "similarity_score": 0.36648857593536377,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-19T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "232ce8f7-317a-8000-bd1f-ec5c7f902d6d",
+      "similarity_score": 0.35903429985046387,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-16T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "1990b62276ea6b14",
+      "similarity_score": 0.352134108543396,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-09-02T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198e65dcd21ca896",
+      "similarity_score": 0.35069191455841064,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-26T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198d473e9756b7d0",
+      "similarity_score": 0.3488265872001648,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-22T00:00:00Z",
+      "content_type": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 20 entries from 3 databases"
+  },
+  "retries": 0
+}

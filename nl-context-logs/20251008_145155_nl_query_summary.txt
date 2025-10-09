@@ -1,0 +1,33 @@
+Natural Language Query Summary
+Generated: 2025-10-08 14:51:55
+
+USER QUERY: trass international launch
+
+INTENT PARSED:
+  Goal: find information about Trass International game launch
+  Databases: trass.journal, trass.stories, trass.gmail, trass.cpj, trass.discord, trass.yeeps, trass.epics
+  Search Terms: international, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: trass.cpj, trass.gmail
+  
+  Breakdown by Database:
+    • trass.cpj: 2 entries
+    • trass.gmail: 18 entries
+
+  Sample Results (first 5):
+    1. Untitled (trass.cpj)
+       Date: 2025-07-30
+    2. Untitled (trass.gmail)
+       Date: 2025-08-29
+    3. Untitled (trass.gmail)
+       Date: 2025-08-20
+    4. Untitled (trass.gmail)
+       Date: 2025-08-26
+    5. Untitled (trass.gmail)
+       Date: 2025-08-26

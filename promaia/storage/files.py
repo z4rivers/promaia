@@ -931,7 +931,7 @@ def create_channel_or_filter(channel_names: List[str]) -> Dict[str, Any]:
         'or_clauses': or_clauses
     }
 
-def read_markdown_files_with_registry(
+def load_database_pages_with_filters(
     database_config, 
     days: Optional[int] = None,
     comparison_filters: Optional[Dict[str, Any]] = None,
@@ -939,10 +939,11 @@ def read_markdown_files_with_registry(
     property_filters: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Read markdown files using the database registry as the source of truth for ordering.
+    Query and load pages from a database with optional filters.
     
-    This function provides more accurate chronological ordering by using the SQLite
-    registry which contains the actual date information from the original data sources.
+    This function queries the registry for page IDs matching the specified database
+    and filters, then uses the universal adapter to load full content (including
+    Gmail thread expansion when applicable).
     
     Args:
         database_config: DatabaseConfig object with workspace and nickname
@@ -956,41 +957,31 @@ def read_markdown_files_with_registry(
     """
     from promaia.storage.hybrid_storage import get_hybrid_registry
     
-    pages = []
-    
     try:
-        # Get registry entries for this database, ordered by date property
+        # Step 1: Query registry for page_ids matching the database and date filters
         registry = get_hybrid_registry()
         
-        # Query registry for files in this database
         with sqlite3.connect(registry.db_path) as conn:
             cursor = conn.cursor()
             
             # Determine which date property to use from config, default to last_edited_time
-            # Use last_edited_time as default to show recently modified content first
             date_filter_prop = database_config.date_filters.get("property", "last_edited_time")
             
             # Basic sanitization to prevent SQL injection from config values
-            # This is a safeguard; config should be trusted but it's good practice
-            allowed_props = ["created_time", "last_edited_time", "synced_time"] # Use columns that exist in unified_content view
+            allowed_props = ["created_time", "last_edited_time", "synced_time"]
             if date_filter_prop not in allowed_props:
-                # If the configured property is not a direct column, use last_edited_time as fallback
                 print(f"Info: date_filter property '{date_filter_prop}' in config is not a direct column. Using 'last_edited_time' for query.")
                 date_filter_prop = "last_edited_time"
 
             # Query the unified_content view for this database
-            # Use database_id for reliable lookup across all database types
             where_conditions = ["workspace = ?", "database_id = ?"]
             params = [database_config.workspace, database_config.database_id]
             
             # Add date filtering if days parameter is provided
             if days:
-                # Handle special case for 'all' - no date filtering
                 if isinstance(days, str) and days.lower() == 'all':
-                    # Skip date filtering for 'all'
-                    pass
+                    pass  # Skip date filtering for 'all'
                 else:
-                    # Ensure days is an integer (handle string input)
                     try:
                         days_int = int(days) if isinstance(days, str) else days
                         cutoff_date = (datetime.now() - timedelta(days=days_int)).isoformat()
@@ -998,163 +989,85 @@ def read_markdown_files_with_registry(
                         params.append(cutoff_date)
                     except (ValueError, TypeError) as e:
                         print(f"Warning: Invalid days parameter '{days}': {e}")
-                        # Continue without date filtering if days parameter is invalid
             
             where_clause = " AND ".join(where_conditions)
             query = f"""
-                SELECT page_id, title, created_time, last_edited_time, synced_time, file_path, metadata
+                SELECT page_id
                 FROM unified_content 
                 WHERE {where_clause}
                 ORDER BY {date_filter_prop} DESC
             """
             cursor.execute(query, params)
-            registry_entries = cursor.fetchall()
-
-        # Correctly get project root
-        project_root = get_project_root()
+            page_ids = [row[0] for row in cursor.fetchall()]
         
-        # Get markdown directory for fallback lookups
-        # Ensure md_dir is an absolute path
-        md_dir = database_config.markdown_directory
-        if not os.path.isabs(md_dir):
-            md_dir = os.path.join(project_root, md_dir)
+        if not page_ids:
+            print(f"No entries found in registry for {database_config.workspace}.{database_config.nickname} (database_id: {database_config.database_id})")
+            print(f"Registry is the authoritative source - if files exist but aren't registered:")
+            print(f"  Run 'maia database register-markdown-files --database {database_config.nickname} --workspace {database_config.workspace}'")
+            return []
         
-        for page_id, title, created_time, last_edited_time, synced_time, file_path, metadata in registry_entries:
-            try:
-                # Optimized approach: Try direct file path first, then limited search
-                md_files = []
-                
-                # First try: Use registry file_path if available and exists
-                # Resolve relative paths against project_root
-                if file_path:
-                    full_path = file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
-                    if os.path.exists(full_path):
-                        md_files = [full_path]
-                
-                if not md_files:
-                    # Second try: Build expected path from page_id and check if it exists
-                    expected_paths = [
-                        os.path.join(md_dir, f"{page_id}.md"),
-                        os.path.join(md_dir, f"{page_id}_{title}.md") if title else None,
-                        os.path.join(md_dir, f"{title}_{page_id}.md") if title else None
-                    ]
-                    
-                    for expected_path in expected_paths:
-                        if expected_path and os.path.exists(expected_path):
-                            md_files = [expected_path]
-                            break
-                    
-                    # Last resort: Limited recursive search (only if really needed)
-                    if not md_files:
-                        try:
-                            # Limit search to prevent hangs - only search immediate subdirectories
-                            for subdir in [md_dir] + [os.path.join(md_dir, d) for d in os.listdir(md_dir) if os.path.isdir(os.path.join(md_dir, d))]:
-                                pattern = os.path.join(subdir, f"*{page_id}*.md")
-                                matches = glob.glob(pattern)
-                                if matches:
-                                    md_files = matches
-                                    break
-                        except (OSError, PermissionError):
-                            # Skip if directory issues
-                            continue
-                
-                if not md_files:
-                    # Only warn if we truly can't find the file by page_id
-                    continue  # Skip warning for missing files - they may have been deleted intentionally
-                
-                # Use the most recent file if multiple matches (shouldn't happen but just in case)
-                md_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-                md_file = md_files[0]
-                
-                # Update the registry with the correct file path
-                try:
-                    relative_path = os.path.relpath(md_file, project_root)
-                    cursor.execute(
-                        "UPDATE unified_content SET file_path = ? WHERE page_id = ?",
-                        (relative_path, page_id)
-                    )
-                    # Note: connection.commit() is handled by the caller
-                except Exception:
-                    pass  # Silent fail for registry updates
-
-                # Read the markdown content
-                with open(md_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                # Parse created_time from registry
-                try:
-                    if created_time:
-                        date_obj = datetime.fromisoformat(created_time.replace("Z", "+00:00"))
-                    else:
-                        # Fallback to file mtime
-                        date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
-                except (ValueError, TypeError):
-                    date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
-                
-                pages.append({
-                    'page_id': page_id,
-                    'date': date_obj.strftime("%Y-%m-%d"),
-                    'date_obj': date_obj,
-                    'content': content,
-                    'file_path': md_file,
-                    'filename': os.path.basename(md_file),
-                    'title': title or "Untitled",
-                    'created_time': created_time,
-                    'last_edited_time': last_edited_time,
-                    'synced_time': synced_time,
-                    'metadata': metadata,  # Include the metadata from the registry!
-                    'debug_info': "date from database registry"
-                })
-                
-            except Exception as e:
-                print(f"Error processing registry entry {page_id}: {e}")
-                continue
-    
-        # Commit any registry path updates that were made during the loop
-        try:
-            conn.commit()
-        except Exception:
-            pass
+        if os.environ.get("MAIA_DEBUG") == "1":
+            print(f"Found {len(page_ids)} pages in registry for {database_config.workspace}.{database_config.nickname}")
+        
+        # Step 2: Use universal adapter to load full content (handles Gmail thread expansion)
+        content_dict = load_content_by_page_ids(
+            page_ids=page_ids,
+            db_path=registry.db_path,
+            expand_gmail_threads=True
+        )
+        
+        # Step 3: Extract pages for this specific database
+        # The key might be qualified (workspace.database) or simple (database)
+        qualified_key = f"{database_config.workspace}.{database_config.nickname}"
+        simple_key = database_config.nickname
+        
+        pages = content_dict.get(qualified_key, content_dict.get(simple_key, []))
+        
+        if not pages:
+            # Check if pages are under any key
+            if content_dict:
+                # Pages might be under a different key, get the first available
+                pages = next(iter(content_dict.values()), [])
+        
+        if os.environ.get("MAIA_DEBUG") == "1":
+            print(f"Loaded {len(pages)} pages with content for {database_config.workspace}.{database_config.nickname}")
+        
+        # Step 4: Apply custom property filters if specified
+        if complex_filter:
+            pages = apply_custom_property_filters(pages, complex_filter)
+        
+        if property_filters:
+            pages = apply_simple_property_filters(pages, property_filters)
+        
+        return pages
     
     except Exception as e:
-        print(f"Error reading from registry: {e}")
+        print(f"Error loading database pages: {e}")
         print(f"✗ Registry-first architecture requires functional metadata database.")
         print(f"  Run 'maia database register-markdown-files' to fix registry.")
         return []
+
+
+# Backward compatibility alias (will be deprecated)
+def read_markdown_files_with_registry(
+    database_config, 
+    days: Optional[int] = None,
+    comparison_filters: Optional[Dict[str, Any]] = None,
+    complex_filter: Optional[Dict[str, Any]] = None,
+    property_filters: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """
+    DEPRECATED: Use load_database_pages_with_filters() instead.
     
-    initial_page_count = len(pages)
-    if os.environ.get("MAIA_DEBUG") == "1":
-        print(f"Read {initial_page_count} pages from database registry for {database_config.workspace}.{database_config.nickname}")
-    
-    # Apply custom property filters
-    filters_applied = False
-    
-    # Apply complex filters first
-    if complex_filter:
-        pages = apply_custom_property_filters(pages, complex_filter)
-        filters_applied = True
-    
-    # Apply simple property filters
-    if property_filters:
-        pages = apply_simple_property_filters(pages, property_filters)
-        filters_applied = True
-    
-    # Registry-first: if no results, that's the authoritative answer
-    if len(pages) == 0:
-        # Use database_id for the error message since that's what we actually queried
-        print(f"No entries found in registry for {database_config.workspace}.{database_config.nickname} (database_id: {database_config.database_id})")
-        print(f"Registry is the authoritative source - if files exist but aren't registered:")
-        print(f"  Run 'maia database register-markdown-files --database {database_config.nickname} --workspace {database_config.workspace}'")
-        
-        # Additional debugging for Discord databases
-        if database_config.source_type == "discord":
-            print(f"Debug: Found {len(registry_entries)} raw entries in registry before file processing")
-            if len(registry_entries) > 0:
-                print(f"Debug: Entries exist but no markdown files could be loaded - check file paths and permissions")
-        
-        return []
-    
-    return pages
+    This function is kept for backward compatibility.
+    """
+    return load_database_pages_with_filters(
+        database_config=database_config,
+        days=days,
+        comparison_filters=comparison_filters,
+        complex_filter=complex_filter,
+        property_filters=property_filters
+    )
 
 def apply_custom_property_filters(pages: List[Dict[str, Any]], complex_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """

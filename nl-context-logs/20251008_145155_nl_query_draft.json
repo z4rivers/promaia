@@ -1,0 +1,136 @@
+{
+  "user_query": "trass international launch",
+  "intent": {
+    "goal": "find information about Trass International game launch",
+    "databases": [
+      "trass.journal",
+      "trass.stories",
+      "trass.gmail",
+      "trass.cpj",
+      "trass.discord",
+      "trass.yeeps",
+      "trass.epics"
+    ],
+    "search_terms": [
+      "international",
+      "launch"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "Trass International game launch release",
+    "filters": {
+      "database_name": {
+        "$in": [
+          "trass.journal",
+          "trass.stories",
+          "trass.gmail",
+          "trass.cpj",
+          "trass.discord",
+          "trass.yeeps",
+          "trass.epics"
+        ]
+      }
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 20,
+  "databases_in_results": [
+    "trass.cpj",
+    "trass.gmail"
+  ],
+  "database_breakdown": {
+    "trass.cpj": 2,
+    "trass.gmail": 18
+  },
+  "sample_results": [
+    {
+      "page_id": "240ce8f7-317a-80c1-9e5e-d5b7fae70a02",
+      "similarity_score": 0.45209646224975586,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-30T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "198f78db1a981f7a",
+      "similarity_score": 0.4378652572631836,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-29T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198c96c08c1f75d0",
+      "similarity_score": 0.43610668182373047,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-20T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198e8899ac3c23f3",
+      "similarity_score": 0.43384039402008057,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-26T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198e892573876dc4",
+      "similarity_score": 0.4319779872894287,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-26T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198e347224a68990",
+      "similarity_score": 0.4281519055366516,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-25T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "1990602dc202c5b5",
+      "similarity_score": 0.4217129945755005,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-09-01T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198f1b9121f17059",
+      "similarity_score": 0.41722774505615234,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-28T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198bfda54528abc2",
+      "similarity_score": 0.41629958152770996,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-18T00:00:00Z",
+      "content_type": "gmail"
+    },
+    {
+      "page_id": "198bf5cad68b33f6",
+      "similarity_score": 0.41611647605895996,
+      "database_name": "trass.gmail",
+      "workspace": "trass",
+      "created_time": "2025-08-18T00:00:00Z",
+      "content_type": "gmail"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 20 entries from 2 databases"
+  },
+  "retries": 0
+}

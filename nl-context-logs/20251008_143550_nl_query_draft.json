@@ -1,0 +1,104 @@
+{
+  "user_query": "trass workspace about the international launch",
+  "intent": {
+    "goal": "find information about the international launch in the trass workspace",
+    "databases": [
+      "trass.journal",
+      "trass.stories",
+      "trass.gmail",
+      "trass.cpj",
+      "trass.discord",
+      "trass.yeeps",
+      "trass.epics"
+    ],
+    "search_terms": [
+      "international",
+      "launch"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "international launch",
+    "filters": {
+      "database_name": {
+        "$in": [
+          "trass.journal",
+          "trass.stories",
+          "trass.gmail",
+          "trass.cpj",
+          "trass.discord",
+          "trass.yeeps",
+          "trass.epics"
+        ]
+      }
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 6,
+  "databases_in_results": [
+    "trass.cpj",
+    "trass.discord"
+  ],
+  "database_breakdown": {
+    "trass.cpj": 5,
+    "trass.discord": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "238ce8f7-317a-803c-bf25-ca54562049f9",
+      "similarity_score": 0.42579472064971924,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-22T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "23ece8f7-317a-80eb-aedb-c939a05e5c50",
+      "similarity_score": 0.3907178044319153,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-28T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "msg_1388320642490699946",
+      "similarity_score": 0.3686915636062622,
+      "database_name": "trass.discord",
+      "workspace": "trass",
+      "created_time": "2025-06-28T00:50:34.920000+00:00",
+      "content_type": "tg"
+    },
+    {
+      "page_id": "241ce8f7-317a-80b1-bd57-f1fc39c477e1",
+      "similarity_score": 0.3309500217437744,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-31T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "246ce8f7-317a-805a-a2e3-e9bc9351650e",
+      "similarity_score": 0.3292008638381958,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-08-05T00:00:00Z",
+      "content_type": "notion"
+    },
+    {
+      "page_id": "238ce8f7-317a-80fb-824c-e0785dda16a9",
+      "similarity_score": 0.3038484454154968,
+      "database_name": "trass.cpj",
+      "workspace": "trass",
+      "created_time": "2025-07-22T00:00:00Z",
+      "content_type": "notion"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 6 entries from 2 databases"
+  },
+  "retries": 0
+}

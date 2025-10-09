@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 22:55:42
+
+USER QUERY: koii journals about travel
+
+INTENT PARSED:
+  Goal: find journal entries about travel
+  Databases: journal, trass.journal
+  Search Terms: travel
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: journal
+  
+  Breakdown by Database:
+    • journal: 20 entries
+
+  Sample Results (first 5):
+    1. Untitled (journal)
+       Date: 2025-07-30
+    2. Untitled (journal)
+       Date: 2025-07-29
+    3. Untitled (journal)
+       Date: 2025-09-16
+    4. Untitled (journal)
+       Date: 2025-07-31
+    5. Untitled (journal)
+       Date: 2025-07-07

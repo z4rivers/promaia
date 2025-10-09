@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-08 23:41:11
+
+USER QUERY: trass gmail entries with term mgm in april 2025
+
+INTENT PARSED:
+  Goal: find gmail entries containing mgm in trass workspace during april 2025
+  Databases: trass.gmail
+  Search Terms: mgm
+  Date Filter: april 2025
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 114
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 114 entries
+
+  Sample Results (first 5):
+    1. Re: Plush pet design docs V1 (gmail)
+       Date: 2025-04-30
+    2. Re: [Man-day updated] PSI of  YP1-R1 on 08-May-2025  (your ref: PO-0003 (Batch 2025-02)) (gmail)
+       Date: 2025-04-30
+    3. [Test Report] LT of PLUSH TOYS AND ACCESSORY SET is Pass (ref: T-24328905-06-R /  / International Order : PO: P-0004 (Batch 2025-05)) (gmail)
+       Date: 2025-04-30
+    4. Re: [Man-day updated] PSI of YP1-R1 on 08-May-2025 (your ref: PO-0003 (Batch 2025-02)) (gmail)
+       Date: 2025-04-30
+    5. RE: Plush pet design docs V1 (gmail)
+       Date: 2025-04-30

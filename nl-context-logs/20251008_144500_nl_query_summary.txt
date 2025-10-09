@@ -1,0 +1,34 @@
+Natural Language Query Summary
+Generated: 2025-10-08 14:45:00
+
+USER QUERY: trass workspace about the international launch
+
+INTENT PARSED:
+  Goal: find content about the international launch from Trass workspace
+  Databases: trass.journal, trass.stories, trass.cpj, trass.gmail, trass.discord, trass.yeeps, trass.epics
+  Search Terms: international, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: trass.stories, trass.cpj, trass.discord
+  
+  Breakdown by Database:
+    • trass.cpj: 10 entries
+    • trass.stories: 9 entries
+    • trass.discord: 1 entries
+
+  Sample Results (first 5):
+    1. Untitled (trass.cpj)
+       Date: 2025-07-22
+    2. Untitled (trass.cpj)
+       Date: 2025-07-28
+    3. Untitled (trass.stories)
+       Date: 2025-05-06
+    4. Untitled (trass.cpj)
+       Date: 2025-07-22
+    5. Untitled (trass.cpj)
+       Date: 2025-08-05

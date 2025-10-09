@@ -1,0 +1,122 @@
+{
+  "user_query": "entries in trass stories database with term uk",
+  "intent": {
+    "goal": "find entries containing 'uk' in Trass stories database",
+    "databases": [
+      "trass.stories"
+    ],
+    "search_terms": [
+      "uk"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nu.file_path,\nu.file_size\nFROM unified_content u\nWHERE (\n    u.database_name = 'stories'\n    AND u.workspace IN ('trass')\n    AND (\n        LOWER(u.title) LIKE '%uk%'\n        OR LOWER(u.file_path) LIKE '%uk%'\n    )\n)\nORDER BY u.created_time DESC\nLIMIT 1200",
+  "query_mode": "sql",
+  "result_count": 15,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 15
+  },
+  "sample_results": [
+    {
+      "page_id": "27fce8f7-317a-80fb-a270-ca7800acfed2",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK 2025-07 Temp Storage",
+      "created_time": "2025-10-01T20:50:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-01 UK 2025-07 Temp Storage 27fce8f7-317a-80fb-a270-ca7800acfed2.md",
+      "file_size": 17675
+    },
+    {
+      "page_id": "277ce8f7-317a-8060-a539-dac60148ddb8",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK VAT received",
+      "created_time": "2025-09-23T21:04:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-23 UK VAT received 277ce8f7-317a-8060-a539-dac60148ddb8.md",
+      "file_size": 298
+    },
+    {
+      "page_id": "20ece8f7-317a-8090-a7f6-d83421748da4",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "",
+      "created_time": "2025-06-10T23:51:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-06-10 _Their move__UK VAT registration with Avask 20ece8f7-317a-8090-a7f6-d83421748da4.md",
+      "file_size": 217
+    },
+    {
+      "page_id": "201ce8f7-317a-804c-b225-eebef9975e29",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "\ud83c\udfaf\u00a0get all UK tax registration assets to Laura (Avask)",
+      "created_time": "2025-05-28T22:35:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-28 __get all UK tax registration assets to Laura _Avask_ 201ce8f7-317a-804c-b225-eebef9975e29.md",
+      "file_size": 1023
+    },
+    {
+      "page_id": "1fdce8f7-317a-80f8-a717-e4144ca477a4",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK vessel arrives",
+      "created_time": "2025-05-24T00:11:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-24 UK vessel arrives 1fdce8f7-317a-80f8-a717-e4144ca477a4.md",
+      "file_size": 278
+    },
+    {
+      "page_id": "1eace8f7-317a-8009-aaa3-e9581554781d",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK: Get \u201ctechnical file\u201d to Expandly for them to store",
+      "created_time": "2025-05-05T19:24:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-05 UK_ Get _technical file_ to Expandly for them to store 1eace8f7-317a-8009-aaa3-e9581554781d.md",
+      "file_size": 2155
+    },
+    {
+      "page_id": "1eace8f7-317a-8015-a53f-f3a2c1054414",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "batch 2025-05 Original Splits UK, CA, AU (With % of players by country)",
+      "created_time": "2025-05-05T19:24:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-05 batch 2025-05 Original Splits UK_ CA_ AU _With _ of players by country_ 1eace8f7-317a-8015-a53f-f3a2c1054414.md",
+      "file_size": 5070
+    },
+    {
+      "page_id": "1eace8f7-317a-80da-b0e5-d643df3ee183",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Set up Shopify markets for UK, CA, AU",
+      "created_time": "2025-05-05T19:24:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-05-05 Set up Shopify markets for UK_ CA_ AU 1eace8f7-317a-80da-b0e5-d643df3ee183.md",
+      "file_size": 322
+    },
+    {
+      "page_id": "1dcce8f7-317a-80a1-a9df-c679094520aa",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK Warehouse Setup",
+      "created_time": "2025-04-21T19:28:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-04-21 UK Warehouse Setup 1dcce8f7-317a-80a1-a9df-c679094520aa.md",
+      "file_size": 3440
+    },
+    {
+      "page_id": "1dcce8f7-317a-8091-9a3b-f38718af29e4",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "ShipBob UK Integration ",
+      "created_time": "2025-04-21T19:28:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-04-21 ShipBob UK Integration 1dcce8f7-317a-8091-9a3b-f38718af29e4.md",
+      "file_size": 487
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 15 entries from 1 databases"
+  },
+  "retries": 0
+}

@@ -1,0 +1,138 @@
+{
+  "user_query": "trass stories with terms international launch uk au ca tax registration",
+  "intent": {
+    "goal": "find stories about international launch and tax registration in UK, Australia, Canada",
+    "databases": [
+      "trass.stories"
+    ],
+    "search_terms": [
+      "international",
+      "launch",
+      "uk",
+      "au",
+      "ca",
+      "tax",
+      "registration"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\nu.file_path,\nu.file_size,\ng.metadata\nFROM unified_content u\nLEFT JOIN generic_content g ON u.page_id = g.page_id\nWHERE u.database_name = 'stories'\nAND (\n  LOWER(u.title) LIKE '%international%'\n  OR LOWER(u.title) LIKE '%launch%'\n  OR LOWER(u.title) LIKE '%uk%'\n  OR LOWER(u.title) LIKE '%au%'\n  OR LOWER(u.title) LIKE '%ca%'\n  OR LOWER(u.title) LIKE '%tax%'\n  OR LOWER(u.title) LIKE '%registration%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%international%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%launch%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%uk%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%au%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%ca%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%tax%'\n  OR LOWER(COALESCE(g.metadata, '')) LIKE '%registration%'\n)\nORDER BY u.created_time DESC\nLIMIT 5000;",
+  "query_mode": "sql",
+  "result_count": 72,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 72
+  },
+  "sample_results": [
+    {
+      "page_id": "27fce8f7-317a-80fb-a270-ca7800acfed2",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK 2025-07 Temp Storage",
+      "created_time": "2025-10-01T20:50:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-10-01 UK 2025-07 Temp Storage 27fce8f7-317a-80fb-a270-ca7800acfed2.md",
+      "file_size": 17675,
+      "metadata": null
+    },
+    {
+      "page_id": "27ad1339-6967-80a5-b2c6-ff7a5365e67f",
+      "workspace": "koii",
+      "database_name": "stories",
+      "title": "Duplicate conversation",
+      "created_time": "2025-09-26T00:15:00.000Z",
+      "file_path": "data/md/notion/koii/stories/2025-09-26 Duplicate conversation 27ad1339-6967-80a5-b2c6-ff7a5365e67f.md",
+      "file_size": 249,
+      "metadata": null
+    },
+    {
+      "page_id": "279ce8f7-317a-80bc-9cb9-d61fd4a23e6f",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Kit Card (with needles)",
+      "created_time": "2025-09-25T15:12:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-25 Kit Card _with needles_ 279ce8f7-317a-80bc-9cb9-d61fd4a23e6f.md",
+      "file_size": 424,
+      "metadata": null
+    },
+    {
+      "page_id": "277ce8f7-317a-80bf-9493-d779f0227d8a",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "International Mod Market Testers",
+      "created_time": "2025-09-23T21:14:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-23 International Mod Market Testers 277ce8f7-317a-80bf-9493-d779f0227d8a.md",
+      "file_size": 528,
+      "metadata": null
+    },
+    {
+      "page_id": "277ce8f7-317a-8060-a539-dac60148ddb8",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "UK VAT received",
+      "created_time": "2025-09-23T21:04:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-23 UK VAT received 277ce8f7-317a-8060-a539-dac60148ddb8.md",
+      "file_size": 298,
+      "metadata": null
+    },
+    {
+      "page_id": "277ce8f7-317a-80ed-9dea-ff40bc69ee7f",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "AU VAT Received",
+      "created_time": "2025-09-23T20:53:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-23 AU VAT Received 277ce8f7-317a-80ed-9dea-ff40bc69ee7f.md",
+      "file_size": 299,
+      "metadata": null
+    },
+    {
+      "page_id": "273ce8f7-317a-80b4-8639-e1b5d9d3a993",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Automated switch from 'in-stock' to 'pre-order' upon sellout",
+      "created_time": "2025-09-19T23:36:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-19 Automated switch from _in-stock_ to _pre-order_ upon sellout 273ce8f7-317a-80b4-8639-e1b5d9d3a993.md",
+      "file_size": 3590,
+      "metadata": null
+    },
+    {
+      "page_id": "26ece8f7-317a-8002-8284-f6498b55f981",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "International Payments",
+      "created_time": "2025-09-14T17:30:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-14 International Payments 26ece8f7-317a-8002-8284-f6498b55f981.md",
+      "file_size": 2234,
+      "metadata": null
+    },
+    {
+      "page_id": "26cce8f7-317a-80ad-89d8-e5a60489182c",
+      "workspace": "trass",
+      "database_name": "stories",
+      "title": "Maker Kit Beta Launch Rough Timeline",
+      "created_time": "2025-09-12T05:24:00.000Z",
+      "file_path": "data/md/notion/trass/stories/2025-09-12 Maker Kit Beta Launch Rough Timeline 26cce8f7-317a-80ad-89d8-e5a60489182c.md",
+      "file_size": 1954,
+      "metadata": null
+    },
+    {
+      "page_id": "264d1339-6967-8015-8205-e7b0e50eeffe",
+      "workspace": "koii",
+      "database_name": "stories",
+      "title": "Fulfillment capital",
+      "created_time": "2025-09-04T18:45:00.000Z",
+      "file_path": "data/md/notion/koii/stories/2025-09-04 Fulfillment capital 264d1339-6967-8015-8205-e7b0e50eeffe.md",
+      "file_size": 391,
+      "metadata": null
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 72 entries from 1 databases"
+  },
+  "retries": 0
+}

@@ -1,0 +1,26 @@
+Natural Language Query Summary
+Generated: 2025-10-08 23:19:20
+
+USER QUERY: trass stories database entries with the term avask uk and au
+
+INTENT PARSED:
+  Goal: find database entries in Trass stories database containing avask, uk, and au
+  Databases: trass.stories
+  Search Terms: avask, uk, au
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 2
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 2 entries
+
+  Sample Results (first 5):
+    1. 🎯 get all UK tax registration assets to Laura (Avask) (stories)
+       Date: 2025-05-28
+    2. 🇬🇧🇦🇺 UK, AU Tax Registration w/Avask (stories)
+       Date: 2025-04-21
