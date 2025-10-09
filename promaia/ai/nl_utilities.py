@@ -292,12 +292,17 @@ class ResultValidator:
     """Validate query results and determine if they match user intent."""
     
     @staticmethod
-    def validate_results(intent: Dict[str, Any], results: List[Dict[str, Any]]) -> Tuple[bool, str]:
+    def validate_results(intent: Dict[str, Any], results: List[Dict[str, Any]], query_mode: str = "sql") -> Tuple[bool, str]:
         """
         Check if results match the user's intent.
         Returns (is_valid, factual_observation)
         
         Note: Report facts and context, but let the AI decide how to fix it.
+        
+        Args:
+            intent: User's search intent
+            results: Query results
+            query_mode: "sql" or "vector" - affects validation strategy
         """
         # Check if we have results
         if not results:
@@ -350,31 +355,34 @@ class ResultValidator:
         
         # Check for search terms in results (if applicable)
         # NOTE: This is a soft check - if we got results, the SQL likely worked correctly
-        # Filter out workspace names and common words from search term validation
-        search_terms = intent.get('search_terms', [])
-        # Don't validate workspace names or single letters as search terms
-        search_terms = [t for t in search_terms if len(t) > 1 and t.lower() not in ['trass', 'koii']]
-        
-        if search_terms and result_count < 10:
-            # Only flag as issue if we got very few results AND terms not visible
-            # This suggests the query might be wrong
-            terms_found = False
-            for result in results[:10]:
-                title = result.get('title', '').lower()
-                metadata = str(result.get('metadata', '')).lower()
-                # Check all string fields
-                all_text = ' '.join(str(v).lower() for v in result.values() if v)
-                for term in search_terms:
-                    if term.lower() in all_text:
-                        terms_found = True
-                        break
-                if terms_found:
-                    break
+        # IMPORTANT: Skip this for vector search! Vector search finds by semantic meaning,
+        # not exact word matching. Requiring exact terms defeats the purpose.
+        if query_mode == "sql":
+            # Filter out workspace names and common words from search term validation
+            search_terms = intent.get('search_terms', [])
+            # Don't validate workspace names or single letters as search terms
+            search_terms = [t for t in search_terms if len(t) > 1 and t.lower() not in ['trass', 'koii']]
             
-            if not terms_found:
-                goal = intent.get('goal', 'unknown goal')
-                return False, f"Query returned {result_count} rows, but search terms '{', '.join(search_terms)}' not visible in samples. Goal was: {goal}."
-        # If we have many results, trust the SQL even if terms not visible in sample
+            if search_terms and result_count < 10:
+                # Only flag as issue if we got very few results AND terms not visible
+                # This suggests the query might be wrong
+                terms_found = False
+                for result in results[:10]:
+                    title = result.get('title', '').lower()
+                    metadata = str(result.get('metadata', '')).lower()
+                    # Check all string fields
+                    all_text = ' '.join(str(v).lower() for v in result.values() if v)
+                    for term in search_terms:
+                        if term.lower() in all_text:
+                            terms_found = True
+                            break
+                    if terms_found:
+                        break
+                
+                if not terms_found:
+                    goal = intent.get('goal', 'unknown goal')
+                    return False, f"Query returned {result_count} rows, but search terms '{', '.join(search_terms)}' not visible in samples. Goal was: {goal}."
+            # If we have many results, trust the SQL even if terms not visible in sample
         
         # All checks passed
         return True, f"Results look good: {result_count} entries from {len(result_databases)} databases"
@@ -409,27 +417,14 @@ class ResultValidator:
 
 def format_result_summary_for_user(summary: Dict[str, Any], intent: Dict[str, Any]) -> str:
     """Format a user-friendly summary of query results."""
-    output = "\n" + "=" * 60 + "\n"
-    output += "📊 QUERY RESULTS SUMMARY\n"
-    output += "=" * 60 + "\n\n"
-    
-    output += f"🎯 Your Query: {intent.get('goal', 'N/A')}\n"
-    output += f"📚 Total Results: {summary['total_count']} entries\n"
-    output += f"🗄️  Databases: {', '.join(summary['databases'])}\n\n"
-    
-    output += "Breakdown by Database:\n"
-    for db, count in summary['database_breakdown'].items():
-        percentage = (count / summary['total_count'] * 100) if summary['total_count'] > 0 else 0
-        output += f"  • {db}: {count} entries ({percentage:.1f}%)\n"
+    output = ""
     
     if summary['sample_results']:
         output += "\nSample Results (first 5):\n"
         for i, result in enumerate(summary['sample_results'][:5], 1):
-            title = result.get('title', 'Untitled')[:60]
-            db = result.get('database_name', 'unknown')
+            title = result.get('title', 'Untitled')
             date = result.get('created_time', 'N/A')[:10]
-            output += f"  {i}. [{db}] {title} ({date})\n"
+            output += f"  {i}.  {title} ({date})\n"
     
-    output += "\n" + "=" * 60 + "\n"
     return output
 

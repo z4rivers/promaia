@@ -106,7 +106,7 @@ The AI now receives in every prompt:
 
 ## Files Modified
 
-- `promaia/ai/intelligent_nl_processor_agentic.py`:
+- `promaia/ai/nl_orchestrator.py`:
   - Added `_load_workspace_config()` method
   - Added `_format_workspace_config()` method
   - Updated `_parse_intent()` to include workspace context

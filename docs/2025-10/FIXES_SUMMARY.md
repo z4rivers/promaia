@@ -31,7 +31,7 @@
 **Root Cause**: Using `get_schema_summary()` instead of `_format_schema_for_prompt()`
 
 **Solution**: 
-- ✅ Changed line 394 in `intelligent_nl_processor_agentic.py`:
+- ✅ Changed line 394 in `nl_orchestrator.py`:
   ```python
   # OLD: schema_summary = self.schema_explorer.get_schema_summary()
   # NEW: schema_summary = self._format_schema_for_prompt(schema)
@@ -91,8 +91,8 @@ This ensures:
 ## 📁 Key Files
 
 ### Core System
-- `promaia/ai/intelligent_nl_processor_agentic.py` - Main agentic processor
-- `promaia/ai/agentic_nl_processor.py` - Schema explorer, validator, logger
+- `promaia/ai/nl_orchestrator.py` - Main agentic processor
+- `promaia/ai/nl_utilities.py` - Schema explorer, validator, logger
 - `promaia/ai/nl_processor_wrapper.py` - Backward-compatible wrapper
 - `promaia/storage/unified_query.py` - Query interface (uses new system)
 

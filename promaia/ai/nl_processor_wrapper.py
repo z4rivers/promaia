@@ -5,7 +5,7 @@ Provides backward-compatible API while using the new agentic system.
 from typing import Dict, List, Optional, Any
 import os
 
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 from promaia.utils.display import print_text
 
 

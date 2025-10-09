@@ -19,7 +19,7 @@ from promaia.config.databases import get_database_manager
 from promaia.utils.display import print_text
 
 # Import our agentic components
-from .agentic_nl_processor import (
+from .nl_utilities import (
     SchemaExplorer,
     QueryLearningSystem,
     NLContextLogger,
@@ -369,7 +369,7 @@ class AgenticNLQueryProcessor:
             if self.verbose:
                 if self.query_mode == "sql":
                     print_text(f"\n📝 Generated SQL:", style="cyan")
-                    print_text(generated_query if len(generated_query) < 300 else generated_query[:300] + "...", style="dim")
+                    print_text(generated_query, style="dim")  # Show ENTIRE SQL query
                 else:
                     print_text(f"\n📝 Vector Search Parameters:", style="cyan")
                     print_text(f"   Search: {generated_query.get('search_text', 'N/A')}", style="dim")
@@ -392,8 +392,8 @@ class AgenticNLQueryProcessor:
             
             # Step 4: Validate results
             if self.verbose:
-                print_text("✅ Step 4: Validating results...", style="dim")
-            is_valid, message = self.validator.validate_results(intent, results)
+                print_text("🔍 Step 4: Validating results...", style="dim")
+            is_valid, message = self.validator.validate_results(intent, results, query_mode=self.query_mode)
             validation_result = {"is_valid": is_valid, "message": message}
             
             if self.debug:
@@ -456,12 +456,9 @@ class AgenticNLQueryProcessor:
         
         # Step 7: Show summary (verbose or compact mode)
         if self.verbose:
+            # Show sample results
             print_text(format_result_summary_for_user(summary, intent), style="white")
-            
-            if log_file:
-                print_text(f"📝 Draft context saved to: {log_file}", style="dim")
-            if summary_file:
-                print_text(f"📄 Summary saved to: {summary_file}", style="dim")
+            # Don't show log file paths in verbose mode - they're saved silently
         else:
             # Compact summary for non-verbose mode
             print_text("✅ Query processed successfully\n", style="green")
@@ -677,14 +674,27 @@ Please adjust the query to fix this issue.
         
         workspace_context = self._format_workspace_config()
         
-        # Normalize database names: strip workspace prefixes for SQL
-        # e.g., "trass.stories" -> "stories" because database_name column stores nicknames only
-        def normalize_db_name(db_name: str) -> str:
-            if '.' in db_name:
-                return db_name.split('.')[-1]
-            return db_name
+        # Extract workspace and normalize database names from qualified names
+        # e.g., "trass.stories" -> workspace="trass", db_name="stories"
+        # This ensures we filter by BOTH workspace AND database
+        target_workspaces = set()
+        target_dbs = []
         
-        target_dbs = [normalize_db_name(db) for db in intent['databases']]
+        for db_name in intent['databases']:
+            if '.' in db_name:
+                # Qualified name: extract workspace and db nickname
+                workspace_part, db_nickname = db_name.rsplit('.', 1)
+                target_workspaces.add(workspace_part)
+                target_dbs.append(db_nickname)
+            else:
+                # Simple name: just the database nickname
+                target_dbs.append(db_name)
+        
+        # Build workspace filter clause
+        workspace_filter = ""
+        if target_workspaces:
+            workspace_list = ', '.join(f"'{w}'" for w in sorted(target_workspaces))
+            workspace_filter = f"\nWORKSPACE FILTER: Must filter WHERE u.workspace IN ({workspace_list})"
         
         prompt = f"""{workspace_context}
 
@@ -695,7 +705,7 @@ Please adjust the query to fix this issue.
 {validation_feedback}
 
 QUERY: {intent_line}
-TARGET: {', '.join(target_dbs)}
+TARGET DATABASES: {', '.join(target_dbs)}{workspace_filter}
 
 IMPORTANT: The database_name column stores ONLY the nickname (e.g., "stories", not "trass.stories")
 
@@ -705,8 +715,9 @@ Return SQLite query that:
 - JOINs specialized tables (gmail_content, etc.) for full-text search
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
+- If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
 - Applies date filters on created_time/email_date columns
-- LIMIT 5000
+- LIMIT 1200
 
 SQL only (no markdown):"""
         
@@ -715,6 +726,8 @@ SQL only (no markdown):"""
             print_text(f"   Intent: {intent['goal']}", style="dim")
             print_text(f"   Databases (original): {', '.join(intent['databases'])}", style="dim")
             print_text(f"   Databases (normalized for SQL): {', '.join(target_dbs)}", style="dim")
+            if target_workspaces:
+                print_text(f"   Workspaces (extracted): {', '.join(sorted(target_workspaces))}", style="yellow")
             print_text(f"   Search terms: {', '.join(intent.get('search_terms', []))}", style="dim")
             print_text(f"   Using {len(self.learning_system.load_successful_patterns())} learned patterns", style="dim")
         
@@ -1029,7 +1042,7 @@ Return ONLY the JSON object:"""
             print_text("   • Type 'm' to modify the query", style="dim")
             print_text("   • Type 'q' to quit (exit to terminal)", style="dim")
             
-            response = input("\n   Your choice [Enter/m/q]: ").strip().lower()
+            response = input("\nEnter (accept) / m(odify) / q(uit): ").strip().lower()
             
             if response == 'm':
                 return 'modify'

@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from promaia.utils.config import load_environment
 load_environment()
 
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 from promaia.utils.display import print_text
 
 def test_option(option, description):

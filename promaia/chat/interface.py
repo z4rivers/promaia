@@ -1015,6 +1015,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         """Reload the chat context with current state configuration."""
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command, natural_language_content, sources
         
+        # Debug: Log reload_context entry
+        debug_print(f"\n🔄 reload_context() called:")
+        debug_print(f"  context_state['sources']: {context_state.get('sources', [])}")
+        debug_print(f"  context_state['natural_language_prompt']: {bool(context_state.get('natural_language_prompt'))}")
+        debug_print(f"  context_state['natural_language_content']: {len(context_state.get('natural_language_content', {})) if context_state.get('natural_language_content') else 0} databases")
+        debug_print(f"  context_state['is_mixed_browse_nl_command']: {context_state.get('is_mixed_browse_nl_command')}")
+        
         # Initialize combined data container
         combined_multi_source_data = {}
         
@@ -1116,7 +1123,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             # Add natural language data to combined results (whether cached or fresh)
             if natural_language_data:
+                debug_print(f"🔍 Adding NL data to combined_multi_source_data: {len(natural_language_data)} databases, {sum(len(pages) for pages in natural_language_data.values())} total pages")
                 combined_multi_source_data.update(natural_language_data)
+                debug_print(f"🔍 After merge: combined_multi_source_data has {len(combined_multi_source_data)} databases")
+            else:
+                debug_print(f"⚠️  natural_language_data is empty, skipping merge")
         
         # Process MCP servers if present
         mcp_tools_info = ""
@@ -1536,19 +1547,28 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Always merge natural language content if it exists
         if len(combined_multi_source_data) > 0:
+            debug_print(f"🔍 Merging NL data into new_multi_source_data")
+            debug_print(f"  Before merge: new_multi_source_data has {len(new_multi_source_data)} databases, {new_total_pages_loaded} pages")
+            debug_print(f"  combined_multi_source_data has {len(combined_multi_source_data)} databases")
+            
             # Merge natural language content with regular sources
             for source_name, pages in combined_multi_source_data.items():
                 if source_name not in new_multi_source_data:
+                    debug_print(f"  Adding new NL source: {source_name} with {len(pages)} pages")
                     new_multi_source_data[source_name] = pages
                 else:
                     # If source already exists, combine the pages (shouldn't happen but handle it)
+                    debug_print(f"  Extending existing source: {source_name} with {len(pages)} additional pages")
                     new_multi_source_data[source_name].extend(pages)
             
             # Recalculate total after merging
             new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())
+            debug_print(f"  After merge: new_multi_source_data has {len(new_multi_source_data)} databases, {new_total_pages_loaded} pages")
             
             if not sources_loaded_successfully:
                 print_text("ℹ️  Using natural language content (regular sources had no data)", style="cyan")
+        else:
+            debug_print(f"⚠️  combined_multi_source_data is empty, no NL data to merge")
         
         # Check if we have any data at all
         if new_total_pages_loaded == 0:
@@ -2000,7 +2020,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
                             
                             if not combined_nl_content:
-                                print_text("❌ No content found for any natural language queries", style="bold red")
                                 return False
                             
                             print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
@@ -2027,7 +2046,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     new_workspace = getattr(parsed_args, 'workspace', None)
                     new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
                     
-                    context_state['sources'] = new_sources
+                    # Check if browse flag is present in the command
+                    has_browse_flag = any('-b' in arg for arg in args_list)
+                    
+                    # Only update sources if not in browse mode, or if user provided explicit sources
+                    # This preserves browse selections when user adds NL query to browse command
+                    if has_browse_flag and not new_sources:
+                        # Keep existing sources from browse selections - don't overwrite with empty list
+                        debug_print("  → Preserving existing browse sources (NL query added to browse command)")
+                    else:
+                        # Update sources (either user removed browse flag or provided explicit sources)
+                        context_state['sources'] = new_sources
+                    
                     context_state['filters'] = new_filters
                     context_state['mcp_servers'] = new_mcp_servers
                     if new_workspace:
@@ -2035,11 +2065,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Only clear browse state if user is explicitly switching away from browse mode
                     # Don't clear if they're just editing other aspects of the command
-                    if not any('-b' in arg for arg in args_list):
+                    if not has_browse_flag:
                         # User removed browse flag - clear browse state but preserve other context
                         context_state['original_browse_mode'] = False
                         context_state['browse_selections'] = []
                         # Don't clear original_query_format to preserve command display
+                    
+                    # Set the mixed browse+NL flag if we have both browse and NL
+                    has_browse_flag = any('-b' in arg for arg in args_list)
+                    has_browse_selections = bool(context_state.get('browse_selections'))
+                    if has_browse_flag and has_browse_selections:
+                        context_state['is_mixed_browse_nl_command'] = True
+                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+NL merge (edit_context)")
                     
                     # Update the original query format for natural language mode
                     full_command = f"maia chat {user_input}"
@@ -2639,6 +2676,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
                     context_state['natural_language_content'] = natural_language_content
                     context_state['natural_language_prompt'] = nl_prompt
+                    
+                    # Set the mixed browse+NL flag for OR logic
+                    # This ensures NL results are properly merged with browse results
+                    has_browse_selections = bool(context_state.get('browse_selections'))
+                    has_regular_sources = bool(context_state.get('sources'))
+                    if has_browse_selections and has_regular_sources:
+                        context_state['is_mixed_browse_nl_command'] = True
+                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+NL merge")
                     
                     # Update the original query format to reflect the new natural language query
                     context_state['original_query_format'] = f"maia chat {user_input}"

@@ -31,7 +31,7 @@ The processor returns minimal metadata, and the wrapper uses the universal adapt
 
 ## Components
 
-### 1. NL Processor (`intelligent_nl_processor_agentic.py`)
+### 1. NL Processor (`nl_orchestrator.py`)
 
 **Returns**: Minimal page references grouped by database
 
@@ -158,7 +158,7 @@ Universal Adapter loads:
 
 ## Files Modified
 
-1. **`promaia/ai/intelligent_nl_processor_agentic.py`**:
+1. **`promaia/ai/nl_orchestrator.py`**:
    - Removed `load_content_by_page_ids()` call from processor
    - Now returns minimal page references instead of full content
    - Simplified Step 8 to just group results by database

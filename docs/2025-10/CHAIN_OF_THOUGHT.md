@@ -44,7 +44,7 @@ python3 query_agentic.py
 ### Method 3: Programmatic
 
 ```python
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 
 processor = AgenticNLQueryProcessor(debug=True)
 result = processor.process_query("your query here")

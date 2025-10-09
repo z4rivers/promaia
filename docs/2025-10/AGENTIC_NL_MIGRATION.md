@@ -10,14 +10,14 @@ The new agentic NL query system is now **fully integrated** into the CLI and Cha
 
 ### 1. Created New Components
 
-**`promaia/ai/intelligent_nl_processor_agentic.py`**
+**`promaia/ai/nl_orchestrator.py`**
 - Main agentic processor with retry logic
 - Schema exploration via PRAGMA
 - Learning system (saves successful queries)
 - Result validation with smart feedback
 - SQL error handling with specific messages
 
-**`promaia/ai/agentic_nl_processor.py`**
+**`promaia/ai/nl_utilities.py`**
 - SchemaExplorer (dynamic PRAGMA-based discovery)
 - QueryLearningSystem (rolling index of 20 successful patterns)
 - NLContextLogger (saves query details to `nl-context-logs/`)

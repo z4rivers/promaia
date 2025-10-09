@@ -39,7 +39,7 @@ This tests:
 ### 3. Programmatic Usage
 
 ```python
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 
 processor = AgenticNLQueryProcessor()
 
@@ -183,7 +183,7 @@ To use in your existing chat system, replace the old NL processor:
 from promaia.ai.intelligent_nl_processor import process_natural_language_query
 
 # NEW  
-from promaia.ai.intelligent_nl_processor_agentic import get_agentic_query_processor
+from promaia.ai.nl_orchestrator import get_agentic_query_processor
 
 processor = get_agentic_query_processor()
 result = processor.process_query(user_query, workspace=workspace)

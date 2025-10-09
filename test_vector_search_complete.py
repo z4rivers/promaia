@@ -54,7 +54,7 @@ except Exception as e:
 # 4. Test the agentic NL processor in vector mode
 print("\n4️⃣  Testing AgenticNLQueryProcessor in vector mode...")
 try:
-    from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+    from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
     processor = AgenticNLQueryProcessor(query_mode="vector", debug=False, verbose=False)
     print(f"   ✅ Processor initialized in vector mode")
     print(f"   📊 Query mode: {processor.query_mode}")

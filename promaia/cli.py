@@ -1562,7 +1562,8 @@ def chat_run(args):
 
                 # Always allow cross-workspace queries for natural language
                 # Workspace is just a classifier/tag, not a mandatory constraint
-                nl_content = query_interface.natural_language_query(nl_prompt, None, None)
+                # Enable verbose=True to show SQL generation steps and chain of thought
+                nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
 
                 if nl_content:
                     # Merge results from this query into combined content
@@ -1580,7 +1581,6 @@ def chat_run(args):
                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
 
             if not combined_nl_content:
-                print_text("❌ No content found for any natural language queries", style="red")
                 return
 
             if len(nl_prompts) > 1:
@@ -1665,8 +1665,14 @@ def chat_run(args):
                     if db_name not in natural_language_content:
                         natural_language_content[db_name] = []
                     natural_language_content[db_name].extend(entries)
+                # Also merge the prompts
+                if vs_prompts:
+                    nl_prompts.extend(vs_prompts)
             else:
                 natural_language_content = combined_vs_content
+                # Set NL prompts from vector search
+                if vs_prompts:
+                    nl_prompts = vs_prompts
         
         except ImportError as e:
             print_text(f"Error importing vector search processor: {e}", style="red")

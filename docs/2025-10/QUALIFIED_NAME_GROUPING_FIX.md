@@ -71,7 +71,7 @@ Return SQLite query that:
 
 ### 2. Updated Grouping Logic
 
-**Processor** (`intelligent_nl_processor_agentic.py`):
+**Processor** (`nl_orchestrator.py`):
 
 ```python
 # Group results by qualified name (workspace.database)
@@ -137,7 +137,7 @@ Query: "trass stories about international launch"
 
 ## Files Modified
 
-1. **`promaia/ai/intelligent_nl_processor_agentic.py`**:
+1. **`promaia/ai/nl_orchestrator.py`**:
    - Updated SQL generation prompt to require workspace column
    - Updated grouping logic to use qualified keys
 

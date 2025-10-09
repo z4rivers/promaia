@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 from promaia.utils.display import print_text
 
 
@@ -27,7 +27,7 @@ def test_schema_exploration():
     print("TEST 1: Dynamic Schema Exploration")
     print("=" * 80)
     
-    from promaia.ai.agentic_nl_processor import SchemaExplorer
+    from promaia.ai.nl_utilities import SchemaExplorer
     
     explorer = SchemaExplorer("data/hybrid_metadata.db")
     schema = explorer.explore_schema()
@@ -50,7 +50,7 @@ def test_learning_system():
     print("TEST 2: Learning System")
     print("=" * 80)
     
-    from promaia.ai.agentic_nl_processor import QueryLearningSystem
+    from promaia.ai.nl_utilities import QueryLearningSystem
     
     learning = QueryLearningSystem()
     patterns = learning.load_successful_patterns()

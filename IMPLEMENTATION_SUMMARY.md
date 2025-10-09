@@ -73,7 +73,7 @@ Each `page_id` (Notion page, Gmail message, Discord message) is embedded as a co
    - Added: `chromadb==0.5.23`
    - Added: `sentence-transformers==3.3.1`
 
-2. **`promaia/ai/intelligent_nl_processor_agentic.py`**
+2. **`promaia/ai/nl_orchestrator.py`**
    - Added `query_mode` parameter (`"sql"` or `"vector"`)
    - Refactored to use `_generate_query()` and `_execute_query()` dispatch methods
    - Added `_generate_vector_query()` and `_execute_vector_query()` implementations

@@ -27,7 +27,7 @@ This caused two issues:
 
 Implemented **database name normalization** at two critical points:
 
-### 1. SQL Generation (`intelligent_nl_processor_agentic.py`)
+### 1. SQL Generation (`nl_orchestrator.py`)
 
 Added normalization before generating SQL:
 
@@ -47,7 +47,7 @@ WHERE database_name IN ('stories', 'journal', 'cpj')
 -- Instead of: WHERE database_name IN ('trass.stories', 'trass.journal', 'trass.cpj')
 ```
 
-### 2. Result Validation (`agentic_nl_processor.py`)
+### 2. Result Validation (`nl_utilities.py`)
 
 Added normalization to the validator:
 
@@ -118,12 +118,12 @@ All tests pass:
 
 ## Files Modified
 
-1. `promaia/ai/intelligent_nl_processor_agentic.py`:
+1. `promaia/ai/nl_orchestrator.py`:
    - Added normalization in `_generate_sql_query()`
    - Updated prompt to clarify database_name column format
    - Added debug output showing normalized names
 
-2. `promaia/ai/agentic_nl_processor.py`:
+2. `promaia/ai/nl_utilities.py`:
    - Added normalization in `ResultValidator.validate_results()`
    - Handles both qualified and nickname formats
 

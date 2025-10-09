@@ -256,7 +256,7 @@ class HybridQueryInterface:
             logger.error(f"Error searching content: {e}")
             return []
     
-    def natural_language_query(self, nl_prompt: str, workspace: str = None, database_names: List[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def natural_language_query(self, nl_prompt: str, workspace: str = None, database_names: List[str] = None, verbose: bool = True) -> Dict[str, List[Dict[str, Any]]]:
         """Process natural language queries using the agentic system with retry logic."""
         try:
             from promaia.ai.nl_processor_wrapper import process_natural_language_to_content
@@ -268,7 +268,8 @@ class HybridQueryInterface:
         # The agentic AI will handle workspace filtering in the SQL when specifically mentioned
         
         # Process using new agentic system (with schema exploration, learning, retry)
-        return process_natural_language_to_content(nl_prompt, workspace, database_names)
+        # Enable verbose mode by default to show SQL generation and chain of thought
+        return process_natural_language_to_content(nl_prompt, workspace, database_names, verbose=verbose)
     
     def get_database_context(self, workspace: str) -> Dict[str, Any]:
         """Get available databases for a workspace."""

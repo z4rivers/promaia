@@ -25,13 +25,13 @@ This is a fully agentic enhancement to the NL query system that replaces hardcod
 
 ```
 promaia/ai/
-├── agentic_nl_processor.py          # Core agentic components
+├── nl_utilities.py                  # Core agentic components
 │   ├── SchemaExplorer               # PRAGMA-based schema discovery
 │   ├── QueryLearningSystem          # Rolling index of successful patterns
 │   ├── NLContextLogger              # Context log management
 │   └── ResultValidator              # Result validation & suggestions
 │
-└── intelligent_nl_processor_agentic.py  # Main agentic processor
+└── nl_orchestrator.py               # Main agentic processor
     └── AgenticNLQueryProcessor      # Orchestrates the workflow
 ```
 
@@ -168,7 +168,7 @@ RESULTS:
 ### Basic Usage
 
 ```python
-from promaia.ai.intelligent_nl_processor_agentic import AgenticNLQueryProcessor
+from promaia.ai.nl_orchestrator import AgenticNLQueryProcessor
 
 processor = AgenticNLQueryProcessor()
 
@@ -204,7 +204,7 @@ To integrate with the existing NL query system:
 from promaia.ai.intelligent_nl_processor import process_natural_language_query
 
 # NEW
-from promaia.ai.intelligent_nl_processor_agentic import get_agentic_query_processor
+from promaia.ai.nl_orchestrator import get_agentic_query_processor
 
 processor = get_agentic_query_processor()
 result = processor.process_query(user_query, workspace=workspace)

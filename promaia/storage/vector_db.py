@@ -12,6 +12,9 @@ import logging
 from promaia.utils.config import load_environment
 load_environment()
 
+# Suppress ChromaDB's noisy warnings about existing embeddings during searches
+logging.getLogger('chromadb.segment.impl.vector.local_persistent_hnsw').setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
 
 

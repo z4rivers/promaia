@@ -85,7 +85,7 @@ Vector search reuses the existing `AgenticNLQueryProcessor` system but in "vecto
 - `migrate_to_vector_db.py` - Backfill script for existing content
 
 **Modified Files:**
-- `promaia/ai/intelligent_nl_processor_agentic.py` - Dual-mode processor (SQL/vector)
+- `promaia/ai/nl_orchestrator.py` - Dual-mode processor (SQL/vector)
 - `promaia/ai/nl_processor_wrapper.py` - Added `process_vector_search_to_content()`
 - `promaia/cli.py` - Added `-vs`/`--vector-search` flag
 - `promaia/storage/hybrid_storage.py` - Auto-embed new content during sync
