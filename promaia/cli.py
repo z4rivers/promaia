@@ -1280,6 +1280,11 @@ def chat_run(args):
 
                     print_text(f"✅ Selected {len(selected_sources) if selected_sources else 0} sources from browser", style="green")
 
+                    # Check if user cancelled browser selection
+                    if not selected_sources:
+                        print_text("❌ No sources selected from browser. Mixed command cancelled.", style="yellow")
+                        return
+
                     # Process Discord channel sources and convert to database + filter format
                     processed_sources = []
                     processed_filters = []
