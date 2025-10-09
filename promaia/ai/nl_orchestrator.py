@@ -1037,11 +1037,6 @@ Return ONLY the JSON object:"""
             'quit' - Exit to terminal (don't continue to chat)
         """
         try:
-            print_text("\n💭 Save this query pattern for future learning?", style="bold cyan")
-            print_text("   • Press Enter to accept and save", style="dim")
-            print_text("   • Type 'm' to modify the query", style="dim")
-            print_text("   • Type 'q' to quit (exit to terminal)", style="dim")
-            
             response = input("\nEnter (accept) / m(odify) / q(uit): ").strip().lower()
             
             if response == 'm':
