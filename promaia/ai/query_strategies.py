@@ -288,6 +288,10 @@ class VectorQueryStrategy(QueryStrategy):
             print_text("\n" + "=" * 70, style="dim")
             print_text(f"⚙️  CHAIN OF THOUGHT: Vector Query Generation (Attempt {retry_attempt + 1})", style="bold yellow")
             print_text("=" * 70, style="dim")
+            print_text(f"\n📤 Vector Search Parameter Extraction:", style="cyan")
+            print_text(f"   Intent: {intent['goal']}", style="dim")
+            print_text(f"   Databases: {', '.join(intent.get('databases', []))}", style="dim")
+            print_text(f"   Search terms: {', '.join(intent.get('search_terms', []))}", style="dim")
         
         prompt = f"""Extract semantic search parameters from this intent:
 
@@ -369,11 +373,20 @@ Return ONLY the JSON object:"""
             print_text(f"\n📝 Vector Search Parameters:", style="cyan")
             search_text = query.get('search_text', 'N/A')
             filters = query.get('filters', {})
-            print_text(f"   Search Text: {search_text}", style="dim")
+            
+            # Display search text prominently
+            print_text(f"Search Text: \"{search_text}\"", style="white")
+            
+            # Display filters if present
             if filters:
-                print_text(f"   Filters:", style="dim")
+                print_text(f"\nMetadata Filters:", style="white")
                 for key, value in filters.items():
-                    print_text(f"      • {key}: {value}", style="dim")
+                    if isinstance(value, dict) and '$in' in value:
+                        print_text(f"  {key} IN ({', '.join(value['$in'])})", style="dim")
+                    else:
+                        print_text(f"  {key} = {value}", style="dim")
+            else:
+                print_text(f"Metadata Filters: None (searching all databases)", style="dim")
     
     def execute_query(
         self,
@@ -398,7 +411,10 @@ Return ONLY the JSON object:"""
             min_similarity = vector_config.get('default_similarity_threshold', 0.75)
             
             if verbose:
-                print_text(f"   Max results: {n_results}, Min similarity: {min_similarity}", style="dim")
+                print_text(f"\nSearch Configuration:", style="white")
+                print_text(f"  Max results: {n_results}", style="dim")
+                print_text(f"  Min similarity threshold: {min_similarity}", style="dim")
+                print_text(f"  Embedding model: text-embedding-3-small", style="dim")
             
             # Execute vector search
             search_results = self.vector_db.search(
@@ -415,13 +431,25 @@ Return ONLY the JSON object:"""
                     print_text(f"   Top score: {search_results[0].get('similarity_score', 0):.3f}", style="dim")
             
             if verbose:
-                print_text(f"✅ Execution successful: {len(search_results)} results returned", style="green" if search_results else "yellow")
+                result_color = "green" if search_results else "yellow"
+                print_text(f"✅ Execution successful: {len(search_results)} results returned", style=result_color)
+                
                 if search_results:
+                    # Show similarity score range
                     top_score = search_results[0].get('similarity_score', 0)
                     bottom_score = search_results[-1].get('similarity_score', 0)
                     print_text(f"   Similarity range: {bottom_score:.3f} - {top_score:.3f}", style="dim")
-                    sample = search_results[0].get('metadata', {})
-                    print_text(f"   Sample result: {sample.get('database_name', 'unknown')} database", style="dim")
+                    
+                    # Show database breakdown
+                    db_counts = {}
+                    for result in search_results:
+                        db = result.get('metadata', {}).get('database_name', 'unknown')
+                        workspace = result.get('metadata', {}).get('workspace', '')
+                        qualified_name = f"{workspace}.{db}" if workspace else db
+                        db_counts[qualified_name] = db_counts.get(qualified_name, 0) + 1
+                    
+                    db_breakdown = ', '.join([f"{db}: {count}" for db, count in db_counts.items()])
+                    print_text(f"   Database breakdown: {db_breakdown}", style="dim")
             
             # Convert to unified_content-like format for compatibility
             results = []

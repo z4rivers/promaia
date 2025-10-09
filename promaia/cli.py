@@ -1633,7 +1633,7 @@ def chat_run(args):
                 vs_content = process_vector_search_to_content(
                     vs_prompt, 
                     workspace=None,  # Allow cross-workspace searches
-                    verbose=False  # Use non-verbose mode by default
+                    verbose=True  # Show detailed processing steps (matching SQL mode)
                 )
                 
                 if vs_content:
