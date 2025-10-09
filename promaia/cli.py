@@ -1491,6 +1491,14 @@ def chat_run(args):
                 # Use vector search prompt as natural language prompt if no NL prompt exists
                 final_nl_prompt = combined_nl_prompt or combined_vs_prompt
 
+                # Debug: Check what we're passing to chat
+                debug_print = lambda x: print(f"DEBUG: {x}")
+                debug_print(f"nl_prompts: {nl_prompts}")
+                debug_print(f"vs_prompts: {vs_prompts}")
+                debug_print(f"combined_vs_prompt: '{combined_vs_prompt}'")
+                debug_print(f"final_nl_prompt: '{final_nl_prompt}'")
+                debug_print(f"is_vector_search: {bool(vs_prompts and not nl_prompts)}")
+
                 # Queries will be processed with detailed output when chat function runs
 
                 # Pass prompts to chat - let chat handle the processing with selected sources

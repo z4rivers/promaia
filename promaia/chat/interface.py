@@ -1029,6 +1029,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Process natural language query if present
         natural_language_data = {}
         if context_state.get('natural_language_prompt'):
+            debug_print(f"🔍 Processing natural language prompt: '{context_state.get('natural_language_prompt')}'")
+            debug_print(f"🔍 Vector search mode: {context_state.get('is_vector_search', False)}")
             nl_prompt = context_state['natural_language_prompt']
             
             # Check if we already have content from CLI (first time) or cached results
