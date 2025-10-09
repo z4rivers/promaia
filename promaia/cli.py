@@ -1238,15 +1238,17 @@ def chat_run(args):
 
                     # First, create a map of user's explicit sources for overriding
                     user_source_map = {}
-                    for source_spec in sources:
-                        if ':' in source_spec:
-                            db_name, days_part = source_spec.rsplit(':', 1)
-                            user_source_map[db_name] = source_spec
-                        else:
-                            user_source_map[source_spec] = source_spec
+                    if sources:  # Only iterate if sources is not None
+                        for source_spec in sources:
+                            if ':' in source_spec:
+                                db_name, days_part = source_spec.rsplit(':', 1)
+                                user_source_map[db_name] = source_spec
+                            else:
+                                user_source_map[source_spec] = source_spec
 
-                    # Add user's explicit sources first
-                    preselected_sources.extend(sources)
+                    # Add user's explicit sources first (only if they exist)
+                    if sources:
+                        preselected_sources.extend(sources)
 
                     # Then add databases with default_include that aren't already specified
                     for workspace_name in workspace_names_found:
