@@ -1044,8 +1044,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             
             # If we have content and no cached prompt yet, this is CLI-provided content (first time)
             if existing_nl_content and not cached_nl_prompt:
-                if not skip_nl_cache_messages:
-                    print_text("🔄 Using natural language results from CLI", style="dim")
                 natural_language_data = existing_nl_content
                 # Set up cache for future reloads
                 context_state['cached_natural_language_prompt'] = nl_prompt
@@ -1540,7 +1538,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # No regular sources to load, but might have natural language content
             if len(combined_multi_source_data) > 0:
                 sources_loaded_successfully = True  # We have content from natural language
-                print_text("ℹ️  No regular sources specified, using natural language content only", style="cyan")
 
         # Calculate total from final data to ensure consistency with breakdown
         new_total_pages_loaded = sum(len(pages) for pages in new_multi_source_data.values())

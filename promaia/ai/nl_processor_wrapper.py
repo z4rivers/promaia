@@ -81,18 +81,8 @@ def process_natural_language_to_content(
                 expand_gmail_threads=True
             )
             
-            if full_content:
-                total_loaded = sum(len(pages) for pages in full_content.values())
-                if verbose:
-                    print(f"Intelligent query processed: {total_loaded} results loaded")
-                    print(f"Goal: {result.get('intent', {}).get('goal', 'Unknown')}")
-                    print(f"Complexity: Agentic (with retry)")
-                    print(f"Sources: {list(full_content.keys())}")
-                    if total_loaded > len(page_ids):
-                        print(f"   (expanded {total_loaded - len(page_ids)} Gmail thread messages)")
-            
             # Return the full content in the expected format
-            return full_content
+            return full_content if full_content else {}
         
         else:
             # Query failed after retries

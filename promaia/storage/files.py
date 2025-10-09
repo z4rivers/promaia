@@ -715,7 +715,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                                 added_count += 1
                         
                         if added_count > 0:
-                            print(f"   ➕ Added {added_count} thread messages ({initial_count} → {len(registry_entries)} total pages)")
+                            print(f"➕ Added {added_count} thread messages ({initial_count} → {len(registry_entries)} total pages)")
         
         # Step 3: Load actual markdown content for each entry
         # Use the same logic as read_markdown_files_with_registry for consistency
