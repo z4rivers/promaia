@@ -1152,9 +1152,9 @@ def chat_run(args):
                     original_command_parts.extend(["-mcp", server])
             original_browse_command = " ".join(original_command_parts)
 
-            # For -s + -b combinations (sources + browse), handle automatically
-            if sources and browse_databases:
-                print_text("🔄 Processing mixed command with sources and browse databases...", style="cyan")
+            # For mixed commands with browse: -s + -b, -b + -nl, or -b + -vs combinations
+            if browse_databases and (sources or nl_prompts or vs_prompts):
+                print_text("🔄 Processing mixed command with browse. Launching browser first...", style="cyan")
 
                 # Use the same browser launch logic as regular browse commands
                 try:
