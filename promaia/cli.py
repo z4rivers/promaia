@@ -1287,6 +1287,10 @@ def chat_run(args):
                         print_text("❌ No sources selected from browser. Mixed command cancelled.", style="yellow")
                         return
 
+                    # DEBUG: Check if we reach this point
+                    print(f"DEBUG: After browser selection, about to process sources and call chat function")
+                    print(f"DEBUG: selected_sources = {selected_sources}")
+
                     # Process Discord channel sources and convert to database + filter format
                     processed_sources = []
                     processed_filters = []
