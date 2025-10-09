@@ -276,7 +276,8 @@ RESULTS:
         if query_info.get('sample_results'):
             summary += "\n  Sample Results (first 5):\n"
             for i, result in enumerate(query_info.get('sample_results', [])[:5], 1):
-                summary += f"    {i}. {result.get('title', 'Untitled')} ({result.get('database_name', 'unknown')})\n"
+                display_text = _get_content_display_text(result)
+                summary += f"    {i}. {display_text} ({result.get('database_name', 'unknown')})\n"
                 summary += f"       Date: {result.get('created_time', 'N/A')[:10]}\n"
         
         try:
@@ -415,6 +416,72 @@ class ResultValidator:
         }
 
 
+def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybrid_metadata.db") -> str:
+    """
+    Get appropriate display text based on content type.
+    
+    Args:
+        result: Result dict with page_id, database_name, content_type, etc.
+        db_path: Path to the database
+        
+    Returns:
+        Display text appropriate for the content type
+    """
+    import sqlite3
+    
+    page_id = result.get('page_id')
+    database_name = result.get('database_name', '')
+    content_type = result.get('content_type', database_name)
+    
+    # Default to title if available
+    if result.get('title') and result.get('title') != 'Untitled':
+        return result.get('title')
+    
+    # Fetch type-specific display text
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            if content_type == 'gmail' or database_name == 'gmail':
+                # Get subject from gmail_content
+                cursor.execute(
+                    "SELECT subject FROM gmail_content WHERE page_id = ?",
+                    (page_id,)
+                )
+                row = cursor.fetchone()
+                if row and row['subject']:
+                    return row['subject']
+            
+            elif content_type == 'discord' or database_name == 'discord':
+                # Get content snippet from discord_content
+                cursor.execute(
+                    "SELECT content FROM discord_content WHERE page_id = ?",
+                    (page_id,)
+                )
+                row = cursor.fetchone()
+                if row and row['content']:
+                    content = row['content']
+                    # Return first 60 chars with ellipsis
+                    return content[:60] + "..." if len(content) > 60 else content
+            
+            elif content_type == 'notion' or database_name in ['stories', 'yp', 'notion']:
+                # For Notion, try to get title from unified_content
+                cursor.execute(
+                    "SELECT title FROM unified_content WHERE page_id = ?",
+                    (page_id,)
+                )
+                row = cursor.fetchone()
+                if row and row['title']:
+                    return row['title']
+    
+    except Exception as e:
+        # If anything fails, return a safe default
+        pass
+    
+    return 'Untitled'
+
+
 def format_result_summary_for_user(summary: Dict[str, Any], intent: Dict[str, Any]) -> str:
     """Format a user-friendly summary of query results."""
     output = ""
@@ -422,9 +489,9 @@ def format_result_summary_for_user(summary: Dict[str, Any], intent: Dict[str, An
     if summary['sample_results']:
         output += "\nSample Results (first 5):\n"
         for i, result in enumerate(summary['sample_results'][:5], 1):
-            title = result.get('title', 'Untitled')
+            display_text = _get_content_display_text(result)
             date = result.get('created_time', 'N/A')[:10]
-            output += f"  {i}.  {title} ({date})\n"
+            output += f"  {i}.  {display_text} ({date})\n"
     
     return output
 
