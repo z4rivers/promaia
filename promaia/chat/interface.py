@@ -1899,6 +1899,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # 2. safe_split_command() function above (line ~514)
                 # These are two sides of one feature and must handle multiple -nl arguments identically.
                 parser.add_argument(
+                    "--vector-search", "-vs",
+                    action="append",
+                    nargs="+",
+                    help="Use semantic vector search to find similar content. Can be used multiple times."
+                )
+                parser.add_argument(
                     "--mcp", "-mcp",
                     action="append",
                     dest="mcp_servers",
@@ -2087,6 +2093,129 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         print_text("Failed to reload context with natural language content.", style="bold red")
                         return False
+                
+                # Check if vector search mode is being used
+                vector_search_args = getattr(parsed_args, 'vector_search', None)
+                
+                if vector_search_args is not None:
+                    # Vector search mode - handle multiple -vs queries
+                    # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
+                    vs_prompts = [' '.join(vs_args) for vs_args in vector_search_args if vs_args]
+                    
+                    if not vs_prompts:
+                        print_text("Error: Vector search prompt is empty.", style="bold red")
+                        return False
+                    
+                    # Create combined prompt for caching
+                    combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else ""
+                    
+                    # Check if we already have cached results for this exact VS prompt
+                    cached_vs_content = context_state.get('natural_language_content', {})
+                    cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
+                    
+                    if combined_vs_prompt == cached_vs_prompt and cached_vs_content:
+                        print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="dim")
+                        vs_content = cached_vs_content
+                    else:
+                        # Process multiple vector search queries
+                        try:
+                            from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+                            
+                            if len(vs_prompts) > 1:
+                                print_text(f"🤖 Processing {len(vs_prompts)} separate vector search queries", style="dim")
+                                for i, prompt in enumerate(vs_prompts):
+                                    print_text(f"   {i+1}. '{prompt}'", style="dim")
+                            else:
+                                print_text(f"🤖 Processing vector search query: '{vs_prompts[0]}'", style="dim")
+                            
+                            # Process each VS query separately and combine results
+                            combined_vs_content = {}
+                            total_results = 0
+                            
+                            for i, vs_prompt in enumerate(vs_prompts):
+                                if len(vs_prompts) > 1:
+                                    print_text(f"🔍 Processing query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
+                                
+                                # Process vector search
+                                vs_result = process_vector_search_to_content(
+                                    vs_prompt, 
+                                    workspace=None,  # Allow cross-workspace searches
+                                    verbose=True  # Show detailed processing steps
+                                )
+                                
+                                if vs_result:
+                                    # Merge results from this query into combined content
+                                    for db_name, entries in vs_result.items():
+                                        if db_name not in combined_vs_content:
+                                            combined_vs_content[db_name] = []
+                                        combined_vs_content[db_name].extend(entries)
+                                    
+                                    query_results = sum(len(entries) for entries in vs_result.values())
+                                    total_results += query_results
+                                    if len(vs_prompts) > 1:
+                                        print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
+                                else:
+                                    if len(vs_prompts) > 1:
+                                        print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
+                            
+                            if not combined_vs_content:
+                                print_text("❌ No content found for any vector search queries", style="red")
+                                return False
+                            
+                            if len(vs_prompts) > 1:
+                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
+                            vs_content = combined_vs_content
+                            
+                            # Cache both the results and combined prompt for future use
+                            context_state['natural_language_content'] = vs_content
+                            context_state['cached_natural_language_prompt'] = combined_vs_prompt
+                            
+                        except Exception as e:
+                            print_text(f"Error processing vector search query: {e}", style="bold red")
+                            import traceback
+                            traceback.print_exc()
+                            return False
+                    
+                    # Update context state for vector search mode (reuse natural_language fields)
+                    context_state['natural_language_prompt'] = combined_vs_prompt
+                    
+                    # Update other fields from parsed args
+                    new_sources = getattr(parsed_args, 'sources', []) or []
+                    new_filters = getattr(parsed_args, 'filters', []) or []
+                    new_workspace = getattr(parsed_args, 'workspace', None)
+                    new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
+                    
+                    # Check if browse flag is present in the command
+                    has_browse_flag = any('-b' in arg for arg in args_list)
+                    
+                    # Preserve browse selections when user adds VS query to browse command
+                    if has_browse_flag and not new_sources:
+                        debug_print("  → Preserving existing browse sources (VS query added to browse command)")
+                    else:
+                        context_state['sources'] = new_sources
+                    
+                    context_state['filters'] = new_filters
+                    context_state['mcp_servers'] = new_mcp_servers
+                    if new_workspace:
+                        context_state['workspace'] = new_workspace
+                    
+                    # Set mixed browse+VS flag if we have both
+                    if has_browse_flag and context_state.get('browse_selections'):
+                        context_state['is_mixed_browse_nl_command'] = True
+                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+VS merge (edit_context)")
+                    
+                    # Update the original query format
+                    full_command = f"maia chat {user_input}"
+                    context_state['original_query_format'] = full_command
+                    
+                    # Reload with vector search content
+                    if reload_context(skip_nl_cache_messages=True):
+                        print_text("Context updated successfully!", style="bold green")
+                        return True
+                    else:
+                        print_text("Failed to reload context with vector search content.", style="bold red")
+                        return False
+                
                 else:
                     # Regular mode with sources and filters
                     new_sources = getattr(parsed_args, 'sources', []) or []
@@ -2233,8 +2362,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("--filter", "-f", action="append", dest="filters") 
             parser.add_argument("--workspace", "-ws", dest="workspace")
             parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
-            # NOTE: This MUST match the other -nl parsers (top-level CLI and normal edit mode)
+            # NOTE: This MUST match the other -nl/-vs parsers (top-level CLI and normal edit mode)
             parser.add_argument("--natural-language", "-nl", action="append", nargs="+", dest="natural_language")
+            parser.add_argument("--vector-search", "-vs", action="append", nargs="+", dest="vector_search")
             
             parsed_args = parser.parse_args(args_list)
             
