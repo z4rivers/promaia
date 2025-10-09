@@ -1779,9 +1779,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             else:
                 current_args_str = original_cmd  # Use the whole thing as args
         else:
-            # Check if we're in natural language mode
+            # Check if we're in natural language mode or vector search mode
             if context_state.get('natural_language_prompt'):
-                current_args.extend(['-nl', context_state['natural_language_prompt']])
+                # Check if this was originally a vector search command
+                original_cmd = context_state.get('original_query_format', '')
+                if '-vs' in original_cmd and context_state.get('natural_language_content'):
+                    # This is vector search mode - use -vs flag
+                    current_args.extend(['-vs', context_state['natural_language_prompt']])
+                else:
+                    # This is regular natural language mode - use -nl flag
+                    current_args.extend(['-nl', context_state['natural_language_prompt']])
             else:
                 # Regular mode with sources and filters
                 if context_state['sources']:

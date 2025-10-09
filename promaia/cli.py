@@ -1068,15 +1068,17 @@ def chat_run(args):
             else:
                 browse_args.append(item)
     
-    # Detect mixed commands: when user provides sources + browse, OR browse + natural language
+    # Detect mixed commands: when user provides sources + browse, OR browse + natural language, OR browse + vector search
     # ANY command with browse args should be treated as a mixed command to ensure browser launches first
-    has_mixed_command = bool(browse_args) and (bool(sources) or (hasattr(args, 'natural_language') and args.natural_language))
+    has_mixed_command = bool(browse_args) and (bool(sources) or (hasattr(args, 'natural_language') and args.natural_language) or (hasattr(args, 'vector_search') and args.vector_search))
     
     if browse_args is not None:
         # If this is a mixed command, handle it specially
         if has_mixed_command:
             if sources and browse_args:
                 print_text("🔄 Detected mixed command with sources and browse. Browser will launch first...", style="cyan")
+            elif hasattr(args, 'vector_search') and args.vector_search:
+                print_text("🔄 Detected mixed command with browse and vector search. Browser will launch first...", style="cyan")
             else:
                 print_text("🔄 Detected mixed command with browse and natural language. Browser will launch first...", style="cyan")
             
@@ -1109,6 +1111,27 @@ def chat_run(args):
                         print_text(f"   {i+1}. '{prompt}'", style="dim")
                 elif nl_prompts:
                     print_text(f"🤖 Will process natural language query after browser: '{nl_prompts[0]}'", style="white")
+
+            # Handle vector search processing
+            vs_prompts = []
+            if hasattr(args, 'vector_search') and args.vector_search:
+                # Handle both formats: list of strings (pre-processed) or list of lists (from argparse)
+                if args.vector_search:
+                    if isinstance(args.vector_search[0], list):
+                        # From argparse: list of lists
+                        vs_prompts = [' '.join(vs_args) for vs_args in args.vector_search if vs_args]
+                    else:
+                        # Pre-processed: list of strings
+                        vs_prompts = args.vector_search
+                else:
+                    vs_prompts = []
+
+                if len(vs_prompts) > 1:
+                    print_text(f"🔍 Will process {len(vs_prompts)} vector search queries after browser", style="white")
+                    for i, prompt in enumerate(vs_prompts):
+                        print_text(f"   {i+1}. '{prompt}'", style="dim")
+                elif vs_prompts:
+                    print_text(f"🔍 Will process vector search query after browser: '{vs_prompts[0]}'", style="white")
             
             # Build original browse command to preserve user command for display
             original_command_parts = ["maia", "chat"]
@@ -1124,6 +1147,11 @@ def chat_run(args):
                 # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
                 combined_nl = " ".join([f'-nl {prompt}' for prompt in nl_prompts])
                 original_command_parts.append(combined_nl)
+            if vs_prompts:
+                # For original command reconstruction, combine all VS prompts
+                # Don't add quotes - the -vs argument parser handles multiple words with nargs="*"
+                combined_vs = " ".join([f'-vs {prompt}' for prompt in vs_prompts])
+                original_command_parts.append(combined_vs)
             if mcp_servers:
                 for server in mcp_servers:
                     original_command_parts.extend(["-mcp", server])
@@ -1452,23 +1480,31 @@ def chat_run(args):
                     return
             
 
-            # For mixed commands, pass natural language prompts to chat for processing
-            # after browser selections are complete - do NOT process NL queries here
+            # For mixed commands, pass natural language and vector search prompts to chat for processing
+            # after browser selections are complete - do NOT process NL/VS queries here
             try:
                 combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
-                
+                combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
+
+                # Use vector search prompt as natural language prompt if no NL prompt exists
+                final_nl_prompt = combined_nl_prompt or combined_vs_prompt
+
                 if len(nl_prompts) > 1:
                     print_text(f"🤖 Will process {len(nl_prompts)} natural language queries with selected sources", style="white")
                 elif nl_prompts:
                     print_text(f"🤖 Will process natural language query with selected sources: '{combined_nl_prompt}'", style="white")
+                elif len(vs_prompts) > 1:
+                    print_text(f"🔍 Will process {len(vs_prompts)} vector search queries with selected sources", style="white")
+                elif vs_prompts:
+                    print_text(f"🔍 Will process vector search query with selected sources: '{combined_vs_prompt}'", style="white")
 
-                # Pass NL prompts to chat - let chat handle the processing with selected sources
+                # Pass prompts to chat - let chat handle the processing with selected sources
                 chat(
                     sources=sources,
                     filters=filters,
                     workspace=original_workspace,
                     non_interactive=getattr(args, 'non_interactive', False),
-                    natural_language_prompt=combined_nl_prompt,
+                    natural_language_prompt=final_nl_prompt,
                     browse_databases=None,
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
