@@ -343,7 +343,6 @@ Return ONLY the JSON object:"""
             
             # Build metadata filters for ChromaDB
             # IMPORTANT: Normalize qualified database names (e.g., "trass.gmail" -> "gmail" + workspace filter)
-            filters = {}
             
             # Extract workspace and normalize database names from qualified names
             # (Same logic as SQLQueryStrategy for consistency)
@@ -360,19 +359,33 @@ Return ONLY the JSON object:"""
                     # Simple name: just the database nickname
                     target_dbs.append(db_name)
             
+            # Build ChromaDB filters using $and operator when multiple conditions exist
+            # ChromaDB requires: {"$and": [condition1, condition2, ...]} for multiple filters
+            filter_conditions = []
+            
             # Add workspace filter if we extracted workspaces from qualified names
             if target_workspaces:
                 if len(target_workspaces) == 1:
-                    filters['workspace'] = list(target_workspaces)[0]
+                    filter_conditions.append({"workspace": list(target_workspaces)[0]})
                 else:
-                    filters['workspace'] = {"$in": list(target_workspaces)}
+                    filter_conditions.append({"workspace": {"$in": list(target_workspaces)}})
             
             # Add database filter (using normalized nicknames)
             if target_dbs:
                 if len(target_dbs) == 1:
-                    filters['database_name'] = target_dbs[0]
+                    filter_conditions.append({"database_name": target_dbs[0]})
                 else:
-                    filters['database_name'] = {"$in": target_dbs}
+                    filter_conditions.append({"database_name": {"$in": target_dbs}})
+            
+            # Construct final filter based on number of conditions
+            filters = None
+            if len(filter_conditions) == 0:
+                filters = None
+            elif len(filter_conditions) == 1:
+                filters = filter_conditions[0]
+            else:
+                # Multiple conditions require $and operator
+                filters = {"$and": filter_conditions}
             
             query_params = {
                 'search_text': search_text,
@@ -400,7 +413,7 @@ Return ONLY the JSON object:"""
         if verbose:
             print_text(f"\n📝 Vector Search Parameters:", style="cyan")
             search_text = query.get('search_text', 'N/A')
-            filters = query.get('filters', {})
+            filters = query.get('filters')
             
             # Display search text prominently
             print_text(f"Search Text: \"{search_text}\"", style="white")
@@ -408,25 +421,18 @@ Return ONLY the JSON object:"""
             # Display filters if present
             if filters:
                 print_text(f"\nMetadata Filters:", style="white")
-                # Show workspace first (most important scope filter)
-                if 'workspace' in filters:
-                    ws_value = filters['workspace']
-                    if isinstance(ws_value, dict) and '$in' in ws_value:
-                        print_text(f"  workspace IN ({', '.join(ws_value['$in'])})", style="dim")
-                    else:
-                        print_text(f"  workspace = {ws_value}", style="dim")
                 
-                # Then show database
-                if 'database_name' in filters:
-                    db_value = filters['database_name']
-                    if isinstance(db_value, dict) and '$in' in db_value:
-                        print_text(f"  database_name IN ({', '.join(db_value['$in'])})", style="dim")
-                    else:
-                        print_text(f"  database_name = {db_value}", style="dim")
-                
-                # Show any other filters
-                for key, value in filters.items():
-                    if key not in ['workspace', 'database_name']:
+                # Handle $and structure
+                if '$and' in filters:
+                    for condition in filters['$and']:
+                        for key, value in condition.items():
+                            if isinstance(value, dict) and '$in' in value:
+                                print_text(f"  {key} IN ({', '.join(value['$in'])})", style="dim")
+                            else:
+                                print_text(f"  {key} = {value}", style="dim")
+                else:
+                    # Single condition
+                    for key, value in filters.items():
                         if isinstance(value, dict) and '$in' in value:
                             print_text(f"  {key} IN ({', '.join(value['$in'])})", style="dim")
                         else:

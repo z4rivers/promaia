@@ -600,11 +600,18 @@ Respond with JSON in this exact format:
 }}
 
 Rules:
-- Include ALL relevant databases that might contain the data
+- ONLY include databases that are EXPLICITLY mentioned in the query (e.g., "gmail", "stories", "notion")
+- If the user specifies a database type, use ONLY that database - do not add others from the same workspace
 - Use the workspace configuration above to understand which databases belong to which workspace
+- Use qualified names (workspace.database) when the user specifies a workspace
 - Extract specific search terms from the query
 - Parse date expressions: "last N months" → days_back: N*30, "past week" → days_back: 7
 - If no date mentioned, set days_back: null
+
+Examples:
+- "trass gmail about X" → databases: ["trass.gmail"] (NOT ["trass.gmail", "trass.yp"])
+- "koii stories with Y" → databases: ["koii.stories"] (NOT all koii databases)
+- "find X in notion and stories" → databases: ["notion", "stories"] (multiple explicitly mentioned)
 
 Return ONLY the JSON object:"""
         
