@@ -372,7 +372,13 @@ class AgenticNLQueryProcessor:
                     print_text(generated_query, style="dim")  # Show ENTIRE SQL query
                 else:
                     print_text(f"\n📝 Vector Search Parameters:", style="cyan")
-                    print_text(f"   Search: {generated_query.get('search_text', 'N/A')}", style="dim")
+                    search_text = generated_query.get('search_text', 'N/A')
+                    filters = generated_query.get('filters', {})
+                    print_text(f"   Search Text: {search_text}", style="dim")
+                    if filters:
+                        print_text(f"   Filters:", style="dim")
+                        for key, value in filters.items():
+                            print_text(f"      • {key}: {value}", style="dim")
             
             if self.verbose:
                 print_text(f"\n🔍 Executing query...", style="dim")
@@ -808,7 +814,7 @@ Return ONLY the JSON object:"""
         try:
             if self.verbose:
                 if retry_attempt == 0:
-                    print_text(f"\n💬 Extracting search text for: {intent['goal']}", style="cyan")
+                    print_text(f"\n💬 Asking AI to extract semantic search parameters", style="cyan")
                 else:
                     print_text(f"\n💬 Retrying search text extraction", style="yellow")
             
@@ -954,6 +960,9 @@ Return ONLY the JSON object:"""
             n_results = vector_config.get('default_n_results', 20)
             min_similarity = vector_config.get('default_similarity_threshold', 0.75)
             
+            if self.verbose:
+                print_text(f"   Max results: {n_results}, Min similarity: {min_similarity}", style="dim")
+            
             # Execute vector search
             search_results = self.vector_db.search(
                 query_text=query_params['search_text'],
@@ -971,7 +980,12 @@ Return ONLY the JSON object:"""
             if self.verbose:
                 print_text(f"✅ Execution successful: {len(search_results)} results returned", style="green" if search_results else "yellow")
                 if search_results:
-                    print_text(f"   Similarity range: {search_results[-1].get('similarity_score', 0):.3f} - {search_results[0].get('similarity_score', 0):.3f}", style="dim")
+                    top_score = search_results[0].get('similarity_score', 0)
+                    bottom_score = search_results[-1].get('similarity_score', 0)
+                    print_text(f"   Similarity range: {bottom_score:.3f} - {top_score:.3f}", style="dim")
+                    # Show sample of metadata
+                    sample = search_results[0].get('metadata', {})
+                    print_text(f"   Sample result: {sample.get('database_name', 'unknown')} database", style="dim")
             
             # Convert to unified_content-like format for compatibility
             results = []
