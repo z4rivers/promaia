@@ -204,7 +204,7 @@ SQL only (no markdown):"""
     
     def execute_query(
         self,
-        sql: str,
+        query: str,
         verbose: bool,
         debug: bool
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
@@ -219,7 +219,7 @@ SQL only (no markdown):"""
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute(sql)
+                cursor.execute(query)
                 results = [dict(row) for row in cursor.fetchall()]
                 
                 if debug:
@@ -377,7 +377,7 @@ Return ONLY the JSON object:"""
     
     def execute_query(
         self,
-        query_params: Dict[str, Any],
+        query: Dict[str, Any],
         verbose: bool,
         debug: bool
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
@@ -386,7 +386,7 @@ Return ONLY the JSON object:"""
             print_text("\n" + "=" * 70, style="dim")
             print_text("⚡ CHAIN OF THOUGHT: Vector Search Execution", style="bold yellow")
             print_text("=" * 70, style="dim")
-            print_text(f"\n🔍 Searching with: {query_params.get('search_text')}", style="cyan")
+            print_text(f"\n🔍 Searching with: {query.get('search_text')}", style="cyan")
         
         try:
             # Get config for defaults
@@ -402,8 +402,8 @@ Return ONLY the JSON object:"""
             
             # Execute vector search
             search_results = self.vector_db.search(
-                query_text=query_params['search_text'],
-                filters=query_params.get('filters'),
+                query_text=query['search_text'],
+                filters=query.get('filters'),
                 n_results=n_results,
                 min_similarity=min_similarity
             )
