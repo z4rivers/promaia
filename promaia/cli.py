@@ -1323,7 +1323,12 @@ def chat_run(args):
 
                     print_text(f"🔄 Using sources from browser: {len(all_sources)} total", style="green")
 
-                    # Launch chat with combined sources
+                    # Prepare vector search/natural language parameters for chat
+                    combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                    combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
+                    final_nl_prompt = combined_nl_prompt or combined_vs_prompt
+
+                    # Launch chat with combined sources and vector search support
                     from promaia.chat.interface import chat
                     chat(
                         sources=all_sources,
@@ -1331,7 +1336,9 @@ def chat_run(args):
                         workspace=original_workspace,
                         mcp_servers=mcp_servers,
                         original_browse_command=original_browse_command,
-                        browse_selections=selected_sources
+                        browse_selections=selected_sources,
+                        natural_language_prompt=final_nl_prompt,
+                        is_vector_search=bool(vs_prompts and not nl_prompts)
                     )
                     return
 
