@@ -1508,7 +1508,8 @@ def chat_run(args):
                     browse_databases=None,
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
-                    mcp_servers=mcp_servers
+                    mcp_servers=mcp_servers,
+                    is_vector_search=bool(vs_prompts and not nl_prompts)  # Only vector search if VS prompts but no NL prompts
                 )
                 return
             except Exception as e:
@@ -1774,7 +1775,10 @@ def chat_run(args):
         original_browse_command = getattr(args, 'original_browse_command', None)
         browse_selections = getattr(args, 'browse_selections', None)
 
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers)
+        # Determine if this is vector search mode - check if we have vector search prompts
+        is_vector_search_mode = bool(hasattr(args, 'vector_search') and args.vector_search)
+
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers, is_vector_search=is_vector_search_mode)
 
     except ImportError as e:
         print_text(f"Error importing chat interface: {e}", style="red")

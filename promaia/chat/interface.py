@@ -685,7 +685,7 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -929,6 +929,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'natural_language_content': natural_language_content,  # Track if using natural language
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store browser selections from CLI
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
+        'is_vector_search': is_vector_search,  # Track if using vector search instead of natural language
         'mcp_servers': mcp_servers,  # Store MCP server names to include
         'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
@@ -1097,9 +1098,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         database_names = None  # Explicit OR logic for browse + NL independence
                         debug_print("🔄 Mixed browse+NL command: using database_names=None for OR logic")
                     
-                    # Always allow cross-workspace queries for natural language
-                    # Workspace is just a classifier/tag, not a mandatory constraint
-                    natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
+                    # Check if this is vector search mode
+                    if context_state.get('is_vector_search'):
+                        # Use vector search processor instead of natural language SQL query
+                        from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+                        natural_language_content = process_vector_search_to_content(
+                            nl_prompt,
+                            workspace=None,  # Allow cross-workspace searches
+                            verbose=True  # Show detailed processing steps
+                        )
+                    else:
+                        # Always allow cross-workspace queries for natural language
+                        # Workspace is just a classifier/tag, not a mandatory constraint
+                        natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
                     
                     if not natural_language_content:
                         print_text("❌ No content found for natural language query", style="bold red")
