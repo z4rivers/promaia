@@ -1,0 +1,126 @@
+{
+  "user_query": "trass gmail about plush pets within last 20 days",
+  "intent": {
+    "goal": "find emails about plush pets",
+    "databases": [
+      "trass.gmail",
+      "trass.yp",
+      "trass.discord"
+    ],
+    "search_terms": [
+      "plush",
+      "pets"
+    ],
+    "date_filter": {
+      "days_back": 20,
+      "description": "within last 20 days"
+    }
+  },
+  "generated_query": {
+    "search_text": "plush pets stuffed animals soft toys",
+    "filters": {
+      "database_name": {
+        "$in": [
+          "trass.gmail",
+          "trass.yp",
+          "trass.discord"
+        ]
+      }
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 20,
+  "databases_in_results": [
+    "trass.yp"
+  ],
+  "database_breakdown": {
+    "trass.yp": 20
+  },
+  "sample_results": [
+    {
+      "page_id": "1424740577852784773",
+      "similarity_score": 0.6657936573028564,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-06T00:00:00Z",
+      "content_type": "discord"
+    },
+    {
+      "page_id": "1423891613230563360",
+      "similarity_score": 0.6269934177398682,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-04T00:00:00Z",
+      "content_type": "discord"
+    },
+    {
+      "page_id": "1423471568847376465",
+      "similarity_score": 0.6208146214485168,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-03T00:00:00Z",
+      "content_type": "trass.yp"
+    },
+    {
+      "page_id": "1425215081288958095",
+      "similarity_score": 0.6015881896018982,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-07T00:00:00Z",
+      "content_type": "discord"
+    },
+    {
+      "page_id": "1422802536527826985",
+      "similarity_score": 0.5862340927124023,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-01T00:00:00Z",
+      "content_type": "trass.yp"
+    },
+    {
+      "page_id": "1423446666291187823",
+      "similarity_score": 0.5829129219055176,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-02T00:00:00Z",
+      "content_type": "trass.yp"
+    },
+    {
+      "page_id": "1422966596665610411",
+      "similarity_score": 0.5809783339500427,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-01T00:00:00Z",
+      "content_type": "trass.yp"
+    },
+    {
+      "page_id": "1424015042290122792",
+      "similarity_score": 0.5802527070045471,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-04T00:00:00Z",
+      "content_type": "discord"
+    },
+    {
+      "page_id": "1424401143202844874",
+      "similarity_score": 0.5772343873977661,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-05T00:00:00Z",
+      "content_type": "discord"
+    },
+    {
+      "page_id": "1425007948165414923",
+      "similarity_score": 0.5748819708824158,
+      "database_name": "trass.yp",
+      "workspace": "trass",
+      "created_time": "2025-10-07T00:00:00Z",
+      "content_type": "discord"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 20 entries from 1 databases"
+  },
+  "retries": 0
+}

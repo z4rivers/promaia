@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 13:21:54
+
+USER QUERY: trass gmail with any term: shipBob, merchant, support, and NOT any: avask, mgm, canusa
+
+INTENT PARSED:
+  Goal: find emails in trass gmail containing any of shipBob/merchant/support terms but excluding avask/mgm/canusa
+  Databases: trass.gmail
+  Search Terms: shipBob, merchant, support, -avask, -mgm, -canusa
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 606
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 606 entries
+
+  Sample Results (first 5):
+    1. Re: Shopify work consultation (gmail)
+       Date: 2025-10-10
+    2. RE: Form Completed: FC Locations   thread::T1PaXUE6cIO-i8RXS202tT0:: (gmail)
+       Date: 2025-10-10
+    3. RE: Form Completed: FC Locations   thread::-X8K12yCfJmyQ7bBIxuT4D0:: (gmail)
+       Date: 2025-10-10
+    4. Re: Shopify work consultation (gmail)
+       Date: 2025-10-09
+    5. RE: Form Completed: FC Locations   thread::-X8K12yCfJmyQ7bBIxuT4D0:: (gmail)
+       Date: 2025-10-09

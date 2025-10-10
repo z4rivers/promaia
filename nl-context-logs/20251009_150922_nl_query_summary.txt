@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-09 15:09:22
+
+USER QUERY: trass gmail with term avask gianfranco australia and NOT mgm
+
+INTENT PARSED:
+  Goal: find emails in trass gmail workspace containing 'avask gianfranco australia' but excluding 'mgm'
+  Databases: trass.gmail
+  Search Terms: avask, gianfranco, australia, -mgm
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 15
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 15 entries
+
+  Sample Results (first 5):
+    1. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    2. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    3. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-24
+    4. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-09
+    5. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-02

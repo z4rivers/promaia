@@ -1,0 +1,33 @@
+Natural Language Query Summary
+Generated: 2025-10-09 13:06:17
+
+USER QUERY: trass gmail and stories about the maker kit and maker testers
+
+INTENT PARSED:
+  Goal: find emails and story content related to maker kit and maker testers
+  Databases: trass.gmail, trass.stories
+  Search Terms: maker kit, maker testers
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: gmail, stories
+  
+  Breakdown by Database:
+    • gmail: 19 entries
+    • stories: 1 entries
+
+  Sample Results (first 5):
+    1. RE: MAKER KIT SAMPLE - FEDEX 8847 8314 3392 SENT ON 9.30 (gmail)
+       Date: 2025-10-08
+    2. Re: Maker kit sample parts/materials (gmail)
+       Date: 2025-06-02
+    3. Join us for Yeeps Maker Testing Session 2 - Sunday, April 27th (gmail)
+       Date: 2025-04-10
+    4. RE: Maker kit sample parts/materials (gmail)
+       Date: 2025-06-02
+    5. Yeeps Maker Beta Kit (gmail)
+       Date: 2025-05-05

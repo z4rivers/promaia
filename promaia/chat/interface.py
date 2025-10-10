@@ -1629,7 +1629,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Update query command
         update_query_command()
         query_command = context_state['query_command']
-        
+
+        # DEBUG: Log final state before returning
+        debug_print(f"📊 reload_context() completed successfully:")
+        debug_print(f"  Returning True")
+        debug_print(f"  total_pages_loaded (nonlocal var): {total_pages_loaded}")
+        debug_print(f"  initial_multi_source_data (nonlocal var) keys: {list(initial_multi_source_data.keys())}")
+        debug_print(f"  initial_multi_source_data counts: {[(k, len(v)) for k, v in initial_multi_source_data.items()]}")
+
         return True
 
     async def sync_current_context_databases():
@@ -1870,11 +1877,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif not user_input and current_args_str:
                 # Empty input but there were current args - user wants to keep current
                 print_text("Keeping current context.", style="bold green")
-                return True
+                return 'no_change'  # Return special value to indicate no changes
             elif user_input == current_args_str:
                 # User didn't change anything - keep current context
                 print_text("No changes made. Keeping current context.", style="bold green")
-                return True
+                return 'no_change'  # Return special value to indicate no changes
             
             # Parse the input as CLI arguments
             import shlex
@@ -2822,7 +2829,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if natural_language_content:
                     print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
                     context_state['natural_language_content'] = natural_language_content
-                    context_state['natural_language_prompt'] = nl_prompt
+                    # BUG FIX: Use combined_nl_prompt (which was set earlier) instead of nl_prompt (which is None)
+                    # nl_prompt was initialized to None at line 2478 and never updated in this code path
+                    context_state['natural_language_prompt'] = combined_nl_prompt
                     
                     # Set the mixed browse+NL flag for OR logic
                     # This ensures NL results are properly merged with browse results
@@ -3736,9 +3745,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif user_input.strip().lower() == '/e':
                 # Edit context
                 try:
-                    if edit_context():
+                    edit_result = edit_context()
+                    # Only redisplay welcome message if context was actually updated
+                    # edit_result can be: True (updated), 'no_change' (no changes), or False (cancelled)
+                    if edit_result is True:
                         print()
-                        
+
                         # Save the updated command to recents
                         try:
                             recents_manager = RecentsManager()
@@ -3750,7 +3762,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             if current_nl_prompt:
                                 current_nl_prompt = ' '.join(current_nl_prompt.split())
                             current_browse_command = context_state.get('original_query_format')
-                            
+
                             # Only save if we have meaningful content to save
                             if current_sources or current_filters or current_nl_prompt or current_browse_command:
                                 recents_manager.add_query(
@@ -3763,12 +3775,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         except Exception as e:
                             # Don't let recents saving errors break the flow
                             debug_print(f"Failed to save updated command to recents: {e}")
-                        
+
                         # Show the same detailed breakdown as when starting a new chat
+                        # DEBUG: Log what we're about to display
+                        debug_print(f"📊 About to display welcome message after /e:")
+                        debug_print(f"  total_pages_loaded: {total_pages_loaded}")
+                        debug_print(f"  initial_multi_source_data keys: {list(initial_multi_source_data.keys())}")
+                        debug_print(f"  initial_multi_source_data counts: {[(k, len(v)) for k, v in initial_multi_source_data.items()]}")
+                        debug_print(f"  context_state['total_pages_loaded']: {context_state.get('total_pages_loaded')}")
+                        debug_print(f"  context_state['initial_multi_source_data'] keys: {list(context_state.get('initial_multi_source_data', {}).keys())}")
+
                         print_welcome_message(
-                            query_command=context_state['query_command'], 
-                            total_pages=total_pages_loaded, 
-                            model_name=get_current_model_name(), 
+                            query_command=context_state['query_command'],
+                            total_pages=total_pages_loaded,
+                            model_name=get_current_model_name(),
                             source_breakdown=generate_source_breakdown(initial_multi_source_data)
                         )
                         # Save context log for edit-triggered update
@@ -3778,6 +3798,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_text(f"Debug: System prompt length: {len(system_prompt)}", style="dim")
                             print_text(f"Debug: Sources in context_state: {context_state.get('sources')}", style="dim")
                             print_text(f"Debug: Multi-source data keys: {list(initial_multi_source_data.keys())}", style="dim")
+                    elif edit_result == 'no_change':
+                        # User pressed Enter without making changes - don't redisplay welcome message
+                        # The context is already correct from the previous update
+                        pass
                     else:
                         print_text("Context editing cancelled.", style="bold yellow")
                 except Exception as e:
@@ -4111,55 +4135,53 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if not user_input.strip():
                 continue
 
-            # Initialize current_images if not set (for non-image commands)
-            if 'current_images' not in locals():
-                current_images = []
-            
-            # Auto-detect image paths in regular messages (if no images already set)
-            if not current_images:
-                cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
-                
-                if detected_paths:
-                    try:
-                        from promaia.utils.image_processing import (
-                            encode_image_from_path, is_vision_supported, get_model_image_limits
-                        )
-                        
-                        # Check if current model supports vision
-                        if not is_vision_supported(current_api):
-                            print_text(f"📸 Detected {len(detected_paths)} image path(s) but {current_api} doesn't support images.", style="bold yellow")
-                            print_text("Try switching to a vision-capable model with '/model' or use text-only.", style="dim")
-                        else:
-                            # Get model limits
-                            model_limits = get_model_image_limits(current_api)
-                            max_images = model_limits['max_images']
-                            
-                            # Limit images to model capacity
-                            if len(detected_paths) > max_images:
-                                print_text(f"📸 Detected {len(detected_paths)} images, but {current_api.title()} supports max {max_images}. Processing first {max_images}.", style="bold yellow")
-                                detected_paths = detected_paths[:max_images]
-                            
-                            # Try to encode detected images
-                            successful_images = []
-                            
-                            for image_path in detected_paths:
-                                try:
-                                    if os.path.exists(image_path):
-                                        encoded_image = encode_image_from_path(image_path)
-                                        successful_images.append(encoded_image)
-                                    else:
-                                        print_text(f"📸 Image path not found: {image_path}", style="dim yellow")
-                                except Exception as img_error:
-                                    print_text(f"❌ Failed to load detected image: {image_path} - {img_error}", style="bold red")
-                            
-                            if successful_images:
-                                current_images = successful_images
-                                user_input = cleaned_message  # Use cleaned message without image paths
-                                
-                    except Exception as e:
-                        print_text(f"Error processing detected images: {e}", style="bold red")
-                        # Continue with original message
-                        pass
+            # Reset current_images for each new message (fix bug where images from previous message persist)
+            current_images = []
+
+            # Auto-detect image paths in regular messages
+            cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
+
+            if detected_paths:
+                try:
+                    from promaia.utils.image_processing import (
+                        encode_image_from_path, is_vision_supported, get_model_image_limits
+                    )
+
+                    # Check if current model supports vision
+                    if not is_vision_supported(current_api):
+                        print_text(f"📸 Detected {len(detected_paths)} image path(s) but {current_api} doesn't support images.", style="bold yellow")
+                        print_text("Try switching to a vision-capable model with '/model' or use text-only.", style="dim")
+                    else:
+                        # Get model limits
+                        model_limits = get_model_image_limits(current_api)
+                        max_images = model_limits['max_images']
+
+                        # Limit images to model capacity
+                        if len(detected_paths) > max_images:
+                            print_text(f"📸 Detected {len(detected_paths)} images, but {current_api.title()} supports max {max_images}. Processing first {max_images}.", style="bold yellow")
+                            detected_paths = detected_paths[:max_images]
+
+                        # Try to encode detected images
+                        successful_images = []
+
+                        for image_path in detected_paths:
+                            try:
+                                if os.path.exists(image_path):
+                                    encoded_image = encode_image_from_path(image_path)
+                                    successful_images.append(encoded_image)
+                                else:
+                                    print_text(f"📸 Image path not found: {image_path}", style="dim yellow")
+                            except Exception as img_error:
+                                print_text(f"❌ Failed to load detected image: {image_path} - {img_error}", style="bold red")
+
+                        if successful_images:
+                            current_images = successful_images
+                            user_input = cleaned_message  # Use cleaned message without image paths
+
+                except Exception as e:
+                    print_text(f"Error processing detected images: {e}", style="bold red")
+                    # Continue with original message
+                    pass
             
             # Prepare message with potential images
             if current_images:

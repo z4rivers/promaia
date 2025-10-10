@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-09 12:19:50
+
+USER QUERY: trass gmail with terms gianfranco australia AU within last 4 months
+
+INTENT PARSED:
+  Goal: find emails in Trass Gmail containing mentions of Gianfranco and Australia/AU
+  Databases: trass.gmail
+  Search Terms: gianfranco, australia, AU
+  Date Filter: within last 4 months
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 45
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 45 entries
+
+  Sample Results (first 5):
+    1. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    2. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    3. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    4. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25
+    5. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-25

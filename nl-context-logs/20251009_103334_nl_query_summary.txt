@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-09 10:33:34
+
+USER QUERY: trass gmail about plush pets
+
+INTENT PARSED:
+  Goal: search trass gmail for plush pets related emails
+  Databases: trass.gmail
+  Search Terms: plush, pets
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 20 entries
+
+  Sample Results (first 5):
+    1. Untitled (gmail)
+       Date: 2025-06-03
+    2. Untitled (gmail)
+       Date: 2025-06-13
+    3. Untitled (gmail)
+       Date: 2025-06-16
+    4. Untitled (gmail)
+       Date: 2025-06-03
+    5. Untitled (gmail)
+       Date: 2025-06-17

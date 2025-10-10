@@ -1,0 +1,164 @@
+{
+  "user_query": "trass gmail with term maker that do NOT include term mgm or fedex",
+  "intent": {
+    "goal": "search trass gmail for 'maker' but exclude 'mgm' and 'fedex'",
+    "databases": [
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "maker",
+      "-mgm",
+      "-fedex"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\ng.subject,\ng.sender_name,\ng.sender_email,\ng.body_snippet,\ng.message_content,\ng.email_date\nFROM unified_content u\nJOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name = 'gmail'\nAND (\n    g.subject LIKE '%maker%'\n    OR g.body_snippet LIKE '%maker%'\n    OR g.message_content LIKE '%maker%'\n    OR g.sender_name LIKE '%maker%'\n)\nAND g.subject NOT LIKE '%mgm%'\nAND g.body_snippet NOT LIKE '%mgm%'\nAND g.message_content NOT LIKE '%mgm%'\nAND g.subject NOT LIKE '%fedex%'\nAND g.body_snippet NOT LIKE '%fedex%'\nAND g.message_content NOT LIKE '%fedex%'\nORDER BY g.email_date DESC\nLIMIT 1200",
+  "query_mode": "sql",
+  "result_count": 205,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 205
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199ad1cf04a2ce28",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Maker Kit - Teams Call",
+      "created_time": "2025-10-04T02:46:10+00:00",
+      "subject": "Maker Kit - Teams Call",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "________________________________________________________________________________ Microsoft Teams Need help? Join the meeting now Meeting ID: 423 451 454 353 0 Passcode: 37Pm6yY6 For organizers: Meeting",
+      "message_content": "________________________________________________________________________________ Microsoft Teams Need help? Join the meeting now Meeting ID: 423 451 454 353 0 Passcode: 37Pm6yY6 For organizers: Meeting options ________________________________________________________________________________",
+      "email_date": "2025-10-04T02:46:10+00:00"
+    },
+    {
+      "page_id": "msg_199ac273e6eea4e9",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Yeeps Plush Pets Trailer - Production Planning",
+      "created_time": "2025-10-03T15:17:43-07:00",
+      "subject": "Re: Yeeps Plush Pets Trailer - Production Planning",
+      "sender_name": "Felipe Lazaro",
+      "sender_email": "Felipe Lazaro <felipelazaro@yahoo.com>",
+      "body_snippet": "\ufeff Hey Koii! Thank you so much for the update. We work really hard in our work, and especially in our kids school to make everyone feel represented and seen. Hence why it was so hard send that email",
+      "message_content": "\ufeff Hey Koii! Thank you so much for the update. We work really hard in our work, and especially in our kids school to make everyone feel represented and seen. Hence why it was so hard send that email last time. We\u2019re glad you have other kids involved! Nora has played with Lucas\u2019 VR and enjoys it, but she loves all sorts of creative things, music, art, video, so much! Nothing specifically comes to mind at the moment, however. I\u2019ll be there and will have lights ready! See you tomorrow! Felipe Felipe L\u00e1zaro 619.246.3728 felipelazaro.com On Oct 3, 2025, at 12:12 PM, Koii Benvenutto <koii@trassgames.com> wrote: \ufeff Dear Felipe, I'm looking forward to seeing you and your family tomorrow for the trailer shoot. I'll be there at 1pm sharp and wrap up before 4pm. It'll just be me, some gear, (And a Quest 3 \ud83e\udd2b,) and a bunch of yeeps plushies! Jayshay won't be there. Btw I want to make sure that Nora feels equally appreciated, while I suppose that the headset is a present to the whole family I wonder if Lucas is going to be the primary user? Let me know if you think there's something that Nora would be particularly excited about. Another note that I want to mention simply to give you a more complete understanding of the\u00a0project is that we may choose to schedule one more shoot with another family from the Maker Tester sessions. Jayshay and I didn't want to leave you wondering if anything had gone wrong with tomorrow's shoot that caused us to schedule another one. We're just making an effort to reflect the diversity of our community in our content. Lastly, I just want to confirm that I'll be able to use your lights during the shoot. Looking forward to it. Warmly, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-03T15:17:43-07:00"
+    },
+    {
+      "page_id": "msg_199985dcd3a2d138",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Animatronic Yeeps plush",
+      "created_time": "2025-09-29T19:04:53-07:00",
+      "subject": "Re: Animatronic Yeeps plush",
+      "sender_name": "Connor T",
+      "sender_email": "Connor T <theconnortan@gmail.com>",
+      "body_snippet": "Hello, Thanks for reaching out! It was great to meet you at Maker Faire as well. Yes, I&#39;d love to chat more about your project and your goals. Send me a calendar invite for anytime this week, and",
+      "message_content": "Hello, Thanks for reaching out! It was great to meet you at Maker Faire as well. Yes, I\u2019d love to chat more about your project and your goals. Send me a calendar invite for anytime this week, and maybe any preliminary materials you might have that I can familiarize myself with ahead of time. I\u2019m free weekdays and weekends past 12PM, but earlier is fine too. Let me know! - Connor On Sep 28, 2025, at 4:03 PM, Jeff Southard <jayshay@trassgames.com> wrote: \ufeff Connor: Good meeting you today. Congratul",
+      "email_date": "2025-09-29T19:04:53-07:00"
+    },
+    {
+      "page_id": "msg_199969a499396be6",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Jayshay _ and 2 others made updates in Trass Games",
+      "created_time": "2025-09-29T17:51:56+00:00",
+      "subject": "Jayshay _ and 2 others made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "body_snippet": "See what&#39;s changed \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f",
+      "message_content": "96 See what\u2019s changed \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad Trass Games Your Notion digest Ready to jump back in? Catch up on what\u2019s happened in Notion. Go to Notion \u2192 Most viewed in Trass Games \ud83c\udf0e [support team] World Issues Created by Gus \u2022 Recently edited \ud83d\udc7b Halloween Nicknames Created by Gus \ud83c\udd95 CS General: Update Discord Guides Created by Gus \u2022 Recently edited \ud83d\udcb0 [support team] Purchase issues Created by Gus \u2022 Recently edited Jayshay _ and 2 others made updates Creating new products in our system (barcodes, etc.) Jayshay _ edited this page For Maker Kits, here is Figma page where they\u2019re made. We may want to move this somewhere centralized. Jayshay _ edited this page We have a GS1 account that jayshay and , Steve , and Koii can access. How to add barcodes to GS1 website and products sheet How to update barcode images View full edit \ud83d\udccb Product Team Technical Asset Work Koii and Eric Huynh edited this page And okay, it's running. You want to just like walk me through your progress and what you've been finding? Yeah \uadc0\uc5ec\uc6cc. And okay, it's running. You want to just like walk me through your progress and what you've been finding? Yeah ...correct way that I want to do it because, yeah, the link that I explored with you or I shared with you earlier, it was basically, it was too heavy. That was designed for heavier-duty people who want to distribute their app to multiple storefronts. But on the lighter solution that we... View full edit Notion Notion.so , the connected workspace for docs, projects, and wikis. Update your email settings",
+      "email_date": "2025-09-29T17:51:56+00:00"
+    },
+    {
+      "page_id": "msg_19992977722265fa",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Yeeps plush animatronics",
+      "created_time": "2025-09-28T16:10:11-07:00",
+      "subject": "Yeeps plush animatronics",
+      "sender_name": "Jeff Southard",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "body_snippet": "Evan: Good meeting you today. Congratulations on the show. And such a good concise demo of the software. I&#39;m the one with the plush that is looking to use the plush as an entrance for kids into",
+      "message_content": "Evan: Good meeting you today. Congratulations on the show. And such a good concise demo of the software. I\u2019m the one with the plush that is looking to use the plush as an entrance for kids into crafting and making.\u00a0 https://yeeps.com/ We plan to sponsor a workshop booth at next years Maker Faire, hopefully on the scale of Crunchlab. I\u2019m wondering about our funding of a project to add animatronics to our plush\u2026 as as an advanced maker project and part of a booth display\u2026 think Disney animatronics but all with Yeeps plush.\u00a0 I\u2019m wondering if you\u2019re aware of any open source projects that might match our needs to animate our plush. Or folks that use your software and might entertain a collaboration or possible funding/sponsorship of them adapting a skeleton to our plush. If you have time to talk about that project to give advice, please let me know. Cheers! Jayshay",
+      "email_date": "2025-09-28T16:10:11-07:00"
+    },
+    {
+      "page_id": "msg_1999291219d0f1db",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Animatronic Yeeps plush",
+      "created_time": "2025-09-28T16:03:16-07:00",
+      "subject": "Animatronic Yeeps plush",
+      "sender_name": "Jeff Southard",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "body_snippet": "Connor: Good meeting you today. Congratulations on the Captain Rex project. I&#39;m the one with the plush that is looking to use the plush as an entrance for kids into crafting and making. https://",
+      "message_content": "Connor: Good meeting you today. Congratulations on the Captain Rex project. I\u2019m the one with the plush that is looking to use the plush as an entrance for kids into crafting and making.\u00a0 https://yeeps.com/ We plan to sponsor a workshop booth at next years Maker Faire, hopefully on the scale of Crunchlab. I\u2019m wondering about our funding of a project to add animatronics to our plush\u2026 as as an advanced maker project and part of a booth display\u2026 think Disney animatronics but all with Yeeps plush.\u00a0 If you have time to talk about that project to give advice, and possible work on it, please let me know. Cheers! Jayshay",
+      "email_date": "2025-09-28T16:03:16-07:00"
+    },
+    {
+      "page_id": "msg_1999199197d8ac4d",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: At mare island today?",
+      "created_time": "2025-09-28T11:32:20-07:00",
+      "subject": "Re: At mare island today?",
+      "sender_name": "Jeff Southard",
+      "sender_email": "Jeff Southard <jayshay@trassgames.com>",
+      "body_snippet": "Katie: I&#39;m here now. I&#39;ll look for you so I can say hi. Or text me: 415-831-5427. Jeff/Jayshay On Sep 22, 2025, at 4:55 PM, Katie Kunde &lt;katie@make.co&gt; wrote: \ufeff Hi Jayshay, Oh shoot! Yes,",
+      "message_content": "Katie:\u00a0 I\u2019m here now. I\u2019ll look for you so I can say hi. Or text me: 415-831-5427. Jeff/Jayshay On Sep 22, 2025, at 4:55 PM, Katie Kunde <katie@make.co> wrote: \ufeff Hi Jayshay, Oh shoot! Yes, hope to see you this coming weekend!! Best, Katie See me at Maker Faire Bay Area September 26-28th",
+      "email_date": "2025-09-28T11:32:20-07:00"
+    },
+    {
+      "page_id": "msg_19979d7aa275aee4",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Maker Kit Changes 2025-09-23",
+      "created_time": "2025-09-23T20:49:44-07:00",
+      "subject": "Maker Kit Changes 2025-09-23",
+      "sender_name": "jayshay",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "body_snippet": "John and Fionn: As promised, here is the PDF of those changes we discussed. Attached and in the shared folder : Maker Kit Changes 2025-09-23.pdf Cheers! Jayshay \ufffc",
+      "message_content": "John and Fionn:\r\n\r\nAs promised, here is the PDF of those changes we discussed.\r\n\r\nAttached and in the shared folder <https://drive.google.com/drive/folders/1IJW12NYQQmKztQ7DAHgy4e2UJgAr439n>:\r\nMaker Kit Changes 2025-09-23.pdf\r\n\r\nCheers!\r\nJayshay\r\n\r\n\r\n\ufffc",
+      "email_date": "2025-09-23T20:49:44-07:00"
+    },
+    {
+      "page_id": "msg_19973da86a334785",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: At mare island today?",
+      "created_time": "2025-09-22T16:54:48-07:00",
+      "subject": "Re: At mare island today?",
+      "sender_name": "Katie Kunde",
+      "sender_email": "Katie Kunde <katie@make.co>",
+      "body_snippet": "Hi Jayshay, Oh shoot! Yes, hope to see you this coming weekend!! Best, Katie See me at Maker Faire Bay Area September 26-28th On Sun, Sep 21, 2025 at 11:38 AM Jeff Southard &lt;jayshay@trassgames.com",
+      "message_content": "Hi Jayshay, Oh shoot! Yes, hope to see you this coming weekend!! Best, Katie See me at Maker Faire Bay Area September 26-28th",
+      "email_date": "2025-09-22T16:54:48-07:00"
+    },
+    {
+      "page_id": "msg_19971ecf5259d862",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Eric Huynh and 2 others made updates in Trass Games",
+      "created_time": "2025-09-22T14:56:17+00:00",
+      "subject": "Eric Huynh and 2 others made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "body_snippet": "See what&#39;s changed \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f",
+      "message_content": "96 See what\u2019s changed \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad Trass Games Your Notion digest Ready to jump back in? Catch up on what\u2019s happened in Notion. Go to Notion \u2192 Most viewed in Trass Games \ud83d\udcd2 Weekly Report - Customer Support (Missy) Created by Missy Freire \u2022 Recently edited \ud83d\udcda Improving Discord Mod Guide Created by Due Ruck \u2022 Recently edited \u2696\ufe0f Merch and Maker Demand Created by Gus \u2022 Recently edited \ud83d\udcb3 International Payments Created by Steve \u2022 Recently edited Eric Huynh and 2 others made updates \ud83d\udccb Product Team Technical Asset Work Koii and Eric Huynh edited this page Basically, we'll use this event bridge, we'll build a queue that lives in a, uh, in like a database, basically. Yeah, it's an R. Awesome, and then next up is adding the reprocessing of failed events? \u767d\u6c99\u5821\u3002 Basically, we'll use this event bridge, we'll build a queue that lives in a, uh, in like a database, basically. Yeah, it's an R. Perfect. It's going to be an average infrastructure. Yep. Awesome. And then next up is adding the re-handling, or like the reprocessing of failed events. But Shopify has like a prescribed way to do this. Any news on if this is going to like, if we're going to run into great limiting issues this way? Is there any mention of that? Because I remember like... Well, the queue should solve that, ultimately, but... That's the hope, yeah. Rate limiting issue? Yeah. Because then we can control the rate that we process things, and then we can set a limit of concurrency and rate that we do so. View full edit Eric Huynh edited this page Shopify Help Center Creating webhooks \u200b Shopify Help Center Creating webhooks \u200b TODO @ Eric Huynh needs access to Notifications Settings in Shopify Admin to explore webhook alternative to Flow for event ingestion Eric Huynh edited this page Nothing outstanding Continue to prototype infrastructure changes, introduce EventBridge in front of API and validate Shopify Ignore duplicate webhooks \u200b View full edit \u2696\ufe0f Merch and Maker Demand G Gus edited this page \u25b6 Video \u25b6 Discord Merch hype after Connect Photos, and Steve\u2019s Giveaway video Notion Notion.so , the connected workspace for docs, projects, and wikis. Update your email settings",
+      "email_date": "2025-09-22T14:56:17+00:00"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 205 entries from 1 databases"
+  },
+  "retries": 0
+}

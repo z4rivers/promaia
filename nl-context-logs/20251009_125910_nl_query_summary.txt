@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-09 12:59:10
+
+USER QUERY: trass gmail about australia international registration and launch
+
+INTENT PARSED:
+  Goal: find gmail messages in Trass workspace about Australia international registration and launch
+  Databases: trass.gmail
+  Search Terms: australia, international, registration, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 20 entries
+
+  Sample Results (first 5):
+    1. Trass Games Inc - AUS Registration - INC - US  (gmail)
+       Date: 2025-07-16
+    2. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-23
+    3. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-07-16
+    4. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-02
+    5. Re: Check-in on UK & AU registrations (gmail)
+       Date: 2025-09-09

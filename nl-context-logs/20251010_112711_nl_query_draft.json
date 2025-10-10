@@ -1,0 +1,162 @@
+{
+  "user_query": "trass gmail with term pradip",
+  "intent": {
+    "goal": "find gmail messages containing 'pradip' in trass workspace",
+    "databases": [
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "pradip"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\nu.page_id,\nu.workspace,\nu.database_name,\nu.title,\nu.created_time,\ng.subject,\ng.sender_name,\ng.sender_email,\ng.body_snippet,\ng.message_content,\ng.email_date\nFROM unified_content u\nJOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND (\n    g.subject LIKE '%pradip%'\n    OR g.sender_name LIKE '%pradip%'\n    OR g.sender_email LIKE '%pradip%'\n    OR g.body_snippet LIKE '%pradip%'\n    OR g.message_content LIKE '%pradip%'\n)\nORDER BY g.email_date DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 71,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 71
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199cdbb873f48576",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-10T16:16:44+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hey Koii, Could you please help me know the above so that I can plan things accordingly? On Thu, 9 Oct 2025 at 17:14, Pradip &lt;pradipweweb@gmail.com&gt; wrote: Hi Koii, Hope you&#39;re doing well. I",
+      "message_content": "Hey Koii, Could you please help me know the above so that I can plan things accordingly? On Thu, 9 Oct 2025 at 17:14, Pradip < pradipweweb@gmail.com > wrote: Hi Koii, Hope you\u2019re doing well. I just wanted to share that I\u2019ve completed around 5 hours of work so far this week . To better streamline my schedule and maintain consistency, could you please assign me at least 15\u201320 hours of work each week? When I was previously working with Jayshay, this level of workload helped me plan and manage my time more effectively, and I\u2019d like to maintain a similar rhythm moving forward. I truly enjoy working on your projects and would appreciate it if you could share more tasks on a regular basis. Thank you for your understanding and support. On Wed, 8 Oct 2025 at 02:48, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, Thank you for your notes in Notion. I'll review these at the soonest chance and let you know how I'd like to proceed. I want to thank you again for bearing with me while the communications have been choppy. I'll let you know if I think a meeting on Friday is necessary or if I'd like to move forward async for this week. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-10T16:16:44+05:30"
+    },
+    {
+      "page_id": "msg_199cd1797c50d8bf",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-10T13:17:42+05:30",
+      "subject": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hello Steve, I Hope you are doing Well :) Please find the attached invoice for the Time Period : 06th Oct to 10th Oct (Number of Hours : 05) Kindly review the Invoice and let me know incase of any",
+      "message_content": "Hello Steve, I Hope you are doing Well :) Please find the attached invoice for the Time P eriod : 06th Oct to 10th Oct (Number of Hours : 05) Kindly review the Invoice and let me know incase of any queries and I am happy to assist you further. Request you to make the Payment in Bank Account Number details mentioned in the invoice . Please do help me know once you release the payment from your end. Thank you :) -- Thanks & Regards , Pradip M. Full Stack Developer",
+      "email_date": "2025-10-10T13:17:42+05:30"
+    },
+    {
+      "page_id": "msg_199c8c9a26c93376",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-09T17:14:03+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hi Koii, Hope you&#39;re doing well. I just wanted to share that I&#39;ve completed around 5 hours of work so far this week. To better streamline my schedule and maintain consistency, could you please",
+      "message_content": "Hi Koii, Hope you\u2019re doing well. I just wanted to share that I\u2019ve completed around 5 hours of work so far this week . To better streamline my schedule and maintain consistency, could you please assign me at least 15\u201320 hours of work each week? When I was previously working with Jayshay, this level of workload helped me plan and manage my time more effectively, and I\u2019d like to maintain a similar rhythm moving forward. I truly enjoy working on your projects and would appreciate it if you could share more tasks on a regular basis. Thank you for your understanding and support. On Wed, 8 Oct 2025 at 02:48, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, Thank you for your notes in Notion. I'll review these at the soonest chance and let you know how I'd like to proceed. I want to thank you again for bearing with me while the communications have been choppy. I'll let you know if I think a meeting on Friday is necessary or if I'd like to move forward async for this week. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-09T17:14:03+05:30"
+    },
+    {
+      "page_id": "msg_199c08a70344eb84",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-07T14:18:41-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "body_snippet": "Dear Pradip, Thank you for your notes in Notion. I&#39;ll review these at the soonest chance and let you know how I&#39;d like to proceed. I want to thank you again for bearing with me while the",
+      "message_content": "Dear Pradip, Thank you for your notes in Notion. I'll review these at the soonest chance and let you know how I'd like to proceed. I want to thank you again for bearing with me while the communications have been choppy. I'll let you know if I think a meeting on Friday is necessary or if I'd like to move forward async for this week. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-07T14:18:41-07:00"
+    },
+    {
+      "page_id": "msg_199bd9a6390c5340",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-07T13:06:34+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hello Koii, I&#39;ve added my comments on Notion. Could you please review them and share your feedback so I can proceed further? On Tue, 7 Oct 2025 at 09:13, Pradip &lt;pradipweweb@gmail.com&gt; wrote:",
+      "message_content": "Hello Koii, I\u2019ve added my comments on Notion. Could you please review them and share your feedback so I can proceed further? On Tue, 7 Oct 2025 at 09:13, Pradip < pradipweweb@gmail.com > wrote: Hi Koii Any update on above? Thanks & Regards , Pradip M. Full Stack Developer On Mon, 6 Oct 2025, 13:39 Pradip, < pradipweweb@gmail.com > wrote: Ok, thanks for the update. On Mon, 6 Oct 2025 at 13:38, Koii Benvenutto < koii@trassgames.com > wrote: I originally sent an invite but I decided to check with Jayshay about the security level he wishes to grant. Stand by I\u2019ll ask him first thing tomorrow. I understand you are very eager to begin work. But with the level of cyber attacks increasing I take the security of our site very seriously. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com On Mon, Oct 6, 2025 at 00:29 Pradip < pradipweweb@gmail.com > wrote: Hello Koii, I received an invite, but I was not able to accept the invitation. It logged me out immediately once after the login. Can you please share the invite again. On Mon, 6 Oct 2025 at 12:32, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, You do not need admin permissions to carry out your work. I will send you an invite with permissions for app development and online store editor pending approval from Jayshay tomorrow morning. From there on out, please let me know which ones you need at a granular level to complete your work. Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-07T13:06:34+05:30"
+    },
+    {
+      "page_id": "msg_199bfb426ac8d2c9",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-07T10:24:37-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "body_snippet": "Hi Pradip, I just added you as an app developer and online store editor in Shopify. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com On Tue, Oct 7, 2025 at 12:37 AM Pradip &lt;",
+      "message_content": "Hi Pradip, I just added you as an app developer and online store editor in Shopify. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-07T10:24:37-07:00"
+    },
+    {
+      "page_id": "msg_199bcc4c63981fd0",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-07T09:13:43+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hi Koii Any update on above? Thanks &amp; Regards, Pradip M. Full Stack Developer On Mon, 6 Oct 2025, 13:39 Pradip, &lt;pradipweweb@gmail.com&gt; wrote: Ok, thanks for the update. On Mon, 6 Oct 2025 at",
+      "message_content": "Hi Koii Any update on above? Thanks & Regards , Pradip M. Full Stack Developer On Mon, 6 Oct 2025, 13:39 Pradip, < pradipweweb@gmail.com > wrote: Ok, thanks for the update. On Mon, 6 Oct 2025 at 13:38, Koii Benvenutto < koii@trassgames.com > wrote: I originally sent an invite but I decided to check with Jayshay about the security level he wishes to grant. Stand by I\u2019ll ask him first thing tomorrow. I understand you are very eager to begin work. But with the level of cyber attacks increasing I take the security of our site very seriously. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com On Mon, Oct 6, 2025 at 00:29 Pradip < pradipweweb@gmail.com > wrote: Hello Koii, I received an invite, but I was not able to accept the invitation. It logged me out immediately once after the login. Can you please share the invite again. On Mon, 6 Oct 2025 at 12:32, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, You do not need admin permissions to carry out your work. I will send you an invite with permissions for app development and online store editor pending approval from Jayshay tomorrow morning. From there on out, please let me know which ones you need at a granular level to complete your work. Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-07T09:13:43+05:30"
+    },
+    {
+      "page_id": "msg_199ba3357182d61f",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Eric Huynh and 1 other made updates in Trass Games",
+      "created_time": "2025-10-06T15:45:49+00:00",
+      "subject": "Eric Huynh and 1 other made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "body_snippet": "See what&#39;s changed \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f",
+      "message_content": "96 See what\u2019s changed \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad Trass Games Your Notion digest Ready to jump back in? Catch up on what\u2019s happened in Notion. Go to Notion \u2192 Most viewed in Trass Games @Last Wednesday Koii Jayshay Steve Created by Jayshay _ \u2022 Recently edited \ud83d\udd30 Discord Mods: Promotion Voting Created by Gus \u2022 Recently edited \ud83e\udde0 Feedbacks for Jrs Promotions Created by Due Ruck \u2022 Recently edited \ud83d\udc7b Halloween Nicknames Created by Gus \u2022 Recently edited Eric Huynh and 1 other made updates \ud83d\udccb Product Team Technical Asset Work Eric Huynh mentioned you in this page @ Koii I want to sync up on how to create test orders on the production Shopify storefront at some point Eric Huynh edited this page Validate idempotence S @ Koii I want to s ync up on how to create test orders on the production Shopify storefront at some point Eric Huynh edited this page @ Last Friday Sync up on how to create test orders on production Shopify storefront Goals for next week: View full edit \ud83d\udcde Meeting Agenda: Koii x Pradip P Pradip commented in this page Mixed Cart Handling Pradip To handle mixed cart orders and fulfill them from the backend, Shopify provides a default feature that allows you to manage preorder items through partial fulfillment. See the screenshot below P Pradip commented in this page Core Functionality Pradip @ Koii I did R&D today and checked some of the App. I found below 2 apps so one of them we can use for this 2 frontend points. - PreOrder button on product page - Mixed cart warning on cart page. 1. https://apps.shopify.com/preorder-now - WOD: PreOrder Now 2. https://apps.shopify.com/backstock-preorder - Pre\u2011order Manager Pro Please check it from your end and let me know your thoughts on it. Notion Notion.so , the connected workspace for docs, projects, and wikis. Update your email settings",
+      "email_date": "2025-10-06T15:45:49+00:00"
+    },
+    {
+      "page_id": "msg_199b89230b63d235",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-06T13:39:33+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Ok, thanks for the update. On Mon, 6 Oct 2025 at 13:38, Koii Benvenutto &lt;koii@trassgames.com&gt; wrote: I originally sent an invite but I decided to check with Jayshay about the security level he",
+      "message_content": "Ok, thanks for the update. On Mon, 6 Oct 2025 at 13:38, Koii Benvenutto < koii@trassgames.com > wrote: I originally sent an invite but I decided to check with Jayshay about the security level he wishes to grant. Stand by I\u2019ll ask him first thing tomorrow. I understand you are very eager to begin work. But with the level of cyber attacks increasing I take the security of our site very seriously. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com On Mon, Oct 6, 2025 at 00:29 Pradip < pradipweweb@gmail.com > wrote: Hello Koii, I received an invite, but I was not able to accept the invitation. It logged me out immediately once after the login. Can you please share the invite again. On Mon, 6 Oct 2025 at 12:32, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, You do not need admin permissions to carry out your work. I will send you an invite with permissions for app development and online store editor pending approval from Jayshay tomorrow morning. From there on out, please let me know which ones you need at a granular level to complete your work. Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-06T13:39:33+05:30"
+    },
+    {
+      "page_id": "msg_199b86c7960fdb02",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-06T12:58:22+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "body_snippet": "Hello Koii, I received an invite, but I was not able to accept the invitation. It logged me out immediately once after the login. Can you please share the invite again. On Mon, 6 Oct 2025 at 12:32,",
+      "message_content": "Hello Koii, I received an invite, but I was not able to accept the invitation. It logged me out immediately once after the login. Can you please share the invite again. On Mon, 6 Oct 2025 at 12:32, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, You do not need admin permissions to carry out your work. I will send you an invite with permissions for app development and online store editor pending approval from Jayshay tomorrow morning. From there on out, please let me know which ones you need at a granular level to complete your work. Best regards, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com",
+      "email_date": "2025-10-06T12:58:22+05:30"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 71 entries from 1 databases"
+  },
+  "retries": 0
+}

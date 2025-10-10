@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-09 12:37:18
+
+USER QUERY: trass gmail about australia international registration and launch
+
+INTENT PARSED:
+  Goal: find emails in Trass Gmail about Australia international registration and launch
+  Databases: trass.gmail
+  Search Terms: australia, international, registration, launch
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 434
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 434 entries
+
+  Sample Results (first 5):
+    1. Welcome to Canusa Logistics Inc - Trass Games Inc. (gmail)
+       Date: 2025-10-09
+    2. Re: HMRC more info request (gmail)
+       Date: 2025-10-09
+    3. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-09
+    4. Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-08
+    5. Gus made updates in Trass Games (gmail)
+       Date: 2025-10-07
