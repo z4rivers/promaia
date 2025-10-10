@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 15:18:53
+
+USER QUERY: trass gmail that mentions shipBob or merchant support exclude term mgm limit results to last 2 months
+
+INTENT PARSED:
+  Goal: find gmail messages about ShipBob or merchant support, excluding MGM mentions
+  Databases: trass.gmail
+  Search Terms: shipbob, merchant support, -mgm
+  Date Filter: last 2 months
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 76
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 76 entries
+
+  Sample Results (first 5):
+    1. RE: Form Completed: FC Locations   thread::T1PaXUE6cIO-i8RXS202tT0:: (gmail)
+       Date: 2025-10-10
+    2. RE: Form Completed: FC Locations   thread::-X8K12yCfJmyQ7bBIxuT4D0:: (gmail)
+       Date: 2025-10-10
+    3. RE: Form Completed: FC Locations   thread::-X8K12yCfJmyQ7bBIxuT4D0:: (gmail)
+       Date: 2025-10-09
+    4. RE: Form Completed: FC Locations   thread::T1PaXUE6cIO-i8RXS202tT0:: (gmail)
+       Date: 2025-10-09
+    5. Form Completed: FC Locations   thread::vaBMrCyked2zURZ84SPM7j0:: (gmail)
+       Date: 2025-10-08

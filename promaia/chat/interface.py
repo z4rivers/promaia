@@ -2569,7 +2569,98 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['natural_language_content'] = None
                 context_state['natural_language_prompt'] = None
                 context_state['cached_natural_language_prompt'] = ''
-            
+
+            # Process vector search query if present (supports multiple -vs queries)
+            # NOTE: This is similar to the -nl handling above but uses vector search instead
+            vector_search_raw = parsed_args.vector_search or []
+            vector_search_parts = [' '.join(vs_args) for vs_args in vector_search_raw if vs_args] if vector_search_raw else []
+
+            if vector_search_parts:
+                # If we have vector search, it takes precedence over natural language
+                # (both cannot be active at the same time)
+                if natural_language_parts:
+                    print_text("⚠️  Both -nl and -vs provided. Using vector search (-vs) only.", style="bold yellow")
+                    # Clear natural language content
+                    natural_language_content = None
+                    context_state['natural_language_content'] = None
+                    context_state['natural_language_prompt'] = None
+
+                # Create combined prompt for caching
+                combined_vs_prompt = " ".join([f'-vs {prompt}' for prompt in vector_search_parts])
+
+                # Check cache
+                cached_vs_content = context_state.get('natural_language_content', {})
+                cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
+
+                debug_print(f"🔍 Manual Browse Edit VS Cache Check:")
+                debug_print(f"  New prompt(s): {vector_search_parts}")
+                debug_print(f"  Cached prompt: '{cached_vs_prompt}'")
+                debug_print(f"  Prompts match: {combined_vs_prompt == cached_vs_prompt}")
+                debug_print(f"  Has cached content: {bool(cached_vs_content)}")
+
+                if combined_vs_prompt == cached_vs_prompt and cached_vs_content:
+                    print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="cyan")
+                    natural_language_content = cached_vs_content
+                    debug_print(f"  → Using cached results (vector search cache hit)")
+                else:
+                    debug_print(f"  → Cache miss, will re-process vector search query")
+
+                    # Process vector search queries
+                    if len(vector_search_parts) > 1:
+                        print_text(f"🤖 Processing {len(vector_search_parts)} separate vector search queries", style="cyan")
+                        for i, prompt in enumerate(vector_search_parts):
+                            print_text(f"   {i+1}. '{prompt}'", style="dim")
+                    else:
+                        print_text(f"🤖 Processing vector search query: '{vector_search_parts[0]}'", style="cyan")
+
+                    try:
+                        from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+
+                        # Process each vector search query and combine results
+                        combined_vs_content = {}
+                        for i, vs_prompt in enumerate(vector_search_parts):
+                            if len(vector_search_parts) > 1:
+                                print_text(f"🔍 Processing query {i+1}/{len(vector_search_parts)}: '{vs_prompt}'", style="dim")
+
+                            vs_result = process_vector_search_to_content(
+                                vs_prompt,
+                                workspace=None,  # Allow cross-workspace
+                                verbose=True
+                            )
+
+                            # Merge results
+                            if vs_result:
+                                for db_name, pages in vs_result.items():
+                                    if db_name in combined_vs_content:
+                                        # Combine pages, avoiding duplicates
+                                        existing_ids = {p.get('id') for p in combined_vs_content[db_name] if isinstance(p, dict) and 'id' in p}
+                                        for page in pages:
+                                            if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                                                combined_vs_content[db_name].append(page)
+                                                if isinstance(page, dict) and 'id' in page:
+                                                    existing_ids.add(page['id'])
+                                    else:
+                                        combined_vs_content[db_name] = pages
+
+                        natural_language_content = combined_vs_content
+
+                        if natural_language_content:
+                            total_results = sum(len(pages) for pages in natural_language_content.values())
+                            print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
+                            print_text("🔄 Using vector search results from CLI", style="cyan")
+
+                            # Update context state with vector search content AND cache
+                            context_state['natural_language_content'] = natural_language_content
+                            context_state['natural_language_prompt'] = combined_vs_prompt
+                            context_state['cached_natural_language_prompt'] = combined_vs_prompt
+                            context_state['is_vector_search'] = True  # Mark as vector search mode
+                            debug_print(f"  → Processed and cached new vector search results")
+                        else:
+                            print_text("❌ No content found for vector search queries", style="yellow")
+
+                    except Exception as e:
+                        print_text(f"❌ Error processing vector search query: {e}", style="yellow")
+
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
             default_days = None
@@ -2825,13 +2916,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("❌ Failed to reload context after scope reduction", style="red")
                         return False
                 
-                # Update only natural language context without re-launching browser
+                # Update only natural language/vector search context without re-launching browser
                 if natural_language_content:
-                    print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
+                    # Determine if this is vector search or natural language
+                    is_vs_mode = 'combined_vs_prompt' in locals() and combined_vs_prompt
+
+                    if is_vs_mode:
+                        print_text("🔄 Updating vector search context (browse unchanged)...", style="dim")
+                        combined_prompt = combined_vs_prompt
+                    else:
+                        print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
+                        combined_prompt = combined_nl_prompt if 'combined_nl_prompt' in locals() else None
+
                     context_state['natural_language_content'] = natural_language_content
-                    # BUG FIX: Use combined_nl_prompt (which was set earlier) instead of nl_prompt (which is None)
-                    # nl_prompt was initialized to None at line 2478 and never updated in this code path
-                    context_state['natural_language_prompt'] = combined_nl_prompt
+                    # BUG FIX: Use combined_prompt (either NL or VS) instead of nl_prompt (which is None)
+                    if combined_prompt:
+                        context_state['natural_language_prompt'] = combined_prompt
                     
                     # Set the mixed browse+NL flag for OR logic
                     # This ensures NL results are properly merged with browse results
