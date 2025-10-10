@@ -1323,12 +1323,70 @@ def chat_run(args):
 
                     print_text(f"🔄 Using sources from browser: {len(all_sources)} total", style="green")
 
-                    # Prepare vector search/natural language parameters for chat
-                    combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
-                    combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
-                    final_nl_prompt = combined_nl_prompt or combined_vs_prompt
+                    # Process queries sequentially, then merge results
+                    natural_language_content = None
 
-                    # Launch chat with combined sources and vector search support
+                    # Step 1: Process natural language queries (if present)
+                    if nl_prompts:
+                        try:
+                            from promaia.storage.unified_query import get_query_interface
+                            query_interface = get_query_interface()
+
+                            combined_nl_content = {}
+                            for i, nl_prompt in enumerate(nl_prompts):
+                                if len(nl_prompts) > 1:
+                                    print_text(f"🔍 Processing NL query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+
+                                # Process with verbose output (includes user interaction)
+                                nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
+
+                                if nl_content:
+                                    # Merge results
+                                    for db_name, entries in nl_content.items():
+                                        if db_name not in combined_nl_content:
+                                            combined_nl_content[db_name] = []
+                                        combined_nl_content[db_name].extend(entries)
+
+                            natural_language_content = combined_nl_content if combined_nl_content else None
+
+                        except Exception as e:
+                            print_text(f"❌ Error processing natural language query: {e}", style="red")
+                            # Continue with VS query if present
+
+                    # Step 2: Process vector search queries (if present)
+                    if vs_prompts:
+                        try:
+                            from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+
+                            combined_vs_content = {}
+                            for i, vs_prompt in enumerate(vs_prompts):
+                                if len(vs_prompts) > 1:
+                                    print_text(f"🔍 Processing VS query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
+
+                                # Process with verbose output (includes user interaction)
+                                vs_content = process_vector_search_to_content(vs_prompt, workspace=None, verbose=True)
+
+                                if vs_content:
+                                    # Merge results
+                                    for db_name, entries in vs_content.items():
+                                        if db_name not in combined_vs_content:
+                                            combined_vs_content[db_name] = []
+                                        combined_vs_content[db_name].extend(entries)
+
+                            # Merge VS results with NL results (union)
+                            if combined_vs_content:
+                                if natural_language_content:
+                                    for db_name, entries in combined_vs_content.items():
+                                        if db_name not in natural_language_content:
+                                            natural_language_content[db_name] = []
+                                        natural_language_content[db_name].extend(entries)
+                                else:
+                                    natural_language_content = combined_vs_content
+
+                        except Exception as e:
+                            print_text(f"❌ Error processing vector search query: {e}", style="red")
+
+                    # Step 3: Launch chat with combined sources and query results
                     from promaia.chat.interface import chat
                     chat(
                         sources=all_sources,
@@ -1337,8 +1395,9 @@ def chat_run(args):
                         mcp_servers=mcp_servers,
                         original_browse_command=original_browse_command,
                         browse_selections=selected_sources,
-                        natural_language_prompt=final_nl_prompt,
-                        is_vector_search=bool(vs_prompts and not nl_prompts)
+                        natural_language_content=natural_language_content,
+                        natural_language_prompt=None,  # Already processed
+                        is_vector_search=False  # Already processed
                     )
                     return
 
@@ -1493,37 +1552,83 @@ def chat_run(args):
                     return
             
 
-            # For mixed commands, pass natural language and vector search prompts to chat for processing
-            # after browser selections are complete - do NOT process NL/VS queries here
+            # For mixed commands, process queries sequentially then merge results
             try:
-                combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
-                combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
+                natural_language_content = None
 
-                # Use vector search prompt as natural language prompt if no NL prompt exists
-                final_nl_prompt = combined_nl_prompt or combined_vs_prompt
+                # Step 1: Process natural language queries (if present)
+                if nl_prompts:
+                    try:
+                        from promaia.storage.unified_query import get_query_interface
+                        query_interface = get_query_interface()
 
-                # Debug: Check what we're passing to chat
-                debug_print = lambda x: print(f"DEBUG: {x}")
-                debug_print(f"nl_prompts: {nl_prompts}")
-                debug_print(f"vs_prompts: {vs_prompts}")
-                debug_print(f"combined_vs_prompt: '{combined_vs_prompt}'")
-                debug_print(f"final_nl_prompt: '{final_nl_prompt}'")
-                debug_print(f"is_vector_search: {bool(vs_prompts and not nl_prompts)}")
+                        combined_nl_content = {}
+                        for i, nl_prompt in enumerate(nl_prompts):
+                            if len(nl_prompts) > 1:
+                                print_text(f"🔍 Processing NL query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
 
-                # Queries will be processed with detailed output when chat function runs
+                            # Process with verbose output (includes user interaction)
+                            nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
 
-                # Pass prompts to chat - let chat handle the processing with selected sources
+                            if nl_content:
+                                # Merge results
+                                for db_name, entries in nl_content.items():
+                                    if db_name not in combined_nl_content:
+                                        combined_nl_content[db_name] = []
+                                    combined_nl_content[db_name].extend(entries)
+
+                        natural_language_content = combined_nl_content if combined_nl_content else None
+
+                    except Exception as e:
+                        print_text(f"❌ Error processing natural language query: {e}", style="red")
+                        # Continue with VS query if present
+
+                # Step 2: Process vector search queries (if present)
+                if vs_prompts:
+                    try:
+                        from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+
+                        combined_vs_content = {}
+                        for i, vs_prompt in enumerate(vs_prompts):
+                            if len(vs_prompts) > 1:
+                                print_text(f"🔍 Processing VS query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
+
+                            # Process with verbose output (includes user interaction)
+                            vs_content = process_vector_search_to_content(vs_prompt, workspace=None, verbose=True)
+
+                            if vs_content:
+                                # Merge results
+                                for db_name, entries in vs_content.items():
+                                    if db_name not in combined_vs_content:
+                                        combined_vs_content[db_name] = []
+                                    combined_vs_content[db_name].extend(entries)
+
+                        # Merge VS results with NL results (union)
+                        if combined_vs_content:
+                            if natural_language_content:
+                                for db_name, entries in combined_vs_content.items():
+                                    if db_name not in natural_language_content:
+                                        natural_language_content[db_name] = []
+                                    natural_language_content[db_name].extend(entries)
+                            else:
+                                natural_language_content = combined_vs_content
+
+                    except Exception as e:
+                        print_text(f"❌ Error processing vector search query: {e}", style="red")
+
+                # Step 3: Pass merged results to chat
                 chat(
                     sources=sources,
                     filters=filters,
                     workspace=original_workspace,
                     non_interactive=getattr(args, 'non_interactive', False),
-                    natural_language_prompt=final_nl_prompt,
+                    natural_language_content=natural_language_content,
+                    natural_language_prompt=None,  # Already processed
                     browse_databases=None,
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
                     mcp_servers=mcp_servers,
-                    is_vector_search=bool(vs_prompts and not nl_prompts)  # Only vector search if VS prompts but no NL prompts
+                    is_vector_search=False  # Already processed
                 )
                 return
             except Exception as e:
