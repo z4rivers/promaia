@@ -500,35 +500,60 @@ def _detect_image_paths_in_message(user_input: str) -> tuple[str, list[str]]:
 
 def safe_split_command(user_input):
     """
-    Safely split command arguments, handling natural language queries with apostrophes.
-    
-    NOTE: This implementation must stay in sync with the edit mode -nl parsing (around line 1845).
-    Both edit mode and top-level query handling must support multiple -nl arguments identically.
-    See also: promaia/cli.py lines 1507-1512 and 1674-1693 for the CLI-side implementation.
+    Safely split command arguments, handling natural language and vector search queries.
+
+    NOTE: This implementation must stay in sync with the edit mode parsing.
+    Must support multiple -nl and -vs arguments (e.g., "-nl query1 -vs query2").
+    See also: promaia/cli.py for the CLI-side implementation.
     """
     # Clean up whitespace first
     cleaned = ' '.join(user_input.split())
-    
-    # For natural language queries, handle them specially
-    # IMPORTANT: Must support multiple -nl arguments (e.g., "-nl query1 -nl query2")
-    if '-nl' in cleaned:
-        # Use a different approach: find all -nl positions and extract content between them
+
+    # For natural language or vector search queries, handle them specially
+    # IMPORTANT: Must support multiple -nl and -vs arguments
+    if '-nl' in cleaned or '-vs' in cleaned:
+        # Find all flag positions (both -nl and -vs)
         result = []
         current_pos = 0
-        
+
         while current_pos < len(cleaned):
-            # Find next -nl occurrence
+            # Find next -nl or -vs flag
             nl_pos = cleaned.find('-nl', current_pos)
-            
-            if nl_pos == -1:
-                # No more -nl flags, process the rest normally if we haven't found any yet
-                if not result or result[-1] == '-nl':
-                    # We're in a natural language section, add the rest
+            vs_pos = cleaned.find('-vs', current_pos)
+
+            # Determine which flag comes next
+            next_flag_pos = None
+            next_flag = None
+            next_flag_len = 0
+
+            if nl_pos != -1 and vs_pos != -1:
+                # Both found, use whichever comes first
+                if nl_pos < vs_pos:
+                    next_flag_pos = nl_pos
+                    next_flag = '-nl'
+                    next_flag_len = 3
+                else:
+                    next_flag_pos = vs_pos
+                    next_flag = '-vs'
+                    next_flag_len = 3
+            elif nl_pos != -1:
+                next_flag_pos = nl_pos
+                next_flag = '-nl'
+                next_flag_len = 3
+            elif vs_pos != -1:
+                next_flag_pos = vs_pos
+                next_flag = '-vs'
+                next_flag_len = 3
+
+            if next_flag_pos is None:
+                # No more flags found
+                if not result or result[-1] in ['-nl', '-vs']:
+                    # We're in a query section, add the rest as-is
                     remaining = cleaned[current_pos:].strip()
                     if remaining:
                         result.extend(remaining.split())
                 else:
-                    # Process remaining non-NL arguments
+                    # Process remaining non-query arguments
                     remaining = cleaned[current_pos:].strip()
                     if remaining:
                         try:
@@ -536,36 +561,36 @@ def safe_split_command(user_input):
                         except ValueError:
                             result.extend(remaining.split())
                 break
-            
-            # Process the part before -nl
-            before_nl = cleaned[current_pos:nl_pos].strip()
-            
-            # Check if this is a real -nl flag (preceded by space or at start, followed by space or end)
-            is_real_flag = (nl_pos == 0 or cleaned[nl_pos-1].isspace()) and \
-                          (nl_pos + 3 >= len(cleaned) or cleaned[nl_pos+3].isspace())
-            
+
+            # Check if this is a real flag (preceded by space or at start, followed by space or end)
+            is_real_flag = (next_flag_pos == 0 or cleaned[next_flag_pos-1].isspace()) and \
+                          (next_flag_pos + next_flag_len >= len(cleaned) or cleaned[next_flag_pos+next_flag_len].isspace())
+
             if not is_real_flag:
-                # Not a real flag, keep searching
-                current_pos = nl_pos + 1
+                # Not a real flag, keep searching after this position
+                current_pos = next_flag_pos + 1
                 continue
-            
-            if before_nl:
-                if not result or result[-1] == '-nl':
-                    # Previous section was NL, add as-is
-                    result.extend(before_nl.split())
+
+            # Process the part before this flag
+            before_flag = cleaned[current_pos:next_flag_pos].strip()
+
+            if before_flag:
+                if not result or result[-1] in ['-nl', '-vs']:
+                    # Previous section was a query, add as-is (split on spaces)
+                    result.extend(before_flag.split())
                 else:
-                    # This is regular arguments before first -nl
+                    # This is regular arguments before first query flag
                     try:
-                        result.extend(shlex.split(before_nl))
+                        result.extend(shlex.split(before_flag))
                     except ValueError:
-                        result.extend(before_nl.split())
-            
-            # Add the -nl flag
-            result.append('-nl')
-            
-            # Move past this -nl flag
-            current_pos = nl_pos + 3
-        
+                        result.extend(before_flag.split())
+
+            # Add the flag
+            result.append(next_flag)
+
+            # Move past this flag
+            current_pos = next_flag_pos + next_flag_len
+
         return result
     
     # For non-natural language commands, try normal shlex first
@@ -2576,33 +2601,48 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             vector_search_parts = [' '.join(vs_args) for vs_args in vector_search_raw if vs_args] if vector_search_raw else []
 
             if vector_search_parts:
-                # If we have vector search, it takes precedence over natural language
-                # (both cannot be active at the same time)
-                if natural_language_parts:
-                    print_text("⚠️  Both -nl and -vs provided. Using vector search (-vs) only.", style="bold yellow")
-                    # Clear natural language content
-                    natural_language_content = None
-                    context_state['natural_language_content'] = None
-                    context_state['natural_language_prompt'] = None
+                # If we have both NL and VS, we'll merge the results
+                if natural_language_parts and natural_language_content:
+                    print_text("📊 Processing both natural language and vector search queries - results will be combined", style="bold cyan")
 
                 # Create combined prompt for caching
                 combined_vs_prompt = " ".join([f'-vs {prompt}' for prompt in vector_search_parts])
 
-                # Check cache
-                cached_vs_content = context_state.get('natural_language_content', {})
-                cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
+                # Check cache - but if we have both NL and VS, we need to check the combined prompt
+                # Otherwise we might incorrectly use a cache that only contains NL or only VS
+                cached_content = context_state.get('natural_language_content', {})
+                if natural_language_parts and natural_language_content:
+                    # We have both NL and VS - check if combined prompt matches cache
+                    expected_combined_prompt = f"{combined_nl_prompt} {combined_vs_prompt}"
+                    cached_prompt = context_state.get('cached_natural_language_prompt', '')
+                    cache_is_valid = (expected_combined_prompt == cached_prompt and cached_content)
+                    debug_print(f"🔍 Manual Browse Edit NL+VS Cache Check:")
+                    debug_print(f"  Expected combined: '{expected_combined_prompt}'")
+                    debug_print(f"  Cached prompt: '{cached_prompt}'")
+                    debug_print(f"  Cache valid: {cache_is_valid}")
 
-                debug_print(f"🔍 Manual Browse Edit VS Cache Check:")
-                debug_print(f"  New prompt(s): {vector_search_parts}")
-                debug_print(f"  Cached prompt: '{cached_vs_prompt}'")
-                debug_print(f"  Prompts match: {combined_vs_prompt == cached_vs_prompt}")
-                debug_print(f"  Has cached content: {bool(cached_vs_content)}")
-
-                if combined_vs_prompt == cached_vs_prompt and cached_vs_content:
-                    print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="cyan")
-                    natural_language_content = cached_vs_content
-                    debug_print(f"  → Using cached results (vector search cache hit)")
+                    if cache_is_valid:
+                        # Cache hit for combined NL+VS - use cached merged results
+                        print_text("🔄 Reusing cached natural language + vector search results (prompts unchanged)", style="cyan")
+                        natural_language_content = cached_content
+                        debug_print(f"  → Using cached results (NL+VS cache hit)")
                 else:
+                    # Only VS, not NL - check VS cache independently
+                    cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
+                    cache_is_valid = (combined_vs_prompt == cached_vs_prompt and cached_content)
+                    debug_print(f"🔍 Manual Browse Edit VS Cache Check:")
+                    debug_print(f"  New prompt(s): {vector_search_parts}")
+                    debug_print(f"  Cached prompt: '{cached_vs_prompt}'")
+                    debug_print(f"  Prompts match: {combined_vs_prompt == cached_vs_prompt}")
+                    debug_print(f"  Has cached content: {bool(cached_content)}")
+
+                    if cache_is_valid:
+                        # Cache hit for VS only - use cached VS results
+                        print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="cyan")
+                        natural_language_content = cached_content
+                        debug_print(f"  → Using cached results (vector search cache hit)")
+
+                if not cache_is_valid:
                     debug_print(f"  → Cache miss, will re-process vector search query")
 
                     # Process vector search queries
@@ -2642,19 +2682,52 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     else:
                                         combined_vs_content[db_name] = pages
 
-                        natural_language_content = combined_vs_content
+                        # Merge VS results with existing NL results (additive, not exclusive)
+                        if natural_language_content:
+                            # We have both NL and VS results - merge them
+                            debug_print(f"🔄 Merging vector search results with existing natural language results")
+                            for db_name, pages in combined_vs_content.items():
+                                if db_name in natural_language_content:
+                                    # Combine pages, avoiding duplicates
+                                    existing_ids = {p.get('id') for p in natural_language_content[db_name] if isinstance(p, dict) and 'id' in p}
+                                    for page in pages:
+                                        if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                                            natural_language_content[db_name].append(page)
+                                            if isinstance(page, dict) and 'id' in page:
+                                                existing_ids.add(page['id'])
+                                else:
+                                    natural_language_content[db_name] = pages
+                        else:
+                            # Only VS results, no NL results to merge
+                            natural_language_content = combined_vs_content
 
                         if natural_language_content:
                             total_results = sum(len(pages) for pages in natural_language_content.values())
                             print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
-                            print_text("🔄 Using vector search results from CLI", style="cyan")
 
-                            # Update context state with vector search content AND cache
+                            # Update message based on what we processed
+                            if combined_vs_content and natural_language_parts:
+                                print_text("🔄 Using merged natural language + vector search results", style="cyan")
+                            else:
+                                print_text("🔄 Using vector search results from CLI", style="cyan")
+
+                            # Update context state with merged content AND cache
                             context_state['natural_language_content'] = natural_language_content
-                            context_state['natural_language_prompt'] = combined_vs_prompt
-                            context_state['cached_natural_language_prompt'] = combined_vs_prompt
-                            context_state['is_vector_search'] = True  # Mark as vector search mode
-                            debug_print(f"  → Processed and cached new vector search results")
+
+                            # Store combined prompt for cache validation (NL + VS)
+                            if natural_language_parts and combined_vs_content:
+                                # Both NL and VS were processed - cache both prompts
+                                combined_prompt = f"{combined_nl_prompt} {combined_vs_prompt}"
+                                context_state['natural_language_prompt'] = combined_prompt
+                                context_state['cached_natural_language_prompt'] = combined_prompt
+                                context_state['is_vector_search'] = 'mixed'  # Mark as mixed mode
+                                debug_print(f"  → Processed and cached merged NL + VS results")
+                            else:
+                                # Only VS was processed
+                                context_state['natural_language_prompt'] = combined_vs_prompt
+                                context_state['cached_natural_language_prompt'] = combined_vs_prompt
+                                context_state['is_vector_search'] = True  # Mark as vector search mode
+                                debug_print(f"  → Processed and cached new vector search results")
                         else:
                             print_text("❌ No content found for vector search queries", style="yellow")
 
