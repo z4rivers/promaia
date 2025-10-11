@@ -2514,23 +2514,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             nl_prompt = None
             natural_language_content = None
             if natural_language_parts:
-                # Create combined prompt for caching (matching other implementations)
-                combined_nl_prompt = " ".join([f'-nl {prompt}' for prompt in natural_language_parts])
-                
-                # Check cache first - similar logic to edit_context
-                cached_nl_content = context_state.get('natural_language_content', {})
+                # Create combined prompt for caching (WITHOUT -nl prefix for comparison)
+                combined_nl_prompt = " ".join(natural_language_parts)
+
+                # Check cache first - compare against NL-specific cache key
                 cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
-                
+                cached_nl_content = context_state.get('cached_natural_language_content', {})
+
                 debug_print(f"🔍 Manual Browse Edit NL Cache Check:")
                 debug_print(f"  New prompt(s): {natural_language_parts}")
-                debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
+                debug_print(f"  Cached NL prompt: '{cached_nl_prompt}'")
                 debug_print(f"  Prompts match: {combined_nl_prompt == cached_nl_prompt}")
                 debug_print(f"  Has cached content: {bool(cached_nl_content)}")
-                
+
                 if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                     print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="cyan")
                     natural_language_content = cached_nl_content
-                    debug_print(f"  → Using cached results (browse edit cache hit)")
+                    debug_print(f"  → Using cached NL results from separate cache")
                 else:
                     debug_print(f"  → Cache miss, will re-process query")
                     
@@ -2588,11 +2588,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 total_results = sum(len(pages) for pages in natural_language_content.values())
                                 print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
                                 print_text("🔄 Using natural language results from CLI", style="cyan")
-                                # Update context state with natural language content AND cache
-                                context_state['natural_language_content'] = natural_language_content
-                                context_state['natural_language_prompt'] = combined_nl_prompt
+                                # Cache NL results separately (not mixed with VS)
                                 context_state['cached_natural_language_prompt'] = combined_nl_prompt
-                                debug_print(f"  → Processed and cached new results")
+                                context_state['cached_natural_language_content'] = natural_language_content
+                                debug_print(f"  → Processed and cached new NL results (separate cache)")
                             else:
                                 print_text("❌ No content found for natural language queries", style="yellow")
                         else:
@@ -2601,15 +2600,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     except Exception as e:
                         print_text(f"❌ Error processing natural language query: {e}", style="yellow")
             elif nl_was_removed:
-                # Clear NL state when removed
-                context_state['natural_language_content'] = None
-                context_state['natural_language_prompt'] = None
+                # Clear NL cache when removed (but keep VS cache if present)
                 context_state['cached_natural_language_prompt'] = ''
+                context_state['cached_natural_language_content'] = {}
 
             # Process vector search query if present (supports multiple -vs queries)
             # NOTE: This is similar to the -nl handling above but uses vector search instead
             vector_search_raw = parsed_args.vector_search or []
             vector_search_parts = [' '.join(vs_args) for vs_args in vector_search_raw if vs_args] if vector_search_raw else []
+
+            # Detect if VS was removed
+            vs_was_removed = False
+            had_vs_before = bool(context_state.get('cached_vector_search_prompt'))
+            has_vs_now = bool(vector_search_parts)
+            if had_vs_before and not has_vs_now:
+                vs_was_removed = True
 
             if vector_search_parts:
                 # If we have both NL and VS, we'll merge the results
@@ -2619,41 +2624,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Create combined prompt for caching (without -vs flag)
                 combined_vs_prompt = " ".join(vector_search_parts)
 
-                # Check cache - but if we have both NL and VS, we need to check the combined prompt
-                # Otherwise we might incorrectly use a cache that only contains NL or only VS
-                cached_content = context_state.get('natural_language_content', {})
-                if natural_language_parts and natural_language_content:
-                    # We have both NL and VS - check if combined prompt matches cache
-                    expected_combined_prompt = f"{combined_nl_prompt} {combined_vs_prompt}"
-                    cached_prompt = context_state.get('cached_natural_language_prompt', '')
-                    cache_is_valid = (expected_combined_prompt == cached_prompt and cached_content)
-                    debug_print(f"🔍 Manual Browse Edit NL+VS Cache Check:")
-                    debug_print(f"  Expected combined: '{expected_combined_prompt}'")
-                    debug_print(f"  Cached prompt: '{cached_prompt}'")
-                    debug_print(f"  Cache valid: {cache_is_valid}")
+                # Check VS cache independently (using separate cache key)
+                cached_vs_prompt = context_state.get('cached_vector_search_prompt', '')
+                cached_vs_content = context_state.get('cached_vector_search_content', {})
+                vs_cache_hit = (combined_vs_prompt == cached_vs_prompt and cached_vs_content)
 
-                    if cache_is_valid:
-                        # Cache hit for combined NL+VS - use cached merged results
-                        print_text("🔄 Reusing cached natural language + vector search results (prompts unchanged)", style="cyan")
-                        natural_language_content = cached_content
-                        debug_print(f"  → Using cached results (NL+VS cache hit)")
-                else:
-                    # Only VS, not NL - check VS cache independently
-                    cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
-                    cache_is_valid = (combined_vs_prompt == cached_vs_prompt and cached_content)
-                    debug_print(f"🔍 Manual Browse Edit VS Cache Check:")
-                    debug_print(f"  New prompt(s): {vector_search_parts}")
-                    debug_print(f"  Cached prompt: '{cached_vs_prompt}'")
-                    debug_print(f"  Prompts match: {combined_vs_prompt == cached_vs_prompt}")
-                    debug_print(f"  Has cached content: {bool(cached_content)}")
+                debug_print(f"🔍 Manual Browse Edit VS Cache Check:")
+                debug_print(f"  New prompt(s): {vector_search_parts}")
+                debug_print(f"  Cached VS prompt: '{cached_vs_prompt}'")
+                debug_print(f"  Prompts match: {combined_vs_prompt == cached_vs_prompt}")
+                debug_print(f"  Has cached content: {bool(cached_vs_content)}")
+                debug_print(f"  Cache hit: {vs_cache_hit}")
 
-                    if cache_is_valid:
-                        # Cache hit for VS only - use cached VS results
-                        print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="cyan")
-                        natural_language_content = cached_content
-                        debug_print(f"  → Using cached results (vector search cache hit)")
+                if vs_cache_hit:
+                    print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="cyan")
+                    combined_vs_content = cached_vs_content
+                    debug_print(f"  → Using cached VS results from separate cache")
 
-                if not cache_is_valid:
+                if not vs_cache_hit:
                     debug_print(f"  → Cache miss, will re-process vector search query")
 
                     # Process vector search queries
@@ -2722,28 +2710,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             else:
                                 print_text("🔄 Using vector search results from CLI", style="cyan")
 
-                            # Update context state with merged content AND cache
-                            context_state['natural_language_content'] = natural_language_content
+                            # Cache VS results separately (not mixed with NL)
+                            context_state['cached_vector_search_prompt'] = combined_vs_prompt
+                            context_state['cached_vector_search_content'] = combined_vs_content
+                            debug_print(f"  → Processed and cached new VS results (separate cache)")
 
-                            # Store combined prompt for cache validation (NL + VS)
-                            if natural_language_parts and combined_vs_content:
-                                # Both NL and VS were processed - cache both prompts
-                                combined_prompt = f"{combined_nl_prompt} {combined_vs_prompt}"
-                                context_state['natural_language_prompt'] = combined_prompt
-                                context_state['cached_natural_language_prompt'] = combined_prompt
-                                context_state['is_vector_search'] = 'mixed'  # Mark as mixed mode
-                                debug_print(f"  → Processed and cached merged NL + VS results")
-                            else:
-                                # Only VS was processed
-                                context_state['natural_language_prompt'] = combined_vs_prompt
-                                context_state['cached_natural_language_prompt'] = combined_vs_prompt
-                                context_state['is_vector_search'] = True  # Mark as vector search mode
-                                debug_print(f"  → Processed and cached new vector search results")
+                            # Store merged content for current session
+                            context_state['natural_language_content'] = natural_language_content
                         else:
                             print_text("❌ No content found for vector search queries", style="yellow")
 
                     except Exception as e:
                         print_text(f"❌ Error processing vector search query: {e}", style="yellow")
+            elif vs_was_removed:
+                # Clear VS cache when removed (but keep NL cache if present)
+                context_state['cached_vector_search_prompt'] = ''
+                context_state['cached_vector_search_content'] = {}
 
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
