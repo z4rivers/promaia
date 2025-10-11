@@ -951,7 +951,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'system_prompt': None,
         'query_command': None,
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
-        'natural_language_content': natural_language_content,  # Track if using natural language
+        'natural_language_content': None,  # Will be set from initial_nl_content if provided
+        'vector_search_content': None,  # Store VS content separately for independent tracking
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store browser selections from CLI
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
         'is_vector_search': is_vector_search,  # Track if using vector search instead of natural language
@@ -963,16 +964,29 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command  # Flag for OR logic in NL processing
     }
 
+    # Initialize NL and VS content separately from CLI
+    if initial_nl_content:
+        context_state['natural_language_content'] = initial_nl_content
+        debug_print(f"🔧 Initialized NL content from CLI: {len(initial_nl_content)} databases, {sum(len(pages) for pages in initial_nl_content.values())} pages")
+    elif natural_language_content:
+        # Backwards compatibility: if natural_language_content parameter is provided (old code path)
+        context_state['natural_language_content'] = natural_language_content
+        debug_print(f"🔧 Initialized NL content from parameter: {len(natural_language_content)} databases")
+
+    if initial_vs_content:
+        context_state['vector_search_content'] = initial_vs_content
+        debug_print(f"🔧 Initialized VS content from CLI: {len(initial_vs_content)} databases, {sum(len(pages) for pages in initial_vs_content.values())} pages")
+
     # Set up separate caches for NL and VS if provided by CLI
     if initial_nl_prompt or initial_nl_content:
         context_state['cached_natural_language_prompt'] = initial_nl_prompt or ''
         context_state['cached_natural_language_content'] = initial_nl_content or {}
-        debug_print(f"🔧 Set up NL cache from CLI: prompt='{initial_nl_prompt}', {len(initial_nl_content or {})} databases")
+        debug_print(f"🔧 Set up NL cache from CLI: prompt='{initial_nl_prompt}'")
 
     if initial_vs_prompt or initial_vs_content:
         context_state['cached_vector_search_prompt'] = initial_vs_prompt or ''
         context_state['cached_vector_search_content'] = initial_vs_content or {}
-        debug_print(f"🔧 Set up VS cache from CLI: prompt='{initial_vs_prompt}', {len(initial_vs_content or {})} databases")
+        debug_print(f"🔧 Set up VS cache from CLI: prompt='{initial_vs_prompt}'")
 
     # Update context_state with browse_selections if they were set during browser interaction
     # This handles the case where browse_selections were set locally but not captured in the parameter
@@ -1051,27 +1065,42 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     def reload_context(skip_nl_cache_messages=False):
         """Reload the chat context with current state configuration."""
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command, natural_language_content, sources
-        
+
         # Debug: Log reload_context entry
         debug_print(f"\n🔄 reload_context() called:")
         debug_print(f"  context_state['sources']: {context_state.get('sources', [])}")
         debug_print(f"  context_state['natural_language_prompt']: {bool(context_state.get('natural_language_prompt'))}")
         debug_print(f"  context_state['natural_language_content']: {len(context_state.get('natural_language_content', {})) if context_state.get('natural_language_content') else 0} databases")
+        debug_print(f"  context_state['vector_search_content']: {len(context_state.get('vector_search_content', {})) if context_state.get('vector_search_content') else 0} databases")
         debug_print(f"  context_state['is_mixed_browse_nl_command']: {context_state.get('is_mixed_browse_nl_command')}")
-        
+
         # Initialize combined data container
         combined_multi_source_data = {}
 
-        # Check if we have pre-processed natural language content (from CLI)
-        # This happens when CLI processes NL/VS queries before calling chat()
+        # Check if we have pre-processed NL content (from CLI) - separate from VS content
+        # This happens when CLI processes NL queries before calling chat()
         if context_state.get('natural_language_content') and not context_state.get('natural_language_prompt'):
-            debug_print(f"🔍 Using pre-processed natural language content from CLI")
-            existing_content = context_state.get('natural_language_content', {})
-            if existing_content:
-                debug_print(f"  Found {len(existing_content)} databases with pre-processed content")
-                for db_name, pages in existing_content.items():
+            debug_print(f"🔍 Using pre-processed NL content from CLI")
+            nl_content = context_state.get('natural_language_content', {})
+            if nl_content:
+                debug_print(f"  Found {len(nl_content)} databases with {sum(len(pages) for pages in nl_content.values())} NL pages")
+                for db_name, pages in nl_content.items():
                     debug_print(f"    {db_name}: {len(pages)} pages")
-                combined_multi_source_data.update(existing_content)
+                combined_multi_source_data.update(nl_content)
+
+        # Check if we have pre-processed VS content (from CLI) - separate from NL content
+        # This happens when CLI processes VS queries before calling chat()
+        if context_state.get('vector_search_content'):
+            debug_print(f"🔍 Using pre-processed VS content from CLI")
+            vs_content = context_state.get('vector_search_content', {})
+            if vs_content:
+                debug_print(f"  Found {len(vs_content)} databases with {sum(len(pages) for pages in vs_content.values())} VS pages")
+                for db_name, pages in vs_content.items():
+                    debug_print(f"    {db_name}: {len(pages)} pages")
+                    # Merge VS content with NL content (union)
+                    if db_name not in combined_multi_source_data:
+                        combined_multi_source_data[db_name] = []
+                    combined_multi_source_data[db_name].extend(pages)
 
         # Process natural language query if present (prompt needs processing)
         natural_language_data = {}
@@ -2594,15 +2623,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                             combined_nl_content[db_name] = pages
                             
                             natural_language_content = combined_nl_content
-                            
+
                             if natural_language_content:
                                 total_results = sum(len(pages) for pages in natural_language_content.values())
-                                print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
-                                print_text("🔄 Using natural language results from CLI", style="cyan")
+                                print_text(f"✅ NL results: {total_results} entries from {len(natural_language_content)} databases", style="green")
+
                                 # Cache NL results separately (not mixed with VS)
                                 context_state['cached_natural_language_prompt'] = combined_nl_prompt
                                 context_state['cached_natural_language_content'] = natural_language_content
                                 debug_print(f"  → Processed and cached new NL results (separate cache)")
+
+                                # Store NL content separately from VS content
+                                context_state['natural_language_content'] = natural_language_content
+                                debug_print(f"  → Stored NL content separately in context_state['natural_language_content']")
+
+                                # Show combined total if we also have VS content
+                                vs_content = context_state.get('vector_search_content', {})
+                                if vs_content:
+                                    vs_total = sum(len(pages) for pages in vs_content.values())
+                                    combined_total = total_results + vs_total
+                                    print_text(f"💡 Total with VS: {combined_total} entries ({total_results} NL + {vs_total} VS)", style="cyan")
                             else:
                                 print_text("❌ No content found for natural language queries", style="yellow")
                         else:
@@ -2611,9 +2651,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     except Exception as e:
                         print_text(f"❌ Error processing natural language query: {e}", style="yellow")
             elif nl_was_removed:
-                # Clear NL cache when removed (but keep VS cache if present)
+                # Clear NL cache and content when removed (but keep VS cache if present)
                 context_state['cached_natural_language_prompt'] = ''
                 context_state['cached_natural_language_content'] = {}
+                context_state['natural_language_content'] = None
+                debug_print(f"🗑️  Cleared NL content and cache (NL query removed)")
 
             # Process vector search query if present (supports multiple -vs queries)
             # NOTE: This is similar to the -nl handling above but uses vector search instead
@@ -2692,51 +2734,37 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     else:
                                         combined_vs_content[db_name] = pages
 
-                        # Merge VS results with existing NL results (additive, not exclusive)
-                        if natural_language_content:
-                            # We have both NL and VS results - merge them
-                            debug_print(f"🔄 Merging vector search results with existing natural language results")
-                            for db_name, pages in combined_vs_content.items():
-                                if db_name in natural_language_content:
-                                    # Combine pages, avoiding duplicates
-                                    existing_ids = {p.get('id') for p in natural_language_content[db_name] if isinstance(p, dict) and 'id' in p}
-                                    for page in pages:
-                                        if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
-                                            natural_language_content[db_name].append(page)
-                                            if isinstance(page, dict) and 'id' in page:
-                                                existing_ids.add(page['id'])
-                                else:
-                                    natural_language_content[db_name] = pages
-                        else:
-                            # Only VS results, no NL results to merge
-                            natural_language_content = combined_vs_content
-
-                        if natural_language_content:
-                            total_results = sum(len(pages) for pages in natural_language_content.values())
-                            print_text(f"✅ Combined results: {total_results} entries from {len(natural_language_content)} databases", style="green")
-
-                            # Update message based on what we processed
-                            if combined_vs_content and natural_language_parts:
-                                print_text("🔄 Using merged natural language + vector search results", style="cyan")
-                            else:
-                                print_text("🔄 Using vector search results from CLI", style="cyan")
+                        # Store VS results separately (don't merge with NL here - let reload_context do it)
+                        if combined_vs_content:
+                            vs_total_results = sum(len(pages) for pages in combined_vs_content.values())
+                            print_text(f"✅ VS results: {vs_total_results} entries from {len(combined_vs_content)} databases", style="green")
 
                             # Cache VS results separately (not mixed with NL)
                             context_state['cached_vector_search_prompt'] = combined_vs_prompt
                             context_state['cached_vector_search_content'] = combined_vs_content
                             debug_print(f"  → Processed and cached new VS results (separate cache)")
 
-                            # Store merged content for current session
-                            context_state['natural_language_content'] = natural_language_content
+                            # Store VS content separately from NL content
+                            context_state['vector_search_content'] = combined_vs_content
+                            debug_print(f"  → Stored VS content separately in context_state['vector_search_content']")
+
+                            # Show combined total if we also have NL content
+                            nl_content = context_state.get('natural_language_content', {})
+                            if nl_content:
+                                nl_total = sum(len(pages) for pages in nl_content.values())
+                                combined_total = vs_total_results + nl_total
+                                print_text(f"💡 Total with NL: {combined_total} entries ({nl_total} NL + {vs_total_results} VS)", style="cyan")
                         else:
                             print_text("❌ No content found for vector search queries", style="yellow")
 
                     except Exception as e:
                         print_text(f"❌ Error processing vector search query: {e}", style="yellow")
             elif vs_was_removed:
-                # Clear VS cache when removed (but keep NL cache if present)
+                # Clear VS cache and content when removed (but keep NL cache if present)
                 context_state['cached_vector_search_prompt'] = ''
                 context_state['cached_vector_search_content'] = {}
+                context_state['vector_search_content'] = None
+                debug_print(f"🗑️  Cleared VS content and cache (VS query removed)")
 
             # Parse browse databases and expand workspace names (same logic as cli.py)
             database_filter = None
@@ -2994,27 +3022,34 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         return False
                 
                 # Update only natural language/vector search context without re-launching browser
-                if natural_language_content:
-                    # Determine if this is vector search or natural language
-                    has_nl = 'combined_nl_prompt' in locals() and natural_language_parts
-                    has_vs = 'combined_vs_prompt' in locals() and combined_vs_prompt
+                # NOTE: NL and VS content are now stored separately for proper attribution
+                if natural_language_content or 'combined_nl_content' in locals() or 'combined_vs_content' in locals():
+                    # Determine what was processed
+                    has_nl = 'combined_nl_prompt' in locals() and natural_language_parts and 'combined_nl_content' in locals()
+                    has_vs = 'combined_vs_content' in locals() and vector_search_parts
 
                     if has_nl and has_vs:
-                        print_text("🔄 Updating merged natural language + vector search context (browse unchanged)...", style="dim")
-                        # Both NL and VS were processed - content is already merged
-                        # Clear the prompt so reload_context doesn't re-process
-                        context_state['natural_language_content'] = natural_language_content
+                        print_text("🔄 Updating natural language + vector search context (browse unchanged)...", style="dim")
+                        # Store NL and VS separately (don't merge them here)
+                        context_state['natural_language_content'] = combined_nl_content
+                        context_state['vector_search_content'] = combined_vs_content
                         context_state['natural_language_prompt'] = None  # Already processed, don't re-process
                         context_state['is_vector_search'] = 'mixed'  # Mark as mixed mode
                     elif has_vs:
                         print_text("🔄 Updating vector search context (browse unchanged)...", style="dim")
-                        context_state['natural_language_content'] = natural_language_content
-                        context_state['natural_language_prompt'] = combined_vs_prompt
+                        # VS content was already stored in context_state['vector_search_content'] above
+                        # Just ensure NL prompt is cleared since we're not processing NL
+                        context_state['natural_language_prompt'] = None
                         context_state['is_vector_search'] = True
                     else:
                         print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
-                        context_state['natural_language_content'] = natural_language_content
-                        context_state['natural_language_prompt'] = combined_nl_prompt if has_nl else None
+                        # Store NL content separately
+                        if 'combined_nl_content' in locals():
+                            context_state['natural_language_content'] = combined_nl_content
+                        elif natural_language_content:
+                            # Backwards compatibility for old code paths
+                            context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = None  # Already processed, don't re-process
                         context_state['is_vector_search'] = False
                     
                     # Set the mixed browse+NL flag for OR logic

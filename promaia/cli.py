@@ -1373,20 +1373,10 @@ def chat_run(args):
                                             combined_vs_content[db_name] = []
                                         combined_vs_content[db_name].extend(entries)
 
-                            # Merge VS results with NL results (union)
-                            if combined_vs_content:
-                                if natural_language_content:
-                                    for db_name, entries in combined_vs_content.items():
-                                        if db_name not in natural_language_content:
-                                            natural_language_content[db_name] = []
-                                        natural_language_content[db_name].extend(entries)
-                                else:
-                                    natural_language_content = combined_vs_content
-
                         except Exception as e:
                             print_text(f"❌ Error processing vector search query: {e}", style="red")
 
-                    # Step 3: Launch chat with combined sources and query results
+                    # Step 3: Launch chat with separate NL and VS content (don't merge here)
                     from promaia.chat.interface import chat
 
                     # Prepare cache parameters for separate NL and VS caching
@@ -1400,10 +1390,10 @@ def chat_run(args):
                         mcp_servers=mcp_servers,
                         original_browse_command=original_browse_command,
                         browse_selections=selected_sources,
-                        natural_language_content=natural_language_content,
+                        natural_language_content=None,  # Will be set from initial_nl_content in chat()
                         natural_language_prompt=None,  # Already processed
                         is_vector_search=False,  # Already processed
-                        # Pass separate cache info for NL and VS
+                        # Pass separate NL and VS content for independent tracking
                         initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
                         initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
                         initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
@@ -1613,20 +1603,10 @@ def chat_run(args):
                                         combined_vs_content[db_name] = []
                                     combined_vs_content[db_name].extend(entries)
 
-                        # Merge VS results with NL results (union)
-                        if combined_vs_content:
-                            if natural_language_content:
-                                for db_name, entries in combined_vs_content.items():
-                                    if db_name not in natural_language_content:
-                                        natural_language_content[db_name] = []
-                                    natural_language_content[db_name].extend(entries)
-                            else:
-                                natural_language_content = combined_vs_content
-
                     except Exception as e:
                         print_text(f"❌ Error processing vector search query: {e}", style="red")
 
-                # Step 3: Pass merged results to chat
+                # Step 3: Pass separate NL and VS content to chat (don't merge here)
                 # Prepare cache parameters for separate NL and VS caching
                 combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
                 combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
@@ -1636,14 +1616,14 @@ def chat_run(args):
                     filters=filters,
                     workspace=original_workspace,
                     non_interactive=getattr(args, 'non_interactive', False),
-                    natural_language_content=natural_language_content,
+                    natural_language_content=None,  # Will be set from initial_nl_content in chat()
                     natural_language_prompt=None,  # Already processed
                     browse_databases=None,
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
                     mcp_servers=mcp_servers,
                     is_vector_search=False,  # Already processed
-                    # Pass separate cache info for NL and VS
+                    # Pass separate NL and VS content for independent tracking
                     initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
                     initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
                     initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
