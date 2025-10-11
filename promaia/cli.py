@@ -1388,6 +1388,11 @@ def chat_run(args):
 
                     # Step 3: Launch chat with combined sources and query results
                     from promaia.chat.interface import chat
+
+                    # Prepare cache parameters for separate NL and VS caching
+                    combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                    combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
+
                     chat(
                         sources=all_sources,
                         filters=all_filters,
@@ -1397,7 +1402,12 @@ def chat_run(args):
                         browse_selections=selected_sources,
                         natural_language_content=natural_language_content,
                         natural_language_prompt=None,  # Already processed
-                        is_vector_search=False  # Already processed
+                        is_vector_search=False,  # Already processed
+                        # Pass separate cache info for NL and VS
+                        initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
+                        initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
+                        initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
+                        initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None
                     )
                     return
 
@@ -1617,6 +1627,10 @@ def chat_run(args):
                         print_text(f"❌ Error processing vector search query: {e}", style="red")
 
                 # Step 3: Pass merged results to chat
+                # Prepare cache parameters for separate NL and VS caching
+                combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
+
                 chat(
                     sources=sources,
                     filters=filters,
@@ -1628,7 +1642,12 @@ def chat_run(args):
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
                     mcp_servers=mcp_servers,
-                    is_vector_search=False  # Already processed
+                    is_vector_search=False,  # Already processed
+                    # Pass separate cache info for NL and VS
+                    initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
+                    initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
+                    initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
+                    initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None
                 )
                 return
             except Exception as e:

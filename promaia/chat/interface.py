@@ -710,7 +710,7 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None):
     """Main chat function with simplified, unified logic."""
     global current_api, DEBUG_MODE
 
@@ -962,6 +962,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'original_query_format': original_browse_command,  # Store the original query format for display
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command  # Flag for OR logic in NL processing
     }
+
+    # Set up separate caches for NL and VS if provided by CLI
+    if initial_nl_prompt or initial_nl_content:
+        context_state['cached_natural_language_prompt'] = initial_nl_prompt or ''
+        context_state['cached_natural_language_content'] = initial_nl_content or {}
+        debug_print(f"🔧 Set up NL cache from CLI: prompt='{initial_nl_prompt}', {len(initial_nl_content or {})} databases")
+
+    if initial_vs_prompt or initial_vs_content:
+        context_state['cached_vector_search_prompt'] = initial_vs_prompt or ''
+        context_state['cached_vector_search_content'] = initial_vs_content or {}
+        debug_print(f"🔧 Set up VS cache from CLI: prompt='{initial_vs_prompt}', {len(initial_vs_content or {})} databases")
 
     # Update context_state with browse_selections if they were set during browser interaction
     # This handles the case where browse_selections were set locally but not captured in the parameter
