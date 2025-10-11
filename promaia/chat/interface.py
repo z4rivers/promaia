@@ -3097,8 +3097,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         sources_to_keep = set()
                         if browse_selections:
                             for browse_sel in browse_selections:
-                                # Extract database name from selection (may include workspace prefix)
-                                sources_to_keep.add(browse_sel.lower())
+                                # Extract database name from selection, stripping day suffix
+                                # e.g., 'trass.cpj:7' -> 'trass.cpj', 'trass.tg#channel:7' -> 'trass.tg#channel'
+                                if '#' in browse_sel:
+                                    # Discord channel: trass.tg#channel:7
+                                    base_name = browse_sel.rsplit(':', 1)[0] if ':' in browse_sel else browse_sel
+                                else:
+                                    # Regular database: trass.cpj:7
+                                    base_name = browse_sel.split(':')[0] if ':' in browse_sel else browse_sel
+                                sources_to_keep.add(base_name.lower())
 
                         # Get VS sources to remove if VS was removed
                         vs_sources_to_remove = set()
