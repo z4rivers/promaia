@@ -1050,8 +1050,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Initialize combined data container
         combined_multi_source_data = {}
-        
-        # Process natural language query if present
+
+        # Check if we have pre-processed natural language content (from CLI)
+        # This happens when CLI processes NL/VS queries before calling chat()
+        if context_state.get('natural_language_content') and not context_state.get('natural_language_prompt'):
+            debug_print(f"🔍 Using pre-processed natural language content from CLI")
+            existing_content = context_state.get('natural_language_content', {})
+            if existing_content:
+                debug_print(f"  Found {len(existing_content)} databases with pre-processed content")
+                for db_name, pages in existing_content.items():
+                    debug_print(f"    {db_name}: {len(pages)} pages")
+                combined_multi_source_data.update(existing_content)
+
+        # Process natural language query if present (prompt needs processing)
         natural_language_data = {}
         if context_state.get('natural_language_prompt'):
             debug_print(f"🔍 Processing natural language prompt: '{context_state.get('natural_language_prompt')}'")
