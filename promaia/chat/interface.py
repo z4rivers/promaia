@@ -2662,12 +2662,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             vector_search_raw = parsed_args.vector_search or []
             vector_search_parts = [' '.join(vs_args) for vs_args in vector_search_raw if vs_args] if vector_search_raw else []
 
-            # Detect if VS was removed
+            # Detect if VS was removed and capture sources BEFORE clearing
             vs_was_removed = False
+            vs_sources_to_remove = set()  # Initialize for use throughout function
             had_vs_before = bool(context_state.get('cached_vector_search_prompt'))
             has_vs_now = bool(vector_search_parts)
             if had_vs_before and not has_vs_now:
                 vs_was_removed = True
+                # Capture VS sources before any state changes
+                vs_sources_to_remove = set(context_state.get('vector_search_content', {}).keys() if context_state.get('vector_search_content') else [])
 
             if vector_search_parts:
                 # If we have both NL and VS, we'll merge the results
@@ -3107,10 +3110,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     base_name = browse_sel.split(':')[0] if ':' in browse_sel else browse_sel
                                 sources_to_keep.add(base_name.lower())
 
-                        # Get VS sources to remove if VS was removed
-                        vs_sources_to_remove = set()
-                        if vs_was_removed and context_state.get('vector_search_content'):
-                            vs_sources_to_remove = set(context_state.get('vector_search_content', {}).keys())
+                        # Note: vs_sources_to_remove was captured earlier when VS removal was detected
+                        # (see line 2667-2673) to ensure we have the sources before clearing the content
 
                         # Remove sources that came from NL/VS and are not in browser selections
                         keys_to_remove = []
