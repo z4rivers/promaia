@@ -3071,21 +3071,27 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         print_text("❌ Failed to reload context with new natural language results", style="red")
                         return False
-                elif nl_was_removed:
-                    print_text("🔄 Removing natural language results from context...", style="cyan")
-                    
-                    # Update the original query format to reflect removal of natural language
+                elif nl_was_removed or vs_was_removed:
+                    # Handle removal of NL and/or VS queries while preserving browse selections
+                    if nl_was_removed and vs_was_removed:
+                        print_text("🔄 Removing natural language and vector search results from context...", style="cyan")
+                    elif nl_was_removed:
+                        print_text("🔄 Removing natural language results from context...", style="cyan")
+                    else:  # vs_was_removed
+                        print_text("🔄 Removing vector search results from context...", style="cyan")
+
+                    # Update the original query format to reflect removal of queries
                     context_state['original_query_format'] = f"maia chat {user_input}"
                     update_query_command()
-                    
-                    # Instead of full reload, just update the system prompt without NL content
-                    # This preserves browser sources while removing NL results
+
+                    # Instead of full reload, just update the system prompt without NL/VS content
+                    # This preserves browser sources while removing query results
                     try:
                         nonlocal initial_multi_source_data, total_pages_loaded
-                        
+
                         # Get the current multi-source data
                         current_data = dict(initial_multi_source_data)
-                        
+
                         # Build set of sources that should be kept based on browse selections
                         browse_selections = context_state.get('browse_selections', [])
                         sources_to_keep = set()
@@ -3093,56 +3099,67 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             for browse_sel in browse_selections:
                                 # Extract database name from selection (may include workspace prefix)
                                 sources_to_keep.add(browse_sel.lower())
-                        
-                        # Remove sources that came from NL and are not in browser selections
+
+                        # Get VS sources to remove if VS was removed
+                        vs_sources_to_remove = set()
+                        if vs_was_removed and context_state.get('vector_search_content'):
+                            vs_sources_to_remove = set(context_state.get('vector_search_content', {}).keys())
+
+                        # Remove sources that came from NL/VS and are not in browser selections
                         keys_to_remove = []
                         for key in current_data.keys():
-                            # Check if this source was loaded via natural language
+                            # Check if this source was loaded via natural language or vector search
                             is_from_nl = key in nl_sources_to_remove
-                            
+                            is_from_vs = key in vs_sources_to_remove
+
                             # Check if this source should be kept based on browser selections
                             should_keep = any(keep_src in key.lower() for keep_src in sources_to_keep) if sources_to_keep else False
-                            
-                            # Remove if it's from NL and not selected in browser
-                            if is_from_nl and not should_keep:
+
+                            # Remove if it's from NL/VS and not selected in browser
+                            if (is_from_nl or is_from_vs) and not should_keep:
                                 keys_to_remove.append(key)
-                                debug_print(f"Will remove NL source: {key} (not in browse selections: {sources_to_keep})")
-                        
+                                source_type = "NL" if is_from_nl else "VS"
+                                debug_print(f"Will remove {source_type} source: {key} (not in browse selections: {sources_to_keep})")
+
                         # Remove the identified keys
                         for key in keys_to_remove:
                             if key in current_data:
-                                debug_print(f"Removing NL source from context: {key}")
+                                debug_print(f"Removing query source from context: {key}")
                                 del current_data[key]
-                        
+
                         # Update the global variables with the cleaned data
                         initial_multi_source_data = current_data
                         total_pages_loaded = sum(len(pages) for pages in current_data.values())
-                        
+
                         # Update context state as well
                         context_state['initial_multi_source_data'] = current_data
                         context_state['total_pages_loaded'] = total_pages_loaded
-                        
+
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
                         system_prompt = create_system_prompt(current_data, mcp_tools_info)
                         context_state['system_prompt'] = system_prompt
-                        
-                        debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
+
+                        debug_print(f"After query removal: {len(current_data)} sources, {total_pages_loaded} pages")
                         print_text("Context updated successfully!", style="bold green")
                         return True
                     except Exception as e:
-                        print_text(f"❌ Error updating context after NL removal: {e}", style="red")
-                        debug_print(f"NL removal error: {e}")
+                        print_text(f"❌ Error updating context after query removal: {e}", style="red")
+                        debug_print(f"Query removal error: {e}")
                         # Fall back to full reload if manual update fails
-                        # Ensure NL state is still cleared before reload
-                        context_state['natural_language_content'] = None
-                        context_state['natural_language_prompt'] = None
-                        context_state['cached_natural_language_prompt'] = ''
+                        # Ensure query state is still cleared before reload
+                        if nl_was_removed:
+                            context_state['natural_language_content'] = None
+                            context_state['natural_language_prompt'] = None
+                            context_state['cached_natural_language_prompt'] = ''
+                        if vs_was_removed:
+                            context_state['vector_search_content'] = None
+                            context_state['cached_vector_search_prompt'] = ''
                         if reload_context(skip_nl_cache_messages=True):
                             print_text("Context updated successfully via reload!", style="bold green")
                             return True
                         else:
-                            print_text("❌ Failed to reload context after removing natural language", style="red")
+                            print_text("❌ Failed to reload context after removing queries", style="red")
                             return False
                 else:
                     print_text("ℹ️  No changes detected. Context unchanged.", style="yellow")
