@@ -2616,8 +2616,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if natural_language_parts and natural_language_content:
                     print_text("📊 Processing both natural language and vector search queries - results will be combined", style="bold cyan")
 
-                # Create combined prompt for caching
-                combined_vs_prompt = " ".join([f'-vs {prompt}' for prompt in vector_search_parts])
+                # Create combined prompt for caching (without -vs flag)
+                combined_vs_prompt = " ".join(vector_search_parts)
 
                 # Check cache - but if we have both NL and VS, we need to check the combined prompt
                 # Otherwise we might incorrectly use a cache that only contains NL or only VS
@@ -3003,19 +3003,26 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 # Update only natural language/vector search context without re-launching browser
                 if natural_language_content:
                     # Determine if this is vector search or natural language
-                    is_vs_mode = 'combined_vs_prompt' in locals() and combined_vs_prompt
+                    has_nl = 'combined_nl_prompt' in locals() and natural_language_parts
+                    has_vs = 'combined_vs_prompt' in locals() and combined_vs_prompt
 
-                    if is_vs_mode:
+                    if has_nl and has_vs:
+                        print_text("🔄 Updating merged natural language + vector search context (browse unchanged)...", style="dim")
+                        # Both NL and VS were processed - content is already merged
+                        # Clear the prompt so reload_context doesn't re-process
+                        context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = None  # Already processed, don't re-process
+                        context_state['is_vector_search'] = 'mixed'  # Mark as mixed mode
+                    elif has_vs:
                         print_text("🔄 Updating vector search context (browse unchanged)...", style="dim")
-                        combined_prompt = combined_vs_prompt
+                        context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = combined_vs_prompt
+                        context_state['is_vector_search'] = True
                     else:
                         print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
-                        combined_prompt = combined_nl_prompt if 'combined_nl_prompt' in locals() else None
-
-                    context_state['natural_language_content'] = natural_language_content
-                    # BUG FIX: Use combined_prompt (either NL or VS) instead of nl_prompt (which is None)
-                    if combined_prompt:
-                        context_state['natural_language_prompt'] = combined_prompt
+                        context_state['natural_language_content'] = natural_language_content
+                        context_state['natural_language_prompt'] = combined_nl_prompt if has_nl else None
+                        context_state['is_vector_search'] = False
                     
                     # Set the mixed browse+NL flag for OR logic
                     # This ensures NL results are properly merged with browse results
