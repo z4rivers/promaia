@@ -599,19 +599,23 @@ Respond with JSON in this exact format:
     "date_filter": {{"days_back": null, "description": ""}}
 }}
 
-Rules:
+Rules for database names - CRITICAL:
 - ONLY include databases that are EXPLICITLY mentioned in the query (e.g., "gmail", "stories", "notion")
 - If the user specifies a database type, use ONLY that database - do not add others from the same workspace
-- Use the workspace configuration above to understand which databases belong to which workspace
-- Use qualified names (workspace.database) when the user specifies a workspace
+- ALWAYS use qualified names (workspace.database) when a workspace is mentioned in the query
+- If the query mentions BOTH a workspace AND a database, you MUST combine them as "workspace.database"
+- If ONLY a database is mentioned with no workspace context, use the simple name
 - Extract specific search terms from the query
 - Parse date expressions: "last N months" → days_back: N*30, "past week" → days_back: 7
 - If no date mentioned, set days_back: null
 
-Examples:
-- "trass gmail about X" → databases: ["trass.gmail"] (NOT ["trass.gmail", "trass.yp"])
-- "koii stories with Y" → databases: ["koii.stories"] (NOT all koii databases)
-- "find X in notion and stories" → databases: ["notion", "stories"] (multiple explicitly mentioned)
+Examples of CORRECT database naming:
+- "trass gmail about X" → databases: ["trass.gmail"] ✓ (workspace + database = qualified name)
+- "koii stories with Y" → databases: ["koii.stories"] ✓ (workspace + database = qualified name)
+- "stories in the koii workspace" → databases: ["koii.stories"] ✓ (workspace + database = qualified name)
+- "koii workspace notion stories" → databases: ["koii.stories"] ✓ (workspace + database, ignore "notion" as descriptor)
+- "find X in stories" → databases: ["stories"] ✓ (no workspace mentioned = simple name)
+- "trass gmail about X" → databases: ["trass.gmail", "trass.yp"] ✗ WRONG (don't add unrequested databases)
 
 Return ONLY the JSON object:"""
         
