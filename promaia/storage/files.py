@@ -772,7 +772,8 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                                 break
                 
                 if not md_file:
-                    # Skip if we can't find the file
+                    # Skip if we can't find the file - but warn the user
+                    print(f"⚠️  Skipping page '{title}' ({page_id}): markdown file not found on disk")
                     continue
                 
                 # Read the markdown content
