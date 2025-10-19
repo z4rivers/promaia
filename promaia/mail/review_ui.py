@@ -34,6 +34,43 @@ class EmailReviewUI:
         """Clear terminal screen."""
         os.system('clear' if os.name != 'nt' else 'cls')
     
+    def _clean_email_body(self, body: str) -> str:
+        """
+        Remove redundant email headers from body content.
+        
+        Email bodies often start with headers like:
+        From: ...
+        Sent: ...
+        To: ...
+        Subject: ...
+        
+        We strip these out since we display them separately.
+        """
+        if not body:
+            return body
+        
+        lines = body.split('\n')
+        cleaned_lines = []
+        skip_headers = True
+        
+        for line in lines:
+            # Check if line looks like an email header
+            if skip_headers:
+                # Common email header patterns
+                if line.strip().startswith(('From:', 'Sent:', 'To:', 'Subject:', 'Date:', 'Cc:', 'Bcc:')):
+                    continue
+                # Empty line often follows headers
+                elif not line.strip():
+                    continue
+                else:
+                    # Found actual content, stop skipping
+                    skip_headers = False
+                    cleaned_lines.append(line)
+            else:
+                cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines).strip()
+    
     async def _get_keystroke(self) -> str:
         """Capture a single keystroke without requiring Enter."""
         from prompt_toolkit.application import Application
@@ -238,6 +275,9 @@ class EmailReviewUI:
         else:
             context_summary = "None"
         
+        # Clean email body to remove redundant headers
+        cleaned_body = self._clean_email_body(draft.get('inbound_body', 'No body available'))
+        
         return f"""
 ╭──────────────────────────────────────────────────────────────────────────────────────╮
 │  Draft Review - Full View                                                           │
@@ -252,7 +292,7 @@ Subject:  {draft.get('inbound_subject', 'No Subject')}
 Date:     {received_str}
 Thread:   {draft.get('message_count', 1)} message(s) in thread
 
-{draft.get('inbound_body', 'No body available')}
+{cleaned_body}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   YOUR DRAFT RESPONSE ({draft_words} words)
