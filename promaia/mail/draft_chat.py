@@ -282,27 +282,26 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
             # Get current draft (latest artifact)
             current_draft = self.artifacts.get(self.current_artifact_number, draft['draft_body'])
             
-            # Simple refinement prompt
-            from promaia.ai.client import get_ai_client
-            client = get_ai_client()
-            
-            refinement_prompt = f"""You are refining an email draft based on user feedback.
-
-**Original Inbound Email:**
-From: {draft['inbound_from']}
-Subject: {draft['inbound_subject']}
-Body: {draft['inbound_body'][:500]}...
-
-**Current Draft:**
-{current_draft}
-
-**User Feedback:**
-{user_feedback}
-
-Please provide the refined email draft incorporating the user's feedback. Return ONLY the email text, no explanations."""
-
-            response = await client.generate_completion(refinement_prompt)
-            return response.strip()
+            # Use ResponseGenerator to refine (it has the AI client setup)
+            refined = await self.response_generator.refine_response(
+                current_draft=current_draft,
+                user_feedback=user_feedback,
+                email_thread={
+                    'from': draft['inbound_from'],
+                    'subject': draft['inbound_subject'],
+                    'date': draft['inbound_date'],
+                    'body': draft['inbound_body'],
+                    'conversation_body': draft.get('thread_context', '')
+                },
+                context=ResponseContext(
+                    thread_history=draft.get('thread_context', ''),
+                    relevant_docs=[],
+                    relevant_docs_text="(Using cached context)",
+                    workspace=self.workspace,
+                    total_sources=0
+                )
+            )
+            return refined
             
         except Exception as e:
             logger.error(f"❌ Failed to refine draft: {e}")
