@@ -171,7 +171,7 @@ class DraftManager:
                     draft.get('draft_subject'),
                     draft.get('draft_body'),
                     draft.get('draft_body_html'),
-                    json.dumps(draft.get('response_context', [])) if draft.get('response_context') else None,
+                    draft.get('response_context'),  # Already a JSON string from serialize_context_for_storage()
                     draft.get('system_prompt'),
                     draft.get('ai_model'),
                     draft.get('draft_number', 1),
