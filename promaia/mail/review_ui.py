@@ -14,6 +14,7 @@ from prompt_toolkit.keys import Keys
 from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
 from promaia.utils.display import print_text, print_separator
+from promaia.utils.timezone_utils import to_local, get_local_timezone_name, now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -169,10 +170,12 @@ class EmailReviewUI:
             # Selection indicator
             selector = '▶' if idx == current_selection else ' '
             
-            # Format date
+            # Format date (convert to local timezone)
             try:
                 date_obj = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
-                date_str = date_obj.strftime('%b %d, %I:%M %p')
+                local_date = to_local(date_obj)
+                tz_name = get_local_timezone_name()
+                date_str = local_date.strftime(f'%b %d, %I:%M %p {tz_name}')
             except:
                 date_str = 'Unknown'
             
@@ -215,10 +218,12 @@ class EmailReviewUI:
             context_count = 0
             context_sources = []
         
-        # Format date
+        # Format date (convert to local timezone)
         try:
             received_dt = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
-            received_str = received_dt.strftime('%A, %B %d, %Y at %I:%M %p')
+            local_received = to_local(received_dt)
+            tz_name = get_local_timezone_name()
+            received_str = local_received.strftime(f'%A, %B %d, %Y at %I:%M %p {tz_name}')
         except:
             received_str = draft.get('inbound_date', 'Unknown')
         
@@ -482,7 +487,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                     "workspace": draft['workspace'],
                     "ai_model": draft.get('ai_model', 'unknown'),
                     "context_sources": draft.get('response_context', '{}'),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": now_utc().isoformat()
                 }
             }
             

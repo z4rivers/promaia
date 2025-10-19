@@ -49,9 +49,11 @@ class EmailResponseLearningSystem:
         """
         patterns = self.load_successful_patterns()
         
-        # Add new pattern with timestamp
-        pattern["timestamp"] = datetime.now().isoformat()
-        pattern["id"] = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Add new pattern with UTC timestamp (for consistent storage)
+        from promaia.utils.timezone_utils import now_utc
+        utc_now = now_utc()
+        pattern["timestamp"] = utc_now.isoformat()
+        pattern["id"] = utc_now.strftime("%Y%m%d_%H%M%S")
         patterns.insert(0, pattern)  # Add to front (most recent first)
         
         # Keep only last 20
