@@ -3157,6 +3157,12 @@ def main():
             args.func(args)
         else:
             edit_parser.print_help()
+    elif args.command == "mail":
+        # Handle mail commands
+        if hasattr(args, 'func'):
+            asyncio.run(args.func(args))
+        else:
+            print_text("Mail command error: no function assigned", style="red")
     elif args.command == "gmail":
         # Handle Gmail commands
         if hasattr(args, 'gmail_command') and args.gmail_command:
