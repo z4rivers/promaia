@@ -33,36 +33,93 @@ class EmailReviewUI:
         """Clear terminal screen."""
         os.system('clear' if os.name != 'nt' else 'cls')
     
-    def _get_input_with_arrows(self, prompt_text: str = "Action: ") -> str:
-        """Get input with arrow key support."""
-        # Create key bindings for special keys
+    def _get_keystroke(self) -> str:
+        """Capture a single keystroke without requiring Enter."""
+        from prompt_toolkit.application import Application
+        from prompt_toolkit.layout import Layout
+        from prompt_toolkit.layout.containers import Window
+        from prompt_toolkit.layout.controls import FormattedTextControl
+        
         kb = KeyBindings()
+        result = {'value': None}
         
-        # Track which special key was pressed
-        special_key = {'value': None}
-        
+        # Navigation keys
         @kb.add(Keys.Up)
         def _(event):
-            special_key['value'] = 'up'
-            event.app.exit(result='')
+            result['value'] = 'up'
+            event.app.exit()
         
         @kb.add(Keys.Down)
         def _(event):
-            special_key['value'] = 'down'
-            event.app.exit(result='')
+            result['value'] = 'down'
+            event.app.exit()
         
         @kb.add(Keys.Escape)
         def _(event):
-            special_key['value'] = 'escape'
-            event.app.exit(result='')
+            result['value'] = 'escape'
+            event.app.exit()
+        
+        @kb.add(Keys.ControlC)
+        def _(event):
+            result['value'] = 'q'
+            event.app.exit()
+        
+        @kb.add('q')
+        def _(event):
+            result['value'] = 'q'
+            event.app.exit()
+        
+        # List view actions
+        @kb.add(Keys.Enter)
+        def _(event):
+            result['value'] = 'enter'
+            event.app.exit()
+        
+        # Detail view actions
+        @kb.add('s')
+        def _(event):
+            result['value'] = 's'
+            event.app.exit()
+        
+        @kb.add('c')
+        def _(event):
+            result['value'] = 'c'
+            event.app.exit()
+        
+        @kb.add('r')
+        def _(event):
+            result['value'] = 'r'
+            event.app.exit()
+        
+        @kb.add('v')
+        def _(event):
+            result['value'] = 'v'
+            event.app.exit()
+        
+        @kb.add('b')
+        def _(event):
+            result['value'] = 'b'
+            event.app.exit()
+        
+        # Number keys for quick selection (1-9)
+        for i in range(1, 10):
+            @kb.add(str(i))
+            def _(event, num=i):
+                result['value'] = str(num)
+                event.app.exit()
+        
+        # Create minimal application to capture keystroke
+        app = Application(
+            layout=Layout(Window(FormattedTextControl(text=''))),
+            key_bindings=kb,
+            full_screen=False,
+            mouse_support=False
+        )
         
         try:
-            result = prompt(prompt_text, key_bindings=kb)
-            # If a special key was pressed, return that
-            if special_key['value']:
-                return special_key['value']
-            return result.strip().lower()
-        except (EOFError, KeyboardInterrupt):
+            app.run()
+            return result['value'] or ''
+        except KeyboardInterrupt:
             return 'q'
     
     def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -211,11 +268,7 @@ Generated:   {draft.get('created_time', 'unknown')}
   ACTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  s  - Send this draft (with confirmation)
-  c  - Open chat to refine the draft
-  r  - Reject (won't send, mark as handled)
-  v  - View full context sources
-  b  - Back to list
+  [s] Send  [c] Chat  [r] Reject  [v] Context  [b] Back  [q] Quit
 
 """
     
@@ -243,7 +296,7 @@ Generated:   {draft.get('created_time', 'unknown')}
             output.append(f"    Preview: {snippet}...")
             output.append("")
         
-        output.append("\nPress 'b' to return to draft view...")
+        output.append("\n[b] Back  [q] Quit")
         return '\n'.join(output)
     
     async def launch_review(self, workspaces: List[str]):
@@ -275,15 +328,14 @@ Generated:   {draft.get('created_time', 'unknown')}
                 
                 if current_view == 'list':
                     print(self._render_review_list(all_drafts, current_selection))
-                    print("\nNavigation: ↑/↓ select | Enter view | q quit")
+                    print("\nNavigation: ↑/↓ | Enter or number to view | q quit")
                     
-                    # Get input with arrow key support
-                    action = self._get_input_with_arrows()
+                    # Capture keystroke
+                    action = self._get_keystroke()
                     
                     if action == 'q':
                         break
-                    elif action == '' or action == 'enter':
-                        # View details
+                    elif action == 'enter':
                         current_view = 'detail'
                     elif action == 'up':
                         if current_selection > 0:
@@ -293,7 +345,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                             current_selection += 1
                     elif action == 'escape':
                         break
-                    elif action.isdigit():
+                    elif action and action.isdigit():
                         idx = int(action) - 1
                         if 0 <= idx < len(all_drafts):
                             current_selection = idx
@@ -302,7 +354,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 elif current_view == 'detail':
                     print(self._render_draft_detail(all_drafts[current_selection]))
                     
-                    action = self._get_input_with_arrows()
+                    action = self._get_keystroke()
                     
                     if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'list'
@@ -331,7 +383,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 elif current_view == 'context':
                     print(self._render_context_view(all_drafts[current_selection]))
                     
-                    action = self._get_input_with_arrows()
+                    action = self._get_keystroke()
                     if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'detail'
                         
