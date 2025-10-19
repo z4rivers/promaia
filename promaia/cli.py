@@ -47,6 +47,9 @@ from promaia.newsletter.commands import newsletter_sync_command, newsletter_test
 # Import mail commands
 from promaia.cli.mail_commands import add_mail_commands
 
+# Import Gmail commands
+from promaia.cli.gmail_commands import add_gmail_commands
+
 # Import workspace commands
 from promaia.cli.workspace_commands import (
     add_workspace_commands, add_workspace_commands_to_existing_parser
@@ -2824,6 +2827,9 @@ def main():
     
     # Add mail commands
     add_mail_commands(subparsers)
+    
+    # Add Gmail commands
+    add_gmail_commands(subparsers)
 
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
