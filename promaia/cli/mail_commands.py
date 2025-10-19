@@ -36,7 +36,10 @@ async def handle_mail(args):
         # Determine workspaces
         workspace_manager = get_workspace_manager()
         
-        if hasattr(args, 'workspaces') and args.workspaces:
+        # Check if user explicitly specified workspace(s)
+        explicit_workspaces = hasattr(args, 'workspaces') and args.workspaces
+        
+        if explicit_workspaces:
             workspaces = args.workspaces
         else:
             # Default to default workspace
@@ -72,8 +75,14 @@ async def handle_mail(args):
             else:
                 print_text("✅ No new emails requiring response", style="green")
             print()
+            
+            # If only processing (no workspace specified), exit here to preserve logs
+            if not explicit_workspaces:
+                print_text("💡 Use 'maia mail -ws [workspace]' to review drafts", style="dim")
+                print_separator()
+                return
         
-        # Launch review UI
+        # Launch review UI (only if workspace was specified or not in process-only mode)
         print_text("📋 Launching review interface...", style="cyan")
         print()
         
