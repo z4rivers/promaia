@@ -71,12 +71,17 @@ class ResponseContextBuilder:
             }
             
             logger.info(f"🔍 Searching {workspace} workspace for relevant context...")
+            logger.debug(f"Search query: {search_query[:200]}...")
+            logger.debug(f"Filters: {filters}")
             results = vector_db.search(
                 query_text=search_query,
                 filters=filters,
                 n_results=n_results,
                 min_similarity=min_similarity
             )
+            logger.info(f"📊 Vector search returned {len(results)} results")
+            if results:
+                logger.debug(f"Sample result: {results[0]}")
             
             # Load full content for top results
             relevant_docs = self._load_document_content(results[:10])  # Top 10 only
@@ -96,6 +101,8 @@ class ResponseContextBuilder:
             
         except Exception as e:
             logger.error(f"❌ Failed to build response context: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Return minimal context
             return ResponseContext(
                 thread_history=self._extract_thread_history(email_thread),
