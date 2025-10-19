@@ -61,6 +61,7 @@ class DraftManager:
                         chat_session_id TEXT,
                         previous_draft_id TEXT,
                         version INTEGER DEFAULT 1,
+                        draft_history TEXT,  -- JSON array of all draft versions
                         
                         -- Status tracking
                         status TEXT DEFAULT 'pending',

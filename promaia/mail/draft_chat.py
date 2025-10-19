@@ -43,6 +43,51 @@ class DraftChatInterface:
         # Artifacts: draft_number -> draft_text
         self.artifacts = {}
         self.current_artifact_number = 0
+        
+        # Load existing version and history
+        self._load_draft_history()
+    
+    def _load_draft_history(self):
+        """Load draft version and history from database."""
+        import json
+        draft = self.draft_manager.get_draft(self.draft_id)
+        
+        if not draft:
+            return
+        
+        # Load version number
+        self.current_artifact_number = draft.get('version', 1)
+        
+        # Try to load draft history from a JSON field (if it exists)
+        draft_history_str = draft.get('draft_history')
+        if draft_history_str:
+            try:
+                history = json.loads(draft_history_str)
+                self.artifacts = {int(k): v for k, v in history.items()}
+            except:
+                # If no history field, just use current draft as artifact 1
+                self.artifacts = {self.current_artifact_number: draft.get('draft_body', '')}
+        else:
+            # No history saved, use current draft
+            self.artifacts = {self.current_artifact_number: draft.get('draft_body', '')}
+    
+    def _save_draft_history(self):
+        """Save draft history to database."""
+        import json
+        import sqlite3
+        
+        history_json = json.dumps(self.artifacts)
+        
+        try:
+            with sqlite3.connect(self.draft_manager.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE email_drafts SET draft_history = ? WHERE draft_id = ?",
+                    (history_json, self.draft_id)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Could not save draft history: {e}")
     
     def _clean_email_body(self, body: str) -> str:
         """Remove redundant email headers from body content."""
@@ -158,11 +203,16 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
             draft_body = draft.get('draft_body', '')
             
             if requires_response and draft_body:
-                # Display current draft as artifact #1
-                self.current_artifact_number = 1
-                self.artifacts[1] = draft_body
-                print(self.render_artifact(1, draft_body))
-                print()
+                # Display all existing artifacts (version history)
+                if not self.artifacts:
+                    # First time, initialize with current draft
+                    self.current_artifact_number = 1
+                    self.artifacts[1] = draft_body
+                
+                # Display all artifacts in order
+                for artifact_num in sorted(self.artifacts.keys()):
+                    print(self.render_artifact(artifact_num, self.artifacts[artifact_num]))
+                    print()
                 
                 print_text("💬 Chat to refine the draft, or use commands:", style="dim")
                 print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
@@ -250,6 +300,9 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                         refined_draft,
                         version=self.current_artifact_number
                     )
+                    
+                    # Save draft history
+                    self._save_draft_history()
                     
                     print_text(f"✅ Updated to Draft #{self.current_artifact_number}", style="green")
                     print()
