@@ -107,36 +107,10 @@ class EmailReviewUI:
             result['value'] = 'q'
             event.app.exit()
         
-        # List view actions
+        # Enter to review
         @kb.add(Keys.Enter)
         def _(event):
             result['value'] = 'enter'
-            event.app.exit()
-        
-        # Detail view actions
-        @kb.add('s')
-        def _(event):
-            result['value'] = 's'
-            event.app.exit()
-        
-        @kb.add('c')
-        def _(event):
-            result['value'] = 'c'
-            event.app.exit()
-        
-        @kb.add('r')
-        def _(event):
-            result['value'] = 'r'
-            event.app.exit()
-        
-        @kb.add('v')
-        def _(event):
-            result['value'] = 'v'
-            event.app.exit()
-        
-        @kb.add('b')
-        def _(event):
-            result['value'] = 'b'
             event.app.exit()
         
         # Number keys for quick selection (1-9)
@@ -361,9 +335,8 @@ Generated:   {draft.get('created_time', 'unknown')}
         
         # State
         current_selection = 0
-        current_view = 'list'  # 'list', 'detail', 'context'
         
-        # Main loop
+        # Main loop - just show list and open chat
         while True:
             try:
                 # Clear and render
@@ -371,66 +344,39 @@ Generated:   {draft.get('created_time', 'unknown')}
                 print(self._render_status_bar(stats))
                 print()
                 
-                if current_view == 'list':
-                    print(self._render_review_list(all_drafts, current_selection))
-                    print("\nNavigation: ↑/↓ | Enter or number to view | q quit")
-                    
-                    # Capture keystroke
-                    action = await self._get_keystroke()
-                    
-                    if action == 'q':
-                        break
-                    elif action == 'enter':
-                        current_view = 'detail'
-                    elif action == 'up':
-                        if current_selection > 0:
-                            current_selection -= 1
-                    elif action == 'down':
-                        if current_selection < len(all_drafts) - 1:
-                            current_selection += 1
-                    elif action == 'escape':
-                        break
-                    elif action and action.isdigit():
-                        idx = int(action) - 1
-                        if 0 <= idx < len(all_drafts):
-                            current_selection = idx
-                            current_view = 'detail'
+                print(self._render_review_list(all_drafts, current_selection))
+                print("\nNavigation: ↑/↓ | Enter or number to review | q quit")
                 
-                elif current_view == 'detail':
-                    print(self._render_draft_detail(all_drafts[current_selection]))
-                    
-                    action = await self._get_keystroke()
-                    
-                    if action == 'b' or action == 'q' or action == 'escape':
-                        current_view = 'list'
-                    elif action == 's':
-                        await self._handle_send(all_drafts[current_selection])
-                        # Reload draft
-                        updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                        all_drafts[current_selection] = updated_draft
-                        stats = self._calculate_stats(all_drafts)
-                        current_view = 'list'
-                    elif action == 'c':
+                # Capture keystroke
+                action = await self._get_keystroke()
+                
+                if action == 'q':
+                    break
+                elif action == 'enter':
+                    # Open draft chat for selected draft
+                    await self._handle_chat(all_drafts[current_selection])
+                    # Reload draft after chat
+                    updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
+                    all_drafts[current_selection] = updated_draft
+                    stats = self._calculate_stats(all_drafts)
+                elif action == 'up':
+                    if current_selection > 0:
+                        current_selection -= 1
+                elif action == 'down':
+                    if current_selection < len(all_drafts) - 1:
+                        current_selection += 1
+                elif action == 'escape':
+                    break
+                elif action and action.isdigit():
+                    idx = int(action) - 1
+                    if 0 <= idx < len(all_drafts):
+                        current_selection = idx
+                        # Open draft chat for selected draft
                         await self._handle_chat(all_drafts[current_selection])
-                        # Reload draft
+                        # Reload draft after chat
                         updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
                         all_drafts[current_selection] = updated_draft
                         stats = self._calculate_stats(all_drafts)
-                        current_view = 'list'
-                    elif action == 'r':
-                        self.draft_manager.update_draft_status(all_drafts[current_selection]['draft_id'], 'rejected')
-                        all_drafts[current_selection]['status'] = 'rejected'
-                        stats = self._calculate_stats(all_drafts)
-                        current_view = 'list'
-                    elif action == 'v':
-                        current_view = 'context'
-                
-                elif current_view == 'context':
-                    print(self._render_context_view(all_drafts[current_selection]))
-                    
-                    action = await self._get_keystroke()
-                    if action == 'b' or action == 'q' or action == 'escape':
-                        current_view = 'detail'
                         
             except KeyboardInterrupt:
                 break
