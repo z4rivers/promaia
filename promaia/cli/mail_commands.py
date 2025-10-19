@@ -7,6 +7,7 @@ Commands:
 """
 import asyncio
 import logging
+import traceback
 from typing import List
 
 from promaia.utils.display import print_text, print_separator
@@ -63,11 +64,11 @@ async def handle_mail(args):
         
         # Process if requested
         if hasattr(args, 'process') and args.process:
-            print_text("🔄 Processing new emails...", style="cyan")
+            print_text("🔄 Processing new emails from last 72 hours...", style="cyan")
             print()
             
             processor = EmailProcessor()
-            count = await processor.process_new_emails(workspaces, hours_back=2)
+            count = await processor.process_new_emails(workspaces, hours_back=72)
             
             print()
             if count > 0:
@@ -114,20 +115,21 @@ def add_mail_commands(subparsers):
     """
     mail_parser = subparsers.add_parser(
         'mail',
-        help='Intelligent email response system'
+        help='Intelligent email response system',
+        description='Process and review email drafts. Examples: "maia mail -ws trass", "maia mail -p -ws trass"'
     )
     
     mail_parser.add_argument(
         '-ws', '--workspace',
         action='append',
         dest='workspaces',
-        help='Workspace(s) to process (default: default workspace). Can be specified multiple times.'
+        help='Workspace(s) to process (default: default workspace). Can be specified multiple times. Usage: -ws workspace_name'
     )
     
     mail_parser.add_argument(
         '-p', '--process',
         action='store_true',
-        help='Process new emails before reviewing (generates drafts for new threads)'
+        help='Process new emails from last 72 hours before reviewing (generates drafts for new threads)'
     )
     
     mail_parser.add_argument(
