@@ -7,6 +7,10 @@ import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from prompt_toolkit import prompt
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
+
 from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
 from promaia.utils.display import print_text, print_separator
@@ -28,6 +32,38 @@ class EmailReviewUI:
     def _clear_screen(self):
         """Clear terminal screen."""
         os.system('clear' if os.name != 'nt' else 'cls')
+    
+    def _get_input_with_arrows(self, prompt_text: str = "Action: ") -> str:
+        """Get input with arrow key support."""
+        # Create key bindings for special keys
+        kb = KeyBindings()
+        
+        # Track which special key was pressed
+        special_key = {'value': None}
+        
+        @kb.add(Keys.Up)
+        def _(event):
+            special_key['value'] = 'up'
+            event.app.exit(result='')
+        
+        @kb.add(Keys.Down)
+        def _(event):
+            special_key['value'] = 'down'
+            event.app.exit(result='')
+        
+        @kb.add(Keys.Escape)
+        def _(event):
+            special_key['value'] = 'escape'
+            event.app.exit(result='')
+        
+        try:
+            result = prompt(prompt_text, key_bindings=kb)
+            # If a special key was pressed, return that
+            if special_key['value']:
+                return special_key['value']
+            return result.strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return 'q'
     
     def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
         """Calculate stats from draft list."""
@@ -240,22 +276,23 @@ Generated:   {draft.get('created_time', 'unknown')}
                 if current_view == 'list':
                     print(self._render_review_list(all_drafts, current_selection))
                     print("\nNavigation: ↑/↓ select | Enter view | q quit")
-                    print("Action: ", end='', flush=True)
                     
-                    # Get input
-                    action = input().strip().lower()
+                    # Get input with arrow key support
+                    action = self._get_input_with_arrows()
                     
                     if action == 'q':
                         break
                     elif action == '' or action == 'enter':
                         # View details
                         current_view = 'detail'
-                    elif action in ['up', 'u', 'k']:
+                    elif action == 'up':
                         if current_selection > 0:
                             current_selection -= 1
-                    elif action in ['down', 'd', 'j']:
+                    elif action == 'down':
                         if current_selection < len(all_drafts) - 1:
                             current_selection += 1
+                    elif action == 'escape':
+                        break
                     elif action.isdigit():
                         idx = int(action) - 1
                         if 0 <= idx < len(all_drafts):
@@ -264,11 +301,10 @@ Generated:   {draft.get('created_time', 'unknown')}
                 
                 elif current_view == 'detail':
                     print(self._render_draft_detail(all_drafts[current_selection]))
-                    print("Action: ", end='', flush=True)
                     
-                    action = input().strip().lower()
+                    action = self._get_input_with_arrows()
                     
-                    if action == 'b' or action == 'q':
+                    if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'list'
                     elif action == 's':
                         await self._handle_send(all_drafts[current_selection])
@@ -294,10 +330,9 @@ Generated:   {draft.get('created_time', 'unknown')}
                 
                 elif current_view == 'context':
                     print(self._render_context_view(all_drafts[current_selection]))
-                    print("\nAction: ", end='', flush=True)
                     
-                    action = input().strip().lower()
-                    if action == 'b' or action == 'q':
+                    action = self._get_input_with_arrows()
+                    if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'detail'
                         
             except KeyboardInterrupt:
