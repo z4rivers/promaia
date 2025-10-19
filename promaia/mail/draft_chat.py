@@ -209,7 +209,7 @@ class DraftChatInterface:
         Supports commands:
         - /send [draft-number] - Send specified draft
         - /q - Quit to review queue
-        - /resolve or /r - Mark as resolved
+        - /archive or /a - Archive email (clear from queue)
         - Regular chat to refine the draft
         """
         try:
@@ -267,7 +267,7 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                 print()
                 print_text("Commands:", style="dim")
                 print_text("   /mc - Load message context (recommended before replying)", style="dim")
-                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped)", style="dim")
+                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             elif draft_body and draft_body != 'n/a':
                 # Normal draft with AI-generated response
@@ -284,14 +284,14 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                 
                 print_text("💬 Chat to refine the draft, or use commands:", style="dim")
                 print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
-                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped if not sent)", style="dim")
+                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             else:
                 # Edge case: draft exists but no body (shouldn't happen normally)
                 print_text("⚠️  No draft available", style="yellow")
                 print()
                 print_text("Commands:", style="dim")
-                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped)", style="dim")
+                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             
             print()
@@ -325,19 +325,15 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                             await self._load_message_context()
                             continue
                         
-                        elif cmd in ['/resolve', '/r']:
-                            # Resolve: if sent, keep as sent (✅); otherwise mark as skipped (⏭️)
-                            draft = self.draft_manager.get_draft(self.draft_id)
-                            if draft and draft.get('status') == 'sent':
-                                print_text("\n✅ Already sent, keeping as sent\n", style="green")
-                            else:
-                                self.draft_manager.update_draft_status(self.draft_id, 'skipped')
-                                print_text("\n⏭️  Marked as skipped\n", style="yellow")
+                        elif cmd in ['/archive', '/a']:
+                            # Archive: clear from queue with that satisfying feeling
+                            self.draft_manager.update_draft_status(self.draft_id, 'archived')
+                            print_text("\n🗄️  Archived - cleared from your queue\n", style="green")
                             break
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available: /send [number], /mc, /resolve, /q", style="dim")
+                            print_text("Available: /send [number], /mc, /archive, /q", style="dim")
                             continue
                     
                     # Check if this is a skipped draft and user wants to reply

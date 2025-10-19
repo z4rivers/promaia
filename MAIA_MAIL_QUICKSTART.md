@@ -79,7 +79,7 @@ You'll see:
 │  Maia Mail - Draft Review Queue                     │
 │                                                      │
 │  Progress: [░░░░░░░░░░░░] 0/3 resolved (0%)        │
-│  Status: ✅ 0 sent  •  ⏳ 3 pending  •  ⏭️  0 skipped│
+│  Status: ✅ 0 sent  •  🗄️ 0 archived  •  ⏳ 3 pending  •  ⏭️  0 skipped│
 ╰──────────────────────────────────────────────────────╯
 
 ▶ [1] ⏳ RE: Q4 Timeline Discussion
@@ -91,7 +91,7 @@ You'll see:
 **Navigation:**
 - `↑/↓` - Navigate drafts
 - `Enter` - Open chat to review/refine
-- `r` - Resolve (✅ if sent, ⏭️ if not)
+- `a` - Archive (clear from queue 🗄️)
 - `q` - Quit
 
 ## 📖 Detailed Workflow
@@ -132,7 +132,7 @@ Generated:   2025-10-19T12:34:56Z
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Enter - Open chat to review/refine
-  r  - Resolve (⏭️ skipped if not sent)
+  a  - Archive (clear from queue 🗄️)
   v  - View full context sources
   Esc - Back to list
 ```

@@ -95,7 +95,7 @@ All planned features implemented:
 ```
 ╭──────────────────────────────────────────────────────╮
 │  Progress: [████████░░░░] 8/14 resolved (57%)       │
-│  Status: ✅ 6 sent  •  ⏳ 6 pending  •  ⏭️  2 skipped│
+│  Status: ✅ 6 sent  •  🗄️ 2 archived  •  ⏳ 6 pending  •  ⏭️  2 skipped│
 ╰──────────────────────────────────────────────────────╯
 ```
 

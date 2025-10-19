@@ -119,10 +119,10 @@ class EmailReviewUI:
                 result['value'] = str(num)
                 event.app.exit()
         
-        # Resolve key
-        @kb.add('r')
+        # Archive key
+        @kb.add('a')
         def _(event):
-            result['value'] = 'r'
+            result['value'] = 'a'
             event.app.exit()
         
         # Create minimal application to capture keystroke
@@ -146,8 +146,9 @@ class EmailReviewUI:
             'sent': sum(1 for d in drafts if d.get('status') == 'sent'),
             'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
             'skipped': sum(1 for d in drafts if d.get('status') == 'skipped'),
+            'archived': sum(1 for d in drafts if d.get('status') == 'archived'),
         }
-        stats['resolved'] = stats['sent'] + stats['skipped']
+        stats['resolved'] = stats['sent'] + stats['archived']
         if stats['total'] > 0:
             stats['percent'] = int((stats['resolved'] / stats['total']) * 100)
         else:
@@ -166,7 +167,7 @@ class EmailReviewUI:
 │  Maia Mail - Draft Review Queue                                                     │
 │                                                                                      │
 │  Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)        │
-│  Status: ✅ {stats['sent']} sent  •  ⏳ {stats['pending']} pending  •  ⏭️  {stats['skipped']} skipped   │
+│  Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped   │
 ╰──────────────────────────────────────────────────────────────────────────────────────╯
 """
     
@@ -178,6 +179,8 @@ class EmailReviewUI:
             # Status icon
             if draft.get('status') == 'sent':
                 icon = '✅'
+            elif draft.get('status') == 'archived':
+                icon = '🗄️'
             elif draft.get('status') == 'skipped':
                 icon = '⏭️'
             else:
@@ -301,7 +304,7 @@ Generated:   {draft.get('created_time', 'unknown')}
   ACTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  [Enter] Chat  [r] Resolve  [v] Context  [b] Back  [q] Quit
+  [Enter] Chat  [a] Archive  [v] Context  [b] Back  [q] Quit
 
 """
     
@@ -359,7 +362,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 print()
                 
                 print(self._render_review_list(all_drafts, current_selection))
-                print("\nNavigation: ↑/↓ | Enter or number to review | r resolve | q quit")
+                print("\nNavigation: ↑/↓ | Enter or number to review | a archive | q quit")
                 
                 # Capture keystroke
                 action = await self._get_keystroke()
@@ -373,10 +376,10 @@ Generated:   {draft.get('created_time', 'unknown')}
                     updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
                     all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
-                elif action == 'r':
-                    # Resolve: if sent, keep as sent (✅); otherwise mark as skipped (⏭️)
-                    await self._handle_resolve(all_drafts[current_selection])
-                    # Reload draft after resolving
+                elif action == 'a':
+                    # Archive: mark as archived to clear from queue
+                    await self._handle_archive(all_drafts[current_selection])
+                    # Reload draft after archiving
                     updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
                     all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
@@ -412,7 +415,7 @@ Generated:   {draft.get('created_time', 'unknown')}
         print()
         print_text(
             f"✅ Session complete: {final_stats['sent']} sent, "
-            f"{final_stats['skipped']} skipped, {final_stats['pending']} pending",
+            f"{final_stats['archived']} archived, {final_stats['pending']} pending",
             style="green"
         )
     
@@ -470,23 +473,15 @@ Generated:   {draft.get('created_time', 'unknown')}
         
         input("\nPress Enter to continue...")
     
-    async def _handle_resolve(self, draft: Dict[str, Any]):
+    async def _handle_archive(self, draft: Dict[str, Any]):
         """
-        Handle resolving a draft.
+        Handle archiving a draft.
         
-        Logic:
-        - If already sent (✅), keep as sent
-        - If not sent, mark as skipped (⏭️)
+        Archive clears the item from your queue - gives the satisfying feeling
+        of clearing papers off your desk.
         """
-        current_status = draft.get('status')
-        
-        if current_status == 'sent':
-            # Already sent, keep it as sent
-            logger.info(f"Draft {draft['draft_id']} already sent, keeping as sent")
-        else:
-            # Not sent, mark as skipped
-            self.draft_manager.update_draft_status(draft['draft_id'], 'skipped')
-            logger.info(f"Draft {draft['draft_id']} resolved without sending, marked as skipped")
+        self.draft_manager.update_draft_status(draft['draft_id'], 'archived')
+        logger.info(f"Draft {draft['draft_id']} archived")
     
     async def _handle_chat(self, draft: Dict[str, Any]):
         """Handle opening chat for a draft."""

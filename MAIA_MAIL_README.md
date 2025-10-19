@@ -130,7 +130,7 @@ CREATE TABLE email_drafts (
     version INTEGER DEFAULT 1,
     
     -- Status
-    status TEXT DEFAULT 'pending',  -- pending/sent/skipped
+    status TEXT DEFAULT 'pending',  -- pending/sent/skipped/archived
     created_time TEXT NOT NULL,
     reviewed_time TEXT,
     sent_time TEXT,
@@ -169,13 +169,14 @@ graph TD
     B --> C[List All Drafts]
     C --> D{User Action}
     D -->|Enter| E[Open Draft Chat]
-    D -->|r| F[Resolve - Mark as Done]
+    D -->|a| F[Archive - Clear from Queue]
     E --> G[Refine with AI]
     G --> H[Generate Draft #2, #3...]
     H --> I[/send to send draft]
     I --> J[Sent Successfully]
-    G --> N[Save to Learning]
+    I --> N[Save to Learning]
     N --> C
+    F --> C
 ```
 
 ## Usage Examples
@@ -203,7 +204,7 @@ maia mail -ws trass
 # Shows TUI with:
 # ╭──────────────────────────────────────────────────────╮
 # │  Progress: [████████░░░░] 2/5 resolved (40%)         │
-# │  Status: ✅ 2 sent  •  ⏳ 3 pending  •  ⏭️  0 skipped │
+# │  Status: ✅ 2 sent  •  🗄️ 0 archived  •  ⏳ 3 pending  •  ⏭️  0 skipped │
 # ╰──────────────────────────────────────────────────────╯
 ```
 
@@ -315,7 +316,7 @@ For automated processing every 30 minutes:
 
 - `↑/↓` - Navigate draft list
 - `Enter` - Open draft chat to review/refine
-- `r` - Resolve draft (✅ if sent, ⏭️ if not)
+- `a` - Archive draft (clear from queue 🗄️)
 - `q` - Quit
 
 ### Draft Chat
