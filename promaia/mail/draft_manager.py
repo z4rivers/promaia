@@ -114,6 +114,10 @@ class DraftManager:
         subject = draft.get('inbound_subject', '')
         safety_string = subject[:5] if len(subject) >= 5 else subject
         
+        # Initialize draft history with first version
+        initial_history = {1: draft.get('draft_body', '')}
+        draft_history = json.dumps(initial_history)
+        
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -125,9 +129,9 @@ class DraftManager:
                         pertains_to_me, is_spam, requires_response, classification_reasoning,
                         draft_subject, draft_body, draft_body_html,
                         response_context, system_prompt, ai_model,
-                        draft_number, chat_session_id, previous_draft_id, version,
+                        draft_number, chat_session_id, previous_draft_id, version, draft_history,
                         status, created_time, safety_string, thread_context, message_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     draft_id,
                     draft.get('workspace'),
@@ -152,6 +156,7 @@ class DraftManager:
                     draft.get('chat_session_id'),
                     draft.get('previous_draft_id'),
                     draft.get('version', 1),
+                    draft_history,
                     draft.get('status', 'pending'),
                     draft.get('created_time', datetime.now(timezone.utc).isoformat()),
                     safety_string,
