@@ -348,8 +348,13 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
         print_text(f"⚠️  Ready to send Draft #{draft_num}", style="bold yellow")
         print_text(f"Subject: {draft['inbound_subject']}", style="yellow")
         print_text(f"\nType the first 5 characters of the subject to confirm: '{draft['safety_string']}'", style="yellow")
+        print_text(f"Or type 'cancel' (or press Enter) to abort", style="dim")
         
         confirmation = input("\nConfirm: ").strip()
+        
+        if not confirmation or confirmation.lower() == 'cancel':
+            print_text("\n↩️  Send cancelled\n", style="cyan")
+            return False
         
         if confirmation != draft['safety_string']:
             print_text("\n❌ Confirmation failed\n", style="red")
