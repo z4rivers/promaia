@@ -9,7 +9,7 @@ from datetime import datetime
 
 from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
-from promaia.utils.formatting import print_text, print_separator
+from promaia.utils.display import print_text, print_separator
 
 logger = logging.getLogger(__name__)
 
