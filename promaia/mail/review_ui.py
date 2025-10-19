@@ -33,7 +33,7 @@ class EmailReviewUI:
         """Clear terminal screen."""
         os.system('clear' if os.name != 'nt' else 'cls')
     
-    def _get_keystroke(self) -> str:
+    async def _get_keystroke(self) -> str:
         """Capture a single keystroke without requiring Enter."""
         from prompt_toolkit.application import Application
         from prompt_toolkit.layout import Layout
@@ -117,7 +117,7 @@ class EmailReviewUI:
         )
         
         try:
-            app.run()
+            await app.run_async()
             return result['value'] or ''
         except KeyboardInterrupt:
             return 'q'
@@ -331,7 +331,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                     print("\nNavigation: ↑/↓ | Enter or number to view | q quit")
                     
                     # Capture keystroke
-                    action = self._get_keystroke()
+                    action = await self._get_keystroke()
                     
                     if action == 'q':
                         break
@@ -354,7 +354,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 elif current_view == 'detail':
                     print(self._render_draft_detail(all_drafts[current_selection]))
                     
-                    action = self._get_keystroke()
+                    action = await self._get_keystroke()
                     
                     if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'list'
@@ -383,7 +383,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 elif current_view == 'context':
                     print(self._render_context_view(all_drafts[current_selection]))
                     
-                    action = self._get_keystroke()
+                    action = await self._get_keystroke()
                     if action == 'b' or action == 'q' or action == 'escape':
                         current_view = 'detail'
                         
