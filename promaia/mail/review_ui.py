@@ -26,7 +26,6 @@ class EmailReviewUI:
         self.draft_manager = DraftManager()
         self.session_stats = {
             'sent': 0,
-            'rejected': 0,
             'pending': 0
         }
     
@@ -120,6 +119,12 @@ class EmailReviewUI:
                 result['value'] = str(num)
                 event.app.exit()
         
+        # Resolve key
+        @kb.add('r')
+        def _(event):
+            result['value'] = 'r'
+            event.app.exit()
+        
         # Create minimal application to capture keystroke
         app = Application(
             layout=Layout(Window(FormattedTextControl(text=''))),
@@ -139,11 +144,10 @@ class EmailReviewUI:
         stats = {
             'total': len(drafts),
             'sent': sum(1 for d in drafts if d.get('status') == 'sent'),
-            'rejected': sum(1 for d in drafts if d.get('status') == 'rejected'),
             'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
             'skipped': sum(1 for d in drafts if d.get('status') == 'skipped'),
         }
-        stats['resolved'] = stats['sent'] + stats['rejected']
+        stats['resolved'] = stats['sent'] + stats['skipped']
         if stats['total'] > 0:
             stats['percent'] = int((stats['resolved'] / stats['total']) * 100)
         else:
@@ -162,7 +166,7 @@ class EmailReviewUI:
 │  Maia Mail - Draft Review Queue                                                     │
 │                                                                                      │
 │  Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)        │
-│  Status: ✅ {stats['sent']} sent  •  ❌ {stats['rejected']} rejected  •  ⏳ {stats['pending']} pending  •  ⏭️  {stats['skipped']} skipped   │
+│  Status: ✅ {stats['sent']} sent  •  ⏳ {stats['pending']} pending  •  ⏭️  {stats['skipped']} skipped   │
 ╰──────────────────────────────────────────────────────────────────────────────────────╯
 """
     
@@ -174,8 +178,6 @@ class EmailReviewUI:
             # Status icon
             if draft.get('status') == 'sent':
                 icon = '✅'
-            elif draft.get('status') == 'rejected':
-                icon = '❌'
             elif draft.get('status') == 'skipped':
                 icon = '⏭️'
             else:
@@ -299,7 +301,7 @@ Generated:   {draft.get('created_time', 'unknown')}
   ACTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  [s] Send  [c] Chat  [r] Reject  [v] Context  [b] Back  [q] Quit
+  [Enter] Chat  [r] Resolve  [v] Context  [b] Back  [q] Quit
 
 """
     
@@ -357,7 +359,7 @@ Generated:   {draft.get('created_time', 'unknown')}
                 print()
                 
                 print(self._render_review_list(all_drafts, current_selection))
-                print("\nNavigation: ↑/↓ | Enter or number to review | q quit")
+                print("\nNavigation: ↑/↓ | Enter or number to review | r resolve | q quit")
                 
                 # Capture keystroke
                 action = await self._get_keystroke()
@@ -368,6 +370,13 @@ Generated:   {draft.get('created_time', 'unknown')}
                     # Open draft chat for selected draft
                     await self._handle_chat(all_drafts[current_selection])
                     # Reload draft after chat
+                    updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
+                    all_drafts[current_selection] = updated_draft
+                    stats = self._calculate_stats(all_drafts)
+                elif action == 'r':
+                    # Resolve: if sent, keep as sent (✅); otherwise mark as skipped (⏭️)
+                    await self._handle_resolve(all_drafts[current_selection])
+                    # Reload draft after resolving
                     updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
                     all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
@@ -403,7 +412,7 @@ Generated:   {draft.get('created_time', 'unknown')}
         print()
         print_text(
             f"✅ Session complete: {final_stats['sent']} sent, "
-            f"{final_stats['rejected']} rejected, {final_stats['pending']} pending",
+            f"{final_stats['skipped']} skipped, {final_stats['pending']} pending",
             style="green"
         )
     
@@ -436,12 +445,17 @@ Generated:   {draft.get('created_time', 'unknown')}
             input()
             return
         
+        # Format the draft body to remove hard line breaks before sending
+        from promaia.mail.response_generator import ResponseGenerator
+        response_gen = ResponseGenerator()
+        formatted_body = response_gen._format_email_body(draft['draft_body'])
+        
         sender = GmailSender(draft['workspace'], gmail_dbs[0].database_id)
         success = await sender.send_reply(
             thread_id=draft['thread_id'],
             message_id=draft['message_id'],
             subject=draft['draft_subject'],
-            body_text=draft['draft_body']
+            body_text=formatted_body
         )
         
         if success:
@@ -455,6 +469,24 @@ Generated:   {draft.get('created_time', 'unknown')}
             print_text("❌ Failed to send", style="red")
         
         input("\nPress Enter to continue...")
+    
+    async def _handle_resolve(self, draft: Dict[str, Any]):
+        """
+        Handle resolving a draft.
+        
+        Logic:
+        - If already sent (✅), keep as sent
+        - If not sent, mark as skipped (⏭️)
+        """
+        current_status = draft.get('status')
+        
+        if current_status == 'sent':
+            # Already sent, keep it as sent
+            logger.info(f"Draft {draft['draft_id']} already sent, keeping as sent")
+        else:
+            # Not sent, mark as skipped
+            self.draft_manager.update_draft_status(draft['draft_id'], 'skipped')
+            logger.info(f"Draft {draft['draft_id']} resolved without sending, marked as skipped")
     
     async def _handle_chat(self, draft: Dict[str, Any]):
         """Handle opening chat for a draft."""

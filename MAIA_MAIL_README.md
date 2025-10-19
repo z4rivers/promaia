@@ -130,7 +130,7 @@ CREATE TABLE email_drafts (
     version INTEGER DEFAULT 1,
     
     -- Status
-    status TEXT DEFAULT 'pending',  -- pending/sent/rejected/edited
+    status TEXT DEFAULT 'pending',  -- pending/sent/skipped
     created_time TEXT NOT NULL,
     reviewed_time TEXT,
     sent_time TEXT,
@@ -168,16 +168,12 @@ graph TD
     A[Launch Review UI] --> B[Show Progress 8/14]
     B --> C[List All Drafts]
     C --> D{User Action}
-    D -->|Enter| E[View Full Detail]
-    E --> F{Action}
-    F -->|s| G[Send with Confirmation]
-    F -->|c| H[Open Draft Chat]
-    F -->|r| I[Reject/Skip]
-    F -->|v| J[View Context Sources]
-    H --> K[Refine with AI]
-    K --> L[Generate Draft #2, #3...]
-    L --> M[/send 2]
-    M --> G
+    D -->|Enter| E[Open Draft Chat]
+    D -->|r| F[Resolve - Mark as Done]
+    E --> G[Refine with AI]
+    G --> H[Generate Draft #2, #3...]
+    H --> I[/send to send draft]
+    I --> J[Sent Successfully]
     G --> N[Save to Learning]
     N --> C
 ```
@@ -207,7 +203,7 @@ maia mail -ws trass
 # Shows TUI with:
 # ╭──────────────────────────────────────────────────────╮
 # │  Progress: [████████░░░░] 2/5 resolved (40%)         │
-# │  Status: ✅ 2 sent  •  ❌ 0 rejected  •  ⏳ 3 pending │
+# │  Status: ✅ 2 sent  •  ⏳ 3 pending  •  ⏭️  0 skipped │
 # ╰──────────────────────────────────────────────────────╯
 ```
 
@@ -318,12 +314,8 @@ For automated processing every 30 minutes:
 ### Review UI
 
 - `↑/↓` - Navigate draft list
-- `Enter` - View draft detail
-- `s` - Send draft (with confirmation)
-- `c` - Open draft chat
-- `r` - Reject/skip draft
-- `v` - View context sources
-- `Esc` - Back to list / Exit
+- `Enter` - Open draft chat to review/refine
+- `r` - Resolve draft (✅ if sent, ⏭️ if not)
 - `q` - Quit
 
 ### Draft Chat

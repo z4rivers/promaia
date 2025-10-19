@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email import policy
 import re
 
 try:
@@ -1458,10 +1460,17 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             True if sent successfully, False otherwise
         """
         try:
-            # Create the email message
-            message = MIMEText(body_text)
+            # Create the email message with format=flowed to prevent hard wrapping
+            # Use email.policy.default which doesn't add hard line breaks
+            message = MIMEText(body_text, _charset='utf-8')
+            
+            # Prevent MIMEText from adding line breaks by using a custom policy
+            # The default email generator wraps at 78 chars - we need to disable this
+            message.set_param('format', 'flowed')
+            
             message['to'] = to
             message['subject'] = subject
+            message['Content-Type'] = 'text/plain; charset=utf-8; format=flowed'
             
             # Add threading headers for replies
             if in_reply_to:
@@ -1472,8 +1481,16 @@ CAUTION: This email originated from outside of the organisation. Do not click li
                 # If no references provided but we have in-reply-to, use that as references
                 message['References'] = in_reply_to
             
-            # Encode the message
-            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            # Encode the message using policy that prevents line wrapping
+            from email import generator
+            from io import BytesIO
+            
+            # Use policy with max_line_length=None to prevent wrapping
+            policy_no_wrap = policy.EmailPolicy(max_line_length=None)
+            fp = BytesIO()
+            g = generator.BytesGenerator(fp, policy=policy_no_wrap)
+            g.flatten(message)
+            raw_message = base64.urlsafe_b64encode(fp.getvalue()).decode('utf-8')
             
             # Build the send request
             send_request = {'raw': raw_message}

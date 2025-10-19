@@ -4,6 +4,7 @@ Response Generator - Generates email responses using AI with learning.
 Uses learned patterns from previous successful responses to match user's style.
 """
 import logging
+import re
 from typing import Dict, Any, Optional
 
 from promaia.mail.learning_system import EmailResponseLearningSystem
@@ -37,6 +38,8 @@ Write a professional, concise email response that:
 - Is appropriately concise unless detail is needed
 - Maintains the conversation flow
 
+IMPORTANT: Write in natural flowing paragraphs. Do NOT add hard line breaks within paragraphs. Let the email client handle text wrapping. Only use line breaks between distinct paragraphs or list items.
+
 Return ONLY the email body text, ready to send. Do not include subject line or headers."""
     
     def __init__(self):
@@ -44,6 +47,91 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
         self.learning_system = EmailResponseLearningSystem()
         self.ai_client = None
         self.model_type = None
+    
+    def _format_email_body(self, text: str) -> str:
+        """
+        Remove unnecessary hard line breaks from email body while preserving intentional formatting.
+        
+        This fixes the issue where AI generates text with hard wraps at ~70-80 characters,
+        which looks bad in modern email clients. We want continuous paragraphs that wrap naturally.
+        
+        Rules:
+        - Remove single line breaks within paragraphs (hard wraps)
+        - Preserve double line breaks (paragraph separators)
+        - Remove hard breaks within list items
+        - Preserve line breaks between list items
+        - Preserve intentional formatting like signatures
+        """
+        if not text:
+            return text
+        
+        # Split into lines
+        lines = text.split('\n')
+        formatted_lines = []
+        current_paragraph = []
+        in_list_item = False
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            
+            # Empty line = paragraph break
+            if not stripped:
+                # Flush current paragraph
+                if current_paragraph:
+                    formatted_lines.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                in_list_item = False
+                # Add paragraph break (single empty line)
+                if formatted_lines and formatted_lines[-1] != '':
+                    formatted_lines.append('')
+                continue
+            
+            # Check if this is a list item start (numbered or bulleted)
+            is_list_start = re.match(r'^\d+[\.\)]\s', stripped) or re.match(r'^[-\*•]\s', stripped)
+            
+            if is_list_start:
+                # Flush previous paragraph/list item
+                if current_paragraph:
+                    formatted_lines.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                # Start new list item
+                current_paragraph = [stripped]
+                in_list_item = True
+                continue
+            
+            # Salutations and closings - preserve as separate lines
+            if stripped in ['Hi!', 'Hello!', 'Thanks!', 'Best!', 'Cheers!', 'Best regards,', 'Thanks,', 'Cheers,', 'Best,']:
+                # Flush current paragraph
+                if current_paragraph:
+                    formatted_lines.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                formatted_lines.append(stripped)
+                in_list_item = False
+                continue
+            
+            # Check if this looks like a signature line
+            if len(stripped) < 40 and i == len(lines) - 1:
+                # Last line and short - likely a signature
+                if current_paragraph:
+                    formatted_lines.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                formatted_lines.append(stripped)
+                continue
+            
+            # If we're in a list item or regular paragraph, add to current
+            current_paragraph.append(stripped)
+        
+        # Flush any remaining paragraph
+        if current_paragraph:
+            formatted_lines.append(' '.join(current_paragraph))
+        
+        # Join with single newlines (paragraphs separated by blank lines)
+        result = '\n'.join(formatted_lines)
+        
+        # Clean up any excessive blank lines (max 1 blank line between paragraphs)
+        result = re.sub(r'\n\n\n+', '\n\n', result)
+        
+        return result.strip()
     
     def _get_ai_client(self):
         """Get AI client from existing infrastructure."""
@@ -135,6 +223,9 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
             else:
                 raise ValueError(f"Unknown model type: {self.model_type}")
             
+            # Format the email body to remove hard line breaks
+            response_body = self._format_email_body(response_body)
+            
             # Prepare response subject (add RE: if not present)
             response_subject = subject
             if not response_subject.upper().startswith('RE:'):
@@ -190,6 +281,8 @@ Please revise the draft according to the user's feedback while maintaining:
 - Clarity and conciseness
 - Appropriate context from the conversation
 
+IMPORTANT: Write in natural flowing paragraphs. Do NOT add hard line breaks within paragraphs. Let the email client handle text wrapping. Only use line breaks between distinct paragraphs or list items.
+
 Return ONLY the revised email body text."""
             
             # Get AI client
@@ -217,6 +310,9 @@ Return ONLY the revised email body text."""
                     }]
                 )
                 refined_body = response.choices[0].message.content.strip()
+            
+            # Format the refined body to remove hard line breaks
+            refined_body = self._format_email_body(refined_body)
             
             logger.info(f"✅ Refined response based on feedback")
             

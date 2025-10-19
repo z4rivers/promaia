@@ -79,7 +79,7 @@ You'll see:
 │  Maia Mail - Draft Review Queue                     │
 │                                                      │
 │  Progress: [░░░░░░░░░░░░] 0/3 resolved (0%)        │
-│  Status: ✅ 0 sent  •  ❌ 0 rejected  •  ⏳ 3 pending│
+│  Status: ✅ 0 sent  •  ⏳ 3 pending  •  ⏭️  0 skipped│
 ╰──────────────────────────────────────────────────────╯
 
 ▶ [1] ⏳ RE: Q4 Timeline Discussion
@@ -90,11 +90,8 @@ You'll see:
 
 **Navigation:**
 - `↑/↓` - Navigate drafts
-- `Enter` - View full detail
-- `s` - Send (with confirmation)
-- `c` - Open chat to refine
-- `r` - Reject/skip
-- `v` - View context sources
+- `Enter` - Open chat to review/refine
+- `r` - Resolve (✅ if sent, ⏭️ if not)
 - `q` - Quit
 
 ## 📖 Detailed Workflow
@@ -134,9 +131,8 @@ Generated:   2025-10-19T12:34:56Z
   ACTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  s  - Send this draft (with confirmation)
-  c  - Open chat to refine the draft
-  r  - Reject (won't send, mark as handled)
+  Enter - Open chat to review/refine
+  r  - Resolve (⏭️ skipped if not sent)
   v  - View full context sources
   Esc - Back to list
 ```

@@ -209,8 +209,7 @@ class DraftChatInterface:
         Supports commands:
         - /send [draft-number] - Send specified draft
         - /q - Quit to review queue
-        - /resolve - Mark as resolved
-        - /reject - Mark as rejected
+        - /resolve or /r - Mark as resolved
         - Regular chat to refine the draft
         """
         try:
@@ -268,8 +267,7 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                 print()
                 print_text("Commands:", style="dim")
                 print_text("   /mc - Load message context (recommended before replying)", style="dim")
-                print_text("   /resolve - Mark as resolved", style="dim")
-                print_text("   /reject - Mark as rejected", style="dim")
+                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             elif draft_body and draft_body != 'n/a':
                 # Normal draft with AI-generated response
@@ -286,15 +284,14 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                 
                 print_text("💬 Chat to refine the draft, or use commands:", style="dim")
                 print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
-                print_text("   /resolve - Mark as resolved without sending", style="dim")
-                print_text("   /reject - Reject this draft", style="dim")
+                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped if not sent)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             else:
                 # Edge case: draft exists but no body (shouldn't happen normally)
                 print_text("⚠️  No draft available", style="yellow")
                 print()
                 print_text("Commands:", style="dim")
-                print_text("   /resolve - Mark as resolved", style="dim")
+                print_text("   /resolve or /r - Mark as resolved (⏭️ skipped)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             
             print()
@@ -303,6 +300,8 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
             while True:
                 try:
                     user_input = input("💬 You: ").strip()
+                    # Remove any carriage returns or other control characters
+                    user_input = user_input.replace('\r', '').replace('\n', ' ').strip()
                     
                     if not user_input:
                         continue
@@ -327,18 +326,18 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                             continue
                         
                         elif cmd in ['/resolve', '/r']:
-                            self.draft_manager.update_draft_status(self.draft_id, 'resolved')
-                            print_text("\n✅ Marked as resolved\n", style="green")
-                            break
-                        
-                        elif cmd == '/reject':
-                            self.draft_manager.update_draft_status(self.draft_id, 'rejected')
-                            print_text("\n❌ Marked as rejected\n", style="yellow")
+                            # Resolve: if sent, keep as sent (✅); otherwise mark as skipped (⏭️)
+                            draft = self.draft_manager.get_draft(self.draft_id)
+                            if draft and draft.get('status') == 'sent':
+                                print_text("\n✅ Already sent, keeping as sent\n", style="green")
+                            else:
+                                self.draft_manager.update_draft_status(self.draft_id, 'skipped')
+                                print_text("\n⏭️  Marked as skipped\n", style="yellow")
                             break
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available: /send [number], /mc, /resolve, /reject, /q", style="dim")
+                            print_text("Available: /send [number], /mc, /resolve, /q", style="dim")
                             continue
                     
                     # Check if this is a skipped draft and user wants to reply
@@ -500,6 +499,9 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
         
         # Get the draft to send
         draft_to_send = self.artifacts[draft_num]
+        
+        # Format the draft to remove hard line breaks before sending
+        draft_to_send = self.response_generator._format_email_body(draft_to_send)
         
         # Safety confirmation
         print()
