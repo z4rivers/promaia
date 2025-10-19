@@ -1,12 +1,7 @@
 """
-Draft Chat Interface - The main review interface for email drafts.
+Draft Chat Interface - Specialized chat for refining email drafts.
 
-This IS the draft review screen. When you select a draft from the list,
-you enter this interface which shows:
-- The inbound message
-- The AI's draft response (or explanation if no response needed)
-- Chat interface for refinement
-- Commands: /send, /quit, /resolve, /reject
+Shows inbound message at top, then uses regular chat with artifacts.
 """
 import asyncio
 import logging
@@ -18,7 +13,8 @@ from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
 from promaia.mail.response_generator import ResponseGenerator
 from promaia.mail.learning_system import EmailResponseLearningSystem
-from promaia.utils.display import print_text
+from promaia.mail.context_builder import ResponseContext
+from promaia.utils.display import print_text, print_separator
 from promaia.utils.timezone_utils import to_local, get_local_timezone_name, now_utc
 
 logger = logging.getLogger(__name__)
@@ -26,10 +22,8 @@ logger = logging.getLogger(__name__)
 
 class DraftChatInterface:
     """
-    The main draft review and refinement interface.
-    
-    This combines viewing the email, the draft, and refining/sending it
-    all in one conversational interface.
+    Specialized chat interface for refining email drafts.
+    Supports inline artifacts and draft-specific commands.
     """
     
     def __init__(self, draft_id: str, workspace: str):
@@ -49,10 +43,6 @@ class DraftChatInterface:
         # Artifacts: draft_number -> draft_text
         self.artifacts = {}
         self.current_artifact_number = 0
-    
-    def _clear_screen(self):
-        """Clear terminal screen."""
-        os.system('clear' if os.name != 'nt' else 'cls')
     
     def _clean_email_body(self, body: str) -> str:
         """Remove redundant email headers from body content."""
@@ -77,113 +67,53 @@ class DraftChatInterface:
         
         return '\n'.join(cleaned_lines).strip()
     
-    def _render_interface(self, draft: Dict[str, Any], show_draft: bool = True):
+    def render_artifact(self, draft_number: int, draft_text: str) -> str:
         """
-        Render the full draft review interface.
+        Render draft as a numbered artifact (like Claude).
         
         Args:
-            draft: Draft data
-            show_draft: Whether to show the latest artifact number in the display
-        """
-        self._clear_screen()
-        
-        # Format date
-        try:
-            received_dt = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
-            local_received = to_local(received_dt)
-            tz_name = get_local_timezone_name()
-            received_str = local_received.strftime(f'%A, %B %d, %Y at %I:%M %p {tz_name}')
-        except:
-            received_str = draft.get('inbound_date', 'Unknown')
-        
-        # Clean email body
-        cleaned_body = self._clean_email_body(draft.get('inbound_body', 'No body available'))
-        
-        # Determine if this needs a response
-        requires_response = draft.get('requires_response', True)
-        draft_body = draft.get('draft_body', '')
-        
-        print(f"""
-╭──────────────────────────────────────────────────────────────────────────────────────╮
-│  Draft Review Chat - {draft.get('inbound_subject', 'No Subject')[:50]:50}                 │
-╰──────────────────────────────────────────────────────────────────────────────────────╯
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  INBOUND MESSAGE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-From:     {draft.get('inbound_from', 'Unknown')}
-Subject:  {draft.get('inbound_subject', 'No Subject')}
-Date:     {received_str}
-Thread:   {draft.get('message_count', 1)} message(s) in thread
-
-{cleaned_body}
-""")
-        
-        if requires_response and draft_body:
-            # Show draft as an artifact
-            word_count = len(draft_body.split())
-            artifact_num = self.current_artifact_number if show_draft else ""
-            artifact_label = f" #{artifact_num}" if artifact_num else ""
+            draft_number: Artifact number
+            draft_text: Draft content
             
-            print(f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  DRAFT RESPONSE{artifact_label} ({word_count} words)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-{draft_body}
-""")
-        else:
-            # AI determined no response needed - show explanation
-            print(f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  AI ASSESSMENT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-{draft_body if draft_body else 'No response needed for this email.'}
-
-Classification:
-  Pertains to me: {draft.get('pertains_to_me', 'Unknown')}
-  Is spam: {draft.get('is_spam', 'Unknown')}
-  Requires response: {draft.get('requires_response', 'Unknown')}
-
-Reasoning: {draft.get('classification_reasoning', 'No reasoning provided')}
-""")
+        Returns:
+            Formatted artifact string
+        """
+        lines = draft_text.split('\n')
+        wrapped_lines = []
         
-        # Show commands
-        if requires_response and draft_body:
-            print("""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  COMMANDS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  /send        Send the current draft
-  /quit        Return to draft list (or just type /q)
-  /resolve     Mark as resolved without sending
-  /reject      Reject this draft
-  
-  Or chat naturally to refine the draft - each refinement creates a new artifact.
-
-""")
-        else:
-            print("""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  COMMANDS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  /quit        Return to draft list (or just type /q)
-  /resolve     Mark as resolved without sending
-  
-  You can also chat to request a draft if you think one is needed.
-
-""")
+        for line in lines:
+            if len(line) <= 78:
+                wrapped_lines.append(f"│ {line:<78} │")
+            else:
+                # Wrap long lines
+                while len(line) > 78:
+                    wrapped_lines.append(f"│ {line[:78]:<78} │")
+                    line = line[78:]
+                if line:
+                    wrapped_lines.append(f"│ {line:<78} │")
+        
+        artifact = [
+            f"╭──── Draft #{draft_number} ────────────────────────────────────────────────────────╮",
+            "│                                                                                  │"
+        ]
+        artifact.extend(wrapped_lines)
+        artifact.extend([
+            "│                                                                                  │",
+            "╰──────────────────────────────────────────────────────────────────────────────────╯"
+        ])
+        
+        return '\n'.join(artifact)
     
     async def run_chat_loop(self):
         """
-        Main chat loop for the draft review interface.
+        Main chat loop for refining drafts.
         
-        This is where the user reviews the email, sees the draft,
-        and can refine/send/reject it through chat commands.
+        Supports commands:
+        - /send [draft-number] - Send specified draft
+        - /q - Quit to review queue
+        - /resolve - Mark as resolved
+        - /reject - Mark as rejected
+        - Regular chat to refine the draft
         """
         try:
             # Load current draft
@@ -193,89 +123,136 @@ Reasoning: {draft.get('classification_reasoning', 'No reasoning provided')}
                 print_text(f"❌ Draft {self.draft_id} not found", style="red")
                 return
             
-            # Initialize with current draft as artifact #1
+            # Format date
+            try:
+                received_dt = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
+                local_received = to_local(received_dt)
+                tz_name = get_local_timezone_name()
+                received_str = local_received.strftime(f'%A, %B %d, %Y at %I:%M %p {tz_name}')
+            except:
+                received_str = draft.get('inbound_date', 'Unknown')
+            
+            # Clean email body
+            cleaned_body = self._clean_email_body(draft.get('inbound_body', ''))
+            
+            # Display inbound message header (once at top)
+            print()
+            print_separator()
+            print(f"""
+╭──────────────────────────────────────────────────────────────────────────────────────╮
+│  INBOUND MESSAGE                                                                     │
+╰──────────────────────────────────────────────────────────────────────────────────────╯
+
+From:     {draft['inbound_from']}
+Subject:  {draft['inbound_subject']}
+Date:     {received_str}
+Thread:   {draft.get('message_count', 1)} message(s) in thread
+
+{cleaned_body}
+""")
+            print_separator()
+            print()
+            
+            # Check if response is needed
             requires_response = draft.get('requires_response', True)
             draft_body = draft.get('draft_body', '')
             
             if requires_response and draft_body:
+                # Display current draft as artifact #1
                 self.current_artifact_number = 1
                 self.artifacts[1] = draft_body
+                print(self.render_artifact(1, draft_body))
+                print()
+                
+                print_text("💬 Chat to refine the draft, or use commands:", style="dim")
+                print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
+                print_text("   /resolve - Mark as resolved without sending", style="dim")
+                print_text("   /reject - Reject this draft", style="dim")
+                print_text("   /q - Return to draft list", style="dim")
+            else:
+                # Show AI assessment
+                print_text("AI ASSESSMENT:", style="bold yellow")
+                print()
+                print(draft_body if draft_body else "No response needed for this email.")
+                print()
+                print_text(f"Classification:", style="dim")
+                print_text(f"  Pertains to me: {draft.get('pertains_to_me', 'Unknown')}", style="dim")
+                print_text(f"  Is spam: {draft.get('is_spam', 'Unknown')}", style="dim")
+                print_text(f"  Requires response: {draft.get('requires_response', 'Unknown')}", style="dim")
+                if draft.get('classification_reasoning'):
+                    print_text(f"  Reasoning: {draft.get('classification_reasoning')}", style="dim")
+                print()
+                print_text("Commands:", style="dim")
+                print_text("   /resolve - Mark as resolved", style="dim")
+                print_text("   /q - Return to draft list", style="dim")
             
-            # Display interface
-            self._render_interface(draft, show_draft=True)
+            print()
             
             # Chat loop
             while True:
                 try:
-                    user_input = input("💬 ").strip()
+                    user_input = input("💬 You: ").strip()
                     
                     if not user_input:
                         continue
                     
                     # Handle commands
                     if user_input.startswith('/'):
-                        command = user_input.lower()
+                        cmd = user_input.lower()
                         
-                        if command in ['/q', '/quit']:
+                        if cmd in ['/q', '/quit']:
                             print_text("\n↩️  Returning to draft list...\n", style="cyan")
                             break
                         
-                        elif command in ['/send', '/s']:
-                            should_exit = await self._handle_send_command(draft)
+                        elif cmd.startswith('/send'):
+                            should_exit = await self._handle_send_command(user_input, draft)
                             if should_exit:
                                 break
-                            # Redraw interface
-                            self._render_interface(draft, show_draft=True)
                             continue
                         
-                        elif command in ['/resolve', '/r']:
+                        elif cmd in ['/resolve', '/r']:
                             self.draft_manager.update_draft_status(self.draft_id, 'resolved')
                             print_text("\n✅ Marked as resolved\n", style="green")
                             break
                         
-                        elif command in ['/reject']:
+                        elif cmd == '/reject':
                             self.draft_manager.update_draft_status(self.draft_id, 'rejected')
                             print_text("\n❌ Marked as rejected\n", style="yellow")
                             break
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available commands: /send, /quit, /resolve, /reject", style="dim")
-                            input("\nPress Enter to continue...")
-                            self._render_interface(draft, show_draft=True)
+                            print_text("Available: /send [number], /resolve, /reject, /q", style="dim")
                             continue
                     
-                    # Regular chat - refine the draft or create one
-                    print_text("\n🤔 Processing your request...", style="cyan")
-                    
                     if not requires_response or not draft_body:
-                        # User is requesting a draft be created
-                        print_text("Creating a draft based on your feedback...", style="cyan")
-                        # TODO: Implement draft creation from user request
-                        print_text("⚠️  Draft creation from chat not yet implemented", style="yellow")
-                        input("\nPress Enter to continue...")
-                        self._render_interface(draft, show_draft=True)
-                    else:
-                        # Refine existing draft
-                        refined_draft = await self._refine_draft(draft, user_input)
-                        
-                        # Increment artifact number
-                        self.current_artifact_number += 1
-                        self.artifacts[self.current_artifact_number] = refined_draft
-                        
-                        # Update draft in DB
-                        self.draft_manager.update_draft_body(
-                            self.draft_id,
-                            refined_draft,
-                            version=self.current_artifact_number
-                        )
-                        
-                        # Update local draft reference
-                        draft['draft_body'] = refined_draft
-                        
-                        # Redraw with new artifact
-                        self._render_interface(draft, show_draft=True)
-                        print_text(f"✅ Updated to Draft #{self.current_artifact_number}", style="green")
+                        print_text("⚠️  No draft to refine. Use /resolve or /q", style="yellow")
+                        continue
+                    
+                    # Regular chat - refine the draft
+                    print_text("🤔 Refining draft...", style="cyan")
+                    
+                    # Generate refined draft
+                    refined_draft = await self._refine_draft(draft, user_input)
+                    
+                    # Increment artifact number
+                    self.current_artifact_number += 1
+                    self.artifacts[self.current_artifact_number] = refined_draft
+                    
+                    # Display new artifact inline
+                    print()
+                    print(self.render_artifact(self.current_artifact_number, refined_draft))
+                    print()
+                    
+                    # Update draft in DB
+                    self.draft_manager.update_draft_body(
+                        self.draft_id,
+                        refined_draft,
+                        version=self.current_artifact_number
+                    )
+                    
+                    print_text(f"✅ Updated to Draft #{self.current_artifact_number}", style="green")
+                    print()
                     
                 except KeyboardInterrupt:
                     print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
@@ -333,26 +310,43 @@ Please provide the refined email draft incorporating the user's feedback. Return
             # Return current draft on error
             return self.artifacts.get(self.current_artifact_number, draft['draft_body'])
     
-    async def _handle_send_command(self, draft: Dict[str, Any]) -> bool:
+    async def _handle_send_command(self, command: str, draft: Dict[str, Any]) -> bool:
         """
-        Handle /send command.
+        Handle /send [draft-number] command.
         
         Args:
+            command: The /send command string
             draft: Draft data
             
         Returns:
             True if should exit chat, False to continue
         """
-        # Get the current draft to send
-        current_draft = self.artifacts.get(self.current_artifact_number, draft['draft_body'])
+        parts = command.split()
         
-        if not current_draft or not draft.get('requires_response'):
-            print_text("\n❌ No draft to send\n", style="red")
-            input("Press Enter to continue...")
+        # Default to current artifact if no number specified
+        if len(parts) == 1:
+            draft_num = self.current_artifact_number
+        elif len(parts) == 2:
+            try:
+                draft_num = int(parts[1])
+            except ValueError:
+                print_text("❌ Draft number must be an integer", style="red")
+                return False
+        else:
+            print_text("❌ Usage: /send [draft-number] (or just /send for current)", style="yellow")
             return False
         
+        if draft_num not in self.artifacts:
+            print_text(f"❌ Draft #{draft_num} not found", style="red")
+            print_text(f"   Available drafts: {list(self.artifacts.keys())}", style="dim")
+            return False
+        
+        # Get the draft to send
+        draft_to_send = self.artifacts[draft_num]
+        
         # Safety confirmation
-        print_text(f"\n⚠️  Ready to send draft", style="bold yellow")
+        print()
+        print_text(f"⚠️  Ready to send Draft #{draft_num}", style="bold yellow")
         print_text(f"Subject: {draft['inbound_subject']}", style="yellow")
         print_text(f"\nType the first 5 characters of the subject to confirm: '{draft['safety_string']}'", style="yellow")
         
@@ -360,7 +354,6 @@ Please provide the refined email draft incorporating the user's feedback. Return
         
         if confirmation != draft['safety_string']:
             print_text("\n❌ Confirmation failed\n", style="red")
-            input("Press Enter to continue...")
             return False
         
         print_text("\n📤 Sending email...", style="cyan")
@@ -375,7 +368,6 @@ Please provide the refined email draft incorporating the user's feedback. Return
         
         if not gmail_dbs:
             print_text("❌ No Gmail database found\n", style="red")
-            input("Press Enter to continue...")
             return False
         
         sender = GmailSender(draft['workspace'], gmail_dbs[0].database_id)
@@ -383,7 +375,7 @@ Please provide the refined email draft incorporating the user's feedback. Return
             thread_id=draft['thread_id'],
             message_id=draft['message_id'],
             subject=draft['draft_subject'],
-            body_text=current_draft
+            body_text=draft_to_send
         )
         
         if success:
@@ -399,9 +391,9 @@ Please provide the refined email draft incorporating the user's feedback. Return
                 },
                 "response": {
                     "subject": draft['draft_subject'],
-                    "body": current_draft,
+                    "body": draft_to_send,
                     "tone": "professional",
-                    "length": len(current_draft.split())
+                    "length": len(draft_to_send.split())
                 },
                 "metadata": {
                     "workspace": draft['workspace'],
@@ -411,9 +403,10 @@ Please provide the refined email draft incorporating the user's feedback. Return
             }
             self.learning_system.save_successful_response(pattern)
             
-            input("\nPress Enter to return to draft list...")
+            print()
+            print_text("↩️  Returning to draft list...", style="cyan")
+            print()
             return True
         else:
             print_text("❌ Failed to send\n", style="red")
-            input("Press Enter to continue...")
             return False
