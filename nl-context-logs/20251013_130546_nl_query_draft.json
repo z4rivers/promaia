@@ -1,0 +1,44 @@
+{
+  "user_query": "gmail and trass.tg discord entries in any workspace about a flights airlines",
+  "intent": {
+    "goal": "find entries about flights/airlines in gmail and discord channels",
+    "databases": [
+      "gmail",
+      "trass.tg"
+    ],
+    "search_terms": [
+      "flights",
+      "airlines"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    COALESCE(g.subject, '') as subject,\n    COALESCE(g.sender_name, '') as sender_name,\n    COALESCE(g.message_content, '') as message_content\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name IN ('gmail', 'tg')\nAND (\n    g.subject LIKE '%flight%' OR g.subject LIKE '%airline%'\n    OR g.message_content LIKE '%flight%' OR g.message_content LIKE '%airline%'\n    OR g.body_snippet LIKE '%flight%' OR g.body_snippet LIKE '%airline%'\n    OR u.title LIKE '%flight%' OR u.title LIKE '%airline%'\n)\nORDER BY u.created_time DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 1,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_1988092eb36134c2",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Viasat In-Flight Wi-Fi Service Payment Confirmation",
+      "created_time": "2025-08-06T12:09:27-06:00",
+      "subject": "Viasat In-Flight Wi-Fi Service Payment Confirmation",
+      "sender_name": "",
+      "message_content": "Southwest purchase email Thank you for your recent Inflight Internet purchase. We are proud to partner with Southwest Airlines in helping you get connected and make the most of your time onboard. Thanks again, Your friends at Viasat Inc. PURCHASE DATE: 2025-08-06 18:09:22 AIRLINE: Southwest Airlines FLIGHT NUMBER: SWA3123 DESCRIPTION OF SERVICE: SWA PED Premium Plan METHOD OF PAYMENT: MasterCard PURCHASE AMOUNT: 8.00 USD TRANSACTION ID: a0OVX00000FzMxR2AV You have received this email because you have purchased a Viasat product or service. To provide feedback regarding your inflight internet experience, please contact Southwest Airlines via phone, email, or in-app live chat. www.southwest.com | Contact Viasat Legal and Privacy This is a post-only mailing from Viasat Inc. Please do not attempt to reply to this message. Viasat Inc. 6155 El Camino Real Carlsbad, CA 92009 USA Copyright 2024 Viasat Inc. Freedom to stream with the best Wi-Fi in the sky."
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 1 entries from 1 databases"
+  },
+  "retries": 0
+}

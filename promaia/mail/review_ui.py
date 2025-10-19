@@ -141,6 +141,7 @@ class EmailReviewUI:
             'sent': sum(1 for d in drafts if d.get('status') == 'sent'),
             'rejected': sum(1 for d in drafts if d.get('status') == 'rejected'),
             'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
+            'skipped': sum(1 for d in drafts if d.get('status') == 'skipped'),
         }
         stats['resolved'] = stats['sent'] + stats['rejected']
         if stats['total'] > 0:
@@ -161,7 +162,7 @@ class EmailReviewUI:
 │  Maia Mail - Draft Review Queue                                                     │
 │                                                                                      │
 │  Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)        │
-│  Status: ✅ {stats['sent']} sent  •  ❌ {stats['rejected']} rejected  •  ⏳ {stats['pending']} pending   │
+│  Status: ✅ {stats['sent']} sent  •  ❌ {stats['rejected']} rejected  •  ⏳ {stats['pending']} pending  •  ⏭️  {stats['skipped']} skipped   │
 ╰──────────────────────────────────────────────────────────────────────────────────────╯
 """
     
@@ -175,6 +176,8 @@ class EmailReviewUI:
                 icon = '✅'
             elif draft.get('status') == 'rejected':
                 icon = '❌'
+            elif draft.get('status') == 'skipped':
+                icon = '⏭️'
             else:
                 icon = '⏳'
             
@@ -200,21 +203,30 @@ class EmailReviewUI:
             subject = draft.get('inbound_subject', 'No Subject')
             snippet = draft.get('inbound_snippet', '')[:80]
             
-            # Context count
-            try:
-                context_data = json.loads(draft.get('response_context', '{}'))
-                context_count = len(context_data.get('documents', []))
-            except:
-                context_count = 0
-            
-            # Word count
-            word_count = len(draft.get('draft_body', '').split())
-            
-            output.append(f"{selector} [{idx + 1}] {icon} {subject}")
-            output.append(f"       From: {from_name} | {date_str}")
-            output.append(f"       Preview: {snippet}...")
-            output.append(f"       Draft: {word_count} words | Context: {context_count} sources")
-            output.append("")
+            # Handle skipped drafts differently
+            if draft.get('status') == 'skipped':
+                reasoning = draft.get('classification_reasoning', 'No response needed')
+                output.append(f"{selector} [{idx + 1}] {icon} {subject}")
+                output.append(f"       From: {from_name} | {date_str}")
+                output.append(f"       Preview: {snippet}...")
+                output.append(f"       Draft: n/a  •  {reasoning}")
+                output.append("")
+            else:
+                # Context count
+                try:
+                    context_data = json.loads(draft.get('response_context', '{}'))
+                    context_count = len(context_data.get('documents', []))
+                except:
+                    context_count = 0
+                
+                # Word count
+                word_count = len(draft.get('draft_body', '').split())
+                
+                output.append(f"{selector} [{idx + 1}] {icon} {subject}")
+                output.append(f"       From: {from_name} | {date_str}")
+                output.append(f"       Preview: {snippet}...")
+                output.append(f"       Draft: {word_count} words | Context: {context_count} sources")
+                output.append("")
         
         return '\n'.join(output)
     

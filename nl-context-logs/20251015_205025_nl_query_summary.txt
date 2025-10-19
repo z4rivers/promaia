@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-15 20:50:25
+
+USER QUERY: trass gmail with term mgm or shipbob or merchant or support last 1 month
+
+INTENT PARSED:
+  Goal: find emails in Trass Gmail containing MGM, ShipBob, merchant, or support mentions from the past month
+  Databases: trass.gmail
+  Search Terms: mgm, shipbob, merchant, support
+  Date Filter: last 1 month
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 178
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 178 entries
+
+  Sample Results (first 5):
+    1. RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL (gmail)
+       Date: 2025-10-16
+    2. Jayshay _ and 1 other made updates in Trass Games (gmail)
+       Date: 2025-10-15
+    3. Re: Shopify POS 2025 Incentives (gmail)
+       Date: 2025-10-15
+    4. [Inspection report 1st out of 1] PSI - PO-0006 (Batch 2025-08) - Q2522020352 of Yeeps Pet Plush Toy (YP5-Dog,YP6-Cat,YP7-Chicken / PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)) is PASSED (gmail)
+       Date: 2025-10-15
+    5. Re: MAKER KIT SAMPLE - THINGS TO DISCUSS (gmail)
+       Date: 2025-10-15

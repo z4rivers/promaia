@@ -1,0 +1,55 @@
+{
+  "user_query": "trass.tg about flights airplanes checkin in for flights",
+  "intent": {
+    "goal": "find messages about flights and airplane check-in procedures",
+    "databases": [
+      "trass.tg"
+    ],
+    "search_terms": [
+      "flights",
+      "airplanes",
+      "checkin",
+      "check-in"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "airplane flight check-in procedures boarding airport",
+    "filters": {
+      "$and": [
+        {
+          "workspace": "trass"
+        },
+        {
+          "database_name": "tg"
+        }
+      ]
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 1,
+  "databases_in_results": [
+    "tg"
+  ],
+  "database_breakdown": {
+    "tg": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_1407529202168762459",
+      "similarity_score": 0.3252025842666626,
+      "database_name": "tg",
+      "workspace": "trass",
+      "created_time": "2025-08-20T00:58:32.425000+00:00",
+      "content_type": "tg"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 1 entries from 1 databases"
+  },
+  "retries": 0
+}

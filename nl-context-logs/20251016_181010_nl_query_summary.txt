@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-16 18:10:10
+
+USER QUERY: trass gmail and stories about pradip
+
+INTENT PARSED:
+  Goal: find emails and stories related to Pradip in the Trass workspace
+  Databases: trass.gmail, trass.stories
+  Search Terms: pradip
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 81
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 81 entries
+
+  Sample Results (first 5):
+    1. Re: Invoice for Time Period - 06th Oct to 15th Oct (gmail)
+       Date: 2025-10-15
+    2. Re: Shopify work consultation (gmail)
+       Date: 2025-10-13
+    3. Pradip  and 2 others made updates in Trass Games (gmail)
+       Date: 2025-10-13
+    4. Re: Invoice for Time Period - 06th Oct to 15th Oct (gmail)
+       Date: 2025-10-13
+    5. Re: Shopify work consultation (gmail)
+       Date: 2025-10-13

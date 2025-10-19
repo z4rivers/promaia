@@ -1,0 +1,146 @@
+{
+  "user_query": "trass gmail and cpj and stories about pradip",
+  "intent": {
+    "goal": "find emails and CPJ entries and stories related to Pradip",
+    "databases": [
+      "trass.gmail",
+      "trass.cpj",
+      "trass.stories"
+    ],
+    "search_terms": [
+      "pradip"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    COALESCE(g.subject, '') as subject,\n    COALESCE(g.sender_name, '') as sender_name,\n    COALESCE(g.sender_email, '') as sender_email,\n    COALESCE(g.message_content, '') as message_content\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nLEFT JOIN generic_content gc ON u.page_id = gc.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name IN ('gmail', 'cpj', 'stories')\nAND (\n    LOWER(u.title) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.subject, '')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.sender_name, '')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.sender_email, '')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.message_content, '')) LIKE '%pradip%'\n    OR LOWER(COALESCE(gc.metadata, '')) LIKE '%pradip%'\n)\nORDER BY u.created_time DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 79,
+  "databases_in_results": [
+    "cpj",
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 78,
+    "cpj": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199e7593b4ba3b28",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-15T15:39:32+05:30",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Hello Steve Hope you are doing well I have not received my payment yet for the above invoice Can you check and confirm when I can get the same at my end? On Mon, 13 Oct 2025 at 12:29, Pradip < pradipweweb@gmail.com > wrote: Thank you So much Steve On Sat, 11 Oct 2025 at 01:02, Steve Shockey < steve@trassgames.com > wrote: Hello Pradip, I will send payment now. Best, Steve"
+    },
+    {
+      "page_id": "msg_199ddd922342fd33",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T19:23:00+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Hello Koii, I\u2019ve added my replies to your comments. Please review them from your end and let me know if any further updates are needed. On Mon, 13 Oct 2025 at 12:17, Pradip < pradipweweb@gmail.com > wrote: Hello Koii, I will review your comment on Notion and will give you the reply on it. Thanks, On Sat, 11 Oct 2025 at 01:39, Koii Benvenutto < koii@trassgames.com > wrote: Hi Padip, I've added my comments to the notion doc. Once these are addressed we can move forward or consider additional app options. https://www.notion.so/Koii-x-Pradip-27ece8f7317a80c09637ce7a4d1c3a8f?source=copy_link#288ce8f7317a80218519e3a13f6873fb Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199dec6ee0ece8e7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Pradip  and 2 others made updates in Trass Games",
+      "created_time": "2025-10-13T18:13:22+00:00",
+      "subject": "Pradip  and 2 others made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "message_content": "96 See what\u2019s changed \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad \u034f \u200c \u00ad Trass Games Your Notion digest Ready to jump back in? Catch up on what\u2019s happened in Notion. Go to Notion \u2192 Most viewed in Trass Games @Last Friday jayshay-Koii-Steve Created by Jayshay _ \u2022 Recently edited Shopify Promo Code Commands Created by Eric Huynh \u2022 Recently edited @Last Monday Koii-jayshay Created by Jayshay _ \u2022 Recently edited \ud83e\udd1d Plan Meetings Created by Gus \u2022 Recently edited Pradip and 2 others made updates \ud83d\udcc4 Koii x Pradip P Pradip commented in this page I didn\u2019t see anything explicit in the settings about the app switching over automatically from \u201cBuy now\u201d to \u201cPre order\u201d, please verify that this feature is going to be not only present but reliable. Additionally, can we set a custom threshold at which this cutover will occur? Pradip The switch to \u201cPre-Order\u201d occurs automatically only when the stock reaches zero or is out of stock. P Pradip commented in this page The yeeps store does almost all of its sales in short bursts so any amount of downtime could potentially cost us hundreds of thousands of dollars. Pradip There will be no down time. P Pradip commented in this page Do you have experience with this app? Pradip Yes P Pradip commented in this page Does it allow for switchover once inventory reaches a specific point? Pradip The app switches over when inventory reaches zero or is out of stock \u2014 not at a specific threshold. P Pradip commented in this page Does it allow for custom styling? Pradip No, only limited options are available. \ud83d\udccb Product Team Technical Asset Work Eric Huynh mentioned you in this page Email @ Koii @ Eric Huynh , Missy, Gus Koii and Eric Huynh edited this page \ud83d\udccb Product Team Technical Asset Work - PRD 1: Promo Code Distribution System v2 [Koii x Eric] What\u2019s left Final tests (now unblocked as of @ Last Friday 2:28 PM ) View full edit Notion Notion.so , the connected workspace for docs, projects, and wikis. Update your email settings"
+    },
+    {
+      "page_id": "msg_199dc5e6cbfe9f1e",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-13T12:29:25+05:30",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Thank you So much Steve On Sat, 11 Oct 2025 at 01:02, Steve Shockey < steve@trassgames.com > wrote: Hello Pradip, I will send payment now. Best, Steve"
+    },
+    {
+      "page_id": "msg_199dc535bd39820d",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T12:17:14+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Hello Koii, I will review your comment on Notion and will give you the reply on it. Thanks, On Sat, 11 Oct 2025 at 01:39, Koii Benvenutto < koii@trassgames.com > wrote: Hi Padip, I've added my comments to the notion doc. Once these are addressed we can move forward or consider additional app options. https://www.notion.so/Koii-x-Pradip-27ece8f7317a80c09637ce7a4d1c3a8f?source=copy_link#288ce8f7317a80218519e3a13f6873fb Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199dee5ec4a2f96f",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T11:47:11-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Dear Pradip, heard. I'll get back to you on this shortly. Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199cdbb873f48576",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-10T16:16:44+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Hey Koii, Could you please help me know the above so that I can plan things accordingly? On Thu, 9 Oct 2025 at 17:14, Pradip < pradipweweb@gmail.com > wrote: Hi Koii, Hope you\u2019re doing well. I just wanted to share that I\u2019ve completed around 5 hours of work so far this week . To better streamline my schedule and maintain consistency, could you please assign me at least 15\u201320 hours of work each week? When I was previously working with Jayshay, this level of workload helped me plan and manage my time more effectively, and I\u2019d like to maintain a similar rhythm moving forward. I truly enjoy working on your projects and would appreciate it if you could share more tasks on a regular basis. Thank you for your understanding and support. On Wed, 8 Oct 2025 at 02:48, Koii Benvenutto < koii@trassgames.com > wrote: Dear Pradip, Thank you for your notes in Notion. I'll review these at the soonest chance and let you know how I'd like to proceed. I want to thank you again for bearing with me while the communications have been choppy. I'll let you know if I think a meeting on Friday is necessary or if I'd like to move forward async for this week. Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199cf9c9953cd9a5",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-10T13:32:37-06:00",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Steve Shockey",
+      "sender_email": "Steve Shockey <steve@trassgames.com>",
+      "message_content": "Hello Pradip, I will send payment now. Best, Steve"
+    },
+    {
+      "page_id": "msg_199cd1797c50d8bf",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-10T13:17:42+05:30",
+      "subject": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "message_content": "Hello Steve, I Hope you are doing Well :) Please find the attached invoice for the Time P eriod : 06th Oct to 10th Oct (Number of Hours : 05) Kindly review the Invoice and let me know incase of any queries and I am happy to assist you further. Request you to make the Payment in Bank Account Number details mentioned in the invoice . Please do help me know once you release the payment from your end. Thank you :) -- Thanks & Regards , Pradip M. Full Stack Developer"
+    },
+    {
+      "page_id": "msg_199cfbe516ce93d7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-10T13:09:39-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Hi Padip, I've added my comments to the notion doc. Once these are addressed we can move forward or consider additional app options. https://www.notion.so/Koii-x-Pradip-27ece8f7317a80c09637ce7a4d1c3a8f?source=copy_link#288ce8f7317a80218519e3a13f6873fb Best, Koii Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 79 entries from 2 databases"
+  },
+  "retries": 0
+}

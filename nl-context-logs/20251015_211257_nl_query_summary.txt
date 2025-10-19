@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-15 21:12:57
+
+USER QUERY: trass gmail with term mgm or shipbob or merchant or support last 1 month
+
+INTENT PARSED:
+  Goal: find gmail messages in trass workspace containing MGM, ShipBob, merchant or support mentions
+  Databases: trass.gmail
+  Search Terms: mgm, shipbob, merchant, support
+  Date Filter: last 1 month
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 175
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 175 entries
+
+  Sample Results (first 5):
+    1. RE : BATCH 2025-08B / PO-0007 YP5 / YP6 / YP7 - PSI INSPECTION GUIDE & INSPECTION CHARGE CONFIRMATION (gmail)
+       Date: 2025-10-16
+    2. RE: Kit Box Art Overview v5 (gmail)
+       Date: 2025-10-16
+    3. RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL (gmail)
+       Date: 2025-10-16
+    4. Re: RE : BATCH 2025-08B / PO-0007 YP5 / YP6 / YP7 - PSI INSPECTION GUIDE & INSPECTION CHARGE CONFIRMATION (gmail)
+       Date: 2025-10-15
+    5. Re: Kit Box Art Overview v5 (gmail)
+       Date: 2025-10-15

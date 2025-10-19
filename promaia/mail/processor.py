@@ -170,8 +170,35 @@ class EmailProcessor:
         
         # Check if we should generate a draft
         if not self.classifier.should_generate_draft(classification):
-            logger.info(f"  → Skipping (doesn't require response)")
-            return False
+            logger.info(f"  → No response needed - creating skipped draft for review")
+            # Create a "skipped" draft (no AI generation, no context loading)
+            # User can override by entering draft chat and using /mc to load context
+            draft_data = {
+                'workspace': workspace,
+                'thread_id': thread_id,
+                'message_id': thread.get('message_ids', [])[-1] if thread.get('message_ids') else thread_id,
+                'inbound_subject': subject,
+                'inbound_from': thread.get('from'),
+                'inbound_snippet': thread.get('snippet', ''),
+                'inbound_date': thread.get('date'),
+                'inbound_body': thread.get('conversation_body', ''),
+                'pertains_to_me': classification['pertains_to_me'],
+                'is_spam': classification['is_spam'],
+                'requires_response': classification['requires_response'],
+                'classification_reasoning': classification['reasoning'],
+                'draft_subject': f"Re: {subject}",
+                'draft_body': 'n/a',  # No draft generated
+                'response_context': None,  # No context loaded (user can load with /mc in chat)
+                'system_prompt': None,
+                'ai_model': None,
+                'thread_context': thread.get('conversation_body', '')[:500],  # Store snippet
+                'message_count': thread.get('message_count', 1),
+                'status': 'skipped'  # Special status for emails that don't need responses
+            }
+            
+            draft_id = self.draft_manager.save_draft(draft_data)
+            logger.info(f"  ⏭️  Skipped draft saved: {draft_id}")
+            return True  # Count as created so it shows in review queue
         
         # Step 2: Build context
         logger.debug("  → Building context...")

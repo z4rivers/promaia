@@ -1,0 +1,149 @@
+{
+  "user_query": "trass gmail with term mgm or shipbob or merchant or support last 1 month AND trass stories and trass gmail with term expandly from any time",
+  "intent": {
+    "goal": "Find emails with terms mgm/shipbob/merchant/support from last month AND find both stories and emails with term expandly",
+    "databases": [
+      "trass.gmail",
+      "trass.stories"
+    ],
+    "search_terms": [
+      "mgm",
+      "shipbob",
+      "merchant",
+      "support",
+      "expandly"
+    ],
+    "date_filter": {
+      "days_back": 30,
+      "description": "last 1 month AND any time combined query"
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    COALESCE(g.subject, '') as subject,\n    COALESCE(g.sender_name, '') as sender_name,\n    COALESCE(g.sender_email, '') as sender_email,\n    COALESCE(g.message_content, '') as message_content\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND (\n    (u.database_name = 'gmail' \n    AND g.email_date >= date('now', '-1 month')\n    AND (\n        g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%'\n        OR g.subject LIKE '%shipbob%' OR g.message_content LIKE '%shipbob%'\n        OR g.subject LIKE '%merchant%' OR g.message_content LIKE '%merchant%'\n        OR g.subject LIKE '%support%' OR g.message_content LIKE '%support%'\n    ))\n    OR\n    (u.database_name IN ('gmail', 'stories')\n    AND (\n        u.title LIKE '%expandly%'\n        OR COALESCE(g.subject, '') LIKE '%expandly%'\n        OR COALESCE(g.message_content, '') LIKE '%expandly%'\n    ))\n)\nORDER BY u.created_time DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 238,
+  "databases_in_results": [
+    "stories",
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 236,
+    "stories": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199ebcd0f612479a",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: BATCH 2025-08 / PO-0006 - AU SHIPMENT",
+      "created_time": "2025-10-16T06:55:02+00:00",
+      "subject": "RE: BATCH 2025-08 / PO-0006 - AU SHIPMENT",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Jayshay and Koii, \n\n \u00a0 \n\n According to our shipping agent\u2019s notice regarding the updated logistics regulation, all loose cargo shipments bound for Australia must now be palletized at origin\r\n in China. Destination port agents will no longer provide palletizing services upon arrival. \n\n \u00a0 \n\n We are following ShipBob\u2019s pallet height standard, with a maximum height of 54 inches. \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362 \n\n \u00a0 \n\n From: Jeff Southard <jayshay@trassgames.com>\r\n\n Sent: Thursday, October 16, 2025 1:07 PM\n\r\n To: Koii Benvenutto <koii@trassgames.com>\n\r\n Cc: Fionn Ng <fionnng@mgmproduction.com.hk>; John Chiu <johnchiu@mgmproduction.com.hk>\n\r\n Subject: Re: BATCH 2025-08 / PO-0006 - AU SHIPMENT \n\n \u00a0 \n\nFionn: \n\n \u00a0 \n\nDoes that mean that the AU shipment will be shipped from China with the ShipBob pallet height requirements? (54\u201d max height I THINK) \n\n \u00a0 \n\nWon\u2019t that make the shipping to AU more expensive because it\u2019s less efficient? \n\n \u00a0 \n\nKoii: \n\n \u00a0 \n\nSee our SOP about palletization for more context. \n\n \u00a0 \n\nJayshay\u00a0 \n\nOn Oct 15, 2025, at 9:32 \u202f PM, Koii Benvenutto < koii@trassgames.com > wrote: \n\n \ufeff \n\nDear Fionn,\n\nHeard. One moment I will see what I can do. \n\n \u00a0 \n\n \u00a0 \n\n Koii Benvenutto \n\n PM Plush and Merch\n\r\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eb7ad992cd9b7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T05:25:16+00:00",
+      "subject": "BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "________________________________________________________________________________ \n\n Microsoft Teams \r\n Need help? \r\n\n Join\r\n the meeting now \n\n Meeting ID:\r\n 438 497 173 793 1 \r\n\n Passcode:\r\n FQ6tf3k5 \r\n\n For organizers:\r\n Meeting\r\n options \n\n ________________________________________________________________________________ \n\n \u00a0 \n\n \u00a0 \n\n _____________________________________________"
+    },
+    {
+      "page_id": "msg_199eb7a348b67450",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T05:24:33+00:00",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Koii, \n\n \u00a0 \n\n I send you the link for meeting. This is our time 3:30pm / your time 00:30am.\u00a0 Are you OK? \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362 \n\n \u00a0 \n\n From: Koii Benvenutto <koii@trassgames.com>\r\n\n Sent: Thursday, October 16, 2025 1:21 PM\n\r\n To: Fionn Ng <fionnng@mgmproduction.com.hk>\n\r\n Subject: Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 \n\n \u00a0 \n\nDear Fionn,\n\r\nI'm able to meet tonight within the next 2 hours. Jayshay would not be able to join.\n\nPlease let me know if this works.\n\r\nBest,\n\r\nKoii\n\n \u00a0 \n\n \u00a0 \n\n Koii Benvenutto \n\n PM Plush and Merch\n\r\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eb715aa0e645d",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T05:14:51+00:00",
+      "subject": "RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Koii & Jayshay, \n\n \u00a0 \n\n We need to arrange a video call urgently to discuss this issue. Please let me know your available time for the call. \n\n \u00a0 \n\n Regarding the Batch 2025-08 UK shipment, please keep it on hold until the documentation is fully settled. \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362 \n\n \u00a0 \n\n From: Koii Benvenutto <koii@trassgames.com>\r\n\n Sent: Thursday, October 16, 2025 12:31 PM\n\r\n To: Fionn Ng <fionnng@mgmproduction.com.hk>\n\r\n Cc: jayshay <jayshay@trassgames.com>; John Chiu <johnchiu@mgmproduction.com.hk>; Steve Shockey <steve@trassgames.com>\n\r\n Subject: Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 \n\n \u00a0 \n\nDear Fionn,\n\nFollowing up on the UK shipment. ShipBob is requesting a \"Customs Declaration Service (CDS) form\" for Batch 2025-07. This is another requirement for them to grant us warehouse access.\n\nCan you get this from the customs agent?\n\nBest,\n\r\nKoii \n\n \u00a0 \n\n \u00a0 \n\n Koii Benvenutto \n\n PM Plush and Merch\n\r\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eb4103fe83e73",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE : BATCH 2025-08 / PO-0006 - AU SHIPMENT",
+      "created_time": "2025-10-16T04:22:04+00:00",
+      "subject": "RE : BATCH 2025-08 / PO-0006 - AU SHIPMENT",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Koii, \n\n \u00a0 \n\nFor the AU shipment, the shipping agent has requested to apply the WRO label directly onto the pallet in China instead of in Australia to help reduce costs. \n\nPlease kindly arrange this for us. Thank you. \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362"
+    },
+    {
+      "page_id": "msg_199eb03df7609639",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE : BATCH 2025-08B / PO-0007 YP5 / YP6 / YP7 - PSI INSPECTION GUIDE & INSPECTION CHARGE CONFIRMATION",
+      "created_time": "2025-10-16T03:15:01+00:00",
+      "subject": "RE : BATCH 2025-08B / PO-0007 YP5 / YP6 / YP7 - PSI INSPECTION GUIDE & INSPECTION CHARGE CONFIRMATION",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Koii, \u00a0 PSI Inspection Guide \u2013 We\u2019ve updated it with the Batch 2025-08B order quantity and inspection sample size (see attached). Please review and confirm. Once approved, we\u2019ll proceed to upload it to the QIMA system for booking. \u00a0 Inspection Charge \u2013 Kindly confirm the total of 2 man-days, amounting to US$638. \u00a0 \u00a0 Thanks with best regards Fionn Ng ******************************* MGM Industries & Co. Tel :\u00a0\u00a0\u00a0(852) 2545 0375 Fax : \u00a0(852) 2541 0362"
+    },
+    {
+      "page_id": "msg_199eaea7bd2fe670",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: Kit Box Art Overview v5",
+      "created_time": "2025-10-16T02:47:31+00:00",
+      "subject": "RE: Kit Box Art Overview v5",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Jayshay, \u00a0 QIMA is currently reviewing the artwork and will revert with any comments. \u00a0 Please note that after consultation with several printers, alignment issues were identified in the current format, \u00a0the images appear misaligned (see attached). The printers have recommended reverting to the original .ai file format, which is more appropriate and reliable for paper printing. \u00a0 Please share your comment. Thank you. \u00a0 \u00a0 Thanks with best regards Fionn Ng ******************************* MGM Industries & Co. Tel :\u00a0\u00a0\u00a0(852) 2545 0375 Fax : \u00a0(852) 2541 0362"
+    },
+    {
+      "page_id": "msg_199eae8254b44af7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "created_time": "2025-10-16T02:44:58+00:00",
+      "subject": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Steve, \u00a0 Just a quick follow-up. Could you please send us the bank slip for our reference when you have a moment? Thanks a lot. \u00a0 Thanks with best regards Fionn Ng ******************************* MGM Industries & Co. Tel :\u00a0\u00a0\u00a0(852) 2545 0375 Fax : \u00a0(852) 2541 0362 \u00a0 From: Fionn Ng Sent: Wednesday, October 15, 2025 2:38 PM To: Koii Benvenutto <koii@trassgames.com> Cc: jayshay <jayshay@trassgames.com>; Steve Shockey <steve@trassgames.com>; John Chiu <johnchiu@mgmproduction.com.hk> Subject: RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL \u00a0 Dear Koii, \u00a0 Noted on the DDP approval for Batch 2025-08 / PO-0006 covering all four markets. We will arrange the shipment accordingly. Kindly provide the bank slip by tomorrow. Thank you. \u00a0 Thanks with best regards Fionn Ng ******************************* MGM Industries & Co. Tel :\u00a0\u00a0\u00a0(852) 2545 0375 Fax : \u00a0(852) 2541 0362 \u00a0 From: Koii Benvenutto < koii@trassgames.com > Sent: Wednesday, October 15, 2025 2:29 PM To: Fionn Ng < fionnng@mgmproduction.com.hk > Cc: jayshay < jayshay@trassgames.com >; Steve Shockey < steve@trassgames.com >; John Chiu < johnchiu@mgmproduction.com.hk > Subject: Re: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL \u00a0 Dear Fionn, We approve the DDP pricing for Batch 2025-08 / PO-0006. Please proceed with the shipment to catch the October 16 vessel. Steve will wire the remaining balance ASAP. However it will not be possible until at least tomorrow morning (October 15 PDT), as our team is currently on an offsite but we will send the bank slip as soon as it's available. I appreciate your urgency on this. Best regards, Koii \u00a0 \u00a0 Koii Benvenutto PM Plush and Merch koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eb842ec90bf1d",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-15T22:35:30-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Hi Fionn,\nYes I will make that work. Thank you. See you shortly.\nKoii\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eb76763ff13d3",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-15T22:20:32-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Dear Fionn,\nI'm able to meet tonight within the next 2 hours. Jayshay would not be able to join.\n\nPlease let me know if this works.\nBest,\nKoii\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 238 entries from 2 databases"
+  },
+  "retries": 0
+}

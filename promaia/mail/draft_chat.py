@@ -13,7 +13,7 @@ from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
 from promaia.mail.response_generator import ResponseGenerator
 from promaia.mail.learning_system import EmailResponseLearningSystem
-from promaia.mail.context_builder import ResponseContext
+from promaia.mail.context_builder import ResponseContext, ResponseContextBuilder
 from promaia.utils.display import print_text, print_separator
 from promaia.utils.timezone_utils import to_local, get_local_timezone_name, now_utc
 
@@ -39,10 +39,14 @@ class DraftChatInterface:
         self.draft_manager = DraftManager()
         self.response_generator = ResponseGenerator()
         self.learning_system = EmailResponseLearningSystem()
+        self.context_builder = ResponseContextBuilder()
         
         # Artifacts: draft_number -> draft_text
         self.artifacts = {}
         self.current_artifact_number = 0
+        
+        # Context cache (for skipped drafts that load context on-demand)
+        self.cached_context = None
         
         # Load existing version and history
         self._load_draft_history()
@@ -88,6 +92,55 @@ class DraftChatInterface:
                 conn.commit()
         except Exception as e:
             logger.warning(f"Could not save draft history: {e}")
+    
+    async def _load_message_context(self):
+        """Load context for the email thread on-demand (for skipped drafts)."""
+        print_text("\n🔍 Loading message context...", style="cyan")
+        
+        draft = self.draft_manager.get_draft(self.draft_id)
+        if not draft:
+            print_text("❌ Draft not found", style="red")
+            return
+        
+        # Build email thread dict for context builder
+        thread = {
+            'thread_id': draft.get('thread_id'),
+            'subject': draft.get('inbound_subject'),
+            'body': draft.get('inbound_body'),
+            'conversation_body': draft.get('thread_context', ''),
+            'from': draft.get('inbound_from'),
+            'date': draft.get('inbound_date'),
+            'message_count': draft.get('message_count', 1)
+        }
+        
+        # Build context
+        context = await self.context_builder.build_context(thread, self.workspace)
+        self.cached_context = context
+        
+        # Update draft in DB with context
+        import json
+        context_json = self.context_builder.serialize_context_for_storage(context)
+        
+        try:
+            import sqlite3
+            with sqlite3.connect(self.draft_manager.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE email_drafts SET response_context = ? WHERE draft_id = ?",
+                    (context_json, self.draft_id)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Could not save context: {e}")
+        
+        print_text(f"✅ Loaded {context.total_sources} sources from your knowledge base\n", style="green")
+        
+        # Display context summary
+        if context.relevant_docs:
+            print_text("📚 Top sources:", style="dim")
+            for i, doc in enumerate(context.relevant_docs[:5], 1):
+                print_text(f"  {i}. {doc.get('title', 'Untitled')} ({doc.get('database', 'unknown')})", style="dim")
+            print()
     
     def _clean_email_body(self, body: str) -> str:
         """Remove redundant email headers from body content."""
@@ -199,10 +252,27 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
             print()
             
             # Check if response is needed
-            requires_response = draft.get('requires_response', True)
+            draft_status = draft.get('status', 'pending')
             draft_body = draft.get('draft_body', '')
             
-            if requires_response and draft_body:
+            if draft_status == 'skipped':
+                # Skipped draft - show AI reasoning and allow user to override
+                print_text("⏭️  SKIPPED - No response needed", style="bold yellow")
+                print()
+                print_text("AI Assessment:", style="dim")
+                if draft.get('classification_reasoning'):
+                    print_text(f"  {draft.get('classification_reasoning')}", style="dim")
+                print()
+                print_text("💬 Want to reply anyway? Just start chatting to create a draft.", style="cyan")
+                print_text("   Use /mc to load context from your knowledge base first.", style="cyan")
+                print()
+                print_text("Commands:", style="dim")
+                print_text("   /mc - Load message context (recommended before replying)", style="dim")
+                print_text("   /resolve - Mark as resolved", style="dim")
+                print_text("   /reject - Mark as rejected", style="dim")
+                print_text("   /q - Return to draft list", style="dim")
+            elif draft_body and draft_body != 'n/a':
+                # Normal draft with AI-generated response
                 # Display all existing artifacts (version history)
                 if not self.artifacts:
                     # First time, initialize with current draft
@@ -220,17 +290,8 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                 print_text("   /reject - Reject this draft", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             else:
-                # Show AI assessment
-                print_text("AI ASSESSMENT:", style="bold yellow")
-                print()
-                print(draft_body if draft_body else "No response needed for this email.")
-                print()
-                print_text(f"Classification:", style="dim")
-                print_text(f"  Pertains to me: {draft.get('pertains_to_me', 'Unknown')}", style="dim")
-                print_text(f"  Is spam: {draft.get('is_spam', 'Unknown')}", style="dim")
-                print_text(f"  Requires response: {draft.get('requires_response', 'Unknown')}", style="dim")
-                if draft.get('classification_reasoning'):
-                    print_text(f"  Reasoning: {draft.get('classification_reasoning')}", style="dim")
+                # Edge case: draft exists but no body (shouldn't happen normally)
+                print_text("⚠️  No draft available", style="yellow")
                 print()
                 print_text("Commands:", style="dim")
                 print_text("   /resolve - Mark as resolved", style="dim")
@@ -260,6 +321,11 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                                 break
                             continue
                         
+                        elif cmd in ['/mc', '/messagecontext']:
+                            # Load message context on-demand (for skipped drafts)
+                            await self._load_message_context()
+                            continue
+                        
                         elif cmd in ['/resolve', '/r']:
                             self.draft_manager.update_draft_status(self.draft_id, 'resolved')
                             print_text("\n✅ Marked as resolved\n", style="green")
@@ -272,18 +338,57 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available: /send [number], /resolve, /reject, /q", style="dim")
+                            print_text("Available: /send [number], /mc, /resolve, /reject, /q", style="dim")
                             continue
                     
-                    if not requires_response or not draft_body:
-                        print_text("⚠️  No draft to refine. Use /resolve or /q", style="yellow")
-                        continue
+                    # Check if this is a skipped draft and user wants to reply
+                    if draft_status == 'skipped':
+                        print_text("🔄 Converting skipped draft to pending...", style="cyan")
+                        # Update status to pending
+                        self.draft_manager.update_draft_status(self.draft_id, 'pending')
+                        draft_status = 'pending'
+                        
+                        # If no context loaded yet, warn user
+                        if not self.cached_context and not draft.get('response_context'):
+                            print_text("💡 Tip: Use /mc to load context from your knowledge base first", style="yellow")
                     
-                    # Regular chat - refine the draft
-                    print_text("🤔 Refining draft...", style="cyan")
-                    
-                    # Generate refined draft
-                    refined_draft = await self._refine_draft(draft, user_input)
+                    # Check if we can generate a draft
+                    if not draft_body or draft_body == 'n/a':
+                        # First draft for a skipped email - generate from scratch
+                        print_text("🤔 Generating draft based on your message...", style="cyan")
+                        
+                        # Use cached context or empty context
+                        if self.cached_context:
+                            context = self.cached_context
+                        else:
+                            # No context loaded - create empty context
+                            context = ResponseContext(
+                                thread_history=draft.get('thread_context', ''),
+                                relevant_docs=[],
+                                relevant_docs_text="",
+                                workspace=self.workspace,
+                                total_sources=0
+                            )
+                        
+                        # Generate initial draft
+                        # Note: user_input is incorporated as feedback via refine_response
+                        response = await self.response_generator.refine_response(
+                            current_draft="",  # No existing draft
+                            user_feedback=f"Generate a reply. User guidance: {user_input}",
+                            email_thread={
+                                'from': draft['inbound_from'],
+                                'subject': draft['inbound_subject'],
+                                'date': draft['inbound_date'],
+                                'body': draft['inbound_body'],
+                                'conversation_body': draft.get('thread_context', '')
+                            },
+                            context=context
+                        )
+                        refined_draft = response
+                    else:
+                        # Refine existing draft
+                        print_text("🤔 Refining draft...", style="cyan")
+                        refined_draft = await self._refine_draft(draft, user_input)
                     
                     # Increment artifact number
                     self.current_artifact_number += 1

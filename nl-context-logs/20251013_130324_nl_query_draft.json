@@ -1,0 +1,45 @@
+{
+  "user_query": "gmail entries in any workspace about a flights airlines in any workspace",
+  "intent": {
+    "goal": "find gmail content about flights/airlines across workspaces",
+    "databases": [
+      "gmail",
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "flights",
+      "airlines"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    g.subject,\n    g.sender_name,\n    g.sender_email,\n    g.body_snippet\nFROM unified_content u\nJOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.database_name = 'gmail'\nAND u.workspace IN ('trass')\nAND (\n    g.subject LIKE '%flight%' OR g.subject LIKE '%airline%'\n    OR g.body_snippet LIKE '%flight%' OR g.body_snippet LIKE '%airline%'\n    OR g.message_content LIKE '%flight%' OR g.message_content LIKE '%airline%'\n    OR LOWER(g.subject) LIKE '%flight%' OR LOWER(g.subject) LIKE '%airline%'\n    OR LOWER(g.body_snippet) LIKE '%flight%' OR LOWER(g.body_snippet) LIKE '%airline%'\n    OR LOWER(g.message_content) LIKE '%flight%' OR LOWER(g.message_content) LIKE '%airline%'\n)\nORDER BY u.created_time DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 1,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_1988092eb36134c2",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Viasat In-Flight Wi-Fi Service Payment Confirmation",
+      "created_time": "2025-08-06T12:09:27-06:00",
+      "subject": "Viasat In-Flight Wi-Fi Service Payment Confirmation",
+      "sender_name": "",
+      "sender_email": "<no-reply@viasat.com>",
+      "body_snippet": "Thank you for your recent Inflight Internet purchase. We are proud to partner with Southwest Airlines in helping you get connected and make the most of your time onboard. Thanks again, Your friends at"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 1 entries from 1 databases"
+  },
+  "retries": 0
+}

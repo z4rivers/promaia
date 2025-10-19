@@ -1,0 +1,150 @@
+{
+  "user_query": "trass gmail and stories with terms international mgm shipbob ca uk au within last 2 months",
+  "intent": {
+    "goal": "find emails and stories containing terms related to international MGM and ShipBob across multiple regions",
+    "databases": [
+      "trass.gmail",
+      "trass.stories"
+    ],
+    "search_terms": [
+      "international",
+      "mgm",
+      "shipbob",
+      "ca",
+      "uk",
+      "au"
+    ],
+    "date_filter": {
+      "days_back": 60,
+      "description": "within last 2 months"
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    COALESCE(g.subject, '') as subject,\n    COALESCE(g.sender_name, '') as sender_name,\n    COALESCE(g.sender_email, '') as sender_email,\n    COALESCE(g.message_content, '') as message_content\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nLEFT JOIN generic_content gc ON u.page_id = gc.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name IN ('gmail', 'stories')\nAND datetime(u.created_time) >= datetime('now', '-2 months')\nAND (\n    -- Search gmail content\n    (u.database_name = 'gmail' AND (\n        g.subject LIKE '%international%' OR g.message_content LIKE '%international%' OR\n        g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR\n        g.subject LIKE '%shipbob%' OR g.message_content LIKE '%shipbob%' OR\n        g.subject LIKE '%ca%' OR g.message_content LIKE '%ca%' OR\n        g.subject LIKE '%uk%' OR g.message_content LIKE '%uk%' OR\n        g.subject LIKE '%au%' OR g.message_content LIKE '%au%'\n    ))\n    OR\n    -- Search stories content \n    (u.database_name = 'stories' AND (\n        gc.title LIKE '%international%' OR gc.metadata LIKE '%international%' OR\n        gc.title LIKE '%mgm%' OR gc.metadata LIKE '%mgm%' OR\n        gc.title LIKE '%shipbob%' OR gc.metadata LIKE '%shipbob%' OR\n        gc.title LIKE '%ca%' OR gc.metadata LIKE '%ca%' OR\n        gc.title LIKE '%uk%' OR gc.metadata LIKE '%uk%' OR\n        gc.title LIKE '%au%' OR gc.metadata LIKE '%au%'\n    ))\n)\nORDER BY u.created_time DESC\nLIMIT 1200;",
+  "query_mode": "sql",
+  "result_count": 646,
+  "databases_in_results": [
+    "gmail",
+    "stories"
+  ],
+  "database_breakdown": {
+    "gmail": 645,
+    "stories": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199f01ae698e0c10",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "created_time": "2025-10-17T02:58:27+00:00",
+      "subject": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Jayshay, \n\n \u00a0 \n\n Sorry, I resend the following photo for\u00a0 your comment. \n\n \u00a0 \n\n The overall length is slightly longer \u2014 the sample measures 32 mm compared to the 30 mm specification. \n\n C1 \u2013 Color looks good. \n\n C2 \u2013 Needs a bit more red, but acceptable. \n\n C3 \u2013 Slightly lighter, but acceptable. \n\n \u00a0 \n\n \u00a0 \u00a0 \u00a0 \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362"
+    },
+    {
+      "page_id": "msg_199eec535d6bb53e",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "created_time": "2025-10-16T20:45:21+00:00",
+      "subject": "Re: Urgent: WRO Access Needed before FC access (Batch 2025-07)",
+      "sender_name": "Andrew Costello",
+      "sender_email": "Andrew Costello <acostello@shipbob.com>",
+      "message_content": "Hi Koii,\u00a0\n\nThe following information needs to be provided for access:\n\nCustomer Name\n\n\u00b7 Customer Address\n\n\u00b7 Customer Country of Residence\n\n\u00b7 Customer Contact Email Address\n\n\u00b7 Customer Contact Phone Number\n\n\u00b7 \u00a0Companies House Registration Number (optional for non-UK-based merchants) \n\n\u00b7 Customer UK VAT Registration Number\n\n\u00b7 Customer IMPORT UK EORI Number(s)\n\n\u00b7 Customer Shipping Agent Name (name of the company used to ship goods to the UK)\n\n\u00b7 Customer Tax Agent Name\n\n\u00b7 By Volume, the Top Three Countries to Which Customer Third-Party Goods Are Delivered from Storage in the Last 12 Months\n\n\u00b7 Description of the Full Range of Items Imported by the Customer\n\nAlso, a CDS form will need be provided. for non-UK based merchants, we require a CDS form to be provided before we can process inbound. A CDS form is proof of paid import duties and taxes, and it can be requested from the freight provider. Companies like DHL,\r\n FedEx, and UPS can provide it too. This form becomes available just after customs clearance and we must receive it prior processing inbound.\n\nLet me know if this helps clarify.\u00a0\n\nThanks\u00a0\n\nAndrew Costello\n\n Solutions Manager |\u00a0\u00a0ShipBob\u00a0 \n\n Cell: \r\n 773-321-6449 \n\n120 N Racine Ave #100, Chicago, IL 60607\n\n https://support.shipbob.com/s/ \n\n From: Koii Benvenutto <koii@trassgames.com>\n\r\n Sent: Thursday, October 16, 2025 3:18 PM\n\r\n To: Andrew Costello <acostello@shipbob.com>\n\r\n Cc: Steve Shockey <steve@trassgames.com>; Jayshay@trassgames.com <jayshay@trassgames.com>\n\r\n Subject: Re: Urgent: WRO Access Needed before FC access (Batch 2025-07) \r\n\n\u00a0\n\nEXTERNAL EMAIL\n\nThis email was sent by a person from outside your organization. Exercise caution when clicking links, opening attachments, or taking further action, before validating its authenticity.\n\nDear Andrew,\n\nSorry to chase this but I kindly ask that we get a reply today.\n\nThank you for your understanding,\n\r\nKoii\n\nKoii Benvenutto\n\r\nPM Plush and Merch\n\r\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199f00d25832cd47",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "created_time": "2025-10-16T19:43:23-07:00",
+      "subject": "Re: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "sender_name": "jayshay",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "message_content": "Fionn: \n\n Notes inline below in Green. \n\n \u00a0 \n\n Great. What about other changed items? Updated felt patterns and parts? There is a lot to approve before we go into production. Let me know if you need a list of all the things. \n\n @@Fionn dd 10.16 \n\n Disc Project \u2013 \u00a0 The only outstanding item is the printed sticker. \n\n \u00a0 \n\n Bat Project \u2013 \u00a0 We will resubmit the new felt pattern for approval. \n\n \u00a0 \n\n Sticky Bomb \u2013 \u00a0 The full set of suction cups will be submitted for approval. \n\n \u00a0 \n\n Sleep Cap \u2013 \u00a0 We will resubmit the following for approval: \n\n a) Improved metal plate with self-adhesive tape \n\n b) The cone shape has only been revised in length from 141 mm to 140 mm, so it will not be resubmitted. Production will proceed with the noted comment. \n\n OK. Thanks for the update on all those items. \n\n \u00a0 \n\n Kit Card \n \n Will submit the version with the needle for approval. \n\n For your reference, we tested both 300 g and 250 g paper. We recommend using 250 g, as it fits better inside the box. Both paper weights will be sent for your testing. \n\n OK. It will be good to see the thickness of both weights. \n\n The thread spool will also be provided for your approval. \n\n Great. \n\n Patch \u2013 \u00a0 The first sample requires correction. Please refer to the attached comments. \u00a0 I will send the sample together with boxes tomorrow. \n\n \u00a0 \n\n Patch 1 \u2013 We found Color 17 Pantone 2131C \u2013 the thread color is too dark \n\n \u00a0 \n\n I agree. The thread should be closer to that Pantone. \n\n \u00a0 \n\n Patch 2 \u2013 The size is not correct.\u00a0 Color 43 and color17 doesn\u2019t match well. \n\n Agreed. Thanks for your attention to detail. \n\n \u00a0 \n\n Patch 3 \u2013 \u00a0 Unfortunately, the supplier cannot do the linking of C1/C2/C3. They do not recommend it, as there is a risk of breaking the thread and damaging the embroidered edge when cutting. \n\n OK. Thanks for asking. \n\n The overall length is slightly longer \u2014 the sample measures 32 mm compared to the 30 mm specification. \n\n C1 \u2013 \u00a0 Color looks good. \n\n C2 \u2013 \u00a0 Needs a bit more red, but acceptable. \n\n C3 \u2013 \u00a0 Slightly lighter, but acceptable. \n\n I don\u2019t see photos of Patch 3 here. If it\u2019s easy, please share photos of them \n\n Notes inline below in\u00a0 Green . \n\n \u00a0 \n\n Please schedule a call for Tuesday evening 8pm PST (or suggest another time). @@ Fionn 10.16 \u2013 I will send you the invitation on HK time 10.22 at 11:00am / your time 10.15 at 8:00pm. \n\n Perfect. Talk with you then. \n\n Jayshay \n\n \u00a0 \n\n \u00a0 \n\n Artwork \u00a0 : to be received this week. \n\n \u00a0 \n\n OK. I will try. It will probably be your Monday morning. \n\n \u00a0 \n\n Cheers! \n\n \u00a0 \n\n Jayshay"
+    },
+    {
+      "page_id": "msg_199ef9fc572c914b",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Batches and Produ... - @koii@trassgames.com I've seen that F...",
+      "created_time": "2025-10-16T17:44:08-07:00",
+      "subject": "Batches and Produ... - @koii@trassgames.com I've seen that F...",
+      "sender_name": "\"Jayshay _ (Google Sheets)\"",
+      "sender_email": "\"Jayshay _ (Google Sheets)\" <comments-noreply@docs.google.com>",
+      "message_content": "Jayshay _ (Jayshay@trassgames.com) assigned you an action item in the following document\n\n Batches and Products SST \n\n1 comment\n\n 2025-08-B \n\nJayshay _\n \u2022 5:39\u202fPM, Oct 16 (PDT) \nNew\n\n@ koii@trassgames.com I've seen that Fionn is referred to this as \"2025-08B\" instead. I think that that shorter form might be better.\n\n Assigned to you \n\n Open \n\n View files with action items assigned to you \n\nGoogle LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA\n\nYou have received this email because you are mentioned in this thread by Jayshay _ (Jayshay@trassgames.com). Change what Google sends you . You can reply to this email to reply to the discussion."
+    },
+    {
+      "page_id": "msg_199ef98bc44c74ce",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: [Inspection report 1st out of 1] PSI - PO-0006 (Batch 2025-08) - Q2522020352 of Yeeps Pet Plush Toy (YP5-Dog,YP6-Cat,YP7-Chicken / PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)) is PASSED",
+      "created_time": "2025-10-16T17:36:15-07:00",
+      "subject": "Re: [Inspection report 1st out of 1] PSI - PO-0006 (Batch 2025-08) - Q2522020352 of Yeeps Pet Plush Toy (YP5-Dog,YP6-Cat,YP7-Chicken / PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)) is PASSED",
+      "sender_name": "jayshay",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "message_content": "Fionn:\n\nIn the report, I don\u2019t see any evidence that the inspector did all the tests we discussed.\u00a0\n\nIn our\u00a0 shared folder , there are v8 versions of the inspection documents we worked on together.\n\nWithin those documents, we discussed some tests that seem to have been done by the QIMA inspector:\n\n-\u00a0 Expected Defects: Page 1 (Shared) :\u00a0 Polarity head magnets on is wrong \n\n - Expected Defects: Page 3 (Shared): Magnets at top of head are not working \n\n I\u2019m trying to understand the process and why those tests were not performed. \n\n Is QIMA to blame and those tests should have been performed? \n\n Do you share the document I created directly with QIMA? \n\n Thanks in advance, \n\n Jayshay \n<span data-metadata=\" \"> <span data-metadata=\" \">"
+    },
+    {
+      "page_id": "msg_199ef15f1ea85fdd",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T15:13:35-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Thank you Jayshay! :D\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199eed1210aec2bc",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T13:58:09-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "jayshay",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "message_content": "Koii:\n\nThanks for driving all these details. You\u2019re pushing back on all the right things.\n\nJayshay\n\nOn Oct 16, 2025, at 12:16\u202fPM, Koii Benvenutto <koii@trassgames.com> wrote:\n\nDear Fionn,\n\nI think there's a little confusion regarding this timeline.\nThe only FC to which we do not have access is UK. All shipments must arrive before our launch and fulfill date of November 22nd.\u00a0\nWhy do the Canada and UK shipments not arrive until december. This is not inline with the communicated plan.\n\nEven if this is only reflective of a scenario in which we choose to hold the 2025-08 UK shipment in China until we are 110% certain that we have access to the UK FC, there's no reason that the Canada shipment should not arrive until december.\u00a0\n\nPlease help me understand these dates.\n\nBest,\nKoii\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199ee74002d84b3a",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T12:16:42-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Dear Fionn,\n\nI think there's a little confusion regarding this timeline.\nThe only FC to which we do not have access is UK. All shipments must arrive before our launch and fulfill date of November 22nd.\u00a0\nWhy do the Canada and UK shipments not arrive until december. This is not inline with the communicated plan.\n\nEven if this is only reflective of a scenario in which we choose to hold the 2025-08 UK shipment in China until we are 110% certain that we have access to the UK FC, there's no reason that the Canada shipment should not arrive until december.\u00a0\n\nPlease help me understand these dates.\n\nBest,\nKoii\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199ee5a3e4f62200",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "created_time": "2025-10-16T11:48:32-07:00",
+      "subject": "Re: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "message_content": "Dear Fionn,\n\nKoii Benvenutto\nPM Plush and Merch\n koii@trassgames.com"
+    },
+    {
+      "page_id": "msg_199ec85287b60acb",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: Kit Box Art Overview v5",
+      "created_time": "2025-10-16T10:15:55+00:00",
+      "subject": "RE: Kit Box Art Overview v5",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "message_content": "Dear Jayshay, \n\n \u00a0 \n\n I sincerely apologize for the delayed response and understand your frustration regarding this issue. We\u2019ve been continuously reaching out to multiple printers and\r\n discussing with IT specialists to explore how best to coordinate Figma files with printers in China, who typically work with .ai formats. \n\n \u00a0 \n\n We\u2019ve also tested the CMYK file and obtained two digital print samples from different printers. Unfortunately, the photo-based design appears blurry \u2014 they explained\r\n that achieving a clear image requires a minimum resolution of 300 dpi. Moreover, the result will likely appear even less sharp during bulk printing. Please see the two attached digital samples for your reference. \n\n \u00a0 \n\n For the Kit Box design, since it does not involve photographic elements, please kindly share the CMYK file so we can proceed with a digital print test for review. \n\n \u00a0 \n\n Once again, I deeply apologize for the late update and the inconvenience caused. We truly appreciate your patience as we work toward ensuring the final output meets\r\n your expectations. \n\n \u00a0 \n\n Thanks with best regards\n\r\nFionn Ng\n\r\n*******************************\n\r\nMGM Industries & Co.\n\r\nTel :\u00a0\u00a0\u00a0(852) 2545 0375\n\r\nFax : \u00a0(852) 2541 0362"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 646 entries from 2 databases"
+  },
+  "retries": 0
+}

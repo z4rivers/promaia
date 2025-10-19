@@ -1,0 +1,145 @@
+{
+  "user_query": "trass gmail with term mgm or shipbob or merchant or support last 1 month",
+  "intent": {
+    "goal": "find emails in Trass Gmail containing MGM, ShipBob, merchant, or support mentions from the past month",
+    "databases": [
+      "trass.gmail"
+    ],
+    "search_terms": [
+      "mgm",
+      "shipbob",
+      "merchant",
+      "support"
+    ],
+    "date_filter": {
+      "days_back": 30,
+      "description": "last 1 month"
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace,\n    u.database_name,\n    u.title,\n    u.created_time,\n    g.subject,\n    g.sender_name,\n    g.sender_email,\n    g.body_snippet\nFROM unified_content u\nJOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name = 'gmail'\nAND u.created_time >= datetime('now', '-1 month')\nAND (\n    g.subject LIKE '%mgm%' OR g.message_content LIKE '%mgm%' OR g.body_snippet LIKE '%mgm%'\n    OR g.subject LIKE '%shipbob%' OR g.message_content LIKE '%shipbob%' OR g.body_snippet LIKE '%shipbob%'\n    OR g.subject LIKE '%merchant%' OR g.message_content LIKE '%merchant%' OR g.body_snippet LIKE '%merchant%'\n    OR g.subject LIKE '%support%' OR g.message_content LIKE '%support%' OR g.body_snippet LIKE '%support%'\n)\nORDER BY u.created_time DESC\nLIMIT 1200",
+  "query_mode": "sql",
+  "result_count": 178,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 178
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199eae8254b44af7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "created_time": "2025-10-16T02:44:58+00:00",
+      "subject": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Steve, Just a quick follow-up. Could you please send us the bank slip for our reference when you have a moment? Thanks a lot. Thanks with best regards Fionn Ng ******************************* MGM"
+    },
+    {
+      "page_id": "msg_199e84e82a93c138",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Jayshay _ and 1 other made updates in Trass Games",
+      "created_time": "2025-10-15T14:38:02+00:00",
+      "subject": "Jayshay _ and 1 other made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "body_snippet": "See what&#39;s changed \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f"
+    },
+    {
+      "page_id": "msg_199e8d8839aef91c",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify POS 2025 Incentives",
+      "created_time": "2025-10-15T13:08:40-04:00",
+      "subject": "Re: Shopify POS 2025 Incentives",
+      "sender_name": "Reel Quiroz",
+      "sender_email": "Reel Quiroz <reel.quiroz@shopify.com>",
+      "body_snippet": "Hi Koii, I saw that you&#39;re using Shopify for ecommerce but not for in person sales - any particular reason why? Merchants who sell on multiple channels typically prefer to unify systems to save"
+    },
+    {
+      "page_id": "msg_199e7cd8231062cf",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "[Inspection report 1st out of 1] PSI - PO-0006 (Batch 2025-08) - Q2522020352 of Yeeps Pet Plush Toy (YP5-Dog,YP6-Cat,YP7-Chicken / PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)) is PASSED",
+      "created_time": "2025-10-15T12:17:08+00:00",
+      "subject": "[Inspection report 1st out of 1] PSI - PO-0006 (Batch 2025-08) - Q2522020352 of Yeeps Pet Plush Toy (YP5-Dog,YP6-Cat,YP7-Chicken / PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)/PO-0006 (Batch 2025-08)) is PASSED",
+      "sender_name": "QIMA Report",
+      "sender_email": "QIMA Report <support@qima.com>",
+      "body_snippet": "Hi Fionn Ng, Your Pre-Shipment Inspection (PSI) for MGM production was successfully performed on 15-Oct-2025, and your report is ready! Access the Interactive Report (Password: 607154) Report Summary"
+    },
+    {
+      "page_id": "msg_199e90aac0c3c71e",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "created_time": "2025-10-15T11:03:21-07:00",
+      "subject": "Re: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "sender_name": "jayshay",
+      "sender_email": "jayshay <jayshay@trassgames.com>",
+      "body_snippet": "Fionn: Notes inline below... &gt; On Oct 15, 2025, at 3:00 AM, Fionn Ng wrote: &gt; &gt; Dear Jayshay, &gt; &gt; I&#39;ve downloaded the two files. We noticed a discrepancy in the PDF dimensions \u2014 the"
+    },
+    {
+      "page_id": "msg_199e750fbbe3c939",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "created_time": "2025-10-15T10:00:58+00:00",
+      "subject": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Jayshay, I&#39;ve downloaded the two files. We noticed a discrepancy in the PDF dimensions \u2014 the upper part of the suction cup shows a 3\u20134 mm length instead of the full length (see below image)."
+    },
+    {
+      "page_id": "msg_199e696ecc2ab687",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "created_time": "2025-10-15T06:37:47+00:00",
+      "subject": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Koii, Noted on the DDP approval for Batch 2025-08 / PO-0006 covering all four markets. We will arrange the shipment accordingly. Kindly provide the bank slip by tomorrow. Thank you. Thanks with"
+    },
+    {
+      "page_id": "msg_199e5e9b62796eec",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: TRASS GAMES INC - PO-0008 (BATCH 2025-09) FOR YP3 / YP4 US AND UK SHIPMENT - TEST REPOPRT",
+      "created_time": "2025-10-15T03:28:36+00:00",
+      "subject": "RE: TRASS GAMES INC - PO-0008 (BATCH 2025-09) FOR YP3 / YP4 US AND UK SHIPMENT - TEST REPOPRT",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Wanna, We have a repeat order PO-0008 (Batch 2025-09) for YP3 and YP4, covering both USA and UK markets. Kindly update the following test reports and related documents with the above PO and Batch"
+    },
+    {
+      "page_id": "msg_199e5c70f1e246c1",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "created_time": "2025-10-15T02:50:43+00:00",
+      "subject": "RE: RE : BATCH 2025-08 / PO-0006 - SHIPPING COST APPROVAL",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Jayshay, Koii and Steve, I hope this message finds you well. My apologies for the urgency. As you may know, the US has announced a sudden 100% tariff on Chinese imports. Considering this, we are"
+    },
+    {
+      "page_id": "msg_199e59e8ec3e5995",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "created_time": "2025-10-15T02:06:25+00:00",
+      "subject": "RE: MAKER KIT SAMPLE - THINGS TO DISCUSS",
+      "sender_name": "Fionn Ng",
+      "sender_email": "Fionn Ng <fionnng@mgmproduction.com.hk>",
+      "body_snippet": "Dear Jayshay, We currently have one black rubber suction cup on hand to provide to the mold factory. However, we&#39;ll need additional pieces to properly monitor and compare product consistency. You"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 178 entries from 1 databases"
+  },
+  "retries": 0
+}

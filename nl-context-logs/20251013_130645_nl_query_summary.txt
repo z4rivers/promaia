@@ -1,0 +1,24 @@
+Natural Language Query Summary
+Generated: 2025-10-13 13:06:45
+
+USER QUERY: trass.tg about flights airplanes checkin in for flights
+
+INTENT PARSED:
+  Goal: find messages about flights and airplane check-in procedures
+  Databases: trass.tg
+  Search Terms: flights, airplanes, checkin, check-in
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 1
+  Databases Found: tg
+  
+  Breakdown by Database:
+    • tg: 1 entries
+
+  Sample Results (first 5):
+    1. Untitled (tg)
+       Date: 2025-08-20

@@ -1,0 +1,33 @@
+Natural Language Query Summary
+Generated: 2025-10-16 00:05:18
+
+USER QUERY: trass gmail with term mgm or shipbob or merchant or support last 1 month AND trass stories and trass gmail with term expandly from any time
+
+INTENT PARSED:
+  Goal: Find emails with terms mgm/shipbob/merchant/support from last month AND find both stories and emails with term expandly
+  Databases: trass.gmail, trass.stories
+  Search Terms: mgm, shipbob, merchant, support, expandly
+  Date Filter: last 1 month AND any time combined query
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 238
+  Databases Found: stories, gmail
+  
+  Breakdown by Database:
+    • gmail: 236 entries
+    • stories: 2 entries
+
+  Sample Results (first 5):
+    1. RE: BATCH 2025-08 / PO-0006 - AU SHIPMENT (gmail)
+       Date: 2025-10-16
+    2. BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-16
+    3. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-16
+    4. RE: BATCH 2025-07 UK SHIPMENT ETA SHIPBOB WAREHOUSE ON SEPT 5 2025 (gmail)
+       Date: 2025-10-16
+    5. RE : BATCH 2025-08 / PO-0006 - AU SHIPMENT (gmail)
+       Date: 2025-10-16

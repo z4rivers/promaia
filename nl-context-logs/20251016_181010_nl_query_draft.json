@@ -1,0 +1,143 @@
+{
+  "user_query": "trass gmail and stories about pradip",
+  "intent": {
+    "goal": "find emails and stories related to Pradip in the Trass workspace",
+    "databases": [
+      "trass.gmail",
+      "trass.stories"
+    ],
+    "search_terms": [
+      "pradip"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": "SELECT DISTINCT\n    u.page_id,\n    u.workspace, \n    u.database_name,\n    u.title,\n    u.created_time,\n    COALESCE(g.subject, '') as subject,\n    COALESCE(g.sender_name, '') as sender_name,\n    COALESCE(g.sender_email, '') as sender_email,\n    COALESCE(g.body_snippet, '') as snippet\nFROM unified_content u\nLEFT JOIN gmail_content g ON u.page_id = g.page_id\nWHERE u.workspace IN ('trass')\nAND u.database_name IN ('gmail', 'stories')\nAND (\n    LOWER(u.title) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.subject,'')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.sender_name,'')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.sender_email,'')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.body_snippet,'')) LIKE '%pradip%'\n    OR LOWER(COALESCE(g.message_content,'')) LIKE '%pradip%'\n)\nORDER BY u.created_time DESC\nLIMIT 1200",
+  "query_mode": "sql",
+  "result_count": 81,
+  "databases_in_results": [
+    "gmail"
+  ],
+  "database_breakdown": {
+    "gmail": 81
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_199e7593b4ba3b28",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-15T15:39:32+05:30",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Hello Steve Hope you are doing well I have not received my payment yet for the above invoice Can you check and confirm when I can get the same at my end? On Mon, 13 Oct 2025 at 12:29, Pradip &lt;"
+    },
+    {
+      "page_id": "msg_199ddd922342fd33",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T19:23:00+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Hello Koii, I&#39;ve added my replies to your comments. Please review them from your end and let me know if any further updates are needed. On Mon, 13 Oct 2025 at 12:17, Pradip &lt;pradipweweb@gmail."
+    },
+    {
+      "page_id": "msg_199dec6ee0ece8e7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Pradip  and 2 others made updates in Trass Games",
+      "created_time": "2025-10-13T18:13:22+00:00",
+      "subject": "Pradip  and 2 others made updates in Trass Games",
+      "sender_name": "Notion Team",
+      "sender_email": "Notion Team <notify@mail.notion.so>",
+      "snippet": "See what&#39;s changed \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f \u200c \u034f"
+    },
+    {
+      "page_id": "msg_199dc5e6cbfe9f1e",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-13T12:29:25+05:30",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Thank you So much Steve On Sat, 11 Oct 2025 at 01:02, Steve Shockey &lt;steve@trassgames.com&gt; wrote: Hello Pradip, I will send payment now. Best, Steve On Fri, Oct 10, 2025 at 1:48 AM Pradip &lt;"
+    },
+    {
+      "page_id": "msg_199dc535bd39820d",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T12:17:14+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Hello Koii, I will review your comment on Notion and will give you the reply on it. Thanks, On Sat, 11 Oct 2025 at 01:39, Koii Benvenutto &lt;koii@trassgames.com&gt; wrote: Hi Padip, I&#39;ve added my"
+    },
+    {
+      "page_id": "msg_199dee5ec4a2f96f",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-13T11:47:11-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "snippet": "Dear Pradip, heard. I&#39;ll get back to you on this shortly. Koii Benvenutto PM Plush and Merch koii@trassgames.com On Mon, Oct 13, 2025 at 6:53 AM Pradip &lt;pradipweweb@gmail.com&gt; wrote: Hello"
+    },
+    {
+      "page_id": "msg_199cdbb873f48576",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-10T16:16:44+05:30",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Hey Koii, Could you please help me know the above so that I can plan things accordingly? On Thu, 9 Oct 2025 at 17:14, Pradip &lt;pradipweweb@gmail.com&gt; wrote: Hi Koii, Hope you&#39;re doing well. I"
+    },
+    {
+      "page_id": "msg_199cf9c9953cd9a5",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-10T13:32:37-06:00",
+      "subject": "Re: Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Steve Shockey",
+      "sender_email": "Steve Shockey <steve@trassgames.com>",
+      "snippet": "Hello Pradip, I will send payment now. Best, Steve On Fri, Oct 10, 2025 at 1:48 AM Pradip &lt;pradipweweb@gmail.com&gt; wrote: Hello Steve, I Hope you are doing Well :) Please find the attached invoice"
+    },
+    {
+      "page_id": "msg_199cd1797c50d8bf",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "created_time": "2025-10-10T13:17:42+05:30",
+      "subject": "Invoice for Time Period - 06th Oct to 15th Oct",
+      "sender_name": "Pradip",
+      "sender_email": "Pradip <pradipweweb@gmail.com>",
+      "snippet": "Hello Steve, I Hope you are doing Well :) Please find the attached invoice for the Time Period : 06th Oct to 10th Oct (Number of Hours : 05) Kindly review the Invoice and let me know incase of any"
+    },
+    {
+      "page_id": "msg_199cfbe516ce93d7",
+      "workspace": "trass",
+      "database_name": "gmail",
+      "title": "Re: Shopify work consultation",
+      "created_time": "2025-10-10T13:09:39-07:00",
+      "subject": "Re: Shopify work consultation",
+      "sender_name": "Koii Benvenutto",
+      "sender_email": "Koii Benvenutto <koii@trassgames.com>",
+      "snippet": "Hi Padip, I&#39;ve added my comments to the notion doc. Once these are addressed we can move forward or consider additional app options. https://www.notion.so/Koii-x-Pradip-"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 81 entries from 1 databases"
+  },
+  "retries": 0
+}
