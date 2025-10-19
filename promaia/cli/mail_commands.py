@@ -25,6 +25,13 @@ async def handle_mail(args):
     from promaia.mail.processor import EmailProcessor
     from promaia.mail.review_ui import EmailReviewUI
     
+    # Set logging level based on verbose flag
+    if hasattr(args, 'verbose') and args.verbose:
+        logging.basicConfig(level=logging.DEBUG, force=True)
+        logger.setLevel(logging.DEBUG)
+        # Also set for all promaia loggers
+        logging.getLogger('promaia').setLevel(logging.DEBUG)
+    
     try:
         # Determine workspaces
         workspace_manager = get_workspace_manager()
@@ -112,6 +119,12 @@ def add_mail_commands(subparsers):
         '-p', '--process',
         action='store_true',
         help='Process new emails before reviewing (generates drafts for new threads)'
+    )
+    
+    mail_parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Enable verbose debug logging'
     )
     
     mail_parser.set_defaults(func=handle_mail)
