@@ -92,11 +92,33 @@ class DraftManager:
                 """)
                 
                 conn.commit()
+                
+                # Migrate existing tables to add draft_history column if missing
+                self._migrate_draft_history_column(cursor)
+                conn.commit()
+                
                 logger.info("✅ Email drafts table initialized")
                 
         except Exception as e:
             logger.error(f"❌ Failed to initialize email_drafts table: {e}")
             raise
+    
+    def _migrate_draft_history_column(self, cursor):
+        """Add draft_history column to existing tables if it doesn't exist."""
+        try:
+            # Check if draft_history column exists
+            cursor.execute("PRAGMA table_info(email_drafts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'draft_history' not in columns:
+                logger.info("🔄 Migrating email_drafts table to add draft_history column...")
+                cursor.execute("""
+                    ALTER TABLE email_drafts 
+                    ADD COLUMN draft_history TEXT
+                """)
+                logger.info("✅ Added draft_history column")
+        except Exception as e:
+            logger.warning(f"⚠️  Draft history migration: {e}")
     
     def save_draft(self, draft: Dict[str, Any]) -> str:
         """
