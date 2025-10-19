@@ -163,12 +163,11 @@ class EmailReviewUI:
         bar = '█' * filled + '░' * (total_width - filled)
         
         return f"""
-╭──────────────────────────────────────────────────────────────────────────────────────╮
-│  Maia Mail - Draft Review Queue                                                     │
-│                                                                                      │
-│  Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)        │
-│  Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped   │
-╰──────────────────────────────────────────────────────────────────────────────────────╯
+Maia Mail - Draft Review Queue
+
+Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)
+Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped
+
 """
     
     def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int) -> str:
@@ -270,13 +269,9 @@ class EmailReviewUI:
         cleaned_body = self._clean_email_body(draft.get('inbound_body', 'No body available'))
         
         return f"""
-╭──────────────────────────────────────────────────────────────────────────────────────╮
-│  Draft Review - Full View                                                           │
-╰──────────────────────────────────────────────────────────────────────────────────────╯
+Draft Review - Full View
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  INBOUND MESSAGE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INBOUND MESSAGE
 
 From:     {draft.get('inbound_from', 'Unknown')}
 Subject:  {draft.get('inbound_subject', 'No Subject')}
@@ -285,26 +280,26 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
 
 {cleaned_body}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  YOUR DRAFT RESPONSE ({draft_words} words)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────────────────────────────────────
+
+YOUR DRAFT RESPONSE ({draft_words} words)
 
 {draft.get('draft_body', 'No draft available')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  CONTEXT USED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────────────────────────────────────
+
+CONTEXT USED
 
 Sources:     {context_count} documents from knowledge base
 Databases:   {context_summary}
 AI Model:    {draft.get('ai_model', 'unknown')}
 Generated:   {draft.get('created_time', 'unknown')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ACTIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────────────────────────────────────
 
-  [Enter] Chat  [a] Archive  [v] Context  [b] Back  [q] Quit
+ACTIONS
+
+[Enter] Chat  [a] Archive  [v] Context  [b] Back  [q] Quit
 
 """
     
@@ -320,9 +315,7 @@ Generated:   {draft.get('created_time', 'unknown')}
             return "\n📭 No context sources were used for this draft\n"
         
         output = [
-            "╭──────────────────────────────────────────────────────────────────────────────────────╮",
-            "│  Context Sources Used for Draft Generation                                          │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────╯\n"
+            "\nContext Sources Used for Draft Generation\n"
         ]
         
         for idx, source in enumerate(context_sources, 1):

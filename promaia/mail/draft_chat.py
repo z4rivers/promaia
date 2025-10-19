@@ -176,29 +176,14 @@ class DraftChatInterface:
         Returns:
             Formatted artifact string
         """
-        lines = draft_text.split('\n')
-        wrapped_lines = []
-        
-        for line in lines:
-            if len(line) <= 78:
-                wrapped_lines.append(f"│ {line:<78} │")
-            else:
-                # Wrap long lines
-                while len(line) > 78:
-                    wrapped_lines.append(f"│ {line[:78]:<78} │")
-                    line = line[78:]
-                if line:
-                    wrapped_lines.append(f"│ {line:<78} │")
-        
         artifact = [
-            f"╭──── Draft #{draft_number} ────────────────────────────────────────────────────────╮",
-            "│                                                                                  │"
+            f"Draft #{draft_number}",
+            "─────────────────────────────────────────────────────────────────",
+            "",
+            draft_text,
+            "",
+            "─────────────────────────────────────────────────────────────────"
         ]
-        artifact.extend(wrapped_lines)
-        artifact.extend([
-            "│                                                                                  │",
-            "╰──────────────────────────────────────────────────────────────────────────────────╯"
-        ])
         
         return '\n'.join(artifact)
     
@@ -236,9 +221,7 @@ class DraftChatInterface:
             print()
             print_separator()
             print(f"""
-╭──────────────────────────────────────────────────────────────────────────────────────╮
-│  INBOUND MESSAGE                                                                     │
-╰──────────────────────────────────────────────────────────────────────────────────────╯
+INBOUND MESSAGE
 
 From:     {draft['inbound_from']}
 Subject:  {draft['inbound_subject']}
