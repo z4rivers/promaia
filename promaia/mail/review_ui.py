@@ -1,104 +1,97 @@
 """
-Review UI - prompt_toolkit-based review interface with full information display.
-
-Provides a complete email review experience without needing to open Gmail:
-- Progress tracking (X/Y threads resolved)
-- Full visibility of all draft information
-- Context view showing what sources were used
-- Navigation and action commands
+Email Draft Review UI - Interactive review interface for email drafts.
 """
-import asyncio
 import json
 import logging
-from datetime import datetime
+import os
 from typing import List, Dict, Any, Optional
-
-from prompt_toolkit.application import Application
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.keys import Keys
-from prompt_toolkit.layout.containers import HSplit, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.layout.layout import Layout
-from prompt_toolkit.formatted_text import FormattedText
+from datetime import datetime
 
 from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
-from promaia.mail.learning_system import EmailResponseLearningSystem
-from promaia.utils.display import print_text, print_separator
+from promaia.utils.formatting import print_text, print_separator
 
 logger = logging.getLogger(__name__)
 
 
 class EmailReviewUI:
-    """prompt_toolkit-based review interface with full information display."""
+    """Interactive review interface for email drafts."""
     
     def __init__(self):
-        """Initialize review UI."""
         self.draft_manager = DraftManager()
-        self.learning_system = EmailResponseLearningSystem()
-    
-    def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
-        """Calculate session statistics."""
-        return {
-            'total': len(drafts),
-            'pending': len([d for d in drafts if d['status'] == 'pending']),
-            'sent': len([d for d in drafts if d['status'] == 'sent']),
-            'rejected': len([d for d in drafts if d['status'] == 'rejected']),
-            'resolved': len([d for d in drafts if d['status'] in ['sent', 'rejected']])
+        self.session_stats = {
+            'sent': 0,
+            'rejected': 0,
+            'pending': 0
         }
     
+    def _clear_screen(self):
+        """Clear terminal screen."""
+        os.system('clear' if os.name != 'nt' else 'cls')
+    
+    def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Calculate stats from draft list."""
+        stats = {
+            'total': len(drafts),
+            'sent': sum(1 for d in drafts if d.get('status') == 'sent'),
+            'rejected': sum(1 for d in drafts if d.get('status') == 'rejected'),
+            'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
+        }
+        stats['resolved'] = stats['sent'] + stats['rejected']
+        if stats['total'] > 0:
+            stats['percent'] = int((stats['resolved'] / stats['total']) * 100)
+        else:
+            stats['percent'] = 0
+        return stats
+    
     def _render_status_bar(self, stats: Dict[str, int]) -> str:
-        """Render top status bar with completion count."""
-        resolved = stats['resolved']
-        total = stats['total']
-        percentage = int((resolved / total * 100)) if total > 0 else 0
-        
+        """Render progress and status bar."""
         # Progress bar
-        bar_width = 30
-        filled = int(bar_width * resolved / total) if total > 0 else 0
-        bar = '█' * filled + '░' * (bar_width - filled)
+        total_width = 30
+        filled = int((stats['percent'] / 100) * total_width)
+        bar = '█' * filled + '░' * (total_width - filled)
         
         return f"""
 ╭──────────────────────────────────────────────────────────────────────────────────────╮
 │  Maia Mail - Draft Review Queue                                                     │
 │                                                                                      │
-│  Progress: [{bar}] {resolved}/{total} resolved ({percentage}%)        │
+│  Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)        │
 │  Status: ✅ {stats['sent']} sent  •  ❌ {stats['rejected']} rejected  •  ⏳ {stats['pending']} pending   │
 ╰──────────────────────────────────────────────────────────────────────────────────────╯
 """
     
     def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int) -> str:
-        """Render list with full visibility of all threads."""
-        if not drafts:
-            return "\n📭 No pending drafts. All caught up!\n"
-        
+        """Render list of drafts for review."""
         output = []
         
         for idx, draft in enumerate(drafts):
-            is_selected = idx == current_selection
-            status_icon = {
-                'pending': '⏳',
-                'sent': '✅',
-                'rejected': '❌',
-                'edited': '✏️'
-            }.get(draft['status'], '•')
+            # Status icon
+            if draft.get('status') == 'sent':
+                icon = '✅'
+            elif draft.get('status') == 'rejected':
+                icon = '❌'
+            else:
+                icon = '⏳'
             
             # Selection indicator
-            selector = '▶' if is_selected else ' '
+            selector = '▶' if idx == current_selection else ' '
             
-            # Format timestamp
-            received_time = draft.get('inbound_date', '')
-            if received_time:
-                try:
-                    dt = datetime.fromisoformat(received_time.replace('Z', '+00:00'))
-                    time_str = dt.strftime('%b %d, %I:%M %p')
-                except:
-                    time_str = 'Unknown'
+            # Format date
+            try:
+                date_obj = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
+                date_str = date_obj.strftime('%b %d, %I:%M %p')
+            except:
+                date_str = 'Unknown'
+            
+            # Preview
+            from_addr = draft.get('inbound_from', 'Unknown')
+            if '<' in from_addr and '>' in from_addr:
+                from_name = from_addr.split('<')[0].strip()
             else:
-                time_str = 'Unknown'
+                from_name = from_addr
             
-            # Draft word count
-            draft_words = len(draft.get('draft_body', '').split())
+            subject = draft.get('inbound_subject', 'No Subject')
+            snippet = draft.get('inbound_snippet', '')[:80]
             
             # Context count
             try:
@@ -107,46 +100,45 @@ class EmailReviewUI:
             except:
                 context_count = 0
             
-            subject = draft.get('inbound_subject', 'No Subject')[:60]
-            from_addr = draft.get('inbound_from', 'Unknown')[:50]
-            snippet = draft.get('inbound_snippet', '')[:70]
+            # Word count
+            word_count = len(draft.get('draft_body', '').split())
             
-            output.append(
-                f"{selector} [{idx+1}] {status_icon} {subject}\n"
-                f"       From: {from_addr} | {time_str}\n"
-                f"       Preview: {snippet}...\n"
-                f"       Draft: {draft_words} words | Context: {context_count} sources\n"
-            )
+            output.append(f"{selector} [{idx + 1}] {icon} {subject}")
+            output.append(f"       From: {from_name} | {date_str}")
+            output.append(f"       Preview: {snippet}...")
+            output.append(f"       Draft: {word_count} words | Context: {context_count} sources")
+            output.append("")
         
         return '\n'.join(output)
     
     def _render_draft_detail(self, draft: Dict[str, Any]) -> str:
-        """Show full detail view - everything needed to make a decision."""
-        # Parse response context
+        """Render full draft details."""
+        # Get context
         try:
             context_data = json.loads(draft.get('response_context', '{}'))
             context_sources = context_data.get('documents', [])
             context_count = len(context_sources)
-            context_summary = ', '.join([s.get('database', 'unknown') for s in context_sources[:3]])
-            if len(context_sources) > 3:
-                context_summary += f" + {len(context_sources) - 3} more"
         except:
             context_count = 0
-            context_summary = "None"
+            context_sources = []
         
-        # Format timestamps
+        # Format date
         try:
             received_dt = datetime.fromisoformat(draft.get('inbound_date', '').replace('Z', '+00:00'))
             received_str = received_dt.strftime('%A, %B %d, %Y at %I:%M %p')
         except:
             received_str = draft.get('inbound_date', 'Unknown')
         
-        # Thread context
-        thread_context = draft.get('thread_context', '')
-        thread_summary = f"\n{thread_context[:200]}...\n" if thread_context and len(thread_context) > 50 else ""
-        
         # Word count
         draft_words = len(draft.get('draft_body', '').split())
+        
+        # Context summary
+        if context_sources:
+            context_summary = ', '.join([s.get('database', 'unknown') for s in context_sources[:3]])
+            if len(context_sources) > 3:
+                context_summary += f" + {len(context_sources) - 3} more"
+        else:
+            context_summary = "None"
         
         return f"""
 ╭──────────────────────────────────────────────────────────────────────────────────────╮
@@ -161,7 +153,7 @@ From:     {draft.get('inbound_from', 'Unknown')}
 Subject:  {draft.get('inbound_subject', 'No Subject')}
 Date:     {received_str}
 Thread:   {draft.get('message_count', 1)} message(s) in thread
-{thread_summary}
+
 {draft.get('inbound_body', 'No body available')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -187,7 +179,7 @@ Generated:   {draft.get('created_time', 'unknown')}
   c  - Open chat to refine the draft
   r  - Reject (won't send, mark as handled)
   v  - View full context sources
-  Esc - Back to list
+  b  - Back to list
 
 """
     
@@ -215,11 +207,11 @@ Generated:   {draft.get('created_time', 'unknown')}
             output.append(f"    Preview: {snippet}...")
             output.append("")
         
-        output.append("\nPress Esc to return to draft view...")
+        output.append("\nPress 'b' to return to draft view...")
         return '\n'.join(output)
     
     async def launch_review(self, workspaces: List[str]):
-        """Main review flow with full information display."""
+        """Main review flow."""
         # Load drafts for specified workspaces
         all_drafts = []
         for workspace in workspaces:
@@ -233,141 +225,90 @@ Generated:   {draft.get('created_time', 'unknown')}
         # Initial stats
         stats = self._calculate_stats(all_drafts)
         
-        # Display executive summary
-        print()
-        print(self._render_status_bar(stats))
-        print()
-        print_text(f"Found {stats['total']} draft(s) for review\n", style="cyan")
-        
         # State
         current_selection = 0
         current_view = 'list'  # 'list', 'detail', 'context'
-        should_refresh = False
         
-        # Main loop using prompt_toolkit
+        # Main loop
         while True:
             try:
-                bindings = KeyBindings()
+                # Clear and render
+                self._clear_screen()
+                print(self._render_status_bar(stats))
+                print()
                 
-                # Navigation
-                @bindings.add(Keys.Up)
-                def move_up(event):
-                    nonlocal current_selection
-                    if current_view == 'list' and current_selection > 0:
-                        current_selection -= 1
-                        event.app.exit(result='refresh')
-                
-                @bindings.add(Keys.Down)
-                def move_down(event):
-                    nonlocal current_selection
-                    if current_view == 'list' and current_selection < len(all_drafts) - 1:
-                        current_selection += 1
-                        event.app.exit(result='refresh')
-                
-                @bindings.add(Keys.Enter)
-                def view_detail(event):
-                    nonlocal current_view
-                    if current_view == 'list':
+                if current_view == 'list':
+                    print(self._render_review_list(all_drafts, current_selection))
+                    print("\nNavigation: ↑/↓ select | Enter view | q quit")
+                    print("Action: ", end='', flush=True)
+                    
+                    # Get input
+                    action = input().strip().lower()
+                    
+                    if action == 'q':
+                        break
+                    elif action == '' or action == 'enter':
+                        # View details
                         current_view = 'detail'
-                    else:
+                    elif action in ['up', 'u', 'k']:
+                        if current_selection > 0:
+                            current_selection -= 1
+                    elif action in ['down', 'd', 'j']:
+                        if current_selection < len(all_drafts) - 1:
+                            current_selection += 1
+                    elif action.isdigit():
+                        idx = int(action) - 1
+                        if 0 <= idx < len(all_drafts):
+                            current_selection = idx
+                            current_view = 'detail'
+                
+                elif current_view == 'detail':
+                    print(self._render_draft_detail(all_drafts[current_selection]))
+                    print("Action: ", end='', flush=True)
+                    
+                    action = input().strip().lower()
+                    
+                    if action == 'b' or action == 'q':
                         current_view = 'list'
-                    event.app.exit(result='refresh')
-                
-                @bindings.add('v')
-                def view_context(event):
-                    nonlocal current_view
-                    if current_view == 'detail':
-                        current_view = 'context'
-                        event.app.exit(result='refresh')
-                
-                @bindings.add('s')
-                def send_draft(event):
-                    nonlocal should_refresh
-                    if current_view == 'detail':
-                        should_refresh = True
-                        event.app.exit(result='send')
-                
-                @bindings.add('c')
-                def open_chat(event):
-                    nonlocal should_refresh
-                    if current_view == 'detail':
-                        should_refresh = True
-                        event.app.exit(result='chat')
-                
-                @bindings.add('r')
-                def reject_draft(event):
-                    nonlocal should_refresh, stats
-                    if current_view == 'detail':
-                        draft = all_drafts[current_selection]
-                        self.draft_manager.update_draft_status(draft['draft_id'], 'rejected')
-                        draft['status'] = 'rejected'
+                    elif action == 's':
+                        await self._handle_send(all_drafts[current_selection])
+                        # Reload draft
+                        updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
+                        all_drafts[current_selection] = updated_draft
                         stats = self._calculate_stats(all_drafts)
                         current_view = 'list'
-                        should_refresh = True
-                        event.app.exit(result='refresh')
-                
-                @bindings.add(Keys.Escape)
-                def go_back(event):
-                    nonlocal current_view
-                    if current_view in ['detail', 'context']:
+                    elif action == 'c':
+                        await self._handle_chat(all_drafts[current_selection])
+                        # Reload draft
+                        updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
+                        all_drafts[current_selection] = updated_draft
+                        stats = self._calculate_stats(all_drafts)
                         current_view = 'list'
-                        event.app.exit(result='refresh')
-                    else:
-                        event.app.exit(result='quit')
+                    elif action == 'r':
+                        self.draft_manager.update_draft_status(all_drafts[current_selection]['draft_id'], 'rejected')
+                        all_drafts[current_selection]['status'] = 'rejected'
+                        stats = self._calculate_stats(all_drafts)
+                        current_view = 'list'
+                    elif action == 'v':
+                        current_view = 'context'
                 
-                @bindings.add('q')
-                def quit_review(event):
-                    event.app.exit(result='quit')
-                
-                # Render content
-                def render_view():
-                    output = [self._render_status_bar(stats)]
+                elif current_view == 'context':
+                    print(self._render_context_view(all_drafts[current_selection]))
+                    print("\nAction: ", end='', flush=True)
                     
-                    if current_view == 'list':
-                        output.append(self._render_review_list(all_drafts, current_selection))
-                        output.append("\nNavigation: ↑/↓ select | Enter view | q quit\n")
-                    elif current_view == 'detail':
-                        output.append(self._render_draft_detail(all_drafts[current_selection]))
-                    elif current_view == 'context':
-                        output.append(self._render_context_view(all_drafts[current_selection]))
-                    
-                    return '\n'.join(output)
-                
-                # Create application
-                content_control = FormattedTextControl(text=render_view)
-                container = HSplit([Window(content=content_control, height=None)])
-                layout = Layout(container)
-                
-                app = Application(
-                    layout=layout,
-                    key_bindings=bindings,
-                    full_screen=False,
-                    mouse_support=False
-                )
-                
-                # Run and get result
-                result = await app.run_async()
-                
-                if result == 'quit':
-                    break
-                
-                elif result == 'send':
-                    await self._handle_send(all_drafts[current_selection], stats)
-                    stats = self._calculate_stats(all_drafts)
-                    current_view = 'list'
-                
-                elif result == 'chat':
-                    await self._handle_chat(all_drafts[current_selection])
-                    # Reload draft
-                    updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                    all_drafts[current_selection] = updated_draft
-                    stats = self._calculate_stats(all_drafts)
-                    current_view = 'list'
-                
+                    action = input().strip().lower()
+                    if action == 'b' or action == 'q':
+                        current_view = 'detail'
+                        
             except KeyboardInterrupt:
                 break
+            except Exception as e:
+                logger.error(f"Error in review loop: {e}")
+                print_text(f"\n❌ Error: {e}\n", style="red")
+                input("Press Enter to continue...")
         
         # Final summary
+        self._clear_screen()
         final_stats = self._calculate_stats(all_drafts)
         print()
         print_text(
@@ -376,17 +317,18 @@ Generated:   {draft.get('created_time', 'unknown')}
             style="green"
         )
     
-    async def _handle_send(self, draft: Dict[str, Any], stats: Dict[str, int]):
+    async def _handle_send(self, draft: Dict[str, Any]):
         """Handle sending a draft."""
-        # This will be called from outside the prompt_toolkit app
-        print()
-        print_text(f"⚠️  Ready to send draft", style="bold yellow")
-        print_text(f"Type the first 5 characters to confirm: {draft['inbound_subject'][:20]}...", style="yellow")
+        self._clear_screen()
+        print_text(f"\n⚠️  Ready to send draft", style="bold yellow")
+        print_text(f"Subject: {draft['inbound_subject']}", style="yellow")
+        print_text(f"\nType the first 5 characters of the subject to confirm: '{draft['safety_string']}'", style="yellow")
         
-        confirmation = input("Confirm: ").strip()
+        confirmation = input("\nConfirm: ").strip()
         
         if confirmation != draft['safety_string']:
-            print_text("❌ Confirmation failed\n", style="red")
+            print_text("❌ Confirmation failed. Press Enter to continue...", style="red")
+            input()
             return
         
         print_text("\n📤 Sending email...", style="cyan")
@@ -400,7 +342,8 @@ Generated:   {draft.get('created_time', 'unknown')}
         ]
         
         if not gmail_dbs:
-            print_text("❌ No Gmail database found\n", style="red")
+            print_text("❌ No Gmail database found. Press Enter to continue...", style="red")
+            input()
             return
         
         sender = GmailSender(draft['workspace'], gmail_dbs[0].database_id)
@@ -412,16 +355,16 @@ Generated:   {draft.get('created_time', 'unknown')}
         )
         
         if success:
-            print_text("✅ Email sent!\n", style="green")
+            print_text("✅ Email sent!", style="green")
             self.draft_manager.mark_sent(draft['draft_id'])
             draft['status'] = 'sent'
             
             # Save to learning
             await self._save_to_learning(draft)
         else:
-            print_text("❌ Failed to send\n", style="red")
+            print_text("❌ Failed to send", style="red")
         
-        input("Press Enter to continue...")
+        input("\nPress Enter to continue...")
     
     async def _handle_chat(self, draft: Dict[str, Any]):
         """Handle opening chat for a draft."""
@@ -433,12 +376,14 @@ Generated:   {draft.get('created_time', 'unknown')}
     async def _save_to_learning(self, draft: Dict[str, Any]):
         """Save successful send to learning system."""
         try:
+            from promaia.mail.learning_system import EmailResponseLearningSystem
+            learning = EmailResponseLearningSystem()
+            
             pattern = {
                 "inbound": {
                     "from": draft['inbound_from'],
                     "subject": draft['inbound_subject'],
                     "body_snippet": draft['inbound_snippet'],
-                    "thread_context": draft.get('thread_context', '')
                 },
                 "response": {
                     "subject": draft['draft_subject'],
@@ -448,13 +393,14 @@ Generated:   {draft.get('created_time', 'unknown')}
                 },
                 "metadata": {
                     "workspace": draft['workspace'],
-                    "sent_time": draft.get('sent_time', ''),
-                    "was_successful": True,
-                    "notes": "Sent via review UI"
+                    "ai_model": draft.get('ai_model', 'unknown'),
+                    "context_sources": draft.get('response_context', '{}'),
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             }
             
-            self.learning_system.save_successful_response(pattern)
+            learning.save_successful_response(pattern)
+            logger.info("✅ Saved response pattern to learning system")
+            
         except Exception as e:
-            logger.warning(f"Could not save to learning: {e}")
-
+            logger.warning(f"⚠️  Could not save to learning system: {e}")
