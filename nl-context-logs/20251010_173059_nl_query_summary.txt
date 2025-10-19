@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 17:30:59
+
+USER QUERY: trass notion stories about international fulfillment centers
+
+INTENT PARSED:
+  Goal: find stories from trass workspace about international fulfillment centers
+  Databases: trass.stories
+  Search Terms: international, fulfillment, centers, FC
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 20 entries
+
+  Sample Results (first 5):
+    1. Fill out ShipBob warehouse access forms (stories)
+       Date: 2025-06-05
+    2. Shipbob x Trass 2025-06-10 (stories)
+       Date: 2025-06-06
+    3. ETD (Vessel Leaves China) (stories)
+       Date: 2025-05-07
+    4. ETD (Vessel Leaves China) (stories)
+       Date: 2025-05-07
+    5. Get warehouse addresses to Fionn (stories)
+       Date: 2025-05-14

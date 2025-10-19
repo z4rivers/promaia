@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 17:55:58
+
+USER QUERY: trass gmail that mentions shipBob or merchant or support and doesnt mention mgm, limit query to last 3 months
+
+INTENT PARSED:
+  Goal: find trass gmail messages mentioning shipbob/merchant/support but excluding mgm from past 3 months
+  Databases: trass.gmail
+  Search Terms: shipBob, merchant, support, -mgm
+  Date Filter: last 3 months
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 217
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 217 entries
+
+  Sample Results (first 5):
+    1. Expedite FC approval CA and UK   thread::_p1ptNGkebqsyuM80pOwJz0:: (gmail)
+       Date: 2025-10-10
+    2. Re: Replicate "fulfill" tag automation rule thread::3coBfneId7iWF3lTH0wTLT0:: (gmail)
+       Date: 2025-10-10
+    3. Replicate "fulfill" tag automation rule   thread::3coBfneId7iWF3lTH0wTLT0:: (gmail)
+       Date: 2025-10-10
+    4. Order #59985 confirmed (gmail)
+       Date: 2025-10-10
+    5. Re: Shopify work consultation (gmail)
+       Date: 2025-10-10

@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 18:19:44
+
+USER QUERY: koii workspace notion stories about experiences with graham
+
+INTENT PARSED:
+  Goal: find stories mentioning experiences with Graham
+  Databases: stories
+  Search Terms: experiences, graham
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 20 entries
+
+  Sample Results (first 5):
+    1. Therapy journal (stories)
+       Date: 2025-07-08
+    2. Untitled (stories)
+       Date: 2025-06-06
+    3. Add MCP integration to Promaia (stories)
+       Date: 2025-06-25
+    4. Koii growth journal (stories)
+       Date: 2025-07-22
+    5. Obsidian style link layer exploration (stories)
+       Date: 2025-04-08

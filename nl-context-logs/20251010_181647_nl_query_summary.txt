@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 18:16:47
+
+USER QUERY: trass notion stories about international fulfillment centers
+
+INTENT PARSED:
+  Goal: find stories about international fulfillment centers in the Trass notion database
+  Databases: trass.stories
+  Search Terms: international, fulfillment, centers, FC
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 18
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 18 entries
+
+  Sample Results (first 5):
+    1. Fill out ShipBob warehouse access forms (stories)
+       Date: 2025-06-05
+    2. Shipbob x Trass 2025-06-10 (stories)
+       Date: 2025-06-06
+    3. Get warehouse addresses to Fionn (stories)
+       Date: 2025-05-14
+    4. Untitled (stories)
+       Date: 2025-05-19
+    5. [🇬🇧 remaining] International FC access (stories)
+       Date: 2025-05-19

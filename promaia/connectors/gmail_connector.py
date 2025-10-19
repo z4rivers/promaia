@@ -70,7 +70,10 @@ class GmailConnector(BaseConnector):
     """
     
     # Gmail API scopes
-    SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+    SCOPES = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send'  # Required for maia mail
+    ]
     
     # Rate limiting and batching configuration
     MAX_THREADS_PER_BATCH = 10  # More conservative to avoid rate limits and improve reliability
@@ -630,6 +633,8 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if not content:
             return ""
         
+        original_length = len(content)
+        
         # First, try to split inline quotes using multiple regex patterns
         inline_quote_patterns = [
             # Gmail format: "On [date] at [time] [sender] <email> wrote:"
@@ -649,7 +654,7 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             if match:
                 # Split at the quote and return only the part before it
                 clean_content = content[:match.start()].strip()
-                self.logger.debug(f"Inline quote detected and removed at position {match.start()} using pattern")
+                self.logger.debug(f"Inline quote detected at position {match.start()}/{original_length}, reduced content from {original_length} to {len(clean_content)} chars")
                 return clean_content
         
         # Fallback to line-by-line processing for other quote formats
@@ -729,7 +734,11 @@ CAUTION: This email originated from outside of the organisation. Do not click li
         if not result and content:
             # Take first reasonable chunk before any quote indicators
             first_chunk = content[:500].strip()
+            self.logger.warning(f"Content extraction stripped everything, using fallback (500 chars from {original_length})")
             return first_chunk if first_chunk else "[Message content could not be extracted]"
+        
+        if len(result) < original_length * 0.5:
+            self.logger.debug(f"Content significantly reduced: {original_length} -> {len(result)} chars ({len(result)/original_length*100:.1f}%)")
         
         return result
     
@@ -789,12 +798,22 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             if data:
                 try:
                     html_content = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    # Simple HTML to text conversion
+                    # Better HTML to text conversion that preserves line structure
                     import html
                     text = re.sub('<style.*?</style>', '', html_content, flags=re.DOTALL)
                     text = re.sub('<script.*?</script>', '', text, flags=re.DOTALL)
+                    
+                    # Convert block-level elements to newlines BEFORE stripping tags
+                    text = re.sub(r'</?(br|BR)[^>]*>', '\n', text)
+                    text = re.sub(r'</?(p|P|div|DIV|h[1-6]|H[1-6]|li|LI|tr|TR)[^>]*>', '\n', text)
+                    
+                    # Now remove remaining HTML tags
                     text = re.sub('<[^<]+?>', ' ', text)
-                    text = re.sub(r'\s+', ' ', text)
+                    
+                    # Collapse multiple spaces on same line, but preserve newlines
+                    text = re.sub(r'[ \t]+', ' ', text)  # Collapse spaces/tabs but not newlines
+                    text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Collapse multiple newlines to max 2
+                    
                     return html.unescape(text).strip()
                 except Exception as e:
                     self.logger.warning(f"Failed to decode text/html data: {e}")
@@ -1411,4 +1430,132 @@ CAUTION: This email originated from outside of the organisation. Do not click li
             'page_id': page_id,
             'content': markdown_content,
             'metadata': metadata
-        } 
+        }
+    
+    async def send_email(
+        self,
+        to: str,
+        subject: str,
+        body_text: str,
+        body_html: Optional[str] = None,
+        thread_id: Optional[str] = None,
+        in_reply_to: Optional[str] = None,
+        references: Optional[str] = None
+    ) -> bool:
+        """
+        Send an email via Gmail API.
+        
+        Args:
+            to: Recipient email address
+            subject: Email subject
+            body_text: Plain text body
+            body_html: HTML body (optional)
+            thread_id: Gmail thread ID (for replies)
+            in_reply_to: Message ID being replied to
+            references: Full references chain for threading
+            
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        try:
+            # Create the email message
+            message = MIMEText(body_text)
+            message['to'] = to
+            message['subject'] = subject
+            
+            # Add threading headers for replies
+            if in_reply_to:
+                message['In-Reply-To'] = in_reply_to
+            if references:
+                message['References'] = references
+            elif in_reply_to:
+                # If no references provided but we have in-reply-to, use that as references
+                message['References'] = in_reply_to
+            
+            # Encode the message
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            
+            # Build the send request
+            send_request = {'raw': raw_message}
+            if thread_id:
+                send_request['threadId'] = thread_id
+            
+            # Send the email
+            result = self.service.users().messages().send(
+                userId='me',
+                body=send_request
+            ).execute()
+            
+            self.logger.info(f"✅ Email sent successfully. Message ID: {result.get('id')}")
+            return True
+            
+        except HttpError as e:
+            self.logger.error(f"❌ Failed to send email (HTTP {e.resp.status}): {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ Failed to send email: {e}")
+            return False
+    
+    async def send_reply(
+        self,
+        thread_id: str,
+        message_id: str,
+        subject: str,
+        body_text: str,
+        body_html: Optional[str] = None
+    ) -> bool:
+        """
+        Send a reply to an existing thread.
+        
+        Args:
+            thread_id: Gmail thread ID
+            message_id: Original message ID being replied to
+            subject: Email subject (should include RE: prefix)
+            body_text: Plain text body
+            body_html: HTML body (optional)
+            
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        try:
+            # Get the original message to extract recipient info and references
+            original = await self._retry_with_backoff(
+                lambda: self.service.users().messages().get(
+                    userId='me',
+                    id=message_id,
+                    format='full'
+                ).execute()
+            )
+            
+            # Extract headers from original message
+            headers = {h['name'].lower(): h['value'] 
+                      for h in original.get('payload', {}).get('headers', [])}
+            
+            # Determine reply-to address
+            reply_to = headers.get('reply-to') or headers.get('from')
+            
+            # Build references chain
+            existing_references = headers.get('references', '')
+            message_id_header = headers.get('message-id', '')
+            
+            if existing_references and message_id_header:
+                references = f"{existing_references} {message_id_header}"
+            elif message_id_header:
+                references = message_id_header
+            else:
+                references = None
+            
+            # Send the reply
+            return await self.send_email(
+                to=reply_to,
+                subject=subject if subject.startswith('RE:') else f"RE: {subject}",
+                body_text=body_text,
+                body_html=body_html,
+                thread_id=thread_id,
+                in_reply_to=message_id_header,
+                references=references
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to send reply: {e}")
+            return False 

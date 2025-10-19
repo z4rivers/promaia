@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 17:23:57
+
+USER QUERY: trass notion stories about international fulfillment centers
+
+INTENT PARSED:
+  Goal: find stories in trass workspace about international fulfillment centers
+  Databases: trass.stories
+  Search Terms: international, fulfillment, centers, fc
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 16
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 16 entries
+
+  Sample Results (first 5):
+    1. Fill out ShipBob warehouse access forms (stories)
+       Date: 2025-06-05
+    2. 2025-06-18 (stories)
+       Date: 2025-06-10
+    3. Add fulfill tag rule to ShipBob intl markets (stories)
+       Date: 2025-10-10
+    4. Transition from single product (YP1) to bundle (YP1-R1, YP2) (stories)
+       Date: 2025-05-07
+    5. ShipBob surge warning batch 2025-02 (stories)
+       Date: 2025-06-10

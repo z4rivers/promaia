@@ -44,6 +44,9 @@ from promaia.cli.conversion_commands import add_conversion_commands
 # Import newsletter commands
 from promaia.newsletter.commands import newsletter_sync_command, newsletter_test_command
 
+# Import mail commands
+from promaia.cli.mail_commands import add_mail_commands
+
 # Import workspace commands
 from promaia.cli.workspace_commands import (
     add_workspace_commands, add_workspace_commands_to_existing_parser
@@ -2818,6 +2821,9 @@ def main():
     hyb_parser = subparsers.add_parser('hyb', help='Hybrid architecture commands (alias for hybrid)')
     hyb_subparsers = hyb_parser.add_subparsers(dest='hybrid_command', help='Hybrid commands')
     add_hybrid_commands_to_existing_parser(hyb_parser, hyb_subparsers)
+    
+    # Add mail commands
+    add_mail_commands(subparsers)
 
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')

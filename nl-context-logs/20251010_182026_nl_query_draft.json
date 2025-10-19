@@ -1,0 +1,70 @@
+{
+  "user_query": "notion stories in the koii workspace about experiences with graham",
+  "intent": {
+    "goal": "find stories about experiences with Graham in the koii workspace",
+    "databases": [
+      "stories"
+    ],
+    "search_terms": [
+      "experiences",
+      "graham"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "experiences with Graham",
+    "filters": {
+      "database_name": "stories"
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 4,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 4
+  },
+  "sample_results": [
+    {
+      "page_id": "22ad1339-6967-8091-8247-eb02a1392c15",
+      "similarity_score": 0.34033697843551636,
+      "database_name": "stories",
+      "workspace": "koii",
+      "created_time": "2025-07-08T18:32:00.000Z",
+      "content_type": "stories"
+    },
+    {
+      "page_id": "238ce8f7-317a-8001-82d8-c3fedf50efaf",
+      "similarity_score": 0.32480692863464355,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-07-22T03:49:00.000Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "23ed1339-6967-809f-95cf-d0098b7cc622",
+      "similarity_score": 0.3200269937515259,
+      "database_name": "stories",
+      "workspace": "koii",
+      "created_time": "2025-07-28T17:43:00.000Z",
+      "content_type": "stories"
+    },
+    {
+      "page_id": "20ad1339-6967-8091-98ad-d8ddaf449fa4",
+      "similarity_score": 0.30699193477630615,
+      "database_name": "stories",
+      "workspace": "koii",
+      "created_time": "2025-06-06T21:28:00.000Z",
+      "content_type": "stories"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 4 entries from 1 databases"
+  },
+  "retries": 0
+}

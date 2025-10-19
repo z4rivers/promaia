@@ -1,0 +1,24 @@
+Natural Language Query Summary
+Generated: 2025-10-10 17:28:06
+
+USER QUERY: -vs trass.yp discord messages that have dissapointment
+
+INTENT PARSED:
+  Goal: find discord messages containing disappointment from trass yeeps server
+  Databases: trass.yp
+  Search Terms: disappointment, dissapointment
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 1
+  Databases Found: yp
+  
+  Breakdown by Database:
+    • yp: 1 entries
+
+  Sample Results (first 5):
+    1. 2025-10-10_17-56-02_itscapyson_still not the w_msg_msg_1426267047419056262 (yp)
+       Date: 2025-10-10

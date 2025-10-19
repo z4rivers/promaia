@@ -1,0 +1,102 @@
+{
+  "user_query": "koii journal entries where I'm particularly stressed out",
+  "intent": {
+    "goal": "find journal entries indicating high stress levels",
+    "databases": [
+      "journal"
+    ],
+    "search_terms": [
+      "stressed",
+      "stress"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "experiencing stress anxiety pressure overwhelmed",
+    "filters": {
+      "database_name": "journal"
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 8,
+  "databases_in_results": [
+    "journal"
+  ],
+  "database_breakdown": {
+    "journal": 8
+  },
+  "sample_results": [
+    {
+      "page_id": "1ddd1339-6967-8167-8f71-f3f40f3cbe3a_chunk_0",
+      "similarity_score": 0.430397093296051,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-04-22T07:06:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "214d1339-6967-80d4-be6f-c18e8e0237d4",
+      "similarity_score": 0.35899412631988525,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-06-16T20:56:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "231d1339-6967-811e-b0c1-ce6b00614f32",
+      "similarity_score": 0.30969953536987305,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-07-15T10:30:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "207d1339-6967-810a-8a43-c93964880139",
+      "similarity_score": 0.30954164266586304,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-06-03T00:00:00Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "20ed1339-6967-805e-94fd-da2b36085f47",
+      "similarity_score": 0.3071368336677551,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-06-10T01:09:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "232d1339-6967-8120-af15-eab7e6eac3e6",
+      "similarity_score": 0.30479896068573,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-07-16T10:30:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "27cd1339-6967-8117-869b-db6cfdbc072f",
+      "similarity_score": 0.3040701150894165,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-09-28T04:36:00.000Z",
+      "content_type": "journal"
+    },
+    {
+      "page_id": "23ed1339-6967-8104-b2f7-c7fb537ca009",
+      "similarity_score": 0.30027294158935547,
+      "database_name": "journal",
+      "workspace": "koii",
+      "created_time": "2025-07-28T10:30:00.000Z",
+      "content_type": "journal"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 8 entries from 1 databases"
+  },
+  "retries": 0
+}

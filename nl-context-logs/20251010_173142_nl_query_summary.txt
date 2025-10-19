@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 17:31:42
+
+USER QUERY: trass notion stories about maker kit and yeeps maker
+
+INTENT PARSED:
+  Goal: find stories in trass notion about maker kit and yeeps maker
+  Databases: trass.stories
+  Search Terms: maker kit, yeeps maker
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 20
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 20 entries
+
+  Sample Results (first 5):
+    1. Yeeps Maker landing page (stories)
+       Date: 2025-07-10
+    2. Update the website and FAQ to communicate about the batch 3 updates (stories)
+       Date: 2025-06-03
+    3. Maker Research Session 3 Logistics (stories)
+       Date: 2025-05-23
+    4. MGM starts working on Maker Kit samples (stories)
+       Date: 2025-05-07
+    5. [To decide] Show your work to get YM zipper (stories)
+       Date: 2025-07-07

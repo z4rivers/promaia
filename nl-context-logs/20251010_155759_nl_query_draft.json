@@ -1,0 +1,55 @@
+{
+  "user_query": "notion stories about international fulfillment centers",
+  "intent": {
+    "goal": "find stories about international fulfillment centers",
+    "databases": [
+      "stories"
+    ],
+    "search_terms": [
+      "international",
+      "fulfillment",
+      "centers"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "international fulfillment centers",
+    "filters": {
+      "database_name": "stories"
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 2,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 2
+  },
+  "sample_results": [
+    {
+      "page_id": "209ce8f7-317a-80c3-abbe-f7fbc9e3ac93",
+      "similarity_score": 0.3241957426071167,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-06-05T00:00:00Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "1ebce8f7-317a-8055-abc0-d1b7b9bbede1",
+      "similarity_score": 0.30209434032440186,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-06T00:03:00.000Z",
+      "content_type": "stories"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 2 entries from 1 databases"
+  },
+  "retries": 0
+}

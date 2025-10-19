@@ -1,0 +1,127 @@
+{
+  "user_query": "trass notion stories about international fulfillment centers",
+  "intent": {
+    "goal": "find stories about international fulfillment centers in the Trass notion database",
+    "databases": [
+      "trass.stories"
+    ],
+    "search_terms": [
+      "international",
+      "fulfillment",
+      "centers",
+      "FC"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "international fulfillment centers FC shipping warehouse distribution",
+    "filters": {
+      "$and": [
+        {
+          "workspace": "trass"
+        },
+        {
+          "database_name": "stories"
+        }
+      ]
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 18,
+  "databases_in_results": [
+    "stories"
+  ],
+  "database_breakdown": {
+    "stories": 18
+  },
+  "sample_results": [
+    {
+      "page_id": "209ce8f7-317a-80c3-abbe-f7fbc9e3ac93",
+      "similarity_score": 0.39653754234313965,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-06-05T00:00:00Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "20ace8f7-317a-80a3-8cbf-dfa30fe7e9a0",
+      "similarity_score": 0.35507357120513916,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-06-06T00:00:00Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "1f3ce8f7-317a-8060-8dfa-c0de04a1c897",
+      "similarity_score": 0.35154974460601807,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-14T01:12:00.000Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "1f8ce8f7-317a-806a-a37b-f6d823321a05_chunk_1",
+      "similarity_score": 0.3433687686920166,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-19T17:48:00.000Z",
+      "content_type": ""
+    },
+    {
+      "page_id": "1f8ce8f7-317a-806a-a37b-f6d823321a05",
+      "similarity_score": 0.3424382209777832,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-19T17:48:00.000Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "1ecce8f7-317a-807e-9d57-dc1524757977",
+      "similarity_score": 0.3353503942489624,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-07T23:25:00.000Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "1ecce8f7-317a-8048-9e22-ce9698ff5aad",
+      "similarity_score": 0.3338449001312256,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-07T21:26:00.000Z",
+      "content_type": "stories"
+    },
+    {
+      "page_id": "1ecce8f7-317a-8081-b4d3-ff59009fcc44",
+      "similarity_score": 0.3328605890274048,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-05-07T21:33:00.000Z",
+      "content_type": "stories"
+    },
+    {
+      "page_id": "20ece8f7-317a-806c-a796-dbeb69c48d19",
+      "similarity_score": 0.32969915866851807,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-06-10T23:41:00.000Z",
+      "content_type": "notion_stories"
+    },
+    {
+      "page_id": "20ece8f7-317a-8051-8fe6-de18fc039222",
+      "similarity_score": 0.3267074227333069,
+      "database_name": "stories",
+      "workspace": "trass",
+      "created_time": "2025-06-10T00:00:00Z",
+      "content_type": "notion_stories"
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 18 entries from 1 databases"
+  },
+  "retries": 0
+}

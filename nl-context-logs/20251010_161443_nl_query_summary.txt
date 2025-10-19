@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 16:14:43
+
+USER QUERY: trass gmail that mentions shipBob or merchant
+
+INTENT PARSED:
+  Goal: find emails in trass gmail mentioning shipBob or merchant
+  Databases: trass.gmail
+  Search Terms: shipbob, merchant
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 590
+  Databases Found: gmail
+  
+  Breakdown by Database:
+    • gmail: 590 entries
+
+  Sample Results (first 5):
+    1. Re: Replicate "fulfill" tag automation rule thread::3coBfneId7iWF3lTH0wTLT0:: (gmail)
+       Date: 2025-10-10
+    2. Replicate "fulfill" tag automation rule   thread::3coBfneId7iWF3lTH0wTLT0:: (gmail)
+       Date: 2025-10-10
+    3. Re: Replicate "fulfill" tag automation rule   thread::3coBfneId7iWF3lTH0wTLT0:: (gmail)
+       Date: 2025-10-10
+    4. RE: Form Completed: FC Locations   thread::T1PaXUE6cIO-i8RXS202tT0:: (gmail)
+       Date: 2025-10-10
+    5. RE: Form Completed: FC Locations   thread::-X8K12yCfJmyQ7bBIxuT4D0:: (gmail)
+       Date: 2025-10-10

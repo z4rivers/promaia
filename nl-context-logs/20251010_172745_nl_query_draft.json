@@ -1,0 +1,52 @@
+{
+  "user_query": "trass.yp discord messages that have dissapointment",
+  "intent": {
+    "goal": "find discord messages containing disappointment in the Yeeps 2.0 server",
+    "databases": [
+      "trass.yp"
+    ],
+    "search_terms": [
+      "disappointment"
+    ],
+    "date_filter": {
+      "days_back": null,
+      "description": ""
+    }
+  },
+  "generated_query": {
+    "search_text": "disappointment sadness letdown frustrated dissatisfied",
+    "filters": {
+      "$and": [
+        {
+          "workspace": "trass"
+        },
+        {
+          "database_name": "yp"
+        }
+      ]
+    }
+  },
+  "query_mode": "vector",
+  "result_count": 1,
+  "databases_in_results": [
+    "yp"
+  ],
+  "database_breakdown": {
+    "yp": 1
+  },
+  "sample_results": [
+    {
+      "page_id": "msg_1426267047419056262",
+      "similarity_score": 0.4133007526397705,
+      "database_name": "yp",
+      "workspace": "trass",
+      "created_time": "2025-10-10T17:56:02.865000+00:00",
+      "content_type": ""
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "message": "Results look good: 1 entries from 1 databases"
+  },
+  "retries": 0
+}

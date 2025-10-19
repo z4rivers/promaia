@@ -1,0 +1,32 @@
+Natural Language Query Summary
+Generated: 2025-10-10 18:18:31
+
+USER QUERY: koii stories about experiences with graham
+
+INTENT PARSED:
+  Goal: find stories about experiences with graham
+  Databases: stories
+  Search Terms: graham, experiences
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 6
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 6 entries
+
+  Sample Results (first 5):
+    1. Therapy journal (stories)
+       Date: 2025-07-08
+    2. Koii growth journal (stories)
+       Date: 2025-07-22
+    3. Untitled (stories)
+       Date: 2025-06-06
+    4. Obsidian style link layer exploration (stories)
+       Date: 2025-04-08
+    5. Summer growth journal (stories)
+       Date: 2025-07-28

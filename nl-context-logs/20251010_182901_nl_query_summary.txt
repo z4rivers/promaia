@@ -1,0 +1,26 @@
+Natural Language Query Summary
+Generated: 2025-10-10 18:29:01
+
+USER QUERY: trass notion stories about international fulfillment centers
+
+INTENT PARSED:
+  Goal: find stories about international fulfillment centers in the Trass workspace
+  Databases: trass.stories
+  Search Terms: international, fulfillment, centers, fulfillment centers
+  Date Filter: 
+
+GENERATED SQL:
+N/A
+
+RESULTS:
+  Total Entries: 2
+  Databases Found: stories
+  
+  Breakdown by Database:
+    • stories: 2 entries
+
+  Sample Results (first 5):
+    1. Fill out ShipBob warehouse access forms (stories)
+       Date: 2025-06-05
+    2. Systems in place to handle international returns and replacements (stories)
+       Date: 2025-05-06
