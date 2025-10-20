@@ -229,6 +229,8 @@ class DraftChatInterface:
             # Load message context (vector search results)
             message_context = await self._load_message_context(draft)
             
+            logger.info(f"Loaded message context: {len(message_context)} databases")
+            
             # Check draft status
             draft_status = draft.get('status', 'pending')
             draft_body = draft.get('draft_body', '')
@@ -267,7 +269,8 @@ class DraftChatInterface:
             # Launch unified chat with DraftMode
             from promaia.chat.interface import chat
             
-            await chat(
+            # Note: chat() is not async, so we call it directly
+            chat(
                 workspace=self.workspace,
                 mode=mode,
                 natural_language_content=message_context,  # Pre-loaded context
