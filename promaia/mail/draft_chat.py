@@ -63,6 +63,8 @@ class DraftChatInterface:
         self.browse_selections = []  # From -b flag
         self.nl_prompt = None  # From -nl flag
         self.vs_prompt = None  # From -vs flag
+        self.additional_context = {}  # Loaded pages from -nl, -vs, -s: {database_name: [pages...]}
+        self.additional_context_breakdown = {}  # Database -> count for display
         
         # Load existing version and history
         self._load_draft_history()
@@ -176,6 +178,110 @@ class DraftChatInterface:
                         
         except Exception as e:
             logger.debug(f"Could not parse initial context from log: {e}")
+    
+    async def _load_additional_context(self):
+        """
+        Load additional context based on -nl, -vs, and -s flags.
+        Similar to maia chat's context loading.
+        """
+        from promaia.storage.unified_query import get_query_interface
+        from collections import Counter
+        
+        # Reset additional context
+        self.additional_context = {}
+        self.additional_context_breakdown = {}
+        
+        try:
+            # Process -nl (natural language query)
+            if self.nl_prompt:
+                print_text(f"\n🤖 Processing natural language query: '{self.nl_prompt}'", style="cyan")
+                
+                query_interface = get_query_interface()
+                
+                # Allow cross-workspace search for maximum content discovery
+                nl_content = query_interface.natural_language_query(
+                    self.nl_prompt, 
+                    workspace=None,  # Search all workspaces
+                    database_names=None  # Search all databases
+                )
+                
+                if nl_content:
+                    # Merge results into additional_context
+                    for db_name, pages in nl_content.items():
+                        if db_name not in self.additional_context:
+                            self.additional_context[db_name] = []
+                        self.additional_context[db_name].extend(pages)
+                        self.additional_context_breakdown[db_name] = len(self.additional_context[db_name])
+                    
+                    total_results = sum(len(pages) for pages in nl_content.values())
+                    print_text(f"   ✅ Found {total_results} results across {len(nl_content)} databases", style="green")
+                else:
+                    print_text("   ⚠️  No results found", style="yellow")
+            
+            # Process -vs (vector search query)
+            if self.vs_prompt:
+                print_text(f"\n🔍 Processing vector search: '{self.vs_prompt}'", style="cyan")
+                
+                from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+                
+                vs_content = process_vector_search_to_content(
+                    self.vs_prompt,
+                    workspace=None,  # Allow cross-workspace searches
+                    verbose=True
+                )
+                
+                if vs_content:
+                    # Merge results into additional_context
+                    for db_name, pages in vs_content.items():
+                        if db_name not in self.additional_context:
+                            self.additional_context[db_name] = []
+                        # Avoid duplicates if both -nl and -vs returned same pages
+                        for page in pages:
+                            if page not in self.additional_context[db_name]:
+                                self.additional_context[db_name].append(page)
+                        self.additional_context_breakdown[db_name] = len(self.additional_context[db_name])
+                    
+                    total_results = sum(len(pages) for pages in vs_content.values())
+                    print_text(f"   ✅ Found {total_results} results across {len(vs_content)} databases", style="green")
+                else:
+                    print_text("   ⚠️  No results found", style="yellow")
+            
+            # Process -s (specific sources/databases)
+            if self.additional_sources:
+                print_text(f"\n📚 Loading specific sources: {', '.join(self.additional_sources)}", style="cyan")
+                
+                from promaia.storage.unified_storage import get_unified_storage
+                
+                storage = get_unified_storage()
+                
+                for source_name in self.additional_sources:
+                    try:
+                        # Load pages from this source
+                        pages = storage.load_pages(
+                            database_name=source_name,
+                            workspace=self.workspace
+                        )
+                        
+                        if pages:
+                            if source_name not in self.additional_context:
+                                self.additional_context[source_name] = []
+                            self.additional_context[source_name].extend(pages)
+                            self.additional_context_breakdown[source_name] = len(pages)
+                            print_text(f"   ✅ Loaded {len(pages)} pages from {source_name}", style="green")
+                        else:
+                            print_text(f"   ⚠️  No pages found in {source_name}", style="yellow")
+                    except Exception as e:
+                        print_text(f"   ❌ Failed to load {source_name}: {e}", style="red")
+                        logger.error(f"Failed to load source {source_name}: {e}")
+            
+            # Log summary
+            if self.additional_context:
+                total_pages = sum(len(pages) for pages in self.additional_context.values())
+                print_text(f"\n✅ Total additional context: {total_pages} pages across {len(self.additional_context)} databases", style="green")
+            
+        except Exception as e:
+            logger.error(f"Error loading additional context: {e}")
+            print_text(f"\n❌ Error loading context: {e}", style="red")
     
     async def _load_message_context(self):
         """Load context for the email thread on-demand (for skipped drafts)."""
@@ -348,7 +454,13 @@ class DraftChatInterface:
         
         # Show breakdown by database (merge initial + additional)
         all_sources = dict(self.initial_context_breakdown)
-        # TODO: Add counts from additional_sources when implemented
+        
+        # Add counts from additional context loaded via -nl, -vs, -s
+        for db_name, count in self.additional_context_breakdown.items():
+            if db_name in all_sources:
+                all_sources[db_name] += count
+            else:
+                all_sources[db_name] = count
         
         for db_name, count in sorted(all_sources.items()):
             print_text(f"\t{db_name}: {count}", style="dim")
@@ -486,7 +598,7 @@ class DraftChatInterface:
             self.nl_prompt = None
             self.vs_prompt = None
             
-            # Parse arguments
+            # Parse arguments - collect all words after flags until next flag
             i = 0
             while i < len(args):
                 arg = args[i]
@@ -515,25 +627,33 @@ class DraftChatInterface:
                         self.browse_selections.append(self.workspace)
                         i += 1
                 elif arg in ["-nl", "--natural-language"]:
-                    if i + 1 < len(args):
-                        self.nl_prompt = args[i + 1]
-                        i += 2
-                    else:
+                    # Collect all words until next flag
+                    i += 1
+                    nl_words = []
+                    while i < len(args) and not args[i].startswith("-"):
+                        nl_words.append(args[i])
                         i += 1
+                    if nl_words:
+                        self.nl_prompt = " ".join(nl_words)
                 elif arg in ["-vs", "--vector-search"]:
-                    if i + 1 < len(args):
-                        self.vs_prompt = args[i + 1]
-                        i += 2
-                    else:
+                    # Collect all words until next flag
+                    i += 1
+                    vs_words = []
+                    while i < len(args) and not args[i].startswith("-"):
+                        vs_words.append(args[i])
                         i += 1
+                    if vs_words:
+                        self.vs_prompt = " ".join(vs_words)
                 else:
-                    # Skip unknown arguments
+                    # Skip unknown arguments (like --draft id which is part of the command)
                     i += 1
             
-            print_text("\n✅ Context updated", style="green")
+            print_text("\n✅ Context flags updated", style="green")
             
-            # TODO: Actually load pages for additional sources
-            # For now, just redisplay the welcome message
+            # Now actually load the context based on the flags
+            await self._load_additional_context()
+            
+            # Redisplay the welcome message with updated context
             print()
             self._display_welcome_message()
             
@@ -805,6 +925,35 @@ class DraftChatInterface:
                                 total_sources=0
                             )
                         
+                        # Merge additional context from -nl, -vs, -s flags
+                        if self.additional_context:
+                            additional_docs = []
+                            for db_name, pages in self.additional_context.items():
+                                for page in pages:
+                                    # Format page for inclusion in context
+                                    doc = {
+                                        'title': page.get('title', 'Untitled'),
+                                        'database': db_name,
+                                        'content': page.get('content', '')[:500],  # First 500 chars
+                                        'content_snippet': page.get('content', '')[:200],
+                                        'similarity': 1.0  # These are explicitly requested, so max relevance
+                                    }
+                                    additional_docs.append(doc)
+                            
+                            # Merge with existing docs
+                            context.relevant_docs.extend(additional_docs)
+                            context.total_sources += len(additional_docs)
+                            
+                            # Update formatted text (used in prompt)
+                            if additional_docs:
+                                from promaia.mail.context_builder import ResponseContextBuilder
+                                builder = ResponseContextBuilder()
+                                additional_text = builder._format_docs_for_prompt(additional_docs)
+                                if context.relevant_docs_text:
+                                    context.relevant_docs_text += "\n\n" + additional_text
+                                else:
+                                    context.relevant_docs_text = additional_text
+                        
                         # Generate initial draft
                         # Note: user_input is incorporated as feedback via refine_response
                         response = await self.response_generator.refine_response(
@@ -911,6 +1060,35 @@ class DraftChatInterface:
                     workspace=self.workspace,
                     total_sources=0
                 )
+            
+            # Merge additional context from -nl, -vs, -s flags
+            if self.additional_context:
+                additional_docs = []
+                for db_name, pages in self.additional_context.items():
+                    for page in pages:
+                        # Format page for inclusion in context
+                        doc = {
+                            'title': page.get('title', 'Untitled'),
+                            'database': db_name,
+                            'content': page.get('content', '')[:500],  # First 500 chars
+                            'content_snippet': page.get('content', '')[:200],
+                            'similarity': 1.0  # These are explicitly requested, so max relevance
+                        }
+                        additional_docs.append(doc)
+                
+                # Merge with existing docs
+                context.relevant_docs.extend(additional_docs)
+                context.total_sources += len(additional_docs)
+                
+                # Update formatted text (used in prompt)
+                if additional_docs:
+                    from promaia.mail.context_builder import ResponseContextBuilder
+                    builder = ResponseContextBuilder()
+                    additional_text = builder._format_docs_for_prompt(additional_docs)
+                    if context.relevant_docs_text:
+                        context.relevant_docs_text += "\n\n" + additional_text
+                    else:
+                        context.relevant_docs_text = additional_text
             
             # Use ResponseGenerator to refine (it has the AI client setup)
             refined = await self.response_generator.refine_response(
