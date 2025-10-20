@@ -55,8 +55,20 @@ class DraftChatInterface:
         # UI state: toggle showing all drafts vs just latest
         self.show_all_drafts = False
         
+        # Context management (for full chat integration)
+        self.message_context_enabled = True  # -mc flag state
+        self.initial_context_breakdown = {}  # Database -> count from log
+        self.additional_sources = []  # From -s flag
+        self.additional_filters = []  # From -f flag  
+        self.browse_selections = []  # From -b flag
+        self.nl_prompt = None  # From -nl flag
+        self.vs_prompt = None  # From -vs flag
+        
         # Load existing version and history
         self._load_draft_history()
+        
+        # Load initial context from log file if it exists
+        self._load_initial_context_breakdown()
     
     def _load_draft_history(self):
         """Load draft version and history from database."""
@@ -99,6 +111,71 @@ class DraftChatInterface:
                 conn.commit()
         except Exception as e:
             logger.warning(f"Could not save draft history: {e}")
+    
+    def _load_initial_context_breakdown(self):
+        """
+        Load initial context breakdown from draft log file.
+        Parses EMAIL HISTORY and PROJECT CONTEXT sections to extract database counts.
+        """
+        import re
+        from pathlib import Path
+        from glob import glob
+        
+        # Find log file for this draft
+        log_dir = Path("context_logs/mail_draft_logs")
+        if not log_dir.exists():
+            return
+        
+        # Search for log files containing draft info
+        draft = self.draft_manager.get_draft(self.draft_id)
+        if not draft:
+            return
+        
+        # Find most recent log file (by timestamp in filename)
+        log_files = sorted(glob(str(log_dir / "*.txt")), reverse=True)
+        
+        if not log_files:
+            return
+        
+        # Parse the most recent log file
+        try:
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Parse EMAIL HISTORY section
+            email_match = re.search(r'=== EMAIL HISTORY \((\d+) relevant threads\) ===', content)
+            if email_match:
+                email_count = int(email_match.group(1))
+                # Emails are from gmail database
+                gmail_db = f"{self.workspace}.gmail"
+                self.initial_context_breakdown[gmail_db] = email_count
+            
+            # Parse PROJECT CONTEXT section  
+            project_match = re.search(r'=== PROJECT CONTEXT \((\d+) relevant documents\) ===', content)
+            if project_match:
+                project_count = int(project_match.group(1))
+                
+                # Parse individual documents to get database names
+                project_section_match = re.search(
+                    r'=== PROJECT CONTEXT.*?===\n\n(.*?)(?:=== |$)', 
+                    content, 
+                    re.DOTALL
+                )
+                if project_section_match:
+                    project_text = project_section_match.group(1)
+                    
+                    # Extract database names from "Database: db_name" lines
+                    db_matches = re.findall(r'Database: (\S+)', project_text)
+                    
+                    # Count occurrences of each database
+                    from collections import Counter
+                    db_counts = Counter(db_matches)
+                    
+                    for db_name, count in db_counts.items():
+                        self.initial_context_breakdown[db_name] = count
+                        
+        except Exception as e:
+            logger.debug(f"Could not parse initial context from log: {e}")
     
     async def _load_message_context(self):
         """Load context for the email thread on-demand (for skipped drafts)."""
@@ -245,6 +322,224 @@ class DraftChatInterface:
         
         return '\n'.join(artifact)
     
+    def _display_welcome_message(self):
+        """Display maia mail draft chat welcome with context breakdown"""
+        
+        # Build command string
+        cmd_parts = ["maia mail --draft", self.draft_id]
+        if self.message_context_enabled:
+            cmd_parts.append("-mc")
+        for source in self.additional_sources:
+            cmd_parts.extend(["-s", source])
+        if self.browse_selections:
+            cmd_parts.extend(["-b", self.workspace])
+        if self.nl_prompt:
+            cmd_parts.extend(["-nl", f'"{self.nl_prompt}"'])
+        if self.vs_prompt:
+            cmd_parts.extend(["-vs", f'"{self.vs_prompt}"'])
+        
+        print_text("🐙 maia mail draft chat", style="bold magenta")
+        print_text(f"Query: {' '.join(cmd_parts)}", style="dim")
+        
+        # Context breakdown
+        print_text("Context loaded:", style="dim")
+        if self.message_context_enabled and self.initial_context_breakdown:
+            print_text("\tmessage-context", style="dim")
+        
+        # Show breakdown by database (merge initial + additional)
+        all_sources = dict(self.initial_context_breakdown)
+        # TODO: Add counts from additional_sources when implemented
+        
+        for db_name, count in sorted(all_sources.items()):
+            print_text(f"\t{db_name}: {count}", style="dim")
+        
+        # Get model name
+        from promaia.ai.models import get_current_model_name
+        model_name = get_current_model_name()
+        print_text(f"Model: {model_name}", style="dim")
+        print()
+        
+        # Command list
+        print_text("Available commands:", style="dim")
+        print_text("  /send [#] - Send draft (default: latest)", style="dim")
+        
+        # Draft count hint
+        if len(self.artifacts) > 1:
+            count = len(self.artifacts) - 1
+            print_text(f"  /d - Toggle draft list view, 💡 {count} earlier draft(s) hidden", style="dim")
+        else:
+            print_text("  /d - Toggle draft list view", style="dim")
+        
+        print_text("  /e - Edit context (sources, filters, message context)", style="dim")
+        print_text("  /s - Sync databases in current context", style="dim")
+        print_text("  /mcp [name] - Include MCP server context (e.g., /mcp search)", style="dim")
+        print_text("  /archive or /a - Archive this email", style="dim")
+        print_text("  /q - Return to draft list", style="dim")
+        print_text("  /model - Switch model", style="dim")
+        print_text("  /help - Show detailed help", style="dim")
+        print()
+        
+        # Warning if message context is disabled
+        if not self.message_context_enabled:
+            print_text("⚠️  Message context disabled - only user persona active", style="yellow")
+            print()
+    
+    async def _handle_edit_context(self):
+        """Handle /e command - edit context like maia chat"""
+        import shlex
+        from prompt_toolkit import prompt
+        from prompt_toolkit.key_binding import KeyBindings
+        
+        # Build current command string
+        cmd_parts = ["--draft", self.draft_id]
+        if self.message_context_enabled:
+            cmd_parts.append("-mc")
+        for source in self.additional_sources:
+            cmd_parts.extend(["-s", source])
+        if self.browse_selections:
+            cmd_parts.extend(["-b", self.workspace])
+        if self.nl_prompt:
+            cmd_parts.extend(["-nl", f'"{self.nl_prompt}"'])
+        if self.vs_prompt:
+            cmd_parts.extend(["-vs", f'"{self.vs_prompt}"'])
+        
+        current_command = " ".join(cmd_parts)
+        
+        # Show edit UI (same as maia chat)
+        print_text("\n🔧 Edit Context", style="bold cyan")
+        print_text("Current command:", style="dim")
+        print_text(f"  maia mail {current_command}", style="bold")
+        print()
+        
+        if self.message_context_enabled:
+            print_text("Message Context: ENABLED ✓", style="dim green")
+        else:
+            print_text("Message Context: DISABLED", style="dim")
+        
+        print()
+        print_text("Options:", style="dim")
+        print_text("  • Edit command manually (shown below)", style="dim")
+        print_text("  • Ctrl+R for recent queries", style="dim")
+        print_text("  • Ctrl+B for browse mode", style="dim")
+        print_text("  • Press Enter alone to cancel", style="dim")
+        print()
+        
+        # Create key bindings for Ctrl+B
+        bindings = KeyBindings()
+        action_taken = {'type': None}
+        
+        @bindings.add('c-b')
+        def handle_browse(event):
+            action_taken['type'] = 'browse'
+            event.app.exit()
+        
+        # Get user input
+        try:
+            user_input = prompt(
+                "maia mail ",
+                default=current_command,
+                key_bindings=bindings
+            )
+            
+            # Ensure user_input is not None
+            if user_input is None:
+                user_input = ""
+            else:
+                user_input = user_input.strip()
+            
+            # Check if browse was triggered
+            if action_taken['type'] == 'browse':
+                # TODO: Launch browser (needs integration with chat browser)
+                print_text("📋 Browse mode integration coming soon...", style="yellow")
+                print_text("For now, edit the command manually to add -b flag", style="dim")
+                return
+            
+            # Handle empty input
+            if not user_input:
+                print_text("Context edit cancelled.", style="bold yellow")
+                return
+            
+            # Parse the edited command
+            await self._parse_and_apply_context_edit(user_input)
+            
+        except KeyboardInterrupt:
+            print_text("\nContext edit cancelled.", style="bold yellow")
+            return
+        except Exception as e:
+            logger.error(f"Error in edit context: {e}")
+            print_text(f"\n❌ Error: {e}", style="red")
+    
+    async def _parse_and_apply_context_edit(self, command: str):
+        """Parse edited command and apply context changes"""
+        import shlex
+        
+        try:
+            # Parse command string
+            args = shlex.split(command)
+            
+            # Reset context state
+            self.message_context_enabled = False
+            self.additional_sources = []
+            self.additional_filters = []
+            self.browse_selections = []
+            self.nl_prompt = None
+            self.vs_prompt = None
+            
+            # Parse arguments
+            i = 0
+            while i < len(args):
+                arg = args[i]
+                
+                if arg == "-mc":
+                    self.message_context_enabled = True
+                    i += 1
+                elif arg in ["-s", "--source"]:
+                    if i + 1 < len(args):
+                        self.additional_sources.append(args[i + 1])
+                        i += 2
+                    else:
+                        i += 1
+                elif arg in ["-f", "--filter"]:
+                    if i + 1 < len(args):
+                        self.additional_filters.append(args[i + 1])
+                        i += 2
+                    else:
+                        i += 1
+                elif arg in ["-b", "--browse"]:
+                    if i + 1 < len(args) and not args[i + 1].startswith("-"):
+                        self.browse_selections.append(args[i + 1])
+                        i += 2
+                    else:
+                        # No argument, use workspace
+                        self.browse_selections.append(self.workspace)
+                        i += 1
+                elif arg in ["-nl", "--natural-language"]:
+                    if i + 1 < len(args):
+                        self.nl_prompt = args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                elif arg in ["-vs", "--vector-search"]:
+                    if i + 1 < len(args):
+                        self.vs_prompt = args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                else:
+                    # Skip unknown arguments
+                    i += 1
+            
+            print_text("\n✅ Context updated", style="green")
+            
+            # TODO: Actually load pages for additional sources
+            # For now, just redisplay the welcome message
+            print()
+            self._display_welcome_message()
+            
+        except Exception as e:
+            logger.error(f"Error parsing context edit: {e}")
+            print_text(f"\n❌ Error parsing command: {e}", style="red")
+    
     async def run_chat_loop(self):
         """
         Main chat loop for refining drafts.
@@ -315,12 +610,10 @@ class DraftChatInterface:
                     print_text(f"  {draft.get('classification_reasoning')}", style="dim")
                 print()
                 print_text("💬 Want to reply anyway? Just start chatting to create a draft.", style="cyan")
-                print_text("   Use /mc to load context from your knowledge base first.", style="cyan")
                 print()
-                print_text("Commands:", style="dim")
-                print_text("   /mc - Load message context (recommended before replying)", style="dim")
-                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
-                print_text("   /q - Return to draft list", style="dim")
+                
+                # Display welcome message with commands
+                self._display_welcome_message()
             elif draft_body and draft_body != 'n/a':
                 # Normal draft with AI-generated response
                 # Display all existing artifacts (version history)
@@ -347,19 +640,15 @@ class DraftChatInterface:
                             print_text(f"💡 {len(self.artifacts) - 1} earlier draft(s) hidden. Type /d to view all", style="dim")
                             print()
                 
-                print_text("💬 Chat to refine the draft, or use commands:", style="dim")
-                print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
-                if len(self.artifacts) > 1:
-                    print_text("   /d - Toggle draft list view", style="dim")
-                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
-                print_text("   /q - Return to draft list", style="dim")
+                # Display welcome message with commands
+                self._display_welcome_message()
             else:
                 # Edge case: draft exists but no body (shouldn't happen normally)
                 print_text("⚠️  No draft available", style="yellow")
                 print()
-                print_text("Commands:", style="dim")
-                print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
-                print_text("   /q - Return to draft list", style="dim")
+                
+                # Display welcome message with commands
+                self._display_welcome_message()
             
             print()
             
@@ -420,13 +709,13 @@ class DraftChatInterface:
                                         print_text(f"💡 {len(self.artifacts) - 1} earlier draft(s) hidden. Type /d to view all", style="dim")
                                         print()
                             
-                            print_text("💬 Chat to refine the draft, or use commands:", style="dim")
-                            print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
-                            if len(self.artifacts) > 1:
-                                print_text("   /d - Toggle draft list view", style="dim")
-                            print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
-                            print_text("   /q - Return to draft list", style="dim")
-                            print()
+                            # Display welcome message with commands
+                            self._display_welcome_message()
+                            continue
+                        
+                        elif cmd in ['/e', '/edit']:
+                            # Edit context - integrates with maia chat's edit system
+                            await self._handle_edit_context()
                             continue
                         
                         elif cmd in ['/mc', '/messagecontext']:
@@ -442,7 +731,7 @@ class DraftChatInterface:
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available: /send [number], /d, /mc, /archive, /q", style="dim")
+                            print_text("Available: /send [number], /d, /e, /mc, /archive, /q", style="dim")
                             continue
                     
                     # Check if this is a skipped draft and user wants to reply
