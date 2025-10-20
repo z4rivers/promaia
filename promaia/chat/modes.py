@@ -6,7 +6,7 @@ a unified architecture. Examples: email drafting, blog writing, code generation.
 """
 import logging
 import os
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -147,59 +147,49 @@ class DraftMode(ChatMode):
             '/archive': self.handle_archive,
         }
     
-    def get_welcome_message(self, context_breakdown: dict, **kwargs) -> Optional[str]:
+    def get_welcome_message(self, context_state: Dict[str, Any]) -> Optional[str]:
         """
         Custom welcome for draft chat.
         
         Args:
-            context_breakdown: Dict of database_name -> count
-            **kwargs: Additional data (model_name, etc.)
+            context_state: Chat context state dict
             
         Returns:
             Welcome message for draft mode
         """
         from promaia.utils.display import print_text
+        from promaia.chat.interface import get_current_model_name
         
-        # Build command string
-        cmd_parts = ["maia mail --draft", self.draft_id]
-        if kwargs.get('message_context_enabled', True):
-            cmd_parts.append("-mc")
-        
-        # Build the message components
         lines = []
-        lines.append(("🐙 maia mail draft chat", "bold magenta"))
-        lines.append((f"Query: {' '.join(cmd_parts)}", "dim"))
-        lines.append(("", None))
-        lines.append(("Context loaded:", "dim"))
+        lines.append(print_text("🐙 maia mail draft chat", style="bold magenta", _return_str=True))
         
-        if kwargs.get('message_context_enabled', True) and context_breakdown:
-            lines.append(("\tmessage-context", "dim"))
+        # Show context loaded
+        lines.append(print_text("Context loaded:", style="dim", _return_str=True))
         
-        for db_name, count in sorted(context_breakdown.items()):
-            lines.append((f"\t{db_name}: {count}", "dim"))
+        # Show message context if present
+        if context_state.get('natural_language_content'):
+            nl_content = context_state['natural_language_content']
+            if isinstance(nl_content, dict):
+                for db_name, pages in sorted(nl_content.items()):
+                    lines.append(print_text(f"  {db_name}: {len(pages)}", style="dim", _return_str=True))
         
-        model_name = kwargs.get('model_name', 'Unknown')
-        lines.append((f"Model: {model_name}", "dim"))
-        lines.append(("", None))
+        # Model
+        model_name = get_current_model_name()
+        lines.append(print_text(f"Model: {model_name}", style="dim", _return_str=True))
+        lines.append("")
         
-        lines.append(("Available commands:", "dim"))
-        lines.append(("  /send [#] - Send draft (default: latest)", "dim"))
-        lines.append(("  /d - Toggle draft list view", "dim"))
-        lines.append(("  /e - Edit context (sources, filters, message context)", "dim"))
-        lines.append(("  /s - Sync databases in current context", "dim"))
-        lines.append(("  /mcp [name] - Include MCP server context (e.g., /mcp search)", "dim"))
-        lines.append(("  /archive or /a - Archive this email", "dim"))
-        lines.append(("  /q - Return to draft list", "dim"))
-        lines.append(("  /model - Switch model", "dim"))
-        lines.append(("  /help - Show detailed help", "dim"))
-        lines.append(("", None))
+        # Commands - MODE SPECIFIC
+        lines.append(print_text("Available commands:", style="dim", _return_str=True))
+        lines.append(print_text("  /send - Send this draft", style="dim", _return_str=True))
+        lines.append(print_text("  /archive or /a - Archive this email", style="dim", _return_str=True))
+        lines.append(print_text("  /d - Toggle draft list view", style="dim", _return_str=True))
+        lines.append(print_text("  /e - Edit context", style="dim", _return_str=True))
+        lines.append(print_text("  /s - Sync databases", style="dim", _return_str=True))
+        lines.append(print_text("  /model - Switch model", style="dim", _return_str=True))
+        lines.append(print_text("  /q - Return to draft list", style="dim", _return_str=True))
+        lines.append("")
         
-        # Return as text (will be printed by caller)
-        message_parts = []
-        for text, style in lines:
-            message_parts.append(text)
-        
-        return "\n".join(message_parts)
+        return "\n".join(lines)
     
     async def handle_send(self, artifact_manager, messages, context_state):
         """

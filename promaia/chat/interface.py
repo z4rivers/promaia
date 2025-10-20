@@ -731,6 +731,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         logger.info(f"   Workspace: {workspace}")
         logger.info(f"   Natural language content: {bool(natural_language_content)}")
         logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
+        
+        # Prevent browser auto-launch when mode is active (e.g., draft mode has pre-loaded context)
+        logger.info("🎭 Mode active - skipping browser auto-launch")
+        browse_databases = None
 
     # Detect mixed commands: when user provides both sources and browse arguments
     has_regular_sources = bool(sources)
@@ -998,6 +1002,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         mode_commands = mode.get_additional_commands()
         if mode_commands:
             logger.info(f"Mode {type(mode).__name__} added commands: {list(mode_commands.keys())}")
+        
+        # Initialize artifact manager immediately for mode (e.g., draft mode needs it for initial draft)
+        from promaia.chat.artifacts import ArtifactManager
+        context_state['artifact_manager'] = ArtifactManager()
+        logger.info("🎨 Initialized artifact manager for mode")
 
     # Initialize NL and VS content separately from CLI
     if initial_nl_content:
@@ -3959,7 +3968,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Display Welcome Message
     print()
-    print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
+    
+    # Use mode-specific welcome if available, otherwise use generic
+    welcome_displayed = False
+    if mode:
+        mode_welcome = mode.get_welcome_message(context_state)
+        if mode_welcome:
+            print(mode_welcome)
+            welcome_displayed = True
+    
+    # Only show generic welcome if mode didn't provide one
+    if not welcome_displayed:
+        print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
 
     # Handle Non-interactive Mode
     if non_interactive:
@@ -3968,8 +3988,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     # Start Interactive Chat Loop
     messages = initial_messages.copy() if initial_messages else []
     
-    # If loading from history, display the previous conversation
-    if initial_messages:
+    # Process initial messages for artifacts (e.g., draft mode with existing draft)
+    if initial_messages and context_state.get('artifact_manager'):
+        artifact_manager = context_state['artifact_manager']
+        
+        for msg in initial_messages:
+            if msg['role'] == 'assistant' and '<artifact>' in msg['content']:
+                # Extract and create artifact
+                artifact_content, commentary = artifact_manager.extract_artifact_content(msg['content'])
+                artifact_id = artifact_manager.create_artifact(artifact_content)
+                logger.info(f"📦 Created artifact #{artifact_id} from initial message")
+    
+    # Display previous conversation
+    # Skip generic headers if mode is active (mode will display its own)
+    if initial_messages and not mode:
         print_text("--- Previous Conversation ---", style="bold yellow")
         for msg in initial_messages:
             role = msg.get('role', '')
@@ -3980,6 +4012,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_markdown(f"**Maia:** {content}")
         print_text("--- Continuing Conversation ---", style="bold yellow")
         print()
+    elif initial_messages and mode and context_state.get('artifact_manager'):
+        # For mode with artifacts, show artifact history instead of raw messages
+        artifact_manager = context_state['artifact_manager']
+        if artifact_manager.artifacts:
+            for artifact_id in sorted(artifact_manager.artifacts.keys()):
+                print(artifact_manager.render_artifact(artifact_id))
+            print()
 
     while True:
         try:

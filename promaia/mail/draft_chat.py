@@ -157,6 +157,14 @@ class DraftChatInterface:
         message_context = {}
         for doc in context.relevant_docs:
             db_name = doc.get('database', 'unknown')
+            
+            # Ensure consistent database naming with workspace prefix
+            if db_name == 'gmail':
+                db_name = f"{self.workspace}.gmail"
+            elif '.' not in db_name and db_name not in ['journal', 'stories', 'cpj', 'epics']:
+                # Add workspace prefix if missing for other databases
+                db_name = f"{self.workspace}.{db_name}"
+            
             if db_name not in message_context:
                 message_context[db_name] = []
             
