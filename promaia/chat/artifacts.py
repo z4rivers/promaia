@@ -37,9 +37,16 @@ class ArtifactManager:
         # Explicit keywords in user input
         keywords = ['write a', 'write an', 'create a', 'draft a', 'compose', 'generate']
         content_types = ['email', 'blog', 'article', 'document', 'post', 'letter', 
-                        'essay', 'story', 'script', 'code', 'function', 'class']
+                        'essay', 'story', 'script', 'code', 'function', 'class',
+                        'summary', 'report', 'analysis', 'outline', 'plan', 'list',
+                        'guide', 'tutorial', 'proposal', 'spec', 'contract']
         
         user_lower = user_input.lower()
+        
+        # Check for explicit "as an artifact" or "as artifact"
+        if 'as an artifact' in user_lower or 'as artifact' in user_lower:
+            logger.debug("Artifact triggered by explicit 'as artifact' phrase")
+            return True
         
         # Check for keyword + content type combinations
         for keyword in keywords:
