@@ -543,6 +543,28 @@ class DraftChatInterface:
         # Get the draft to send
         draft_to_send = self.artifacts[draft_num]
         
+        # Show recipient selector
+        from promaia.mail.recipient_selector import RecipientSelector
+        
+        selector = RecipientSelector(
+            from_addr=draft.get('inbound_from', ''),
+            to_addr=draft.get('to', ''),
+            thread_context=draft.get('thread_context', '')
+        )
+        
+        print_text("\n📧 Select recipients for this email...", style="cyan")
+        confirmed, recipients = await selector.run()
+        
+        if not confirmed:
+            print_text("\n↩️  Send cancelled\n", style="cyan")
+            return False
+        
+        if not recipients:
+            print_text("\n❌ No recipients selected\n", style="red")
+            return False
+        
+        print_text(f"\n✅ Sending to: {', '.join(recipients)}", style="green")
+        
         # Format the draft to remove hard line breaks before sending
         draft_to_send = self.response_generator._format_email_body(draft_to_send)
         
@@ -581,7 +603,8 @@ class DraftChatInterface:
             thread_id=draft['thread_id'],
             message_id=draft['message_id'],
             subject=draft['draft_subject'],
-            body_text=draft_to_send
+            body_text=draft_to_send,
+            recipients=recipients
         )
         
         if success:

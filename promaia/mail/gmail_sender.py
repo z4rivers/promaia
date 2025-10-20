@@ -47,7 +47,8 @@ class GmailSender:
         message_id: str,
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None
+        body_html: Optional[str] = None,
+        recipients: Optional[list] = None
     ) -> bool:
         """
         Send a reply to an existing thread.
@@ -58,6 +59,7 @@ class GmailSender:
             subject: Email subject
             body_text: Plain text body
             body_html: HTML body (optional)
+            recipients: List of recipient email addresses (defaults to reply-all if not provided)
             
         Returns:
             True if sent successfully, False otherwise
@@ -65,13 +67,40 @@ class GmailSender:
         try:
             connector = await self._get_connector()
             
-            success = await connector.send_reply(
-                thread_id=thread_id,
-                message_id=message_id,
-                subject=subject,
-                body_text=body_text,
-                body_html=body_html
-            )
+            # If recipients are specified, use send_email with threading
+            if recipients:
+                # Join multiple recipients with comma
+                to_field = ', '.join(recipients)
+                
+                success = await connector.send_email(
+                    to=to_field,
+                    subject=subject,
+                    body_text=body_text,
+                    body_html=body_html,
+                    thread_id=thread_id,
+                    in_reply_to=message_id
+                )
+            else:
+                # Use default reply behavior (if connector has send_reply)
+                if hasattr(connector, 'send_reply'):
+                    success = await connector.send_reply(
+                        thread_id=thread_id,
+                        message_id=message_id,
+                        subject=subject,
+                        body_text=body_text,
+                        body_html=body_html
+                    )
+                else:
+                    # Fallback to send_email (reply-all behavior)
+                    logger.warning("send_reply not implemented, using send_email")
+                    success = await connector.send_email(
+                        to='',  # Will need to get from original message
+                        subject=subject,
+                        body_text=body_text,
+                        body_html=body_html,
+                        thread_id=thread_id,
+                        in_reply_to=message_id
+                    )
             
             if success:
                 logger.info(f"✅ Successfully sent reply to thread {thread_id}")
