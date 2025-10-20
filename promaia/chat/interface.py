@@ -724,6 +724,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         ... (other existing args)
     """
     global current_api, DEBUG_MODE
+    
+    # Debug logging for mode activation
+    if mode:
+        logger.info(f"🎭 Chat called with mode: {type(mode).__name__}")
+        logger.info(f"   Workspace: {workspace}")
+        logger.info(f"   Natural language content: {bool(natural_language_content)}")
+        logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
 
     # Detect mixed commands: when user provides both sources and browse arguments
     has_regular_sources = bool(sources)

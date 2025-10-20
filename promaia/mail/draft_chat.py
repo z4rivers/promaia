@@ -269,13 +269,21 @@ class DraftChatInterface:
             # Launch unified chat with DraftMode
             from promaia.chat.interface import chat
             
+            logger.info(f"🚀 Launching unified chat with DraftMode")
+            logger.info(f"   Workspace: {self.workspace}")
+            logger.info(f"   Mode: {mode}")
+            logger.info(f"   Message context: {len(message_context)} databases")
+            logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
+            
             # Note: chat() is not async, so we call it directly
-            chat(
+            result = chat(
                 workspace=self.workspace,
                 mode=mode,
                 natural_language_content=message_context,  # Pre-loaded context
                 initial_messages=initial_messages,  # Pre-populate first draft
             )
+            
+            logger.info(f"✅ Chat returned: {result}")
         
         except KeyboardInterrupt:
             print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
