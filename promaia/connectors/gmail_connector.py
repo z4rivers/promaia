@@ -88,7 +88,7 @@ class GmailConnector(BaseConnector):
     # Content extraction configuration
     GMAIL_CONTENT_MODE_LATEST_ONLY = "latest_only"  # Only latest message content
     GMAIL_CONTENT_MODE_FULL_THREAD = "full_thread"  # All messages (old behavior)
-    DEFAULT_CONTENT_MODE = GMAIL_CONTENT_MODE_LATEST_ONLY  # Default to concise mode
+    DEFAULT_CONTENT_MODE = GMAIL_CONTENT_MODE_FULL_THREAD  # Default to full thread for Maia Mail
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -134,6 +134,17 @@ class GmailConnector(BaseConnector):
         except Exception as e:
             self.logger.error(f"Gmail connection test failed: {e}")
             return False
+    
+    def get_user_email(self) -> Optional[str]:
+        """Get the authenticated user's email address."""
+        try:
+            if not self.service:
+                return None
+            profile = self.service.users().getProfile(userId='me').execute()
+            return profile.get('emailAddress')
+        except Exception as e:
+            self.logger.error(f"Failed to get user email: {e}")
+            return None
     
     async def _get_authenticated_service(self):
         """Get authenticated Gmail service with token refresh."""
@@ -285,6 +296,20 @@ class GmailConnector(BaseConnector):
             # Generate conversation body by combining all messages
             conversation_body = self._extract_thread_conversation(messages)
             
+            # Check if the last message was sent by the user (not inbound)
+            # Get the user's email and check if it matches the FROM address
+            user_email = self.get_user_email()
+            last_message_from_user = False
+            if user_email:
+                # Extract just the email address from "Name <email>" format
+                from_email = from_addr
+                if '<' in from_addr and '>' in from_addr:
+                    from_email = from_addr.split('<')[1].split('>')[0].strip().lower()
+                else:
+                    from_email = from_addr.strip().lower()
+                
+                last_message_from_user = from_email == user_email.lower()
+            
             return {
                 "id": f"thread_{thread_id}",
                 "thread_id": thread_id,
@@ -302,7 +327,8 @@ class GmailConnector(BaseConnector):
                 "internal_date": latest_message.get('internalDate'),
                 "snippet": latest_message.get('snippet', ''),
                 "messages": messages,  # Store full message data for detailed processing
-                "body_html": self._get_latest_html_body(messages)
+                "body_html": self._get_latest_html_body(messages),
+                "last_message_from_user": last_message_from_user  # Flag to filter out user's own messages
             }
             
         except Exception as e:
@@ -608,23 +634,14 @@ Subject: {subject}
             
             # Extract only new content (strip quoted/forwarded parts)
             content = self._extract_new_content(raw_content)
-            
-            # Format the message with clear headers
-            if i == 0:
-                # First message gets full headers including subject
-                conversation_parts.append(f"""From: {from_addr}
-Date: {date_str}
 
-{content}""")
-            else:
-                # Subsequent messages get separator and essential headers
-                conversation_parts.append(f"""        
-From: {from_addr}
-Sent: {date_str}
-To: {to_addr}
+            # Add a separator between messages
+            if i > 0:
+                conversation_parts.append("\n" + "─" * 80 + "\n")
+
+            conversation_parts.append(f"""From: {from_addr}
+Date: {date_str}
 Subject: {subject}
- 
-CAUTION: This email originated from outside of the organisation. Do not click links or open attachments unless you recognise the sender and know the content is safe.
 
 {content}""")
         

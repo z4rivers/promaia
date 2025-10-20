@@ -93,10 +93,12 @@ class EmailProcessor:
         
         logger.info(f"📬 Checking {db_config.get_qualified_name()} for new emails...")
         
-        # Create connector
+        # Create connector with full_thread mode for maia mail
+        # (Users need full context to review and refine draft responses)
         connector = GmailConnector({
             "database_id": db_config.database_id,
-            "workspace": workspace
+            "workspace": workspace,
+            "gmail_content_mode": "full_thread"  # Get complete conversation history
         })
         
         await connector.connect()
@@ -118,12 +120,24 @@ class EmailProcessor:
             logger.info("No new threads found")
             return 0
         
-        logger.info(f"Found {len(threads)} thread(s) to process")
+        # Filter out threads where the user sent the last message
+        # We only want to process inbound messages that need responses
+        inbound_threads = [t for t in threads if not t.get('last_message_from_user', False)]
+        
+        if len(inbound_threads) < len(threads):
+            filtered_count = len(threads) - len(inbound_threads)
+            logger.info(f"Filtered out {filtered_count} thread(s) where you sent the last message")
+        
+        if not inbound_threads:
+            logger.info("No inbound threads found (all last messages were from you)")
+            return 0
+        
+        logger.info(f"Found {len(inbound_threads)} inbound thread(s) to process")
         
         # Process each thread
         drafts_created = 0
         
-        for thread in threads:
+        for thread in inbound_threads:
             try:
                 # Check if we already have a draft for this thread
                 thread_id = thread.get('thread_id')
@@ -165,8 +179,12 @@ class EmailProcessor:
             f"  → Classification: "
             f"pertains={classification['pertains_to_me']}, "
             f"spam={classification['is_spam']}, "
+            f"addressed_to_user={classification.get('addressed_to_user', 'unknown')}, "
             f"requires_response={classification['requires_response']}"
         )
+        
+        # Determine draft status
+        draft_status = self.classifier.get_draft_status(classification)
         
         # Check if we should generate a draft
         if not self.classifier.should_generate_draft(classification):
@@ -193,25 +211,29 @@ class EmailProcessor:
                 'ai_model': None,
                 'thread_context': thread.get('conversation_body', '')[:500],  # Store snippet
                 'message_count': thread.get('message_count', 1),
-                'status': 'skipped'  # Special status for emails that don't need responses
+                'status': draft_status,
+                'addressed_to_user': classification.get('addressed_to_user', 'unknown')
             }
             
             draft_id = self.draft_manager.save_draft(draft_data)
             logger.info(f"  ⏭️  Skipped draft saved: {draft_id}")
             return True  # Count as created so it shows in review queue
         
-        # Step 2: Build context
+        # Step 2: Build context (for both "pending" and "unsure")
         logger.debug("  → Building context...")
         context = await self.context_builder.build_context(thread, workspace)
         logger.info(f"  → Found {context.total_sources} relevant sources")
         
-        # Step 3: Generate response
+        # Step 3: Generate response (for both "pending" and "unsure")
         logger.debug("  → Generating response...")
         response = await self.response_generator.generate_response(thread, context)
         logger.info(f"  → Generated {len(response['body'].split())} word response")
         
         # Step 4: Save draft
         logger.debug("  → Saving draft...")
+        status_emoji = "🤷‍♀️" if draft_status == "unsure" else "✅"
+        logger.info(f"  {status_emoji} Draft status: {draft_status}")
+        
         draft_data = {
             'workspace': workspace,
             'thread_id': thread_id,
@@ -232,7 +254,8 @@ class EmailProcessor:
             'ai_model': response['model'],
             'thread_context': context.thread_history[:500],  # Store snippet
             'message_count': thread.get('message_count', 1),
-            'status': 'pending'
+            'status': draft_status,
+            'addressed_to_user': classification.get('addressed_to_user', True)
         }
         
         draft_id = self.draft_manager.save_draft(draft_data)

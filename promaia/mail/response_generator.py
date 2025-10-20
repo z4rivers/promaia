@@ -6,6 +6,8 @@ Uses learned patterns from previous successful responses to match user's style.
 import logging
 import re
 from typing import Dict, Any, Optional
+import os
+from promaia.utils.timezone_utils import now_utc
 
 from promaia.mail.learning_system import EmailResponseLearningSystem
 from promaia.mail.context_builder import ResponseContext
@@ -16,7 +18,9 @@ logger = logging.getLogger(__name__)
 class ResponseGenerator:
     """Generates email responses using AI with learning."""
     
-    RESPONSE_PROMPT_TEMPLATE = """You are writing an email response on behalf of the user.
+    RESPONSE_PROMPT_TEMPLATE = """{user_persona}
+
+You are writing an email response based on the following context.
 
 {learned_patterns}
 
@@ -33,7 +37,7 @@ Date: {date}
 
 Write a professional, concise email response that:
 - Uses information from the context when relevant
-- Matches the tone and style of previous responses (if examples provided above)
+- Matches the tone and style of previous responses (if examples provided above) and the user persona.
 - Is clear and actionable
 - Is appropriately concise unless detail is needed
 - Maintains the conversation flow
@@ -47,6 +51,50 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
         self.learning_system = EmailResponseLearningSystem()
         self.ai_client = None
         self.model_type = None
+        self.user_persona = self._load_user_persona()
+
+    def _load_user_persona(self):
+        """Loads the user's persona from the prompt file."""
+        prompt_path = "prompts/maia_mail_prompt.md"
+        default_persona = "You are an AI assistant writing an email on behalf of the user. Your goal is to be helpful, professional, and concise."
+        
+        if not os.path.exists(prompt_path):
+            logger.warning(f"'{prompt_path}' not found. Using default persona.")
+            return default_persona
+        
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                persona = f.read()
+                logger.info(f"Loaded user persona from '{prompt_path}'")
+                return persona
+        except Exception as e:
+            logger.error(f"Failed to load persona from '{prompt_path}': {e}")
+            return default_persona
+
+    def _save_mail_context_log(self, prompt_content: str, log_type: str):
+        """
+        Save the prompt content to a log file for debugging.
+        
+        Args:
+            prompt_content: The full prompt sent to the AI.
+            log_type: Type of log (e.g., 'initial_draft', 'refinement').
+        """
+        try:
+            log_dir = "mail-context-logs"
+            os.makedirs(log_dir, exist_ok=True)
+            
+            timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
+            filename = f"{log_dir}/{timestamp}_{log_type}_prompt.txt"
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                header = f"=== MAIA MAIL - {log_type.upper()} PROMPT ===\n"
+                f.write(header)
+                f.write(prompt_content)
+                
+            logger.info(f"Saved mail context log to {filename}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save mail context log: {e}")
     
     def _format_email_body(self, text: str) -> str:
         """
@@ -184,6 +232,7 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
             
             # Build full prompt
             prompt = self.RESPONSE_PROMPT_TEMPLATE.format(
+                user_persona=self.user_persona,
                 learned_patterns=learned_patterns,
                 thread_history=context.thread_history,
                 context_documents=context.relevant_docs_text,
@@ -191,6 +240,9 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
                 subject=subject,
                 date=date
             )
+            
+            # Save prompt for debugging
+            self._save_mail_context_log(prompt, "initial_draft")
             
             # Get AI client
             client = self._get_ai_client()
@@ -264,27 +316,40 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
             Refined draft text
         """
         try:
+
+            # Get email body for context
+            email_body = email_thread.get('conversation_body') or email_thread.get('body', '')
+            
             # Build refinement prompt
-            refinement_prompt = f"""You previously generated this email draft:
+            refinement_prompt = f"""{self.user_persona}
 
-{current_draft}
+You are revising an email draft based on user feedback.
 
-The user has requested a change:
+{f"You previously generated this email draft:\n\n{current_draft}\n\n" if current_draft else "You are generating a NEW draft for this email.\n\n"}The user has requested a change:
 "{user_feedback}"
 
 Original email context:
 From: {email_thread.get('from')}
 Subject: {email_thread.get('subject')}
 
-Please revise the draft according to the user's feedback while maintaining:
+Email thread/body:
+{email_body}
+
+Relevant context from knowledge base:
+{context.relevant_docs_text if context.relevant_docs_text else "No additional context available"}
+
+Please {"revise the draft" if current_draft else "generate a response"} according to the user's feedback, the user persona, and the original context, while maintaining:
 - Professional tone
 - Clarity and conciseness
 - Appropriate context from the conversation
 
 IMPORTANT: Write in natural flowing paragraphs. Do NOT add hard line breaks within paragraphs. Let the email client handle text wrapping. Only use line breaks between distinct paragraphs or list items.
 
-Return ONLY the revised email body text."""
+Return ONLY the {"revised" if current_draft else ""} email body text."""
             
+            # Save refinement prompt for debugging
+            self._save_mail_context_log(refinement_prompt, "refinement")
+
             # Get AI client
             client = self._get_ai_client()
             

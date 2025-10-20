@@ -19,10 +19,22 @@ class EmailClassifier:
     CLASSIFICATION_PROMPT = """You are an email classifier. Analyze this email and determine:
 1. Does this pertain to the user? (Is it relevant to them personally/professionally?)
 2. Is this spam, an ad, promotion, or phishing attempt?
-3. Does this require a response from the user?
+3. Is this email addressed to the user, someone else, or ambiguous?
+4. Does this require a response from the user?
+
+IMPORTANT GUIDELINES:
+- Check the TO field and message content to determine who should respond
+- If clearly addressed to someone else (like "Hi Jayshay" or "To: jayshay@..."), mark addressed_to_user as false
+- If the TO field is ambiguous or includes multiple recipients, mark addressed_to_user as "ambiguous"
+- If the latest message in a thread is from someone ELSE making a request/asking a question to the user, it requires a response
+- If the user sent a quick acknowledgment (like "On it!", "Thanks!", "Got it!") but the original request requires follow-up work, it likely needs a substantive response later
+- Direct requests from the user's manager/boss/clients typically need responses
+- Look at the ENTIRE thread context, not just the latest message
+- NEVER draft responses on behalf of other people
 
 Email Details:
 From: {from_addr}
+To: {to_addr}
 Subject: {subject}
 Date: {date}
 Body:
@@ -35,6 +47,7 @@ Respond with ONLY valid JSON in this exact format:
 {{
     "pertains_to_me": true/false,
     "is_spam": true/false,
+    "addressed_to_user": true/false/"ambiguous",
     "requires_response": true/false,
     "reasoning": "Brief explanation of your classification"
 }}"""
@@ -89,6 +102,7 @@ Respond with ONLY valid JSON in this exact format:
         try:
             # Extract email data
             from_addr = email_thread.get('from', 'Unknown')
+            to_addr = email_thread.get('to', 'Unknown')
             subject = email_thread.get('subject', 'No Subject')
             date = email_thread.get('date', 'Unknown')
             body = email_thread.get('conversation_body', '') or email_thread.get('body', '')
@@ -101,6 +115,7 @@ Respond with ONLY valid JSON in this exact format:
             # Build prompt
             prompt = self.CLASSIFICATION_PROMPT.format(
                 from_addr=from_addr,
+                to_addr=to_addr,
                 subject=subject,
                 date=date,
                 body=body,
@@ -150,7 +165,7 @@ Respond with ONLY valid JSON in this exact format:
             classification = json.loads(response_text)
             
             # Validate required fields
-            required_fields = ['pertains_to_me', 'is_spam', 'requires_response', 'reasoning']
+            required_fields = ['pertains_to_me', 'is_spam', 'addressed_to_user', 'requires_response', 'reasoning']
             for field in required_fields:
                 if field not in classification:
                     raise ValueError(f"Missing required field in classification: {field}")
@@ -159,6 +174,7 @@ Respond with ONLY valid JSON in this exact format:
                 f"Classified email from {from_addr}: "
                 f"pertains={classification['pertains_to_me']}, "
                 f"spam={classification['is_spam']}, "
+                f"addressed_to_user={classification['addressed_to_user']}, "
                 f"requires_response={classification['requires_response']}"
             )
             
@@ -171,6 +187,7 @@ Respond with ONLY valid JSON in this exact format:
             return {
                 "pertains_to_me": True,
                 "is_spam": False,
+                "addressed_to_user": "ambiguous",
                 "requires_response": True,
                 "reasoning": f"Classification failed (JSON parse error), defaulting to requiring response"
             }
@@ -181,6 +198,7 @@ Respond with ONLY valid JSON in this exact format:
             return {
                 "pertains_to_me": True,
                 "is_spam": False,
+                "addressed_to_user": "ambiguous",
                 "requires_response": True,
                 "reasoning": f"Classification error: {str(e)}, defaulting to requiring response"
             }
@@ -193,11 +211,53 @@ Respond with ONLY valid JSON in this exact format:
             classification: Result from classify()
             
         Returns:
-            True if we should generate a draft
+            True if we should generate a draft (includes both "pending" and "unsure")
         """
+        # Don't generate if spam
+        if classification.get('is_spam', False):
+            return False
+        
+        # Don't generate if clearly addressed to someone else
+        addressed = classification.get('addressed_to_user', True)
+        if addressed is False:  # Explicitly False, not just falsy
+            return False
+        
+        # Generate if pertains to user and requires response
+        # (includes ambiguous cases as "unsure")
         return (
             classification.get('pertains_to_me', False) and
-            not classification.get('is_spam', False) and
             classification.get('requires_response', False)
         )
+    
+    def get_draft_status(self, classification: Dict[str, Any]) -> str:
+        """
+        Determine what status a draft should have based on classification.
+        
+        Args:
+            classification: Result from classify()
+            
+        Returns:
+            "pending", "unsure", or "skipped"
+        """
+        # Skip if spam or clearly addressed to someone else
+        if classification.get('is_spam', False):
+            return "skipped"
+        
+        addressed = classification.get('addressed_to_user', True)
+        if addressed is False:  # Explicitly addressed to someone else
+            return "skipped"
+        
+        # Skip if doesn't pertain or doesn't require response
+        if not classification.get('pertains_to_me', False):
+            return "skipped"
+        
+        if not classification.get('requires_response', False):
+            return "skipped"
+        
+        # Unsure if ambiguous recipient
+        if addressed == "ambiguous":
+            return "unsure"
+        
+        # Otherwise pending
+        return "pending"
 

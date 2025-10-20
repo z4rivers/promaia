@@ -27,10 +27,9 @@ class EmailReviewUI:
     
     def __init__(self):
         self.draft_manager = DraftManager()
-        self.session_stats = {
-            'sent': 0,
-            'pending': 0
-        }
+        self.session_start_count = 0  # Track how many items at session start
+        self.session_sent = 0  # Track items sent this session
+        self.session_archived = 0  # Track items archived this session
         self.history_mode = False  # Toggle between queue and history view
     
     def _clear_screen_and_home(self):
@@ -170,32 +169,64 @@ class EmailReviewUI:
         except KeyboardInterrupt:
             return 'q'
     
-    def _load_drafts(self, workspaces: List[str]) -> List[Dict[str, Any]]:
-        """Load drafts based on current mode (queue or history)."""
+    def _load_drafts(self, workspaces: List[str], include_resolved: bool = False) -> List[Dict[str, Any]]:
+        """Load drafts based on current mode (queue or history).
+        
+        Args:
+            workspaces: List of workspace names
+            include_resolved: If True, include sent/archived drafts (for stats calculation)
+        """
         all_drafts = []
         for workspace in workspaces:
             if self.history_mode:
                 drafts = self.draft_manager.get_history_for_workspace(workspace)
             else:
-                drafts = self.draft_manager.get_drafts_for_workspace(workspace, include_resolved=True)
+                drafts = self.draft_manager.get_drafts_for_workspace(workspace, include_resolved=include_resolved)
             all_drafts.extend(drafts)
         return all_drafts
     
-    def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
-        """Calculate stats from draft list."""
+    def _filter_queue_drafts(self, drafts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter drafts to only show pending/skipped/unsure in queue view."""
+        if self.history_mode:
+            return drafts  # History shows all completed
+        else:
+            # Queue only shows pending, unsure, and skipped (not sent/archived)
+            return [d for d in drafts if d.get('status') in ('pending', 'unsure', 'skipped')]
+    
+    def _calculate_session_stats(self, current_queue_size: int) -> Dict[str, int]:
+        """Calculate session-based stats for progress tracking.
+        
+        Args:
+            current_queue_size: Current number of items in queue (pending + skipped)
+        
+        Returns:
+            Dict with session stats including progress percentage
+        """
         stats = {
-            'total': len(drafts),
-            'sent': sum(1 for d in drafts if d.get('status') == 'sent'),
-            'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
-            'skipped': sum(1 for d in drafts if d.get('status') == 'skipped'),
-            'archived': sum(1 for d in drafts if d.get('status') == 'archived'),
+            'session_start': self.session_start_count,
+            'current_queue': current_queue_size,
+            'sent': self.session_sent,
+            'archived': self.session_archived,
         }
-        stats['resolved'] = stats['sent'] + stats['archived']
-        if stats['total'] > 0:
-            stats['percent'] = int((stats['resolved'] / stats['total']) * 100)
+        stats['resolved'] = self.session_sent + self.session_archived
+        stats['remaining'] = current_queue_size
+        
+        # Progress based on session: how many of the original items have been dealt with
+        if self.session_start_count > 0:
+            stats['percent'] = int((stats['resolved'] / self.session_start_count) * 100)
         else:
             stats['percent'] = 0
+        
         return stats
+    
+    def _calculate_queue_counts(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Calculate current queue composition (pending/skipped/unsure counts)."""
+        return {
+            'pending': sum(1 for d in drafts if d.get('status') == 'pending'),
+            'skipped': sum(1 for d in drafts if d.get('status') == 'skipped'),
+            'unsure': sum(1 for d in drafts if d.get('status') == 'unsure'),
+            'total': len(drafts)
+        }
     
     def _render_progress_bar(self, stats: Dict[str, int]) -> str:
         """Render just the progress bar."""
@@ -204,21 +235,33 @@ class EmailReviewUI:
         bar = '█' * filled + '░' * (total_width - filled)
         return bar
     
-    def _render_status_bar(self, stats: Dict[str, int]) -> str:
-        """Render progress and status bar."""
+    def _render_status_bar(self, session_stats: Dict[str, int], queue_counts: Dict[str, int]) -> str:
+        """Render progress and status bar.
+        
+        Args:
+            session_stats: Session-level progress stats
+            queue_counts: Current queue composition (pending/skipped)
+        """
         if self.history_mode:
-            # History view header
+            # History view header - simple total count
+            total_history = queue_counts['total']
             return (
                 f"Maia Mail - History (Completed Messages)\n\n"
-                f"Total Completed: {stats['total']}  •  ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived\n\n"
+                f"Total: {total_history} completed messages\n\n"
             )
         else:
-            # Queue view header
-            bar = self._render_progress_bar(stats)
+            # Queue view header with session progress
+            if session_stats['session_start'] > 0:
+                bar = self._render_progress_bar(session_stats)
+                progress_line = f"Session Progress: [{bar}] {session_stats['resolved']}/{session_stats['session_start']} completed ({session_stats['percent']}%)\n"
+            else:
+                progress_line = ""
+            
             return (
                 f"Maia Mail - Draft Review Queue\n\n"
-                f"Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)\n"
-                f"Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped\n\n"
+                f"{progress_line}"
+                f"Queue: ⏳ {queue_counts['pending']} pending  •  🤷‍♀️ {queue_counts['unsure']} unsure  •  ⏭️ {queue_counts['skipped']} skipped  •  "
+                f"Session: ✅ {session_stats['sent']} sent  •  🗄️ {session_stats['archived']} archived\n\n"
             )
     
     def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int, start_offset: int = 0) -> str:
@@ -239,6 +282,8 @@ class EmailReviewUI:
                 icon = '🗄️'
             elif draft.get('status') == 'skipped':
                 icon = '⏭️'
+            elif draft.get('status') == 'unsure':
+                icon = '🤷‍♀️'
             else:
                 icon = '⏳'
             
@@ -402,18 +447,28 @@ ACTIONS
         """
         self.history_mode = start_in_history
         
-        # Load drafts for specified workspaces
-        all_drafts = self._load_drafts(workspaces)
+        # Load drafts for current mode
+        if self.history_mode:
+            display_drafts = self._load_drafts(workspaces, include_resolved=False)
+            # History mode shows completed items
+            display_drafts = [d for d in self._load_drafts(workspaces, include_resolved=True) 
+                            if d.get('status') in ('sent', 'archived')]
+        else:
+            # Queue mode shows only pending/skipped
+            all_drafts = self._load_drafts(workspaces, include_resolved=True)
+            display_drafts = self._filter_queue_drafts(all_drafts)
         
-        if not all_drafts:
+        if not display_drafts:
             if self.history_mode:
                 print_text("\n📭 No history yet. Complete some emails to see them here!\n", style="green")
             else:
                 print_text("\n📭 No email drafts to review. All caught up!\n", style="green")
             return
         
-        # Initial stats
-        stats = self._calculate_stats(all_drafts)
+        # Initialize session tracking - remember starting queue size
+        self.session_start_count = len(display_drafts)
+        self.session_sent = 0
+        self.session_archived = 0
         
         # State
         current_selection = 0
@@ -435,19 +490,23 @@ ACTIONS
             try:
                 # --- 1. Calculate Pagination ---
                 # Fixed window pagination - window only moves when selection reaches edges
-                page_start = max(0, min(page_start, len(all_drafts) - max_visible_drafts))
-                if len(all_drafts) <= max_visible_drafts:
+                page_start = max(0, min(page_start, len(display_drafts) - max_visible_drafts))
+                if len(display_drafts) <= max_visible_drafts:
                     page_start = 0
                 
                 start_idx = page_start
-                end_idx = min(len(all_drafts), start_idx + max_visible_drafts)
+                end_idx = min(len(display_drafts), start_idx + max_visible_drafts)
 
                 # --- 2. Build Display String ---
                 # Build the entire display as a single string for atomic rendering
                 display_parts = []
                 
+                # Calculate current stats
+                session_stats = self._calculate_session_stats(len(display_drafts))
+                queue_counts = self._calculate_queue_counts(display_drafts)
+                
                 # Header
-                display_parts.append(self._render_status_bar(stats))
+                display_parts.append(self._render_status_bar(session_stats, queue_counts))
                 
                 # Controls
                 if self.history_mode:
@@ -457,11 +516,11 @@ ACTIONS
                 display_parts.append(controls_line + "\n")
                 
                 # Pagination info
-                if len(all_drafts) > max_visible_drafts:
-                    display_parts.append(f"Showing {start_idx + 1}-{end_idx} of {len(all_drafts)} drafts\n")
+                if len(display_drafts) > max_visible_drafts:
+                    display_parts.append(f"Showing {start_idx + 1}-{end_idx} of {len(display_drafts)} drafts\n")
                 
                 # Queue list
-                visible_drafts = all_drafts[start_idx:end_idx]
+                visible_drafts = display_drafts[start_idx:end_idx]
                 visible_selection = current_selection - start_idx
                 queue_list = self._render_review_list(visible_drafts, visible_selection, start_offset=start_idx)
                 display_parts.append(queue_list)
@@ -488,38 +547,65 @@ ACTIONS
                     # Toggle between queue and history
                     self.history_mode = not self.history_mode
                     # Reload drafts for new mode
-                    all_drafts = self._load_drafts(workspaces)
-                    if not all_drafts:
+                    if self.history_mode:
+                        # History mode shows completed items
+                        all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                        display_drafts = [d for d in all_drafts if d.get('status') in ('sent', 'archived')]
+                    else:
+                        # Queue mode shows pending/skipped
+                        all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                        display_drafts = self._filter_queue_drafts(all_drafts)
+                    
+                    if not display_drafts:
                         # No drafts in this mode, switch back
                         self.history_mode = not self.history_mode
-                        all_drafts = self._load_drafts(workspaces)
                         if self.history_mode:
-                            print_text("\n📭 No history yet!\n", style="yellow")
+                            all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                            display_drafts = [d for d in all_drafts if d.get('status') in ('sent', 'archived')]
                         else:
-                            print_text("\n📭 No drafts in queue!\n", style="yellow")
-                    # Reset selection and recalculate stats
+                            all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                            display_drafts = self._filter_queue_drafts(all_drafts)
+                        print_text("\n📭 No items in that view!\n", style="yellow")
+                    
+                    # Reset selection
                     current_selection = 0
                     page_start = 0
-                    stats = self._calculate_stats(all_drafts)
                 elif action == 'enter':
                     # Open draft chat for selected draft
-                    await self._handle_chat(all_drafts[current_selection])
-                    # Reload draft after chat
-                    updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
+                    old_status = display_drafts[current_selection].get('status')
+                    await self._handle_chat(display_drafts[current_selection])
+                    
+                    # Check if status changed and update session counters
+                    updated_draft = self.draft_manager.get_draft(display_drafts[current_selection]['draft_id'])
                     if updated_draft:
-                        all_drafts[current_selection] = updated_draft
-                    stats = self._calculate_stats(all_drafts)
+                        new_status = updated_draft.get('status')
+                        if old_status != new_status:
+                            if new_status == 'sent':
+                                self.session_sent += 1
+                            elif new_status == 'archived':
+                                self.session_archived += 1
+                    
+                    # Reload drafts after chat (status may have changed)
+                    all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                    display_drafts = self._filter_queue_drafts(all_drafts)
+                    
+                    # Adjust selection if draft was removed from queue
+                    if current_selection >= len(display_drafts):
+                        current_selection = max(0, len(display_drafts) - 1)
                 elif action == 'a':
                     # Archive only available in queue mode (not in history)
                     if not self.history_mode:
                         # Archive: mark as archived to clear from queue
-                        await self._handle_archive(all_drafts[current_selection])
+                        await self._handle_archive(display_drafts[current_selection])
+                        self.session_archived += 1
+                        
                         # Reload drafts after archiving (will remove from queue)
-                        all_drafts = self._load_drafts(workspaces)
+                        all_drafts = self._load_drafts(workspaces, include_resolved=True)
+                        display_drafts = self._filter_queue_drafts(all_drafts)
+                        
                         # Adjust selection if needed
-                        if current_selection >= len(all_drafts):
-                            current_selection = max(0, len(all_drafts) - 1)
-                        stats = self._calculate_stats(all_drafts)
+                        if current_selection >= len(display_drafts):
+                            current_selection = max(0, len(display_drafts) - 1)
                 elif action == 'up':
                     if current_selection > 0:
                         current_selection -= 1
@@ -527,7 +613,7 @@ ACTIONS
                         if current_selection < page_start:
                             page_start = current_selection
                 elif action == 'down':
-                    if current_selection < len(all_drafts) - 1:
+                    if current_selection < len(display_drafts) - 1:
                         current_selection += 1
                         # Scroll page down if selection goes below visible window
                         if current_selection >= page_start + max_visible_drafts:
@@ -541,13 +627,14 @@ ACTIONS
                 input("Press Enter to continue...")
         
         # Final summary (back on main screen now)
-        final_stats = self._calculate_stats(all_drafts)
         print()
-        print_text(
-            f"✅ Session complete: {final_stats['sent']} sent, "
-            f"{final_stats['archived']} archived, {final_stats['pending']} pending",
-            style="green"
-        )
+        if self.session_sent > 0 or self.session_archived > 0:
+            print_text(
+                f"✅ Session complete: {self.session_sent} sent, {self.session_archived} archived",
+                style="green"
+            )
+        else:
+            print_text("✅ Session complete", style="green")
     
     async def _handle_archive(self, draft: Dict[str, Any]):
         """

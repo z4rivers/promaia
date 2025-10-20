@@ -160,56 +160,67 @@ Date:     {received_str}
     
     if use_colors:
         # Header with color
-        output.append(f"\033[1;36mEMAIL THREAD ({message_count} messages)\033[0m\n")
+        output.append(f"\033[1;36mINBOUND MESSAGE\033[0m\n")
         output.append(f"\033[1mSubject:\033[0m  {subject}")
         output.append(f"\033[2mScroll up ↑ to see earlier messages in the thread\033[0m\n")
     else:
-        output.append(f"EMAIL THREAD ({message_count} messages)\n")
+        output.append(f"INBOUND MESSAGE\n")
         output.append(f"Subject:  {subject}")
         output.append(f"Scroll up ↑ to see earlier messages in the thread\n")
     
     # Display each message with position indicator
     for i, msg in enumerate(messages, 1):
-        # Message header with position - using simple dashes for copy-friendliness
-        header_text = f"Message: {i}/{message_count}"
-        separator_length = max(70 - len(header_text), 10)
-        
         if use_colors:
-            # Alternate colors for visual distinction
-            if i % 2 == 1:
-                # Cyan for odd messages
-                output.append(f"\033[1;36m{header_text} {'─' * separator_length}\033[0m")
-            else:
-                # Blue for even messages
-                output.append(f"\033[1;34m{header_text} {'─' * separator_length}\033[0m")
+            # BRIGHT colored message separator - highly visible
+            # Using bright yellow (93) for maximum visibility
+            output.append(f"\033[1;93m{'═' * 80}\033[0m")
+            output.append(f"\033[1;93mMESSAGE: {i}/{message_count}\033[0m")
+            output.append(f"\033[1;93m{'═' * 80}\033[0m")
         else:
-            output.append(f"{header_text} {'─' * separator_length}")
+            output.append(f"{'═' * 80}")
+            output.append(f"MESSAGE: {i}/{message_count}")
+            output.append(f"{'═' * 80}")
         
-        # Message headers (skip subject since it's shown at top)
+        # Message headers with bright labels
         headers = msg['headers']
-        if 'from' in headers:
-            output.append(f"From: {headers['from']}")
-        if 'date' in headers or 'sent' in headers:
-            date = headers.get('date') or headers.get('sent')
-            output.append(f"Date: {date}")
-        if 'to' in headers:
-            output.append(f"To: {headers['to']}")
-        # Note: Subject is omitted since it's already shown in the thread header
+        if use_colors:
+            if 'from' in headers:
+                output.append(f"\033[1;96mFROM:\033[0m {headers['from']}")
+            if 'date' in headers or 'sent' in headers:
+                date = headers.get('date') or headers.get('sent')
+                output.append(f"\033[1;96mDATE:\033[0m {date}")
+            if 'to' in headers:
+                output.append(f"\033[1;96mTO:\033[0m {headers['to']}")
+            if 'subject' in headers:
+                output.append(f"\033[1;96mSUBJECT:\033[0m {headers['subject']}")
+        else:
+            if 'from' in headers:
+                output.append(f"FROM: {headers['from']}")
+            if 'date' in headers or 'sent' in headers:
+                date = headers.get('date') or headers.get('sent')
+                output.append(f"DATE: {date}")
+            if 'to' in headers:
+                output.append(f"TO: {headers['to']}")
+            if 'subject' in headers:
+                output.append(f"SUBJECT: {headers['subject']}")
         
-        # Empty line before content
-        output.append("")
+        # Bright colored content separator
+        if use_colors:
+            output.append(f"\033[1;93m{'─' * 40} MESSAGE CONTENT {'─' * 40}\033[0m")
+        else:
+            output.append(f"{'─' * 40} MESSAGE CONTENT {'─' * 40}")
         
         # Message content (no prefix for cleaner copying)
         output.append(msg['content'])
         
-        # Message footer - simple separator
-        if use_colors:
-            if i % 2 == 1:
-                output.append(f"\033[2;36m{'─' * 80}\033[0m\n")
+        # End of message marker if not the last message
+        if i < len(messages):
+            if use_colors:
+                output.append(f"\n\033[1;92m{'▼' * 40} NEXT MESSAGE {'▼' * 40}\033[0m\n")
             else:
-                output.append(f"\033[2;34m{'─' * 80}\033[0m\n")
+                output.append(f"\n{'▼' * 40} NEXT MESSAGE {'▼' * 40}\n")
         else:
-            output.append(f"{'─' * 80}\n")
+            output.append("")  # Just blank line after last message
     
     return '\n'.join(output)
 
