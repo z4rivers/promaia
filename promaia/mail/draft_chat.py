@@ -387,7 +387,7 @@ class DraftChatInterface:
     async def _handle_edit_context(self):
         """Handle /e command - edit context like maia chat"""
         import shlex
-        from prompt_toolkit import prompt
+        from prompt_toolkit import PromptSession
         from prompt_toolkit.key_binding import KeyBindings
         
         # Build current command string
@@ -433,9 +433,10 @@ class DraftChatInterface:
             action_taken['type'] = 'browse'
             event.app.exit()
         
-        # Get user input
+        # Get user input using async version
         try:
-            user_input = prompt(
+            session = PromptSession()
+            user_input = await session.prompt_async(
                 "maia mail ",
                 default=current_command,
                 key_bindings=bindings
