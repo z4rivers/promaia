@@ -11,6 +11,7 @@ import sys
 import time
 import json
 import shlex
+import logging
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.history import FileHistory
@@ -34,6 +35,9 @@ from promaia.storage.chat_history import ChatHistoryManager
 from promaia.storage.recents import RecentsManager
 
 import google.generativeai as genai
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_environment()
@@ -710,8 +714,15 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None):
-    """Main chat function with simplified, unified logic."""
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None):
+    """
+    Main chat function with simplified, unified logic.
+    
+    Args:
+        mode: ChatMode instance for specialized behavior (e.g., DraftMode)
+        mode_config: Additional mode configuration dict
+        ... (other existing args)
+    """
     global current_api, DEBUG_MODE
 
     # Detect mixed commands: when user provides both sources and browse arguments
@@ -962,8 +973,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
         'enable_search': False,  # Store search functionality flag (starts disabled)
         'original_query_format': original_browse_command,  # Store the original query format for display
-        'is_mixed_browse_nl_command': is_mixed_browse_nl_command  # Flag for OR logic in NL processing
+        'is_mixed_browse_nl_command': is_mixed_browse_nl_command,  # Flag for OR logic in NL processing
+        'mode': mode,  # Store chat mode for specialized behavior
+        'mode_config': mode_config or {},  # Store mode configuration
     }
+    
+    # Mode-specific setup
+    mode_system_prompt = None
+    mode_commands = {}
+    if mode:
+        # Get mode-specific system prompt
+        mode_system_prompt = mode.get_system_prompt()
+        if mode_system_prompt:
+            logger.info(f"Using system prompt from mode: {type(mode).__name__}")
+        
+        # Get mode-specific commands
+        mode_commands = mode.get_additional_commands()
+        if mode_commands:
+            logger.info(f"Mode {type(mode).__name__} added commands: {list(mode_commands.keys())}")
 
     # Initialize NL and VS content separately from CLI
     if initial_nl_content:
@@ -1688,7 +1715,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Generate new system prompt
         mcp_tools_info = context_state.get('mcp_tools_info')
-        system_prompt = create_system_prompt(new_multi_source_data, mcp_tools_info)
+        # Use mode system prompt if available, otherwise generate from context
+        if mode_system_prompt:
+            system_prompt = mode_system_prompt
+        else:
+            system_prompt = create_system_prompt(new_multi_source_data, mcp_tools_info)
         context_state['system_prompt'] = system_prompt
         
         # Save context log when MCP servers are connected (for transparency)
@@ -4098,6 +4129,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 except (ValueError, IndexError):
                     print_text("Usage: /edit <number>", style="yellow")
                 continue
+            
+            # Check for mode-specific commands
+            elif mode_commands:
+                command_key = user_input.strip().lower().split()[0]
+                if command_key in mode_commands:
+                    handler = mode_commands[command_key]
+                    # Call async handler with required context
+                    import asyncio
+                    should_exit = asyncio.run(handler(
+                        context_state.get('artifact_manager'),
+                        messages,
+                        context_state
+                    ))
+                    if should_exit:
+                        break
+                    continue
             
             elif user_input.strip().lower().startswith('/image'):
                 # Handle multiple image attachments
