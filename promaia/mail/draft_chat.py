@@ -174,7 +174,11 @@ class DraftChatInterface:
     async def run_chat_loop(self):
         """
         Main entry point - display email thread then launch unified chat with DraftMode.
+        
+        Note: chat() is synchronous but blocking, so we run it in a thread to await it properly.
         """
+        import asyncio
+        
         try:
             # Load current draft
             draft = self.draft_manager.get_draft(self.draft_id)
@@ -275,8 +279,9 @@ class DraftChatInterface:
             logger.info(f"   Message context: {len(message_context)} databases")
             logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
             
-            # Note: chat() is not async, so we call it directly
-            result = chat(
+            # Note: chat() is synchronous and blocking, run in thread to await properly
+            result = await asyncio.to_thread(
+                chat,
                 workspace=self.workspace,
                 mode=mode,
                 natural_language_content=message_context,  # Pre-loaded context
