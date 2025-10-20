@@ -31,6 +31,7 @@ class EmailReviewUI:
             'sent': 0,
             'pending': 0
         }
+        self.history_mode = False  # Toggle between queue and history view
     
     def _clear_screen_and_home(self):
         """Clear terminal screen and position cursor at top."""
@@ -149,6 +150,12 @@ class EmailReviewUI:
             result['value'] = 'a'
             event.app.exit()
         
+        # History key
+        @kb.add('h')
+        def _(event):
+            result['value'] = 'h'
+            event.app.exit()
+        
         # Create minimal application to capture keystroke
         app = Application(
             layout=Layout(Window(FormattedTextControl(text=''))),
@@ -162,6 +169,17 @@ class EmailReviewUI:
             return result['value'] or ''
         except KeyboardInterrupt:
             return 'q'
+    
+    def _load_drafts(self, workspaces: List[str]) -> List[Dict[str, Any]]:
+        """Load drafts based on current mode (queue or history)."""
+        all_drafts = []
+        for workspace in workspaces:
+            if self.history_mode:
+                drafts = self.draft_manager.get_history_for_workspace(workspace)
+            else:
+                drafts = self.draft_manager.get_drafts_for_workspace(workspace, include_resolved=True)
+            all_drafts.extend(drafts)
+        return all_drafts
     
     def _calculate_stats(self, drafts: List[Dict[str, Any]]) -> Dict[str, int]:
         """Calculate stats from draft list."""
@@ -188,13 +206,20 @@ class EmailReviewUI:
     
     def _render_status_bar(self, stats: Dict[str, int]) -> str:
         """Render progress and status bar."""
-        bar = self._render_progress_bar(stats)
-        
-        return (
-            f"Maia Mail - Draft Review Queue\n\n"
-            f"Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)\n"
-            f"Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped\n\n"
-        )
+        if self.history_mode:
+            # History view header
+            return (
+                f"Maia Mail - History (Completed Messages)\n\n"
+                f"Total Completed: {stats['total']}  •  ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived\n\n"
+            )
+        else:
+            # Queue view header
+            bar = self._render_progress_bar(stats)
+            return (
+                f"Maia Mail - Draft Review Queue\n\n"
+                f"Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)\n"
+                f"Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped\n\n"
+            )
     
     def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int, start_offset: int = 0) -> str:
         """Render list of drafts for review.
@@ -367,16 +392,24 @@ ACTIONS
         output.append("\n[b] Back  [q] Quit")
         return '\n'.join(output)
     
-    async def launch_review(self, workspaces: List[str]):
-        """Main review flow."""
+    async def launch_review(self, workspaces: List[str], start_in_history: bool = False):
+        """
+        Main review flow with queue and history views.
+        
+        Args:
+            workspaces: List of workspace names
+            start_in_history: If True, start in history view instead of queue
+        """
+        self.history_mode = start_in_history
+        
         # Load drafts for specified workspaces
-        all_drafts = []
-        for workspace in workspaces:
-            drafts = self.draft_manager.get_drafts_for_workspace(workspace, include_resolved=True)
-            all_drafts.extend(drafts)
+        all_drafts = self._load_drafts(workspaces)
         
         if not all_drafts:
-            print_text("\n📭 No email drafts to review. All caught up!\n", style="green")
+            if self.history_mode:
+                print_text("\n📭 No history yet. Complete some emails to see them here!\n", style="green")
+            else:
+                print_text("\n📭 No email drafts to review. All caught up!\n", style="green")
             return
         
         # Initial stats
@@ -417,7 +450,10 @@ ACTIONS
                 display_parts.append(self._render_status_bar(stats))
                 
                 # Controls
-                controls_line = "Navigation: ↑/↓ | Enter to open chat | a archive | q quit"
+                if self.history_mode:
+                    controls_line = "Navigation: ↑/↓ | Enter to view | h back to queue | q quit"
+                else:
+                    controls_line = "Navigation: ↑/↓ | Enter to open chat | a archive | h history | q quit"
                 display_parts.append(controls_line + "\n")
                 
                 # Pagination info
@@ -448,6 +484,23 @@ ACTIONS
                 # --- 5. Handle Input ---
                 if action == 'q' or action == 'escape':
                     break
+                elif action == 'h':
+                    # Toggle between queue and history
+                    self.history_mode = not self.history_mode
+                    # Reload drafts for new mode
+                    all_drafts = self._load_drafts(workspaces)
+                    if not all_drafts:
+                        # No drafts in this mode, switch back
+                        self.history_mode = not self.history_mode
+                        all_drafts = self._load_drafts(workspaces)
+                        if self.history_mode:
+                            print_text("\n📭 No history yet!\n", style="yellow")
+                        else:
+                            print_text("\n📭 No drafts in queue!\n", style="yellow")
+                    # Reset selection and recalculate stats
+                    current_selection = 0
+                    page_start = 0
+                    stats = self._calculate_stats(all_drafts)
                 elif action == 'enter':
                     # Open draft chat for selected draft
                     await self._handle_chat(all_drafts[current_selection])
@@ -457,13 +510,16 @@ ACTIONS
                         all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
                 elif action == 'a':
-                    # Archive: mark as archived to clear from queue
-                    await self._handle_archive(all_drafts[current_selection])
-                    # Reload draft after archiving
-                    updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                    if updated_draft:
-                        all_drafts[current_selection] = updated_draft
-                    stats = self._calculate_stats(all_drafts)
+                    # Archive only available in queue mode (not in history)
+                    if not self.history_mode:
+                        # Archive: mark as archived to clear from queue
+                        await self._handle_archive(all_drafts[current_selection])
+                        # Reload drafts after archiving (will remove from queue)
+                        all_drafts = self._load_drafts(workspaces)
+                        # Adjust selection if needed
+                        if current_selection >= len(all_drafts):
+                            current_selection = max(0, len(all_drafts) - 1)
+                        stats = self._calculate_stats(all_drafts)
                 elif action == 'up':
                     if current_selection > 0:
                         current_selection -= 1

@@ -84,11 +84,15 @@ async def handle_mail(args):
                 return
         
         # Launch review UI (only if workspace was specified or not in process-only mode)
-        print_text("📋 Launching review interface...", style="cyan")
+        if hasattr(args, 'history') and args.history:
+            print_text("📋 Launching history view...", style="cyan")
+        else:
+            print_text("📋 Launching review interface...", style="cyan")
         print()
         
         review_ui = EmailReviewUI()
-        await review_ui.launch_review(workspaces)
+        start_in_history = hasattr(args, 'history') and args.history
+        await review_ui.launch_review(workspaces, start_in_history=start_in_history)
         
         print()
         print_separator()
@@ -136,6 +140,13 @@ def add_mail_commands(subparsers):
         '-v', '--verbose',
         action='store_true',
         help='Enable verbose debug logging'
+    )
+    
+    mail_parser.add_argument(
+        '--history',
+        action='store_true',
+        dest='history',
+        help='Start in history view (completed messages) instead of queue'
     )
     
     mail_parser.set_defaults(func=handle_mail)

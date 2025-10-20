@@ -2,6 +2,103 @@
 
 All notable changes to Promaia will be documented in this file.
 
+## [Unreleased] - 2025-10-20
+
+### 📧 Maia Mail - History Feature
+
+#### Added
+- **History View**: Separate view for completed emails (sent/archived) accessible via 'h' key or `--history` flag
+- **Completion Tracking**: New `completed_time` field tracks when messages were marked done
+- **Queue Separation**: Active queue no longer shows completed messages (cleaner workflow)
+- **CLI Flag**: `--history` flag to start directly in history view
+- **Toggle Navigation**: Press 'h' to switch between queue and history views
+- **Persistent Archive**: All sent/archived messages preserved and searchable
+
+#### Enhanced
+- **DraftManager**: Added `get_history_for_workspace()` method for history retrieval
+- **Status Tracking**: `update_draft_status()` now sets `completed_time` for sent/archived messages
+- **Queue Filtering**: `get_drafts_for_workspace()` excludes completed messages by default
+- **Auto Migration**: Existing databases automatically updated with `completed_time` column
+
+#### Changed
+- Completed messages (sent/archived) removed from active queue automatically
+- History ordered by completion time (most recent first) instead of creation time
+- Archive action ('a' key) disabled in history view (view-only mode)
+
+#### Benefits
+- Clean separation between active work and completed items
+- Easy verification of sent emails via history view
+- Completion timestamps for audit/review purposes
+- Same familiar interface for both queue and history
+- No data loss - all messages retained in database
+
+#### Documentation
+- **[NEW] docs/MAIA_MAIL_HISTORY.md**: Complete history feature guide with examples
+
+### 📧 Maia Mail - Copy-Friendly Thread Formatting
+
+#### Added
+- **Message Position Indicators**: Each message shows "Message: x/y" for orientation
+- **Color-Coded Messages**: Alternating cyan/blue colors for visual distinction
+- **Copy-Friendly Format**: Simple dashes instead of box characters (clean copy/paste)
+- **ThreadFormatter Module**: New `thread_formatter.py` with parsing and formatting utilities
+
+#### Enhanced
+- **Better Orientation**: Users always know their position when scrolling
+- **Visual Hierarchy**: Alternating colors make messages easier to distinguish
+- **Clean Copying**: Content pastes cleanly without formatting artifacts
+- **Consistent Display**: Same formatting in review UI and chat interface
+
+#### Changed
+- Multi-message threads now show individual message boundaries with position indicators
+- Thread display follows COPY_FRIENDLY_RICH.md principles
+
+#### Benefits
+- Easy navigation through long email threads
+- Clear visual separation between messages
+- Professional formatting that copies perfectly
+- Improved user experience when scrolling
+
+#### Documentation
+- **[NEW] MAIA_MAIL_THREAD_SCROLLING.md**: Thread formatting implementation guide
+
+### 📧 Maia Mail - Full Thread Scrolling
+
+#### Added
+- **Full Thread Viewing**: Draft chat now displays complete email conversation history
+- **Smart Thread Labels**: Multi-message threads show "EMAIL THREAD (X messages)" for clarity
+- **Scroll Tips**: Helpful reminder that users can scroll up to see full conversation
+- **Forced Full Thread Mode**: Email processor always fetches complete threads for maia mail
+
+#### Enhanced
+- **Better Context**: Users can see entire conversation when reviewing/refining drafts
+- **Natural UX**: Draft chat scrolls to bottom (latest message first), review queue starts at top
+- **Improved Queue Layout**: Review queue now shows controls before list (header → controls → queue)
+- **Alternate Screen Buffer**: Review queue uses alternate screen (like vim/less) for clean viewport control
+- **Smooth Navigation**: Arrow keys work without scroll glitches or viewport jumping
+- **Consistent Display**: Both draft chat and review UI use same thread display format
+- **Cleaner UI**: Removed redundant "Thread:" metadata line
+
+#### Changed
+- Email processor now uses `gmail_content_mode: "full_thread"` for maia mail (previously used `latest_only`)
+- Draft chat displays full conversation body instead of just latest message
+- Review queue now uses alternate screen buffer with ANSI escape sequences for proper viewport control
+
+#### Fixed
+- **Review Queue Scrolling**: Fixed issue where queue would start at bottom instead of top
+- **Arrow Key Glitches**: Eliminated viewport jumping when navigating with arrow keys
+- **Scrollback Interference**: Alternate screen buffer prevents scrollback from affecting display
+
+#### Benefits
+- Users can understand full context of ongoing conversations
+- Short latest messages no longer lack context
+- Informed decision-making when refining responses
+- Standard terminal scrolling works as expected
+- Controls are visible before long lists (better UX for queue navigation)
+
+#### Documentation
+- **[NEW] MAIA_MAIL_THREAD_SCROLLING.md**: Complete implementation details and user guide
+
 ## [Unreleased] - 2025-07-23
 
 ### 🎮 Discord Integration - Major Feature Release

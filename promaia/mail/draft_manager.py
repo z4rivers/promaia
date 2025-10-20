@@ -68,6 +68,7 @@ class DraftManager:
                         created_time TEXT NOT NULL,
                         reviewed_time TEXT,
                         sent_time TEXT,
+                        completed_time TEXT,  -- When draft was marked as sent/archived (final state)
                         
                         -- Safety mechanism
                         safety_string TEXT,
@@ -95,6 +96,8 @@ class DraftManager:
                 
                 # Migrate existing tables to add draft_history column if missing
                 self._migrate_draft_history_column(cursor)
+                # Migrate to add completed_time column if missing
+                self._migrate_completed_time_column(cursor)
                 conn.commit()
                 
                 logger.info("✅ Email drafts table initialized")
@@ -119,6 +122,37 @@ class DraftManager:
                 logger.info("✅ Added draft_history column")
         except Exception as e:
             logger.warning(f"⚠️  Draft history migration: {e}")
+    
+    def _migrate_completed_time_column(self, cursor):
+        """Add completed_time column to existing tables if it doesn't exist."""
+        try:
+            # Check if completed_time column exists
+            cursor.execute("PRAGMA table_info(email_drafts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'completed_time' not in columns:
+                logger.info("🔄 Migrating email_drafts table to add completed_time column...")
+                cursor.execute("""
+                    ALTER TABLE email_drafts 
+                    ADD COLUMN completed_time TEXT
+                """)
+                logger.info("✅ Added completed_time column")
+                
+                # Backfill completed_time for existing sent/archived drafts
+                # Use sent_time for sent drafts, reviewed_time for archived drafts
+                cursor.execute("""
+                    UPDATE email_drafts 
+                    SET completed_time = sent_time 
+                    WHERE status = 'sent' AND sent_time IS NOT NULL
+                """)
+                cursor.execute("""
+                    UPDATE email_drafts 
+                    SET completed_time = reviewed_time 
+                    WHERE status = 'archived' AND reviewed_time IS NOT NULL AND completed_time IS NULL
+                """)
+                logger.info("✅ Backfilled completed_time for existing drafts")
+        except Exception as e:
+            logger.warning(f"⚠️  Completed time migration: {e}")
     
     def save_draft(self, draft: Dict[str, Any]) -> str:
         """
@@ -236,21 +270,34 @@ class DraftManager:
             logger.error(f"❌ Failed to get pending drafts: {e}")
             return []
     
-    def get_drafts_for_workspace(self, workspace: str, include_resolved: bool = True) -> List[Dict[str, Any]]:
-        """Get all drafts for a workspace, optionally including resolved ones."""
+    def get_drafts_for_workspace(self, workspace: str, include_resolved: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get drafts for a workspace (queue view).
+        
+        By default, excludes sent/archived messages (they go to history instead).
+        
+        Args:
+            workspace: Workspace name
+            include_resolved: If True, includes ALL messages including sent/archived (for display purposes)
+                            If False (default), only shows pending/skipped (active queue)
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 
                 if include_resolved:
+                    # Show all messages (for stats/display in review UI)
                     cursor.execute(
                         "SELECT * FROM email_drafts WHERE workspace = ? ORDER BY created_time DESC",
                         (workspace,)
                     )
                 else:
+                    # Only show active queue items (exclude sent/archived)
                     cursor.execute(
-                        "SELECT * FROM email_drafts WHERE workspace = ? AND status = 'pending' ORDER BY created_time DESC",
+                        """SELECT * FROM email_drafts 
+                        WHERE workspace = ? AND status NOT IN ('sent', 'archived') 
+                        ORDER BY created_time DESC""",
                         (workspace,)
                     )
                 
@@ -261,16 +308,56 @@ class DraftManager:
             logger.error(f"❌ Failed to get drafts for workspace {workspace}: {e}")
             return []
     
+    def get_history_for_workspace(self, workspace: str) -> List[Dict[str, Any]]:
+        """
+        Get history for a workspace (completed messages).
+        
+        Returns sent/archived messages ordered by completion time (most recent first).
+        
+        Args:
+            workspace: Workspace name
+            
+        Returns:
+            List of completed drafts ordered by completed_time DESC
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute(
+                    """SELECT * FROM email_drafts 
+                    WHERE workspace = ? AND status IN ('sent', 'archived') 
+                    ORDER BY completed_time DESC, created_time DESC""",
+                    (workspace,)
+                )
+                
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get history for workspace {workspace}: {e}")
+            return []
+    
     def update_draft_status(self, draft_id: str, status: str):
-        """Update draft status."""
+        """Update draft status and set completed_time for final states."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                cursor.execute(
-                    "UPDATE email_drafts SET status = ?, reviewed_time = ? WHERE draft_id = ?",
-                    (status, datetime.now(timezone.utc).isoformat(), draft_id)
-                )
+                now = datetime.now(timezone.utc).isoformat()
+                
+                # If moving to a final state (sent/archived), set completed_time
+                if status in ['sent', 'archived']:
+                    cursor.execute(
+                        "UPDATE email_drafts SET status = ?, reviewed_time = ?, completed_time = ? WHERE draft_id = ?",
+                        (status, now, now, draft_id)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE email_drafts SET status = ?, reviewed_time = ? WHERE draft_id = ?",
+                        (status, now, draft_id)
+                    )
                 
                 conn.commit()
                 logger.info(f"✅ Updated draft {draft_id} status to {status}")
@@ -279,39 +366,42 @@ class DraftManager:
             logger.error(f"❌ Failed to update draft status: {e}")
             raise
     
-    def update_draft_body(self, draft_id: str, body: str, version: Optional[int] = None):
-        """Update draft body (for refinements)."""
+    def update_draft_body(self, draft_id: str, new_body: str, version: int = 1):
+        """Update the body of a draft."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
-                if version:
-                    cursor.execute(
-                        "UPDATE email_drafts SET draft_body = ?, version = ? WHERE draft_id = ?",
-                        (body, version, draft_id)
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE email_drafts SET draft_body = ? WHERE draft_id = ?",
-                        (body, draft_id)
-                    )
-                
+                cursor.execute(
+                    "UPDATE email_drafts SET draft_body = ?, version = ? WHERE draft_id = ?",
+                    (new_body, version, draft_id)
+                )
                 conn.commit()
-                logger.info(f"✅ Updated draft {draft_id} body")
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to update draft body: {e}")
-            raise
-    
-    def mark_sent(self, draft_id: str):
-        """Mark draft as sent with timestamp."""
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating draft body: {e}")
+
+    def update_inbound_body(self, draft_id: str, new_body: str):
+        """Update the inbound_body of a draft."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE email_drafts SET inbound_body = ? WHERE draft_id = ?",
+                    (new_body, draft_id)
+                )
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating inbound body: {e}")
+
+    def mark_sent(self, draft_id: str):
+        """Mark a draft as sent and record sent_time."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                now = datetime.now(timezone.utc).isoformat()
                 
                 cursor.execute(
-                    "UPDATE email_drafts SET status = 'sent', sent_time = ? WHERE draft_id = ?",
-                    (datetime.now(timezone.utc).isoformat(), draft_id)
+                    "UPDATE email_drafts SET status = ?, sent_time = ?, completed_time = ? WHERE draft_id = ?",
+                    ('sent', now, now, draft_id)
                 )
                 
                 conn.commit()
