@@ -354,7 +354,7 @@ class DraftChatInterface:
             print_text(f"\t{db_name}: {count}", style="dim")
         
         # Get model name
-        from promaia.ai.models import get_current_model_name
+        from promaia.chat.interface import get_current_model_name
         model_name = get_current_model_name()
         print_text(f"Model: {model_name}", style="dim")
         print()

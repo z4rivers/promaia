@@ -34,6 +34,34 @@ async def handle_mail(args):
         logging.getLogger('promaia').setLevel(logging.DEBUG)
     
     try:
+        # Check if user wants to open a specific draft directly
+        if hasattr(args, 'draft') and args.draft:
+            from promaia.mail.draft_chat import DraftChatInterface
+            from promaia.mail.draft_manager import DraftManager
+            
+            # Get draft to determine workspace
+            draft_manager = DraftManager()
+            draft = draft_manager.get_draft(args.draft)
+            
+            if not draft:
+                print_text(f"❌ Draft {args.draft} not found", style="red")
+                return
+            
+            workspace = draft.get('workspace')
+            if not workspace:
+                print_text("❌ Draft has no workspace", style="red")
+                return
+            
+            # Launch draft chat directly
+            chat = DraftChatInterface(draft_id=args.draft, workspace=workspace)
+            
+            # Note: message_context is True by default in DraftChatInterface
+            # The -mc flag is just to explicitly enable it in the command string
+            # It's always enabled unless explicitly disabled via /e in the chat
+            
+            await chat.run_chat_loop()
+            return
+        
         # Determine workspaces
         workspace_manager = get_workspace_manager()
         
@@ -144,6 +172,19 @@ def add_mail_commands(subparsers):
         'mail',
         help='Intelligent email response system',
         description='Process and review email drafts. Examples: "maia mail -ws trass", "maia mail -p -ws trass"'
+    )
+    
+    mail_parser.add_argument(
+        '--draft',
+        type=str,
+        help='Open a specific draft directly by ID (e.g., --draft abc123)'
+    )
+    
+    mail_parser.add_argument(
+        '-mc', '--message-context',
+        action='store_true',
+        dest='message_context',
+        help='Enable message context in draft chat (includes email thread and related context)'
     )
     
     mail_parser.add_argument(
