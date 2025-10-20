@@ -240,6 +240,8 @@ class EmailProcessor:
             'message_id': thread.get('message_ids', [])[-1] if thread.get('message_ids') else thread_id,
             'inbound_subject': subject,
             'inbound_from': thread.get('from'),
+            'inbound_to': thread.get('to', ''),
+            'inbound_cc': thread.get('cc', ''),
             'inbound_snippet': thread.get('snippet', ''),
             'inbound_date': thread.get('date'),
             'inbound_body': thread.get('conversation_body', ''),

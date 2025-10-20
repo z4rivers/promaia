@@ -23,17 +23,19 @@ class RecipientMode:
 class RecipientSelector:
     """Interactive recipient selector for emails."""
     
-    def __init__(self, from_addr: str, to_addr: str, thread_context: Optional[str] = None):
+    def __init__(self, from_addr: str, to_addr: str, cc_addr: Optional[str] = None, thread_context: Optional[str] = None):
         """
         Initialize recipient selector.
         
         Args:
             from_addr: The sender's email address
             to_addr: The original TO field
+            cc_addr: The original CC field
             thread_context: Optional thread context to extract more recipients
         """
         self.from_addr = from_addr
         self.to_addr = to_addr
+        self.cc_addr = cc_addr or ""
         self.thread_context = thread_context or ""
         
         # Extract all unique email addresses from thread
@@ -47,7 +49,7 @@ class RecipientSelector:
         self.edit_buffer = ""  # Buffer for editing email address
     
     def _extract_all_recipients(self) -> List[str]:
-        """Extract all unique email addresses from FROM, TO, and thread."""
+        """Extract all unique email addresses from FROM, TO, CC, and thread."""
         recipients = set()
         
         # Add FROM address
@@ -55,6 +57,9 @@ class RecipientSelector:
         
         # Add TO addresses
         recipients.update(self._extract_emails_from_field(self.to_addr))
+        
+        # Add CC addresses
+        recipients.update(self._extract_emails_from_field(self.cc_addr))
         
         # Extract from thread context (look for email patterns)
         thread_emails = self._extract_emails_from_text(self.thread_context)

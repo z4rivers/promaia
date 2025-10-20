@@ -98,6 +98,8 @@ class DraftManager:
                 self._migrate_draft_history_column(cursor)
                 # Migrate to add completed_time column if missing
                 self._migrate_completed_time_column(cursor)
+                # Migrate to add inbound_to and inbound_cc columns if missing
+                self._migrate_recipient_columns(cursor)
                 conn.commit()
                 
                 logger.info("✅ Email drafts table initialized")
@@ -154,6 +156,31 @@ class DraftManager:
         except Exception as e:
             logger.warning(f"⚠️  Completed time migration: {e}")
     
+    def _migrate_recipient_columns(self, cursor):
+        """Add inbound_to and inbound_cc columns to existing tables if they don't exist."""
+        try:
+            # Check if columns exist
+            cursor.execute("PRAGMA table_info(email_drafts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'inbound_to' not in columns:
+                logger.info("🔄 Migrating email_drafts table to add inbound_to column...")
+                cursor.execute("""
+                    ALTER TABLE email_drafts 
+                    ADD COLUMN inbound_to TEXT
+                """)
+                logger.info("✅ Added inbound_to column")
+            
+            if 'inbound_cc' not in columns:
+                logger.info("🔄 Migrating email_drafts table to add inbound_cc column...")
+                cursor.execute("""
+                    ALTER TABLE email_drafts 
+                    ADD COLUMN inbound_cc TEXT
+                """)
+                logger.info("✅ Added inbound_cc column")
+        except Exception as e:
+            logger.warning(f"⚠️  Recipient columns migration: {e}")
+    
     def save_draft(self, draft: Dict[str, Any]) -> str:
         """
         Save a new draft, return draft_id.
@@ -181,13 +208,13 @@ class DraftManager:
                 cursor.execute("""
                     INSERT INTO email_drafts (
                         draft_id, workspace, thread_id, message_id,
-                        inbound_subject, inbound_from, inbound_snippet, inbound_date, inbound_body,
+                        inbound_subject, inbound_from, inbound_to, inbound_cc, inbound_snippet, inbound_date, inbound_body,
                         pertains_to_me, is_spam, requires_response, classification_reasoning,
                         draft_subject, draft_body, draft_body_html,
                         response_context, system_prompt, ai_model,
                         draft_number, chat_session_id, previous_draft_id, version, draft_history,
                         status, created_time, safety_string, thread_context, message_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     draft_id,
                     draft.get('workspace'),
@@ -195,6 +222,8 @@ class DraftManager:
                     draft.get('message_id'),
                     draft.get('inbound_subject'),
                     draft.get('inbound_from'),
+                    draft.get('inbound_to', ''),
+                    draft.get('inbound_cc', ''),
                     draft.get('inbound_snippet'),
                     draft.get('inbound_date'),
                     draft.get('inbound_body'),

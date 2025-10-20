@@ -270,6 +270,7 @@ class GmailConnector(BaseConnector):
             subject = headers.get('subject', 'No Subject')
             from_addr = headers.get('from', 'Unknown')
             to_addr = headers.get('to', '')
+            cc_addr = headers.get('cc', '')
             date_str = headers.get('date', '')
             
             # Parse date
@@ -317,6 +318,7 @@ class GmailConnector(BaseConnector):
                 "subject": subject,
                 "from": from_addr,
                 "to": to_addr,
+                "cc": cc_addr,
                 "date": date_obj.isoformat(),
                 "date_obj": date_obj,
                 "labels": labels,

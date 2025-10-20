@@ -548,7 +548,8 @@ class DraftChatInterface:
         
         selector = RecipientSelector(
             from_addr=draft.get('inbound_from', ''),
-            to_addr=draft.get('to', ''),
+            to_addr=draft.get('inbound_to', ''),
+            cc_addr=draft.get('inbound_cc', ''),
             thread_context=draft.get('thread_context', '')
         )
         
