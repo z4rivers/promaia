@@ -104,7 +104,9 @@ class RecipientSelector:
         elif self.mode == RecipientMode.REPLY_ALL:
             return self.all_recipients
         else:  # CUSTOM
-            return [r for r in self.all_recipients if r in self.selected_recipients]
+            # Filter out placeholders and return only selected recipients
+            return [r for r in self.all_recipients 
+                    if r in self.selected_recipients and not r.startswith("__editing_")]
     
     def _render_mode_selector(self, current_mode: str) -> str:
         """Render the mode selector line."""
@@ -146,6 +148,9 @@ class RecipientSelector:
                 # Show edit buffer if this item is being edited
                 if self.editing_index == idx:
                     display_email = self.edit_buffer + "█"  # Show cursor
+                elif email.startswith("__editing_"):
+                    # Placeholder shouldn't be visible (shouldn't happen)
+                    display_email = ""
                 else:
                     display_email = email
                 
@@ -224,7 +229,11 @@ class RecipientSelector:
             
             @kb.add('a')
             def _(event):
-                result['action'] = 'add'
+                # 'a' is add when NOT editing, typing when editing
+                if self.editing_index is None:
+                    result['action'] = 'add'
+                else:
+                    result['action'] = ('type', 'a')
                 event.app.exit()
             
             @kb.add(Keys.Backspace)
@@ -232,8 +241,10 @@ class RecipientSelector:
                 result['action'] = 'backspace'
                 event.app.exit()
             
-            # Allow typing characters when editing
+            # Allow typing characters when editing (excluding 'a' since it's handled above)
             for char in 'bcdefghijklmnopqrstuvwxyz0123456789@.-_':
+                if char == 'a':
+                    continue  # Skip 'a' since it's handled separately
                 @kb.add(char)
                 def _(event, c=char):
                     result['action'] = ('type', c)
@@ -294,13 +305,15 @@ class RecipientSelector:
                     else:
                         self.selected_recipients.add(email)
             elif action == 'add' and self.mode == RecipientMode.CUSTOM:
-                # Add a new blank recipient entry
-                new_email = ""
-                self.all_recipients.append(new_email)
-                self.selected_recipients.add(new_email)  # Pre-check it
-                self.current_selection = len(self.all_recipients) - 1
-                self.editing_index = self.current_selection
-                self.edit_buffer = ""
+                # Only add if not already editing
+                if self.editing_index is None:
+                    # Add a new blank recipient entry
+                    placeholder = f"__editing_{len(self.all_recipients)}__"
+                    self.all_recipients.append(placeholder)
+                    self.selected_recipients.add(placeholder)  # Pre-check it
+                    self.current_selection = len(self.all_recipients) - 1
+                    self.editing_index = self.current_selection
+                    self.edit_buffer = ""
             elif action == 'backspace' and self.editing_index is not None:
                 # Delete character from edit buffer
                 if self.edit_buffer:
@@ -313,20 +326,20 @@ class RecipientSelector:
                     # Finish editing - save the email
                     if self.edit_buffer.strip() and '@' in self.edit_buffer:
                         # Valid email, update it
-                        old_email = self.all_recipients[self.editing_index]
-                        self.all_recipients[self.editing_index] = self.edit_buffer.strip().lower()
+                        old_placeholder = self.all_recipients[self.editing_index]
+                        new_email = self.edit_buffer.strip().lower()
+                        self.all_recipients[self.editing_index] = new_email
                         # Update selected set
-                        if old_email in self.selected_recipients:
-                            self.selected_recipients.remove(old_email)
-                            self.selected_recipients.add(self.edit_buffer.strip().lower())
+                        if old_placeholder in self.selected_recipients:
+                            self.selected_recipients.discard(old_placeholder)
+                            self.selected_recipients.add(new_email)
                         self.editing_index = None
                         self.edit_buffer = ""
                     else:
                         # Invalid email, remove it
-                        old_email = self.all_recipients[self.editing_index]
+                        old_placeholder = self.all_recipients[self.editing_index]
                         self.all_recipients.pop(self.editing_index)
-                        if old_email in self.selected_recipients:
-                            self.selected_recipients.remove(old_email)
+                        self.selected_recipients.discard(old_placeholder)
                         self.editing_index = None
                         self.edit_buffer = ""
                         self.current_selection = max(0, min(self.current_selection, len(self.all_recipients) - 1))
@@ -336,9 +349,10 @@ class RecipientSelector:
                     break
             elif action == 'escape':
                 if self.editing_index is not None:
-                    # Cancel editing - remove the blank entry if it's empty
-                    if not self.all_recipients[self.editing_index]:
-                        self.all_recipients.pop(self.editing_index)
+                    # Cancel editing - remove the placeholder entry
+                    old_placeholder = self.all_recipients[self.editing_index]
+                    self.all_recipients.pop(self.editing_index)
+                    self.selected_recipients.discard(old_placeholder)
                     self.editing_index = None
                     self.edit_buffer = ""
                     self.current_selection = max(0, min(self.current_selection, len(self.all_recipients) - 1))
