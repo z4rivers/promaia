@@ -52,6 +52,9 @@ class DraftChatInterface:
         # Context cache (for skipped drafts that load context on-demand)
         self.cached_context = None
         
+        # UI state: toggle showing all drafts vs just latest
+        self.show_all_drafts = False
+        
         # Load existing version and history
         self._load_draft_history()
     
@@ -248,8 +251,10 @@ class DraftChatInterface:
         
         Supports commands:
         - /send [draft-number] - Send specified draft
+        - /d - Toggle draft list view (show all vs latest only)
         - /q - Quit to review queue
         - /archive or /a - Archive email (clear from queue)
+        - /mc - Load message context from knowledge base
         - Regular chat to refine the draft
         """
         try:
@@ -324,13 +329,28 @@ class DraftChatInterface:
                     self.current_artifact_number = 1
                     self.artifacts[1] = draft_body
                 
-                # Display all artifacts in order
-                for artifact_num in sorted(self.artifacts.keys()):
-                    print(self.render_artifact(artifact_num, self.artifacts[artifact_num]))
-                    print()
+                # Display drafts based on toggle state
+                if self.show_all_drafts:
+                    # Show all drafts
+                    for artifact_num in sorted(self.artifacts.keys()):
+                        print(self.render_artifact(artifact_num, self.artifacts[artifact_num]))
+                        print()
+                else:
+                    # Show only the latest draft
+                    if self.artifacts:
+                        latest_num = max(self.artifacts.keys())
+                        print(self.render_artifact(latest_num, self.artifacts[latest_num]))
+                        print()
+                        
+                        # Show hint if there are older drafts
+                        if len(self.artifacts) > 1:
+                            print_text(f"💡 {len(self.artifacts) - 1} earlier draft(s) hidden. Type /d to view all", style="dim")
+                            print()
                 
                 print_text("💬 Chat to refine the draft, or use commands:", style="dim")
                 print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
+                if len(self.artifacts) > 1:
+                    print_text("   /d - Toggle draft list view", style="dim")
                 print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
                 print_text("   /q - Return to draft list", style="dim")
             else:
@@ -367,6 +387,48 @@ class DraftChatInterface:
                                 break
                             continue
                         
+                        elif cmd in ['/d']:
+                            # Toggle draft list view
+                            self.show_all_drafts = not self.show_all_drafts
+                            
+                            # Clear screen and redisplay with new state
+                            print("\n" * 50)  # Simple clear
+                            print_separator()
+                            print(thread_display)
+                            print_separator()
+                            
+                            if message_count > 1:
+                                print()
+                                print_text("📜 Tip: Scroll up ↑ to see earlier messages in the thread", style="dim")
+                            print()
+                            
+                            # Redisplay drafts with new state
+                            if self.show_all_drafts:
+                                # Show all drafts
+                                print_text("📋 Showing all drafts", style="cyan")
+                                print()
+                                for artifact_num in sorted(self.artifacts.keys()):
+                                    print(self.render_artifact(artifact_num, self.artifacts[artifact_num]))
+                                    print()
+                            else:
+                                # Show only latest
+                                if self.artifacts:
+                                    latest_num = max(self.artifacts.keys())
+                                    print(self.render_artifact(latest_num, self.artifacts[latest_num]))
+                                    print()
+                                    if len(self.artifacts) > 1:
+                                        print_text(f"💡 {len(self.artifacts) - 1} earlier draft(s) hidden. Type /d to view all", style="dim")
+                                        print()
+                            
+                            print_text("💬 Chat to refine the draft, or use commands:", style="dim")
+                            print_text("   /send [number] - Send draft (e.g., /send 1)", style="dim")
+                            if len(self.artifacts) > 1:
+                                print_text("   /d - Toggle draft list view", style="dim")
+                            print_text("   /archive or /a - Archive this email (🗄️)", style="dim")
+                            print_text("   /q - Return to draft list", style="dim")
+                            print()
+                            continue
+                        
                         elif cmd in ['/mc', '/messagecontext']:
                             # Load message context on-demand (for skipped drafts)
                             await self._load_message_context()
@@ -380,7 +442,7 @@ class DraftChatInterface:
                         
                         else:
                             print_text(f"❌ Unknown command: {user_input}", style="red")
-                            print_text("Available: /send [number], /mc, /archive, /q", style="dim")
+                            print_text("Available: /send [number], /d, /mc, /archive, /q", style="dim")
                             continue
                     
                     # Check if this is a skipped draft and user wants to reply
