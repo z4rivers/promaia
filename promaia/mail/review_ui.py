@@ -15,6 +15,7 @@ from prompt_toolkit.keys import Keys
 
 from promaia.mail.draft_manager import DraftManager
 from promaia.mail.gmail_sender import GmailSender
+from promaia.mail.thread_formatter import format_thread_for_display
 from promaia.utils.display import print_text, print_separator
 from promaia.utils.timezone_utils import to_local, get_local_timezone_name, now_utc
 
@@ -136,19 +137,12 @@ class EmailReviewUI:
             result['value'] = 'q'
             event.app.exit()
         
-        # Enter to review
+        # Enter to open chat
         @kb.add(Keys.Enter)
         def _(event):
             result['value'] = 'enter'
             event.app.exit()
-        
-        # Number keys for quick selection (1-9)
-        for i in range(1, 10):
-            @kb.add(str(i))
-            def _(event, num=i):
-                result['value'] = str(num)
-                event.app.exit()
-        
+            
         # Archive key
         @kb.add('a')
         def _(event):
@@ -309,23 +303,21 @@ class EmailReviewUI:
         # Clean email body to remove redundant headers
         cleaned_body = self._clean_email_body(draft.get('inbound_body', 'No body available'))
         
-        # Determine thread label
+        # Format thread with copy-friendly styling and position indicators
         message_count = draft.get('message_count', 1)
-        if message_count > 1:
-            thread_label = f"EMAIL THREAD ({message_count} messages)"
-        else:
-            thread_label = "INBOUND MESSAGE"
+        thread_display = format_thread_for_display(
+            conversation_body=cleaned_body,
+            message_count=message_count,
+            from_addr=draft.get('inbound_from', 'Unknown'),
+            subject=draft.get('inbound_subject', 'No Subject'),
+            received_str=received_str,
+            use_colors=True
+        )
         
         return f"""
 Draft Review - Full View
 
-{thread_label}
-
-From:     {draft.get('inbound_from', 'Unknown')}
-Subject:  {draft.get('inbound_subject', 'No Subject')}
-Date:     {received_str}
-
-{cleaned_body}
+{thread_display}
 
 ─────────────────────────────────────────────────────────────────
 
@@ -425,7 +417,8 @@ ACTIONS
                 display_parts.append(self._render_status_bar(stats))
                 
                 # Controls
-                display_parts.append("Navigation: ↑/↓ | Enter or number to review | a archive | q quit\n")
+                controls_line = "Navigation: ↑/↓ | Enter to open chat | a archive | q quit"
+                display_parts.append(controls_line + "\n")
                 
                 # Pagination info
                 if len(all_drafts) > max_visible_drafts:
@@ -453,21 +446,23 @@ ACTIONS
                 action = await self._get_keystroke()
                 
                 # --- 5. Handle Input ---
-                if action == 'q':
+                if action == 'q' or action == 'escape':
                     break
                 elif action == 'enter':
                     # Open draft chat for selected draft
                     await self._handle_chat(all_drafts[current_selection])
                     # Reload draft after chat
                     updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                    all_drafts[current_selection] = updated_draft
+                    if updated_draft:
+                        all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
                 elif action == 'a':
                     # Archive: mark as archived to clear from queue
                     await self._handle_archive(all_drafts[current_selection])
                     # Reload draft after archiving
                     updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                    all_drafts[current_selection] = updated_draft
+                    if updated_draft:
+                        all_drafts[current_selection] = updated_draft
                     stats = self._calculate_stats(all_drafts)
                 elif action == 'up':
                     if current_selection > 0:
@@ -481,23 +476,6 @@ ACTIONS
                         # Scroll page down if selection goes below visible window
                         if current_selection >= page_start + max_visible_drafts:
                             page_start = current_selection - max_visible_drafts + 1
-                elif action == 'escape':
-                    break
-                elif action and action.isdigit():
-                    idx = int(action) - 1
-                    if 0 <= idx < len(all_drafts):
-                        current_selection = idx
-                        # Adjust page_start to show the selected item
-                        if current_selection < page_start:
-                            page_start = current_selection
-                        elif current_selection >= page_start + max_visible_drafts:
-                            page_start = current_selection - max_visible_drafts + 1
-                        # Open draft chat for selected draft
-                        await self._handle_chat(all_drafts[current_selection])
-                        # Reload draft after chat
-                        updated_draft = self.draft_manager.get_draft(all_drafts[current_selection]['draft_id'])
-                        all_drafts[current_selection] = updated_draft
-                        stats = self._calculate_stats(all_drafts)
                         
             except KeyboardInterrupt:
                 break

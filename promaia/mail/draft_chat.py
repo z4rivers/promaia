@@ -14,8 +14,12 @@ from promaia.mail.gmail_sender import GmailSender
 from promaia.mail.response_generator import ResponseGenerator
 from promaia.mail.learning_system import EmailResponseLearningSystem
 from promaia.mail.context_builder import ResponseContext, ResponseContextBuilder
+from promaia.mail.thread_formatter import format_thread_for_display
 from promaia.utils.display import print_text, print_separator
 from promaia.utils.timezone_utils import to_local, get_local_timezone_name, now_utc
+from promaia.connectors.gmail_connector import GmailConnector
+from promaia.config.databases import get_database_manager
+
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +146,57 @@ class DraftChatInterface:
                 print_text(f"  {i}. {doc.get('title', 'Untitled')} ({doc.get('database', 'unknown')})", style="dim")
             print()
     
+    async def _refetch_full_thread_if_needed(self, draft: Dict[str, Any]) -> Dict[str, Any]:
+        """If inbound_body is just a summary, refetch the full thread."""
+        inbound_body = draft.get('inbound_body', '')
+        if "Showing latest message only" not in inbound_body:
+            return draft
+
+        print_text("\n🔄 Detected summarized thread, fetching full conversation...", style="cyan")
+        
+        try:
+            workspace = draft.get('workspace')
+            thread_id = draft.get('thread_id')
+            
+            if not workspace or not thread_id:
+                print_text("⚠️  Missing workspace or thread_id, cannot refetch.", style="yellow")
+                return draft
+
+            db_manager = get_database_manager()
+            gmail_dbs = [
+                db for db in db_manager.get_workspace_databases(workspace)
+                if db.source_type == "gmail"
+            ]
+            
+            if not gmail_dbs:
+                print_text(f"⚠️  No Gmail database found for workspace {workspace}.", style="yellow")
+                return draft
+
+            connector = GmailConnector({
+                "database_id": gmail_dbs[0].database_id,
+                "workspace": workspace,
+                "gmail_content_mode": "full_thread"
+            })
+            await connector.connect()
+            
+            full_thread_data = await connector.get_page_content(page_id=f"thread_{thread_id}")
+            
+            if full_thread_data and 'conversation_body' in full_thread_data:
+                new_body = full_thread_data['conversation_body']
+                draft['inbound_body'] = new_body
+                
+                # Update in database so we don't refetch next time
+                self.draft_manager.update_inbound_body(self.draft_id, new_body)
+                print_text("✅ Full thread loaded.", style="green")
+            else:
+                print_text("⚠️  Failed to fetch full thread.", style="yellow")
+
+        except Exception as e:
+            logger.error(f"Failed to refetch full thread: {e}")
+            print_text(f"❌ Error fetching full thread: {e}", style="red")
+            
+        return draft
+
     def _clean_email_body(self, body: str) -> str:
         """Remove redundant email headers from body content."""
         if not body:
@@ -204,6 +259,9 @@ class DraftChatInterface:
             if not draft:
                 print_text(f"❌ Draft {self.draft_id} not found", style="red")
                 return
+
+            # If the draft only has a summary, fetch the full thread content
+            draft = await self._refetch_full_thread_if_needed(draft)
             
             # Format date
             try:
@@ -217,20 +275,26 @@ class DraftChatInterface:
             # Clean email body
             cleaned_body = self._clean_email_body(draft.get('inbound_body', ''))
             
-            # Display inbound message header (once at top)
+            # Display full email thread with copy-friendly formatting (naturally scrolls to bottom)
             print()
             print_separator()
-            print(f"""
-INBOUND MESSAGE
-
-From:     {draft['inbound_from']}
-Subject:  {draft['inbound_subject']}
-Date:     {received_str}
-Thread:   {draft.get('message_count', 1)} message(s) in thread
-
-{cleaned_body}
-""")
+            
+            message_count = draft.get('message_count', 1)
+            thread_display = format_thread_for_display(
+                conversation_body=cleaned_body,
+                message_count=message_count,
+                from_addr=draft['inbound_from'],
+                subject=draft['inbound_subject'],
+                received_str=received_str,
+                use_colors=True
+            )
+            
+            print(thread_display)
             print_separator()
+            
+            if message_count > 1:
+                print()
+                print_text("📜 Tip: Scroll up ↑ to see earlier messages in the thread", style="dim")
             print()
             
             # Check if response is needed
@@ -502,7 +566,6 @@ Thread:   {draft.get('message_count', 1)} message(s) in thread
         print_text("\n📤 Sending email...", style="cyan")
         
         # Get Gmail config
-        from promaia.config.databases import get_database_manager
         db_manager = get_database_manager()
         gmail_dbs = [
             db for db in db_manager.get_workspace_databases(draft['workspace'])
