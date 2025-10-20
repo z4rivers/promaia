@@ -4,6 +4,8 @@ Email Draft Review UI - Interactive review interface for email drafts.
 import json
 import logging
 import os
+import subprocess
+import sys
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -29,9 +31,37 @@ class EmailReviewUI:
             'pending': 0
         }
     
-    def _clear_screen(self):
-        """Clear terminal screen."""
-        os.system('clear' if os.name != 'nt' else 'cls')
+    def _clear_screen_and_home(self):
+        """Clear terminal screen and position cursor at top."""
+        # Use ANSI escape sequences for better control
+        # ESC[r resets scroll region
+        # ESC[H moves cursor to home (1,1) 
+        # ESC[2J clears entire screen
+        # ESC[3J clears scrollback buffer
+        print('\033[r\033[H\033[2J\033[3J', end='', flush=True)
+    
+    def _enter_alternate_screen(self):
+        """Enter alternate screen buffer (like vim/less)."""
+        # ESC[?1049h switches to alternate screen
+        # ESC[?7l disables auto-wrap
+        # ESC[H moves cursor to top immediately
+        # ESC[2J clears the alternate screen
+        print('\033[?1049h\033[?7l\033[H\033[2J', end='', flush=True)
+    
+    def _exit_alternate_screen(self):
+        """Exit alternate screen buffer."""
+        # ESC[?1049l switches back to main screen
+        print('\033[?1049l', end='', flush=True)
+    
+    def _jump_to_top(self):
+        """Force terminal viewport to top using tput."""
+        try:
+            # Use tput home command - more reliable than cup
+            os.system('tput home >/dev/null 2>&1')
+        except Exception:
+            pass
+        # Also use ANSI home sequence
+        print('\033[H', end='', flush=True)
     
     def _clean_email_body(self, body: str) -> str:
         """
@@ -155,23 +185,31 @@ class EmailReviewUI:
             stats['percent'] = 0
         return stats
     
-    def _render_status_bar(self, stats: Dict[str, int]) -> str:
-        """Render progress and status bar."""
-        # Progress bar
+    def _render_progress_bar(self, stats: Dict[str, int]) -> str:
+        """Render just the progress bar."""
         total_width = 30
         filled = int((stats['percent'] / 100) * total_width)
         bar = '█' * filled + '░' * (total_width - filled)
-        
-        return f"""
-Maia Mail - Draft Review Queue
-
-Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)
-Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped
-
-"""
+        return bar
     
-    def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int) -> str:
-        """Render list of drafts for review."""
+    def _render_status_bar(self, stats: Dict[str, int]) -> str:
+        """Render progress and status bar."""
+        bar = self._render_progress_bar(stats)
+        
+        return (
+            f"Maia Mail - Draft Review Queue\n\n"
+            f"Progress: [{bar}] {stats['resolved']}/{stats['total']} resolved ({stats['percent']}%)\n"
+            f"Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •  ⏳ {stats['pending']} pending  •  ⏭️ {stats['skipped']} skipped\n\n"
+        )
+    
+    def _render_review_list(self, drafts: List[Dict[str, Any]], current_selection: int, start_offset: int = 0) -> str:
+        """Render list of drafts for review.
+        
+        Args:
+            drafts: List of drafts to render
+            current_selection: Index of currently selected draft (relative to drafts list)
+            start_offset: Offset to add to draft numbers for display (for pagination)
+        """
         output = []
         
         for idx, draft in enumerate(drafts):
@@ -207,10 +245,13 @@ Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •
             subject = draft.get('inbound_subject', 'No Subject')
             snippet = draft.get('inbound_snippet', '')[:80]
             
+            # Actual draft number in full list (1-based)
+            draft_number = start_offset + idx + 1
+            
             # Handle skipped drafts differently
             if draft.get('status') == 'skipped':
                 reasoning = draft.get('classification_reasoning', 'No response needed')
-                output.append(f"{selector} [{idx + 1}] {icon} {subject}")
+                output.append(f"{selector} [{draft_number}] {icon} {subject}")
                 output.append(f"       From: {from_name} | {date_str}")
                 output.append(f"       Preview: {snippet}...")
                 output.append(f"       Draft: n/a  •  {reasoning}")
@@ -226,7 +267,7 @@ Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •
                 # Word count
                 word_count = len(draft.get('draft_body', '').split())
                 
-                output.append(f"{selector} [{idx + 1}] {icon} {subject}")
+                output.append(f"{selector} [{draft_number}] {icon} {subject}")
                 output.append(f"       From: {from_name} | {date_str}")
                 output.append(f"       Preview: {snippet}...")
                 output.append(f"       Draft: {word_count} words | Context: {context_count} sources")
@@ -268,15 +309,21 @@ Status: ✅ {stats['sent']} sent  •  🗄️ {stats['archived']} archived  •
         # Clean email body to remove redundant headers
         cleaned_body = self._clean_email_body(draft.get('inbound_body', 'No body available'))
         
+        # Determine thread label
+        message_count = draft.get('message_count', 1)
+        if message_count > 1:
+            thread_label = f"EMAIL THREAD ({message_count} messages)"
+        else:
+            thread_label = "INBOUND MESSAGE"
+        
         return f"""
 Draft Review - Full View
 
-INBOUND MESSAGE
+{thread_label}
 
 From:     {draft.get('inbound_from', 'Unknown')}
 Subject:  {draft.get('inbound_subject', 'No Subject')}
 Date:     {received_str}
-Thread:   {draft.get('message_count', 1)} message(s) in thread
 
 {cleaned_body}
 
@@ -345,21 +392,67 @@ ACTIONS
         
         # State
         current_selection = 0
+        page_start = 0  # Start of current page window
+        
+        # Get terminal height for pagination
+        try:
+            rows, _ = os.popen('stty size', 'r').read().split()
+            terminal_height = int(rows)
+        except:
+            terminal_height = 24  # Default fallback
+        
+        # Reserve lines for header (5) + controls (2) + pagination (2) + prompt (1) = 10 lines
+        # Each draft takes ~5 lines
+        max_visible_drafts = max(1, (terminal_height - 10) // 5)
         
         # Main loop - just show list and open chat
         while True:
             try:
-                # Clear and render
-                self._clear_screen()
-                print(self._render_status_bar(stats))
-                print()
+                # --- 1. Calculate Pagination ---
+                # Fixed window pagination - window only moves when selection reaches edges
+                page_start = max(0, min(page_start, len(all_drafts) - max_visible_drafts))
+                if len(all_drafts) <= max_visible_drafts:
+                    page_start = 0
                 
-                print(self._render_review_list(all_drafts, current_selection))
-                print("\nNavigation: ↑/↓ | Enter or number to review | a archive | q quit")
+                start_idx = page_start
+                end_idx = min(len(all_drafts), start_idx + max_visible_drafts)
+
+                # --- 2. Build Display String ---
+                # Build the entire display as a single string for atomic rendering
+                display_parts = []
                 
-                # Capture keystroke
+                # Header
+                display_parts.append(self._render_status_bar(stats))
+                
+                # Controls
+                display_parts.append("Navigation: ↑/↓ | Enter or number to review | a archive | q quit\n")
+                
+                # Pagination info
+                if len(all_drafts) > max_visible_drafts:
+                    display_parts.append(f"Showing {start_idx + 1}-{end_idx} of {len(all_drafts)} drafts\n")
+                
+                # Queue list
+                visible_drafts = all_drafts[start_idx:end_idx]
+                visible_selection = current_selection - start_idx
+                queue_list = self._render_review_list(visible_drafts, visible_selection, start_offset=start_idx)
+                display_parts.append(queue_list)
+                
+                final_output = "".join(display_parts)
+                
+                # --- 3. Atomic Render ---
+                # Use a single write call with ANSI codes for a flicker-free update
+                # \033[?25l = hide cursor
+                # \033[H = move to home (top-left)
+                # \033[J = clear screen from cursor down
+                # \033[?25h = show cursor
+                atomic_render_sequence = f"\033[?25l\033[H\033[J{final_output}\033[?25h"
+                sys.stdout.write(atomic_render_sequence)
+                sys.stdout.flush()
+                
+                # --- 4. Get Input ---
                 action = await self._get_keystroke()
                 
+                # --- 5. Handle Input ---
                 if action == 'q':
                     break
                 elif action == 'enter':
@@ -379,15 +472,26 @@ ACTIONS
                 elif action == 'up':
                     if current_selection > 0:
                         current_selection -= 1
+                        # Scroll page up if selection goes above visible window
+                        if current_selection < page_start:
+                            page_start = current_selection
                 elif action == 'down':
                     if current_selection < len(all_drafts) - 1:
                         current_selection += 1
+                        # Scroll page down if selection goes below visible window
+                        if current_selection >= page_start + max_visible_drafts:
+                            page_start = current_selection - max_visible_drafts + 1
                 elif action == 'escape':
                     break
                 elif action and action.isdigit():
                     idx = int(action) - 1
                     if 0 <= idx < len(all_drafts):
                         current_selection = idx
+                        # Adjust page_start to show the selected item
+                        if current_selection < page_start:
+                            page_start = current_selection
+                        elif current_selection >= page_start + max_visible_drafts:
+                            page_start = current_selection - max_visible_drafts + 1
                         # Open draft chat for selected draft
                         await self._handle_chat(all_drafts[current_selection])
                         # Reload draft after chat
@@ -402,8 +506,7 @@ ACTIONS
                 print_text(f"\n❌ Error: {e}\n", style="red")
                 input("Press Enter to continue...")
         
-        # Final summary
-        self._clear_screen()
+        # Final summary (back on main screen now)
         final_stats = self._calculate_stats(all_drafts)
         print()
         print_text(
@@ -411,60 +514,6 @@ ACTIONS
             f"{final_stats['archived']} archived, {final_stats['pending']} pending",
             style="green"
         )
-    
-    async def _handle_send(self, draft: Dict[str, Any]):
-        """Handle sending a draft."""
-        self._clear_screen()
-        print_text(f"\n⚠️  Ready to send draft", style="bold yellow")
-        print_text(f"Subject: {draft['inbound_subject']}", style="yellow")
-        print_text(f"\nType the first 5 characters of the subject to confirm: '{draft['safety_string']}'", style="yellow")
-        
-        confirmation = input("\nConfirm: ").strip()
-        
-        if confirmation != draft['safety_string']:
-            print_text("❌ Confirmation failed. Press Enter to continue...", style="red")
-            input()
-            return
-        
-        print_text("\n📤 Sending email...", style="cyan")
-        
-        # Get Gmail config
-        from promaia.config.databases import get_database_manager
-        db_manager = get_database_manager()
-        gmail_dbs = [
-            db for db in db_manager.get_workspace_databases(draft['workspace'])
-            if db.source_type == "gmail"
-        ]
-        
-        if not gmail_dbs:
-            print_text("❌ No Gmail database found. Press Enter to continue...", style="red")
-            input()
-            return
-        
-        # Format the draft body to remove hard line breaks before sending
-        from promaia.mail.response_generator import ResponseGenerator
-        response_gen = ResponseGenerator()
-        formatted_body = response_gen._format_email_body(draft['draft_body'])
-        
-        sender = GmailSender(draft['workspace'], gmail_dbs[0].database_id)
-        success = await sender.send_reply(
-            thread_id=draft['thread_id'],
-            message_id=draft['message_id'],
-            subject=draft['draft_subject'],
-            body_text=formatted_body
-        )
-        
-        if success:
-            print_text("✅ Email sent!", style="green")
-            self.draft_manager.mark_sent(draft['draft_id'])
-            draft['status'] = 'sent'
-            
-            # Save to learning
-            await self._save_to_learning(draft)
-        else:
-            print_text("❌ Failed to send", style="red")
-        
-        input("\nPress Enter to continue...")
     
     async def _handle_archive(self, draft: Dict[str, Any]):
         """
