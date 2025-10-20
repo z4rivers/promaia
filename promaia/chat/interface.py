@@ -944,6 +944,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     context_state = {
         'sources': sources,
         'filters': filters,
+        'artifact_manager': None,  # Lazy-initialized artifact manager
         'workspace': workspace,
         'resolved_workspace': resolved_workspace,
         'initial_multi_source_data': {},
@@ -4055,6 +4056,49 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             elif user_input.strip().lower() == '/help':
                 print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
+            
+            elif user_input.strip().lower() in ['/artifacts', '/a']:
+                # List all artifacts
+                if context_state['artifact_manager'] is None or not context_state['artifact_manager'].artifacts:
+                    print_text("No artifacts in this session.", style="dim")
+                else:
+                    print_text("\n📋 Artifacts in this session:", style="bold cyan")
+                    for artifact_id, preview, version in context_state['artifact_manager'].list_artifacts():
+                        print_text(f"  #{artifact_id} (v{version}): {preview}", style="dim")
+                    print()
+                continue
+            
+            elif user_input.strip().lower().startswith('/artifact '):
+                # Show specific artifact
+                try:
+                    artifact_num = int(user_input.strip().split()[1])
+                    if context_state['artifact_manager'] and artifact_num in context_state['artifact_manager'].artifacts:
+                        print()
+                        print(context_state['artifact_manager'].render_artifact(artifact_num))
+                        print()
+                    else:
+                        print_text(f"Artifact #{artifact_num} not found.", style="red")
+                except (ValueError, IndexError):
+                    print_text("Usage: /artifact <number>", style="yellow")
+                continue
+            
+            elif user_input.strip().lower().startswith('/edit '):
+                # Edit specific artifact (prompt for changes)
+                try:
+                    artifact_num = int(user_input.strip().split()[1])
+                    if context_state['artifact_manager'] and artifact_num in context_state['artifact_manager'].artifacts:
+                        print()
+                        print(context_state['artifact_manager'].render_artifact(artifact_num))
+                        print()
+                        print_text("What changes would you like to make?", style="cyan")
+                        # The next user message will be treated as an update request
+                        context_state['artifact_manager'].last_artifact_id = artifact_num
+                    else:
+                        print_text(f"Artifact #{artifact_num} not found.", style="red")
+                except (ValueError, IndexError):
+                    print_text("Usage: /edit <number>", style="yellow")
+                continue
+            
             elif user_input.strip().lower().startswith('/image'):
                 # Handle multiple image attachments
                 try:
@@ -4716,6 +4760,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                 # Handle API responses
                 if response_content:
+                    # Lazy-initialize artifact manager
+                    if context_state['artifact_manager'] is None:
+                        from promaia.chat.artifacts import ArtifactManager
+                        context_state['artifact_manager'] = ArtifactManager()
+                    
+                    artifact_manager = context_state['artifact_manager']
+                    
                     if isinstance(response_content, dict):
                         # AI response with token data
                         response_text = response_content['text']
@@ -4735,8 +4786,37 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_text(part, style="dim")  # Print rest of metadata with dim
                         print()
 
-                        # Use copy-friendly markdown display
-                        print_markdown(response_text)
+                        # Check if response should be an artifact
+                        last_user_message = messages[-1]['content'] if messages else ""
+                        
+                        # Check if this is an artifact update or new artifact
+                        if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
+                            # Update existing artifact
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                            artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
+                            
+                            # Display commentary if present
+                            if commentary:
+                                print_markdown(commentary)
+                                print()
+                            
+                            # Display updated artifact
+                            print(artifact_manager.render_artifact(artifact_manager.last_artifact_id))
+                        elif artifact_manager.should_create_artifact(last_user_message, response_text):
+                            # Create new artifact
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                            artifact_id = artifact_manager.create_artifact(artifact_content)
+                            
+                            # Display commentary if present
+                            if commentary:
+                                print_markdown(commentary)
+                                print()
+                            
+                            # Display artifact
+                            print(artifact_manager.render_artifact(artifact_id))
+                        else:
+                            # Normal response (no artifact)
+                            print_markdown(response_text)
 
                         messages.append({"role": "assistant", "content": response_text})
                     else:
@@ -4745,7 +4825,39 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print()
                         print_text(f"{timestamp} Maia") # No style
                         print()
-                        print_markdown(response_content)
+                        
+                        # Check if response should be an artifact
+                        last_user_message = messages[-1]['content'] if messages else ""
+                        
+                        # Check if this is an artifact update or new artifact
+                        if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
+                            # Update existing artifact
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
+                            artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
+                            
+                            # Display commentary if present
+                            if commentary:
+                                print_markdown(commentary)
+                                print()
+                            
+                            # Display updated artifact
+                            print(artifact_manager.render_artifact(artifact_manager.last_artifact_id))
+                        elif artifact_manager.should_create_artifact(last_user_message, response_content):
+                            # Create new artifact
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
+                            artifact_id = artifact_manager.create_artifact(artifact_content)
+                            
+                            # Display commentary if present
+                            if commentary:
+                                print_markdown(commentary)
+                                print()
+                            
+                            # Display artifact
+                            print(artifact_manager.render_artifact(artifact_id))
+                        else:
+                            # Normal response (no artifact)
+                            print_markdown(response_content)
+                            
                         messages.append({"role": "assistant", "content": response_content})
                 else:
                     print_text("Error: No response generated.", style="bold red")
