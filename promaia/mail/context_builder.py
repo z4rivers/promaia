@@ -62,29 +62,79 @@ class ResponseContextBuilder:
             # Build search query from email content
             search_query = self._build_search_query(email_thread)
             
-            # Search across all databases in workspace using vector DB
+            # Dual search strategy: search Gmail and non-Gmail separately
+            # This prevents emails from dominating results and crowding out project context
             vector_db = self._get_vector_db()
             
-            filters = {
-                "workspace": workspace
-                # No database_name filter = search all databases
+            logger.info(f"🔍 Performing dual search in {workspace} workspace...")
+            logger.debug(f"Search query: {search_query[:200]}...")
+            
+            # Strategy: TWO SEPARATE vector searches to ensure balanced results
+            # This is critical because Gmail emails would dominate ALL top results otherwise
+            
+            # Search 1: Gmail ONLY (filtered at query time)
+            gmail_db_names = ["gmail", f"{workspace}.gmail"]
+            gmail_filters = {
+                "$and": [
+                    {"workspace": {"$eq": workspace}},
+                    {"database_name": {"$in": gmail_db_names}}
+                ]
             }
             
-            logger.info(f"🔍 Searching {workspace} workspace for relevant context...")
-            logger.debug(f"Search query: {search_query[:200]}...")
-            logger.debug(f"Filters: {filters}")
-            results = vector_db.search(
+            logger.debug(f"Gmail filters: {gmail_filters}")
+            
+            gmail_results = vector_db.search(
                 query_text=search_query,
-                filters=filters,
-                n_results=n_results,
+                filters=gmail_filters,
+                n_results=10,
                 min_similarity=min_similarity
             )
-            logger.info(f"📊 Vector search returned {len(results)} results")
+            
+            # Search 2: NON-Gmail ONLY (filtered at query time)
+            non_gmail_filters = {
+                "$and": [
+                    {"workspace": {"$eq": workspace}},
+                    {"database_name": {"$ne": "gmail"}},
+                    {"database_name": {"$ne": f"{workspace}.gmail"}}
+                ]
+            }
+            
+            logger.debug(f"Non-Gmail filters: {non_gmail_filters}")
+            
+            non_gmail_results = vector_db.search(
+                query_text=search_query,
+                filters=non_gmail_filters,
+                n_results=5,
+                min_similarity=0.0  # No threshold - always include top 5 non-Gmail
+            )
+            
+            logger.info(f"📧 Gmail: {len(gmail_results)} results (threshold: {min_similarity})")
+            logger.info(f"📚 Non-Gmail: {len(non_gmail_results)} results (guaranteed top 5)")
+            
+            if non_gmail_results:
+                for idx, result in enumerate(non_gmail_results[:3]):  # Log first 3
+                    db = result.get('metadata', {}).get('database_name', 'unknown')
+                    score = result.get('similarity_score', 0)
+                    title = result.get('metadata', {}).get('title', 'untitled')[:40]
+                    logger.info(f"  📄 {db}: {title} ({score:.2f})")
+            
+            # Combine results by interleaving to ensure balanced representation
+            # This prevents one source type from dominating the top 10
+            results = []
+            max_len = max(len(gmail_results), len(non_gmail_results))
+            for i in range(max_len):
+                if i < len(gmail_results):
+                    results.append(gmail_results[i])
+                if i < len(non_gmail_results):
+                    results.append(non_gmail_results[i])
+            
+            logger.info(f"📊 Combined: {len(results)} total results ({len(gmail_results)} Gmail + {len(non_gmail_results)} non-Gmail)")
             if results:
                 logger.debug(f"Sample result: {results[0]}")
             
-            # Load full content for top results
-            relevant_docs = self._load_document_content(results[:10])  # Top 10 only
+            # Load full content for all results (interleaved, so we get balanced mix in top 10)
+            # With 10 Gmail + 5 non-Gmail interleaved, top 10 = 5 Gmail + 5 non-Gmail
+            relevant_docs = self._load_document_content(results[:10])  # Top 10 after interleaving
             
             # Format documents as text for prompt
             relevant_docs_text = self._format_docs_for_prompt(relevant_docs)
@@ -208,18 +258,40 @@ Date: {date}
         return docs
     
     def _format_docs_for_prompt(self, docs: List[Dict[str, Any]]) -> str:
-        """Format documents as text for AI prompt."""
+        """Format documents as text for AI prompt, separated by source type."""
         if not docs:
             return "No relevant documents found in knowledge base."
         
-        formatted = []
-        formatted.append(f"Found {len(docs)} relevant documents from your knowledge base:\n")
+        # Separate Gmail and non-Gmail documents
+        gmail_docs = []
+        non_gmail_docs = []
         
-        for i, doc in enumerate(docs, 1):
-            formatted.append(f"[{i}] {doc['title']}")
-            formatted.append(f"    Database: {doc['database']} | Relevance: {doc['similarity']:.0%}")
-            formatted.append(f"    {doc['content_snippet']}")
-            formatted.append("")
+        for doc in docs:
+            db_name = doc.get('database', '')
+            if db_name == 'gmail' or db_name.endswith('.gmail'):
+                gmail_docs.append(doc)
+            else:
+                non_gmail_docs.append(doc)
+        
+        formatted = []
+        
+        # Gmail section
+        if gmail_docs:
+            formatted.append(f"=== EMAIL HISTORY ({len(gmail_docs)} relevant threads) ===\n")
+            for i, doc in enumerate(gmail_docs, 1):
+                formatted.append(f"[{i}] {doc['title']}")
+                formatted.append(f"    Database: {doc['database']} | Relevance: {doc['similarity']:.0%}")
+                formatted.append(f"    {doc['content_snippet']}")
+                formatted.append("")
+        
+        # Non-Gmail section
+        if non_gmail_docs:
+            formatted.append(f"=== PROJECT CONTEXT ({len(non_gmail_docs)} relevant documents) ===\n")
+            for i, doc in enumerate(non_gmail_docs, 1):
+                formatted.append(f"[{i}] {doc['title']}")
+                formatted.append(f"    Database: {doc['database']} | Relevance: {doc['similarity']:.0%}")
+                formatted.append(f"    {doc['content_snippet']}")
+                formatted.append("")
         
         return '\n'.join(formatted)
     
@@ -235,6 +307,8 @@ Date: {date}
         """
         return json.dumps({
             'total_sources': context.total_sources,
+            'relevant_docs_text': context.relevant_docs_text,  # Store formatted text for AI prompt
+            'workspace': context.workspace,
             'documents': [
                 {
                     'page_id': doc['page_id'],
@@ -246,4 +320,28 @@ Date: {date}
                 for doc in context.relevant_docs
             ]
         })
+    
+    def deserialize_context_from_storage(self, context_json: str, thread_history: str = "") -> Optional[ResponseContext]:
+        """
+        Deserialize context from storage.
+        
+        Args:
+            context_json: JSON string from database
+            thread_history: Thread history text
+            
+        Returns:
+            ResponseContext object or None if deserialization fails
+        """
+        try:
+            data = json.loads(context_json)
+            return ResponseContext(
+                thread_history=thread_history,
+                relevant_docs=[],  # Don't need full docs for refinement
+                relevant_docs_text=data.get('relevant_docs_text', ''),
+                workspace=data.get('workspace', ''),
+                total_sources=data.get('total_sources', 0)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to deserialize context: {e}")
+            return None
 

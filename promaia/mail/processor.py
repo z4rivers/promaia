@@ -173,7 +173,7 @@ class EmailProcessor:
         
         # Step 1: Classify
         logger.debug("  → Classifying...")
-        classification = await self.classifier.classify(thread)
+        classification = await self.classifier.classify(thread, user_email=email, workspace=workspace)
         
         logger.info(
             f"  → Classification: "
@@ -406,7 +406,7 @@ class EmailProcessor:
         
         # Re-classify
         logger.debug("  → Re-classifying...")
-        classification = await self.classifier.classify(thread)
+        classification = await self.classifier.classify(thread, user_email=gmail_db.database_id, workspace=workspace)
         
         logger.info(
             f"  → Classification: "

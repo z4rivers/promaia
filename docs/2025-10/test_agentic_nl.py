@@ -124,7 +124,7 @@ def main():
     
     print("\n✅ All tests completed!\n")
     print("📁 Check these directories for outputs:")
-    print("   • nl-context-logs/ - Query context logs")
+    print("   • context_logs/nl_context_logs/ - Query context logs")
     print("   • data/nl_query_patterns/ - Learned query patterns")
     return 0
 

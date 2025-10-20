@@ -269,8 +269,9 @@ debug/
 *debug*.txt
 *debug*.json
 
-# Context logs (saved AI chat contexts for debugging)
-context logs/
+# Context logs (saved AI contexts for debugging)
+# All context logs are now organized under context_logs/ directory
+context_logs/
 _create_system_prompt_debug.txt
 
 # Error files

@@ -657,7 +657,8 @@ ACTIONS
         """Save successful send to learning system."""
         try:
             from promaia.mail.learning_system import EmailResponseLearningSystem
-            learning = EmailResponseLearningSystem()
+            workspace = draft.get('workspace', 'default')
+            learning = EmailResponseLearningSystem(workspace=workspace)
             
             pattern = {
                 "inbound": {
@@ -672,7 +673,7 @@ ACTIONS
                     "length": len(draft['draft_body'].split())
                 },
                 "metadata": {
-                    "workspace": draft['workspace'],
+                    "workspace": workspace,
                     "ai_model": draft.get('ai_model', 'unknown'),
                     "context_sources": draft.get('response_context', '{}'),
                     "timestamp": now_utc().isoformat()
@@ -680,7 +681,7 @@ ACTIONS
             }
             
             learning.save_successful_response(pattern)
-            logger.info("✅ Saved response pattern to learning system")
+            logger.info(f"✅ Saved response pattern to learning system (workspace: {workspace})")
             
         except Exception as e:
             logger.warning(f"⚠️  Could not save to learning system: {e}")

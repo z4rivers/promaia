@@ -615,10 +615,10 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
     
     try:
         timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
-        context_filename = f"context logs/{timestamp}_{log_type}_prompt.txt"
+        context_filename = f"context_logs/chat_context_logs/{timestamp}_{log_type}_prompt.txt"
 
         # Ensure context logs directory exists
-        os.makedirs("context logs", exist_ok=True)
+        os.makedirs("context_logs/chat_context_logs", exist_ok=True)
 
         # Write context file with session info
         with open(context_filename, 'w', encoding='utf-8') as f:

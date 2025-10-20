@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 class EmailResponseLearningSystem:
     """
     Learn from successful email responses.
-    Maintains a rolling index of the last 20 successful response patterns.
+    Maintains a rolling index of the last 20 successful response patterns per workspace.
     """
     
-    def __init__(self, storage_dir: str = "data/mail_response_patterns"):
-        self.storage_dir = Path(storage_dir)
+    def __init__(self, workspace: str = "default", storage_dir: str = "data/mail_response_patterns"):
+        self.workspace = workspace
+        self.storage_dir = Path(storage_dir) / workspace
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.index_file = self.storage_dir / "successful_responses.json"
         self.max_patterns = 20

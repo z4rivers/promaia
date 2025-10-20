@@ -42,7 +42,7 @@ class DraftChatInterface:
         self.workspace = workspace
         self.draft_manager = DraftManager()
         self.response_generator = ResponseGenerator()
-        self.learning_system = EmailResponseLearningSystem()
+        self.learning_system = EmailResponseLearningSystem(workspace=workspace)
         self.context_builder = ResponseContextBuilder()
         
         # Artifacts: draft_number -> draft_text
@@ -399,11 +399,33 @@ class DraftChatInterface:
                         # First draft for a skipped email - generate from scratch
                         print_text("🤔 Generating draft based on your message...", style="cyan")
                         
-                        # Use cached context or empty context
+                        # Get user email from workspace gmail database
+                        user_email = None
+                        try:
+                            from promaia.config.databases import get_database_manager
+                            db_manager = get_database_manager()
+                            gmail_databases = [
+                                db for db in db_manager.get_workspace_databases(self.workspace)
+                                if db.source_type == "gmail"
+                            ]
+                            if gmail_databases:
+                                user_email = gmail_databases[0].database_id
+                        except Exception as e:
+                            logger.debug(f"Could not get user email from workspace: {e}")
+                        
+                        # Get context - try cached first, then stored, then empty
+                        context = None
                         if self.cached_context:
                             context = self.cached_context
-                        else:
-                            # No context loaded - create empty context
+                        elif draft.get('response_context'):
+                            # Deserialize stored context
+                            context = self.context_builder.deserialize_context_from_storage(
+                                draft['response_context'],
+                                thread_history=draft.get('thread_context', '')
+                            )
+                        
+                        # Fallback to empty context if deserialization failed or no context available
+                        if context is None:
                             context = ResponseContext(
                                 thread_history=draft.get('thread_context', ''),
                                 relevant_docs=[],
@@ -424,7 +446,9 @@ class DraftChatInterface:
                                 'body': draft['inbound_body'],
                                 'conversation_body': draft.get('thread_context', '')
                             },
-                            context=context
+                            context=context,
+                            user_email=user_email,
+                            workspace=self.workspace
                         )
                         refined_draft = response
                     else:
@@ -482,6 +506,41 @@ class DraftChatInterface:
             # Get current draft (latest artifact)
             current_draft = self.artifacts.get(self.current_artifact_number, draft['draft_body'])
             
+            # Get user email from workspace gmail database
+            user_email = None
+            try:
+                from promaia.config.databases import get_database_manager
+                db_manager = get_database_manager()
+                gmail_databases = [
+                    db for db in db_manager.get_workspace_databases(self.workspace)
+                    if db.source_type == "gmail"
+                ]
+                if gmail_databases:
+                    user_email = gmail_databases[0].database_id
+            except Exception as e:
+                logger.debug(f"Could not get user email from workspace: {e}")
+            
+            # Get context - try cached first, then stored, then empty
+            context = None
+            if self.cached_context:
+                context = self.cached_context
+            elif draft.get('response_context'):
+                # Deserialize stored context
+                context = self.context_builder.deserialize_context_from_storage(
+                    draft['response_context'],
+                    thread_history=draft.get('thread_context', '')
+                )
+            
+            # Fallback to empty context if deserialization failed or no context available
+            if context is None:
+                context = ResponseContext(
+                    thread_history=draft.get('thread_context', ''),
+                    relevant_docs=[],
+                    relevant_docs_text="",
+                    workspace=self.workspace,
+                    total_sources=0
+                )
+            
             # Use ResponseGenerator to refine (it has the AI client setup)
             refined = await self.response_generator.refine_response(
                 current_draft=current_draft,
@@ -493,13 +552,9 @@ class DraftChatInterface:
                     'body': draft['inbound_body'],
                     'conversation_body': draft.get('thread_context', '')
                 },
-                context=ResponseContext(
-                    thread_history=draft.get('thread_context', ''),
-                    relevant_docs=[],
-                    relevant_docs_text="(Using cached context)",
-                    workspace=self.workspace,
-                    total_sources=0
-                )
+                context=context,
+                user_email=user_email,
+                workspace=self.workspace
             )
             return refined
             
@@ -543,6 +598,20 @@ class DraftChatInterface:
         # Get the draft to send
         draft_to_send = self.artifacts[draft_num]
         
+        # Get user email from workspace gmail database
+        user_email = None
+        try:
+            from promaia.config.databases import get_database_manager
+            db_manager = get_database_manager()
+            gmail_databases = [
+                db for db in db_manager.get_workspace_databases(self.workspace)
+                if db.source_type == "gmail"
+            ]
+            if gmail_databases:
+                user_email = gmail_databases[0].database_id
+        except Exception as e:
+            logger.debug(f"Could not get user email from workspace: {e}")
+        
         # Show recipient selector
         from promaia.mail.recipient_selector import RecipientSelector
         
@@ -550,7 +619,8 @@ class DraftChatInterface:
             from_addr=draft.get('inbound_from', ''),
             to_addr=draft.get('inbound_to', ''),
             cc_addr=draft.get('inbound_cc', ''),
-            thread_context=draft.get('thread_context', '')
+            thread_context=draft.get('thread_context', ''),
+            user_email=user_email
         )
         
         print_text("\n📧 Select recipients for this email...", style="cyan")

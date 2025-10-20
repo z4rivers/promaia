@@ -226,7 +226,7 @@ class NLContextLogger:
     Similar to context logs but for NL queries specifically.
     """
     
-    def __init__(self, log_dir: str = "nl-context-logs"):
+    def __init__(self, log_dir: str = "context_logs/nl_context_logs"):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
     

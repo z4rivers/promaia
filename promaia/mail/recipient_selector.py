@@ -23,7 +23,7 @@ class RecipientMode:
 class RecipientSelector:
     """Interactive recipient selector for emails."""
     
-    def __init__(self, from_addr: str, to_addr: str, cc_addr: Optional[str] = None, thread_context: Optional[str] = None):
+    def __init__(self, from_addr: str, to_addr: str, cc_addr: Optional[str] = None, thread_context: Optional[str] = None, user_email: Optional[str] = None):
         """
         Initialize recipient selector.
         
@@ -32,11 +32,13 @@ class RecipientSelector:
             to_addr: The original TO field
             cc_addr: The original CC field
             thread_context: Optional thread context to extract more recipients
+            user_email: User's email address (to exclude from reply all)
         """
         self.from_addr = from_addr
         self.to_addr = to_addr
         self.cc_addr = cc_addr or ""
         self.thread_context = thread_context or ""
+        self.user_email = user_email.lower() if user_email else None
         
         # Extract all unique email addresses from thread
         self.all_recipients = self._extract_all_recipients()
@@ -64,6 +66,10 @@ class RecipientSelector:
         # Extract from thread context (look for email patterns)
         thread_emails = self._extract_emails_from_text(self.thread_context)
         recipients.update(thread_emails)
+        
+        # Remove user's own email address
+        if self.user_email:
+            recipients.discard(self.user_email)
         
         # Return as sorted list
         return sorted(list(recipients))

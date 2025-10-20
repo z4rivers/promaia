@@ -8,6 +8,7 @@ Determines if an email:
 """
 import json
 import logging
+import os
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,47 +17,25 @@ logger = logging.getLogger(__name__)
 class EmailClassifier:
     """AI-based email classification using existing chat infrastructure."""
     
-    CLASSIFICATION_PROMPT = """You are an email classifier. Analyze this email and determine:
-1. Does this pertain to the user? (Is it relevant to them personally/professionally?)
-2. Is this spam, an ad, promotion, or phishing attempt?
-3. Is this email addressed to the user, someone else, or ambiguous?
-4. Does this require a response from the user?
-
-IMPORTANT GUIDELINES:
-- Check the TO field and message content to determine who should respond
-- If clearly addressed to someone else (like "Hi Jayshay" or "To: jayshay@..."), mark addressed_to_user as false
-- If the TO field is ambiguous or includes multiple recipients, mark addressed_to_user as "ambiguous"
-- If the latest message in a thread is from someone ELSE making a request/asking a question to the user, it requires a response
-- If the user sent a quick acknowledgment (like "On it!", "Thanks!", "Got it!") but the original request requires follow-up work, it likely needs a substantive response later
-- Direct requests from the user's manager/boss/clients typically need responses
-- Look at the ENTIRE thread context, not just the latest message
-- NEVER draft responses on behalf of other people
-
-Email Details:
-From: {from_addr}
-To: {to_addr}
-Subject: {subject}
-Date: {date}
-Body:
-{body}
-
-Thread Context (if part of a conversation):
-{thread_context}
-
-Respond with ONLY valid JSON in this exact format:
-{{
-    "pertains_to_me": true/false,
-    "is_spam": true/false,
-    "addressed_to_user": true/false/"ambiguous",
-    "requires_response": true/false,
-    "reasoning": "Brief explanation of your classification"
-}}"""
-    
     def __init__(self):
         """Initialize classifier with AI client."""
         # Will use the existing AI client infrastructure
         self.ai_client = None
         self.model_type = None
+        self.classification_prompt_template = self._load_classification_prompt()
+    
+    def _load_classification_prompt(self) -> str:
+        """Load classification prompt template from file."""
+        prompt_file = os.path.join("prompts", "maia_mail_classification_prompt.md")
+        try:
+            with open(prompt_file, 'r') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"Classification prompt file not found: {prompt_file}")
+            raise
+        except Exception as e:
+            logger.error(f"Error loading classification prompt: {e}")
+            raise
     
     def _get_ai_client(self):
         """Get AI client from existing chat infrastructure."""
@@ -83,18 +62,21 @@ Respond with ONLY valid JSON in this exact format:
         
         raise ValueError("No AI API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY")
     
-    async def classify(self, email_thread: Dict[str, Any]) -> Dict[str, Any]:
+    async def classify(self, email_thread: Dict[str, Any], user_email: str, workspace: str) -> Dict[str, Any]:
         """
         Classify an email thread.
         
         Args:
             email_thread: Dict containing email data (from, subject, body, etc.)
+            user_email: Email address of the user (from gmail database_id)
+            workspace: Workspace name
             
         Returns:
             Dict with classification results:
             {
                 "pertains_to_me": bool,
                 "is_spam": bool,
+                "addressed_to_user": bool/str,
                 "requires_response": bool,
                 "reasoning": str
             }
@@ -112,8 +94,10 @@ Respond with ONLY valid JSON in this exact format:
             if len(body) > 1000:
                 body = body[:1000] + "\n[... truncated ...]"
             
-            # Build prompt
-            prompt = self.CLASSIFICATION_PROMPT.format(
+            # Build prompt with user identity
+            prompt = self.classification_prompt_template.format(
+                user_email=user_email,
+                workspace=workspace,
                 from_addr=from_addr,
                 to_addr=to_addr,
                 subject=subject,

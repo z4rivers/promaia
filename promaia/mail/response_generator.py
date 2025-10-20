@@ -24,37 +24,32 @@ You are writing an email response based on the following context.
 
 {learned_patterns}
 
-**Thread History:**
+=== THREAD HISTORY ===
 {thread_history}
 
-**Relevant Context from User's Knowledge Base:**
 {context_documents}
 
-**Latest Message to Respond To:**
+=== LATEST MESSAGE TO RESPOND TO ===
 From: {from_addr}
 Subject: {subject}
-Date: {date}
-
-Write a professional, concise email response that:
-- Uses information from the context when relevant
-- Matches the tone and style of previous responses (if examples provided above) and the user persona.
-- Is clear and actionable
-- Is appropriately concise unless detail is needed
-- Maintains the conversation flow
-
-IMPORTANT: Write in natural flowing paragraphs. Do NOT add hard line breaks within paragraphs. Let the email client handle text wrapping. Only use line breaks between distinct paragraphs or list items.
-
-Return ONLY the email body text, ready to send. Do not include subject line or headers."""
+Date: {date}"""
     
     def __init__(self):
         """Initialize response generator."""
-        self.learning_system = EmailResponseLearningSystem()
+        self.learning_systems = {}  # Cache learning systems by workspace
         self.ai_client = None
         self.model_type = None
         self.user_persona = self._load_user_persona()
+        self.refinement_prompt_template = self._load_refinement_prompt()
+    
+    def _get_learning_system(self, workspace: str) -> EmailResponseLearningSystem:
+        """Get or create learning system for workspace."""
+        if workspace not in self.learning_systems:
+            self.learning_systems[workspace] = EmailResponseLearningSystem(workspace=workspace)
+        return self.learning_systems[workspace]
 
     def _load_user_persona(self):
-        """Loads the user's persona from the prompt file."""
+        """Loads the user's persona from the prompt file and fills in date/time variables."""
         prompt_path = "prompts/maia_mail_prompt.md"
         default_persona = "You are an AI assistant writing an email on behalf of the user. Your goal is to be helpful, professional, and concise."
         
@@ -65,31 +60,98 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
         try:
             with open(prompt_path, 'r', encoding='utf-8') as f:
                 persona = f.read()
+                
+                # Fill in date/time variables
+                now = now_utc()
+                persona = persona.format(
+                    today_date=now.strftime("%B %d, %Y"),
+                    current_time=now.strftime("%I:%M %p %Z")
+                )
+                
                 logger.info(f"Loaded user persona from '{prompt_path}'")
                 return persona
         except Exception as e:
             logger.error(f"Failed to load persona from '{prompt_path}': {e}")
             return default_persona
+    
+    def _load_refinement_prompt(self) -> str:
+        """Load refinement prompt template from file."""
+        prompt_file = os.path.join("prompts", "maia_mail_refinement_prompt.md")
+        try:
+            with open(prompt_file, 'r') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"Refinement prompt file not found: {prompt_file}")
+            raise
+        except Exception as e:
+            logger.error(f"Error loading refinement prompt: {e}")
+            raise
 
-    def _save_mail_context_log(self, prompt_content: str, log_type: str):
+    def _save_mail_context_log(
+        self, 
+        prompt_content: str, 
+        log_type: str,
+        subject: Optional[str] = None,
+        from_addr: Optional[str] = None,
+        workspace: Optional[str] = None,
+        context: Optional[ResponseContext] = None,
+        model_type: Optional[str] = None
+    ):
         """
-        Save the prompt content to a log file for debugging.
+        Save the prompt content to a log file for debugging with structured formatting.
         
         Args:
             prompt_content: The full prompt sent to the AI.
             log_type: Type of log (e.g., 'initial_draft', 'refinement').
+            subject: Email subject (optional, for filename)
+            from_addr: Sender email address (optional, for metadata)
+            workspace: Workspace name (optional, for metadata)
+            context: ResponseContext (optional, for metadata)
+            model_type: AI model type (optional, for metadata)
         """
         try:
-            log_dir = "mail-context-logs"
+            # Determine log directory based on type
+            if log_type == "initial_draft":
+                log_dir = "context_logs/mail_draft_logs"
+            else:
+                log_dir = "context_logs/mail_context_logs"
+            
             os.makedirs(log_dir, exist_ok=True)
             
             timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
-            filename = f"{log_dir}/{timestamp}_{log_type}_prompt.txt"
+            
+            # Create filename with subject if available
+            if subject and log_type == "initial_draft":
+                # Sanitize subject for filename (truncate and remove invalid chars)
+                safe_subject = re.sub(r'[^\w\s-]', '', subject)
+                safe_subject = re.sub(r'[-\s]+', '_', safe_subject)
+                safe_subject = safe_subject[:50]  # Truncate to 50 chars
+                filename = f"{log_dir}/{timestamp}_{log_type}_{safe_subject}.txt"
+            else:
+                filename = f"{log_dir}/{timestamp}_{log_type}_prompt.txt"
             
             with open(filename, 'w', encoding='utf-8') as f:
-                header = f"=== MAIA MAIL - {log_type.upper()} PROMPT ===\n"
-                f.write(header)
+                # Write header with metadata
+                f.write(f"=== MAIA MAIL - {log_type.upper().replace('_', ' ')} ===\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                if model_type:
+                    f.write(f"Model: {model_type}\n")
+                if workspace:
+                    f.write(f"Workspace: {workspace}\n")
+                if from_addr:
+                    f.write(f"From: {from_addr}\n")
+                if subject:
+                    f.write(f"Subject: {subject}\n")
+                if context:
+                    f.write(f"Context Sources: {context.total_sources} relevant documents\n")
+                f.write("\n")
+                
+                # Write prompt sections with clear headers
+                f.write("=" * 50 + "\n")
+                f.write("FULL PROMPT SENT TO AI:\n")
+                f.write("=" * 50 + "\n\n")
                 f.write(prompt_content)
+                f.write("\n\n")
                 
             logger.info(f"Saved mail context log to {filename}")
             
@@ -222,8 +284,9 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
             Dict with 'body' (response text), 'subject', 'model' keys
         """
         try:
-            # Get learned patterns for prompt
-            learned_patterns = self.learning_system.get_patterns_for_prompt(limit=10)
+            # Get learned patterns for prompt (workspace-specific)
+            learning_system = self._get_learning_system(context.workspace)
+            learned_patterns = learning_system.get_patterns_for_prompt(limit=10)
             
             # Extract email details
             from_addr = email_thread.get('from', 'Unknown')
@@ -241,11 +304,19 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
                 date=date
             )
             
-            # Save prompt for debugging
-            self._save_mail_context_log(prompt, "initial_draft")
-            
-            # Get AI client
+            # Get AI client (this sets self.model_type)
             client = self._get_ai_client()
+            
+            # Save prompt for debugging with full metadata (after getting client so model_type is set)
+            self._save_mail_context_log(
+                prompt, 
+                "initial_draft",
+                subject=subject,
+                from_addr=from_addr,
+                workspace=context.workspace,
+                context=context,
+                model_type=self.model_type
+            )
             
             # Generate response based on model type
             if self.model_type == "anthropic":
@@ -301,7 +372,9 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
         current_draft: str,
         user_feedback: str,
         email_thread: Dict[str, Any],
-        context: ResponseContext
+        context: ResponseContext,
+        user_email: str = None,
+        workspace: str = None
     ) -> str:
         """
         Refine an existing draft based on user feedback.
@@ -311,47 +384,57 @@ Return ONLY the email body text, ready to send. Do not include subject line or h
             user_feedback: User's refinement request
             email_thread: Original email thread data
             context: ResponseContext
+            user_email: Email address of the user (optional, for context)
+            workspace: Workspace name (optional, for context)
             
         Returns:
             Refined draft text
         """
         try:
-
             # Get email body for context
             email_body = email_thread.get('conversation_body') or email_thread.get('body', '')
             
-            # Build refinement prompt
-            refinement_prompt = f"""{self.user_persona}
-
-You are revising an email draft based on user feedback.
-
-{f"You previously generated this email draft:\n\n{current_draft}\n\n" if current_draft else "You are generating a NEW draft for this email.\n\n"}The user has requested a change:
-"{user_feedback}"
-
-Original email context:
-From: {email_thread.get('from')}
-Subject: {email_thread.get('subject')}
-
-Email thread/body:
-{email_body}
-
-Relevant context from knowledge base:
-{context.relevant_docs_text if context.relevant_docs_text else "No additional context available"}
-
-Please {"revise the draft" if current_draft else "generate a response"} according to the user's feedback, the user persona, and the original context, while maintaining:
-- Professional tone
-- Clarity and conciseness
-- Appropriate context from the conversation
-
-IMPORTANT: Write in natural flowing paragraphs. Do NOT add hard line breaks within paragraphs. Let the email client handle text wrapping. Only use line breaks between distinct paragraphs or list items.
-
-Return ONLY the {"revised" if current_draft else ""} email body text."""
+            # Prepare draft section
+            if current_draft:
+                current_draft_section = f"You previously generated this email draft:\n\n{current_draft}\n\n"
+                action = "revise the draft"
+                result_type = "revised"
+            else:
+                current_draft_section = "You are generating a NEW draft for this email.\n\n"
+                action = "generate a response"
+                result_type = ""
             
-            # Save refinement prompt for debugging
-            self._save_mail_context_log(refinement_prompt, "refinement")
-
-            # Get AI client
+            # Build refinement prompt from template
+            from_addr = email_thread.get('from', 'Unknown')
+            subject = email_thread.get('subject', 'No Subject')
+            
+            refinement_prompt = self.refinement_prompt_template.format(
+                user_persona=self.user_persona,
+                user_email=user_email or "the user",
+                workspace=workspace or "unknown",
+                current_draft_section=current_draft_section,
+                user_feedback=user_feedback,
+                from_addr=from_addr,
+                subject=subject,
+                email_body=email_body,
+                context_docs=context.relevant_docs_text if context.relevant_docs_text else "No additional context available",
+                action=action,
+                result_type=result_type
+            )
+            
+            # Get AI client (this sets self.model_type)
             client = self._get_ai_client()
+            
+            # Save refinement prompt for debugging with metadata (after getting client so model_type is set)
+            self._save_mail_context_log(
+                refinement_prompt, 
+                "refinement",
+                subject=subject,
+                from_addr=from_addr,
+                workspace=workspace,
+                context=context,
+                model_type=self.model_type
+            )
             
             # Generate refined response
             if self.model_type == "anthropic":
