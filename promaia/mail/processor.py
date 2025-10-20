@@ -264,4 +264,205 @@ class EmailProcessor:
         logger.info(f"  ✅ Draft saved: {draft_id}")
         
         return True
+    
+    async def refresh_drafts(self, workspaces: List[str], days_back: int = 7) -> int:
+        """
+        Refresh existing drafts by rebuilding context, thread, and replies.
+        
+        Only refreshes drafts with status 'pending', 'unsure', or 'skipped'.
+        Respects 'sent' and 'archived' statuses (does not touch them).
+        
+        Args:
+            workspaces: List of workspace names
+            days_back: Number of days to look back for drafts to refresh
+            
+        Returns:
+            Number of drafts refreshed
+        """
+        total_refreshed = 0
+        
+        for workspace in workspaces:
+            logger.info(f"🔄 Refreshing drafts for workspace: {workspace}")
+            
+            try:
+                refreshed_count = await self._refresh_workspace_drafts(workspace, days_back)
+                total_refreshed += refreshed_count
+                logger.info(f"✅ Refreshed {refreshed_count} draft(s) for {workspace}")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to refresh drafts for workspace {workspace}: {e}")
+                continue
+        
+        logger.info(f"🎉 Total drafts refreshed: {total_refreshed}")
+        return total_refreshed
+    
+    async def _refresh_workspace_drafts(self, workspace: str, days_back: int) -> int:
+        """Refresh drafts for a single workspace."""
+        from datetime import datetime, timedelta, timezone
+        
+        # Get drafts that need refreshing
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+        
+        # Query drafts with status in ('pending', 'unsure', 'skipped') within date range
+        drafts = self.draft_manager.get_refreshable_drafts(
+            workspace, 
+            cutoff_date.isoformat(),
+            statuses=['pending', 'unsure', 'skipped']
+        )
+        
+        if not drafts:
+            logger.info(f"No drafts to refresh for {workspace}")
+            return 0
+        
+        logger.info(f"Found {len(drafts)} draft(s) to refresh")
+        
+        # Group drafts by Gmail database for efficient processing
+        drafts_by_db = {}
+        for draft in drafts:
+            # Extract database info from draft
+            # We'll use the workspace to find the right Gmail connector
+            db_key = workspace  # Simplified - could be more sophisticated
+            if db_key not in drafts_by_db:
+                drafts_by_db[db_key] = []
+            drafts_by_db[db_key].append(draft)
+        
+        refreshed_count = 0
+        
+        # Process each draft
+        for draft in drafts:
+            try:
+                refreshed = await self._refresh_single_draft(draft, workspace)
+                if refreshed:
+                    refreshed_count += 1
+                
+                # Small delay to avoid overwhelming API
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to refresh draft {draft.get('draft_id')}: {e}")
+                continue
+        
+        return refreshed_count
+    
+    async def _refresh_single_draft(self, draft: Dict[str, Any], workspace: str) -> bool:
+        """
+        Refresh a single draft by re-fetching thread and regenerating response.
+        
+        Returns:
+            True if draft was refreshed, False otherwise
+        """
+        from promaia.connectors.gmail_connector import GmailConnector
+        from promaia.config.databases import get_database_manager
+        
+        draft_id = draft.get('draft_id')
+        thread_id = draft.get('thread_id')
+        subject = draft.get('inbound_subject', 'No Subject')
+        
+        logger.info(f"Refreshing: {subject}")
+        
+        # Get Gmail databases for this workspace
+        db_manager = get_database_manager()
+        gmail_databases = [
+            db for db in db_manager.get_workspace_databases(workspace)
+            if db.source_type == "gmail"
+        ]
+        
+        if not gmail_databases:
+            logger.warning(f"⚠️  No Gmail databases found for workspace {workspace}")
+            return False
+        
+        # Use first Gmail database (in most cases there's only one per workspace)
+        gmail_db = gmail_databases[0]
+        
+        # Create connector with full_thread mode
+        connector = GmailConnector({
+            "database_id": gmail_db.database_id,
+            "workspace": workspace,
+            "gmail_content_mode": "full_thread"
+        })
+        
+        await connector.connect()
+        
+        # Fetch fresh thread data from Gmail
+        try:
+            # Get the thread by ID
+            service = connector.service
+            thread_data = service.users().threads().get(
+                userId='me', 
+                id=thread_id,
+                format='full'
+            ).execute()
+            
+            # Process thread data using connector's method
+            thread = connector._process_thread_data(thread_data)
+            
+            if not thread:
+                logger.warning(f"⚠️  Could not fetch thread {thread_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch thread from Gmail: {e}")
+            return False
+        
+        # Re-classify
+        logger.debug("  → Re-classifying...")
+        classification = await self.classifier.classify(thread)
+        
+        logger.info(
+            f"  → Classification: "
+            f"pertains={classification['pertains_to_me']}, "
+            f"spam={classification['is_spam']}, "
+            f"addressed_to_user={classification.get('addressed_to_user', 'unknown')}, "
+            f"requires_response={classification['requires_response']}"
+        )
+        
+        # Determine new status
+        new_status = self.classifier.get_draft_status(classification)
+        
+        # Check if we should generate a draft
+        if not self.classifier.should_generate_draft(classification):
+            logger.info(f"  → Updating to skipped (no response needed)")
+            # Update to skipped status
+            self.draft_manager.update_draft_refresh(
+                draft_id=draft_id,
+                status=new_status,
+                classification=classification,
+                thread=thread,
+                draft_body='n/a',
+                response_context=None,
+                system_prompt=None,
+                ai_model=None
+            )
+            logger.info(f"  ⏭️  Draft updated to skipped: {draft_id}")
+            return True
+        
+        # Rebuild context
+        logger.debug("  → Rebuilding context...")
+        context = await self.context_builder.build_context(thread, workspace)
+        logger.info(f"  → Found {context.total_sources} relevant sources")
+        
+        # Regenerate response
+        logger.debug("  → Regenerating response...")
+        response = await self.response_generator.generate_response(thread, context)
+        logger.info(f"  → Generated {len(response['body'].split())} word response")
+        
+        # Update draft
+        logger.debug("  → Updating draft...")
+        status_emoji = "🤷‍♀️" if new_status == "unsure" else "✅"
+        logger.info(f"  {status_emoji} Draft status: {new_status}")
+        
+        self.draft_manager.update_draft_refresh(
+            draft_id=draft_id,
+            status=new_status,
+            classification=classification,
+            thread=thread,
+            draft_body=response['body'],
+            draft_subject=response['subject'],
+            response_context=self.context_builder.serialize_context_for_storage(context),
+            system_prompt=response.get('prompt'),
+            ai_model=response['model']
+        )
+        
+        logger.info(f"  ✅ Draft refreshed: {draft_id}")
+        return True
 

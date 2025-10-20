@@ -62,6 +62,29 @@ async def handle_mail(args):
         print_text(f"Workspace(s): {', '.join(workspaces)}", style="dim")
         print()
         
+        # Refresh existing drafts if requested
+        if hasattr(args, 'refresh') and args.refresh:
+            days = args.days if hasattr(args, 'days') else 7
+            print_text(f"🔄 Refreshing drafts from last {days} days...", style="cyan")
+            print_text("   (Rebuilding context, thread, and replies for pending/unsure/skipped)", style="dim")
+            print()
+            
+            processor = EmailProcessor()
+            count = await processor.refresh_drafts(workspaces, days_back=days)
+            
+            print()
+            if count > 0:
+                print_text(f"✅ Refreshed {count} draft(s)", style="green")
+            else:
+                print_text("✅ No drafts to refresh", style="green")
+            print()
+            
+            # If only refreshing (no workspace specified), exit here to preserve logs
+            if not explicit_workspaces:
+                print_text("💡 Use 'maia mail -ws [workspace]' to review drafts", style="dim")
+                print_separator()
+                return
+        
         # Process if requested
         if hasattr(args, 'process') and args.process:
             print_text("🔄 Processing new emails from last 72 hours...", style="cyan")
@@ -147,6 +170,19 @@ def add_mail_commands(subparsers):
         action='store_true',
         dest='history',
         help='Start in history view (completed messages) instead of queue'
+    )
+    
+    mail_parser.add_argument(
+        '-r', '--refresh',
+        action='store_true',
+        help='Refresh existing drafts (rebuilds context, thread, and replies for pending/unsure/skipped)'
+    )
+    
+    mail_parser.add_argument(
+        '--days',
+        type=int,
+        default=7,
+        help='Number of days to look back for refresh (default: 7). Only used with --refresh'
     )
     
     mail_parser.set_defaults(func=handle_mail)

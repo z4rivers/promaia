@@ -478,4 +478,122 @@ class DraftManager:
         except Exception as e:
             logger.error(f"❌ Failed to get draft counts: {e}")
             return {}
+    
+    def get_refreshable_drafts(self, workspace: str, cutoff_date: str, statuses: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get drafts that can be refreshed.
+        
+        Args:
+            workspace: Workspace name
+            cutoff_date: ISO format date string - only get drafts created after this date
+            statuses: List of statuses to include (e.g., ['pending', 'unsure', 'skipped'])
+            
+        Returns:
+            List of draft dictionaries
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Build query with dynamic status list
+                placeholders = ','.join('?' for _ in statuses)
+                query = f"""
+                    SELECT * FROM email_drafts 
+                    WHERE workspace = ? 
+                    AND created_time >= ? 
+                    AND status IN ({placeholders})
+                    ORDER BY created_time DESC
+                """
+                
+                params = [workspace, cutoff_date] + statuses
+                cursor.execute(query, params)
+                
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get refreshable drafts: {e}")
+            return []
+    
+    def update_draft_refresh(
+        self, 
+        draft_id: str, 
+        status: str,
+        classification: Dict[str, Any],
+        thread: Dict[str, Any],
+        draft_body: str,
+        draft_subject: Optional[str] = None,
+        response_context: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        ai_model: Optional[str] = None
+    ):
+        """
+        Update a draft after refresh operation.
+        
+        Args:
+            draft_id: Draft ID to update
+            status: New status
+            classification: Classification results
+            thread: Fresh thread data from Gmail
+            draft_body: New draft body
+            draft_subject: Optional new draft subject
+            response_context: Serialized context
+            system_prompt: System prompt used
+            ai_model: AI model used
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Extract thread data
+                inbound_body = thread.get('conversation_body', '')
+                inbound_to = thread.get('to', '')
+                inbound_cc = thread.get('cc', '')
+                message_count = thread.get('message_count', 1)
+                
+                # Update query
+                cursor.execute("""
+                    UPDATE email_drafts SET
+                        status = ?,
+                        inbound_body = ?,
+                        inbound_to = ?,
+                        inbound_cc = ?,
+                        message_count = ?,
+                        pertains_to_me = ?,
+                        is_spam = ?,
+                        requires_response = ?,
+                        classification_reasoning = ?,
+                        draft_subject = ?,
+                        draft_body = ?,
+                        response_context = ?,
+                        system_prompt = ?,
+                        ai_model = ?,
+                        reviewed_time = ?
+                    WHERE draft_id = ?
+                """, (
+                    status,
+                    inbound_body,
+                    inbound_to,
+                    inbound_cc,
+                    message_count,
+                    classification.get('pertains_to_me', True),
+                    classification.get('is_spam', False),
+                    classification.get('requires_response', True),
+                    classification.get('reasoning'),
+                    draft_subject or f"Re: {thread.get('subject', 'No Subject')}",
+                    draft_body,
+                    response_context,
+                    system_prompt,
+                    ai_model,
+                    datetime.now(timezone.utc).isoformat(),
+                    draft_id
+                ))
+                
+                conn.commit()
+                logger.debug(f"✅ Updated draft {draft_id} after refresh")
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to update draft after refresh: {e}")
+            raise
 
