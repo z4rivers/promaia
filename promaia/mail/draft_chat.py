@@ -634,11 +634,6 @@ class DraftChatInterface:
                         latest_num = max(self.artifacts.keys())
                         print(self.render_artifact(latest_num, self.artifacts[latest_num]))
                         print()
-                        
-                        # Show hint if there are older drafts
-                        if len(self.artifacts) > 1:
-                            print_text(f"💡 {len(self.artifacts) - 1} earlier draft(s) hidden. Type /d to view all", style="dim")
-                            print()
                 
                 # Display welcome message with commands
                 self._display_welcome_message()
@@ -674,6 +669,30 @@ class DraftChatInterface:
                             should_exit = await self._handle_send_command(user_input, draft)
                             if should_exit:
                                 break
+                            
+                            # If send was cancelled, redisplay everything to restore the full draft chat state
+                            print("\n" * 2)  # Add some space
+                            print_separator()
+                            print(thread_display)
+                            print_separator()
+                            if message_count > 1:
+                                print()
+                                print_text("📜 Tip: Scroll up ↑ to see earlier messages in the thread", style="dim")
+                            print()
+                            
+                            # Redisplay draft(s) based on toggle state
+                            if self.show_all_drafts:
+                                for artifact_num in sorted(self.artifacts.keys()):
+                                    print(self.render_artifact(artifact_num, self.artifacts[artifact_num]))
+                                    print()
+                            else:
+                                if self.artifacts:
+                                    latest_num = max(self.artifacts.keys())
+                                    print(self.render_artifact(latest_num, self.artifacts[latest_num]))
+                                    print()
+                            
+                            self._display_welcome_message()
+                            print()
                             continue
                         
                         elif cmd in ['/d']:
