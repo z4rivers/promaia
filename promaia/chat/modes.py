@@ -66,11 +66,24 @@ class ChatMode:
     def should_enable_artifacts(self) -> bool:
         """
         Whether artifacts should be enabled for this mode.
-        
+
         Returns:
             True to enable artifacts
         """
         return True
+
+    def should_force_artifacts(self) -> bool:
+        """
+        Whether ALL responses should be forced as artifacts in this mode.
+
+        When True, every AI response will be treated as an artifact
+        regardless of content or keywords. Useful for modes like email
+        drafting where all outputs are meant to be structured content.
+
+        Returns:
+            True to force all responses as artifacts
+        """
+        return False
 
 
 class DraftMode(ChatMode):
@@ -138,7 +151,7 @@ class DraftMode(ChatMode):
     def get_additional_commands(self) -> Dict[str, Callable]:
         """
         Add /send and /archive commands for draft mode.
-        
+
         Returns:
             Dict of draft-specific commands
         """
@@ -146,49 +159,66 @@ class DraftMode(ChatMode):
             '/send': self.handle_send,
             '/archive': self.handle_archive,
         }
+
+    def should_force_artifacts(self) -> bool:
+        """
+        Force all responses to be artifacts in draft mode.
+
+        All AI responses are email drafts that need to be available
+        for the /send command.
+
+        Returns:
+            True - all responses are artifacts
+        """
+        return True
     
     def get_welcome_message(self, context_state: Dict[str, Any]) -> Optional[str]:
         """
         Custom welcome for draft chat.
-        
+
         Args:
             context_state: Chat context state dict
-            
+
         Returns:
             Welcome message for draft mode
         """
-        from promaia.utils.display import print_text
         from promaia.chat.interface import get_current_model_name
-        
+
         lines = []
-        lines.append(print_text("🐙 maia mail draft chat", style="bold magenta", _return_str=True))
-        
+
+        # Header - use ANSI codes directly since we're in a thread
+        lines.append("\033[1m\033[95m🐙 maia mail draft chat\033[0m")
+
         # Show context loaded
-        lines.append(print_text("Context loaded:", style="dim", _return_str=True))
-        
+        lines.append("\033[2mContext loaded:\033[0m")
+
         # Show message context if present
         if context_state.get('natural_language_content'):
             nl_content = context_state['natural_language_content']
             if isinstance(nl_content, dict):
                 for db_name, pages in sorted(nl_content.items()):
-                    lines.append(print_text(f"  {db_name}: {len(pages)}", style="dim", _return_str=True))
-        
+                    lines.append(f"\033[2m  {db_name}: {len(pages)}\033[0m")
+
         # Model
-        model_name = get_current_model_name()
-        lines.append(print_text(f"Model: {model_name}", style="dim", _return_str=True))
+        try:
+            model_name = get_current_model_name()
+            lines.append(f"\033[2mModel: {model_name}\033[0m")
+        except Exception as e:
+            logger.warning(f"Could not get model name in draft mode: {e}")
+            lines.append("\033[2mModel: (unknown)\033[0m")
+
         lines.append("")
-        
+
         # Commands - MODE SPECIFIC
-        lines.append(print_text("Available commands:", style="dim", _return_str=True))
-        lines.append(print_text("  /send - Send this draft", style="dim", _return_str=True))
-        lines.append(print_text("  /archive or /a - Archive this email", style="dim", _return_str=True))
-        lines.append(print_text("  /d - Toggle draft list view", style="dim", _return_str=True))
-        lines.append(print_text("  /e - Edit context", style="dim", _return_str=True))
-        lines.append(print_text("  /s - Sync databases", style="dim", _return_str=True))
-        lines.append(print_text("  /model - Switch model", style="dim", _return_str=True))
-        lines.append(print_text("  /q - Return to draft list", style="dim", _return_str=True))
+        lines.append("\033[2mAvailable commands:\033[0m")
+        lines.append("\033[2m  /send - Send this draft\033[0m")
+        lines.append("\033[2m  /archive or /a - Archive this email\033[0m")
+        lines.append("\033[2m  /e - Edit context\033[0m")
+        lines.append("\033[2m  /s - Sync databases\033[0m")
+        lines.append("\033[2m  /model - Switch model\033[0m")
+        lines.append("\033[2m  /q - Return to draft list\033[0m")
         lines.append("")
-        
+
         return "\n".join(lines)
     
     async def handle_send(self, artifact_manager, messages, context_state):
@@ -253,12 +283,15 @@ class DraftMode(ChatMode):
         print_text(f"Or type 'cancel' (or press Enter) to abort", style="dim")
         
         confirmation = input("\nConfirm: ").strip()
-        
+
         if not confirmation or confirmation.lower() == 'cancel':
             print_text("\n↩️  Send cancelled\n", style="cyan")
             return False
-        
-        if confirmation != self.draft_data['safety_string']:
+
+        # Strip trailing whitespace from safety string for comparison
+        safety_string = self.draft_data['safety_string'].rstrip()
+
+        if confirmation != safety_string:
             print_text("\n❌ Confirmation failed\n", style="red")
             return False
         
@@ -310,18 +343,20 @@ class DraftMode(ChatMode):
             print_text("❌ Failed to send\n", style="red")
             return False
     
-    async def handle_archive(self):
+    async def handle_archive(self, artifact_manager, messages, context_state):
         """
         Handle /archive command.
-        
+
         Args:
-            None
-            
+            artifact_manager: ArtifactManager instance (not used, but required for consistency)
+            messages: Chat messages (not used, but required for consistency)
+            context_state: Chat context state (not used, but required for consistency)
+
         Returns:
             True if should exit chat, False to continue
         """
         from promaia.utils.display import print_text
-        
+
         self.draft_manager.update_draft_status(self.draft_id, 'archived')
         print_text("\n🗄️  Archived - cleared from your queue\n", style="green")
         return True

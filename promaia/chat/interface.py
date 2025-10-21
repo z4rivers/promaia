@@ -714,10 +714,32 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None):
+def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None):
+    """
+    Build system prompt, respecting mode-specific prompts while including context.
+
+    Args:
+        multi_source_data: Dict of database_name -> pages
+        mcp_tools_info: MCP tools info string
+        mode_system_prompt: Optional mode-specific base prompt
+
+    Returns:
+        Complete system prompt with context
+    """
+    from promaia.ai.prompts import create_system_prompt, format_context_data
+
+    if mode_system_prompt:
+        # Start with mode prompt, append context so AI has access to both
+        return mode_system_prompt + format_context_data(multi_source_data, mcp_tools_info)
+    else:
+        # Standard prompt with context
+        return create_system_prompt(multi_source_data, mcp_tools_info)
+
+
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None):
     """
     Main chat function with simplified, unified logic.
-    
+
     Args:
         mode: ChatMode instance for specialized behavior (e.g., DraftMode)
         mode_config: Additional mode configuration dict
@@ -1350,14 +1372,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Don't calculate total here - calculate it from final data to ensure consistency
 
         # Only auto-load workspace databases if user provided NO arguments at all
-        user_provided_args = bool(sources or filters or natural_language_prompt or browse_selections or mcp_servers)
+        # Also check for pre-loaded natural_language_content (e.g., from draft mode) or if a mode is active
+        user_provided_args = bool(sources or filters or natural_language_prompt or browse_selections or mcp_servers or context_state.get('natural_language_content') or mode)
         
         # Check if user provided workspace but no sources (workspace browse mode)
         # BUT don't launch browser if we already have sources (e.g., from edit context)
         # Only launch browser if user explicitly provided a workspace (not defaulted)
+        # Also don't launch browser if we're in a mode (e.g., draft mode)
         user_provided_workspace_only = bool(current_workspace and not sources and not filters and not natural_language_prompt)
-        
-        if user_provided_workspace_only and not current_sources:
+
+        if user_provided_workspace_only and not current_sources and not mode:
             debug_print(f"Opening workspace browser for '{actual_workspace}'.")
             print_text(f"🔍 Launching unified browser for '{actual_workspace}'...", style="bold cyan")
             
@@ -1731,11 +1755,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Generate new system prompt
         mcp_tools_info = context_state.get('mcp_tools_info')
-        # Use mode system prompt if available, otherwise generate from context
-        if mode_system_prompt:
-            system_prompt = mode_system_prompt
-        else:
-            system_prompt = create_system_prompt(new_multi_source_data, mcp_tools_info)
+        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt)
         context_state['system_prompt'] = system_prompt
         
         # Save context log when MCP servers are connected (for transparency)
@@ -2446,7 +2466,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             
                             # Update the system prompt with the remaining data
                             mcp_tools_info = context_state.get('mcp_tools_info')
-                            system_prompt = create_system_prompt(current_data, mcp_tools_info)
+                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt)
                             context_state['system_prompt'] = system_prompt
                             
                             debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -3193,7 +3213,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
-                        system_prompt = create_system_prompt(current_data, mcp_tools_info)
+                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt)
                         context_state['system_prompt'] = system_prompt
 
                         debug_print(f"After query removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -3924,7 +3944,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     system_prompt = None
 
     # Initial context load
-    if not reload_context():
+    reload_result = reload_context()
+
+    if not reload_result:
         return
 
     # Save initial context log
@@ -3968,7 +3990,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Display Welcome Message
     print()
-    
+
     # Use mode-specific welcome if available, otherwise use generic
     welcome_displayed = False
     if mode:
@@ -3976,7 +3998,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if mode_welcome:
             print(mode_welcome)
             welcome_displayed = True
-    
+
     # Only show generic welcome if mode didn't provide one
     if not welcome_displayed:
         print_welcome_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
@@ -4024,10 +4046,60 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         try:
             user_input = session.prompt("You: ", style=style)
 
-            if user_input.strip().lower() in ['/quit', '/exit']:
+            if user_input.strip().lower() in ['/quit', '/exit', '/q']:
+                # Save chat messages if in draft mode
+                if draft_id and mode:
+                    try:
+                        from promaia.mail.draft_manager import DraftManager
+                        draft_manager = DraftManager()
+                        draft_manager.save_chat_messages(draft_id, messages)
+                        logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to save chat messages: {e}")
+
                 print_text("Goodbye!", style="bold cyan")
                 break
-            elif user_input.strip().lower() == '/debug':
+
+            # Handle mode-specific commands (e.g., /send, /archive for draft mode)
+            if mode:
+                mode_commands = mode.get_additional_commands()
+                user_command = user_input.strip().lower()
+
+                # Check if it's a mode command
+                command_handled = False
+                for cmd_name, cmd_handler in mode_commands.items():
+                    if user_command == cmd_name or (cmd_name == '/archive' and user_command == '/a'):
+                        command_handled = True
+                        try:
+                            import asyncio
+                            # Mode commands are async and take (artifact_manager, messages, context_state)
+                            should_exit = asyncio.run(cmd_handler(
+                                context_state.get('artifact_manager'),
+                                messages,
+                                context_state
+                            ))
+
+                            if should_exit:
+                                # Save messages before exiting
+                                if draft_id:
+                                    try:
+                                        from promaia.mail.draft_manager import DraftManager
+                                        draft_manager = DraftManager()
+                                        draft_manager.save_chat_messages(draft_id, messages)
+                                    except Exception as e:
+                                        logger.error(f"Failed to save chat messages: {e}")
+                                return  # Exit chat
+
+                            break  # Command handled, break from for loop
+                        except Exception as e:
+                            logger.error(f"Error executing mode command {cmd_name}: {e}")
+                            print_text(f"❌ Error: {e}\n", style="red")
+                            break
+
+                if command_handled:
+                    continue  # Skip to next user input
+
+            if user_input.strip().lower() == '/debug':
                 DEBUG_MODE = not DEBUG_MODE
                 status = "enabled" if DEBUG_MODE else "disabled"
                 print_text(f"Debug mode {status}.", style="bold yellow")
@@ -4175,23 +4247,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 except (ValueError, IndexError):
                     print_text("Usage: /edit <number>", style="yellow")
                 continue
-            
-            # Check for mode-specific commands
-            elif mode_commands:
-                command_key = user_input.strip().lower().split()[0]
-                if command_key in mode_commands:
-                    handler = mode_commands[command_key]
-                    # Call async handler with required context
-                    import asyncio
-                    should_exit = asyncio.run(handler(
-                        context_state.get('artifact_manager'),
-                        messages,
-                        context_state
-                    ))
-                    if should_exit:
-                        break
-                    continue
-            
+
             elif user_input.strip().lower().startswith('/image'):
                 # Handle multiple image attachments
                 try:
@@ -4392,7 +4448,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
                                 context_state['system_prompt'] = system_prompt
 
                                 # Save context log when MCP servers are connected (for transparency)
@@ -4433,7 +4489,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     context_state['mcp_tools_info'] = mcp_tools_info
 
                                     # Regenerate system prompt with new tools
-                                    system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
                                     context_state['system_prompt'] = system_prompt
 
                                     # Save context log when MCP servers are connected (for transparency)
@@ -4485,7 +4541,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
                                 context_state['system_prompt'] = system_prompt
 
                                 print_text("🔍 Internet search disabled and MCP servers reconnected", style="bold yellow")
@@ -4504,7 +4560,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             context_state['mcp_tools_info'] = mcp_tools_info
 
                             # Regenerate system prompt with new tools
-                            system_prompt = create_system_prompt(initial_multi_source_data, mcp_tools_info)
+                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
                             context_state['system_prompt'] = system_prompt
 
                             print_text("🔍 Internet search disabled - web search tools removed", style="bold yellow")
@@ -4569,6 +4625,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 debug_print(f"Processing message with {len(current_images)} images")
             
             messages.append({"role": "user", "content": user_input, "images": current_images})
+
+            # Auto-save messages in draft mode after user input
+            if draft_id and mode:
+                try:
+                    from promaia.mail.draft_manager import DraftManager
+                    draft_manager = DraftManager()
+                    draft_manager.save_chat_messages(draft_id, messages)
+                    logger.debug(f"Auto-saved {len(messages)} messages after user input")
+                except Exception as e:
+                    logger.error(f"Failed to auto-save messages after user input: {e}", exc_info=True)
 
             # Call the appropriate API
             response_content = None
@@ -4881,30 +4947,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Check if response should be an artifact
                         last_user_message = messages[-1]['content'] if messages else ""
-                        
+
+                        # Check if mode forces all responses to be artifacts
+                        force_artifacts = mode and mode.should_force_artifacts()
+
                         # Check if this is an artifact update or new artifact
                         if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
                             # Update existing artifact
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
-                            
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
                                 print()
-                            
+
                             # Display updated artifact
                             print(artifact_manager.render_artifact(artifact_manager.last_artifact_id))
-                        elif artifact_manager.should_create_artifact(last_user_message, response_text):
-                            # Create new artifact
+                        elif force_artifacts or artifact_manager.should_create_artifact(last_user_message, response_text):
+                            # Create new artifact (forced by mode or detected by keywords)
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             artifact_id = artifact_manager.create_artifact(artifact_content)
-                            
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
                                 print()
-                            
+
                             # Display artifact
                             print(artifact_manager.render_artifact(artifact_id))
                         else:
@@ -4912,6 +4981,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_markdown(response_text)
 
                         messages.append({"role": "assistant", "content": response_text})
+
+                        # Auto-save messages in draft mode after each response
+                        if draft_id and mode:
+                            try:
+                                from promaia.mail.draft_manager import DraftManager
+                                draft_manager = DraftManager()
+                                draft_manager.save_chat_messages(draft_id, messages)
+                                logger.debug(f"Auto-saved {len(messages)} messages after AI response")
+                            except Exception as e:
+                                logger.error(f"Failed to auto-save messages after AI response: {e}", exc_info=True)
+
                     else:
                         # String response (fallback for responses without token data)
                         timestamp = get_local_timestamp()
@@ -4921,37 +5001,51 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         
                         # Check if response should be an artifact
                         last_user_message = messages[-1]['content'] if messages else ""
-                        
+
+                        # Check if mode forces all responses to be artifacts
+                        force_artifacts = mode and mode.should_force_artifacts()
+
                         # Check if this is an artifact update or new artifact
                         if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
                             # Update existing artifact
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
                             artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
-                            
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
                                 print()
-                            
+
                             # Display updated artifact
                             print(artifact_manager.render_artifact(artifact_manager.last_artifact_id))
-                        elif artifact_manager.should_create_artifact(last_user_message, response_content):
-                            # Create new artifact
+                        elif force_artifacts or artifact_manager.should_create_artifact(last_user_message, response_content):
+                            # Create new artifact (forced by mode or detected by keywords)
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
                             artifact_id = artifact_manager.create_artifact(artifact_content)
-                            
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
                                 print()
-                            
+
                             # Display artifact
                             print(artifact_manager.render_artifact(artifact_id))
                         else:
                             # Normal response (no artifact)
                             print_markdown(response_content)
-                            
+
                         messages.append({"role": "assistant", "content": response_content})
+
+                        # Auto-save messages in draft mode after each response
+                        if draft_id and mode:
+                            try:
+                                from promaia.mail.draft_manager import DraftManager
+                                draft_manager = DraftManager()
+                                draft_manager.save_chat_messages(draft_id, messages)
+                                logger.debug(f"Auto-saved {len(messages)} messages after AI response")
+                            except Exception as e:
+                                logger.error(f"Failed to auto-save messages after AI response: {e}", exc_info=True)
+
                 else:
                     print_text("Error: No response generated.", style="bold red")
 
@@ -4960,11 +5054,34 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 debug_print(f"Full API error: {e}")
 
         except KeyboardInterrupt:
+            # Save chat messages if in draft mode
+            if draft_id and mode:
+                try:
+                    from promaia.mail.draft_manager import DraftManager
+                    draft_manager = DraftManager()
+                    draft_manager.save_chat_messages(draft_id, messages)
+                    logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
+                except Exception as e:
+                    logger.error(f"Failed to save chat messages: {e}")
+
             print_text("\nGoodbye!", style="bold cyan")
             break
         except EOFError:
+            # Save chat messages if in draft mode
+            if draft_id and mode:
+                try:
+                    from promaia.mail.draft_manager import DraftManager
+                    draft_manager = DraftManager()
+                    draft_manager.save_chat_messages(draft_id, messages)
+                    logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
+                except Exception as e:
+                    logger.error(f"Failed to save chat messages: {e}")
+
             print_text("\nGoodbye!", style="bold cyan")
             break
+
+    # Return messages list so caller can save final state
+    return messages
 
 # CLI Image Helper Functions
 

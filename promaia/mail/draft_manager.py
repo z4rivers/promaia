@@ -100,6 +100,8 @@ class DraftManager:
                 self._migrate_completed_time_column(cursor)
                 # Migrate to add inbound_to and inbound_cc columns if missing
                 self._migrate_recipient_columns(cursor)
+                # Migrate to add chat_messages column if missing
+                self._migrate_chat_messages_column(cursor)
                 conn.commit()
                 
                 logger.info("✅ Email drafts table initialized")
@@ -162,24 +164,41 @@ class DraftManager:
             # Check if columns exist
             cursor.execute("PRAGMA table_info(email_drafts)")
             columns = [col[1] for col in cursor.fetchall()]
-            
+
             if 'inbound_to' not in columns:
                 logger.info("🔄 Migrating email_drafts table to add inbound_to column...")
                 cursor.execute("""
-                    ALTER TABLE email_drafts 
+                    ALTER TABLE email_drafts
                     ADD COLUMN inbound_to TEXT
                 """)
                 logger.info("✅ Added inbound_to column")
-            
+
             if 'inbound_cc' not in columns:
                 logger.info("🔄 Migrating email_drafts table to add inbound_cc column...")
                 cursor.execute("""
-                    ALTER TABLE email_drafts 
+                    ALTER TABLE email_drafts
                     ADD COLUMN inbound_cc TEXT
                 """)
                 logger.info("✅ Added inbound_cc column")
         except Exception as e:
             logger.warning(f"⚠️  Recipient columns migration: {e}")
+
+    def _migrate_chat_messages_column(self, cursor):
+        """Add chat_messages column to existing tables if it doesn't exist."""
+        try:
+            # Check if chat_messages column exists
+            cursor.execute("PRAGMA table_info(email_drafts)")
+            columns = [col[1] for col in cursor.fetchall()]
+
+            if 'chat_messages' not in columns:
+                logger.info("🔄 Migrating email_drafts table to add chat_messages column...")
+                cursor.execute("""
+                    ALTER TABLE email_drafts
+                    ADD COLUMN chat_messages TEXT
+                """)
+                logger.info("✅ Added chat_messages column for conversation history")
+        except Exception as e:
+            logger.warning(f"⚠️  Chat messages migration: {e}")
     
     def save_draft(self, draft: Dict[str, Any]) -> str:
         """
@@ -193,9 +212,9 @@ class DraftManager:
         """
         draft_id = draft.get('draft_id') or str(uuid.uuid4())
         
-        # Generate safety string (first 5 chars of subject)
+        # Generate safety string (first 5 chars of subject, strip trailing whitespace)
         subject = draft.get('inbound_subject', '')
-        safety_string = subject[:5] if len(subject) >= 5 else subject
+        safety_string = (subject[:5] if len(subject) >= 5 else subject).rstrip()
         
         # Initialize draft history with first version
         initial_history = {1: draft.get('draft_body', '')}
@@ -427,18 +446,62 @@ class DraftManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 now = datetime.now(timezone.utc).isoformat()
-                
+
                 cursor.execute(
                     "UPDATE email_drafts SET status = ?, sent_time = ?, completed_time = ? WHERE draft_id = ?",
                     ('sent', now, now, draft_id)
                 )
-                
+
                 conn.commit()
                 logger.info(f"✅ Marked draft {draft_id} as sent")
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to mark draft as sent: {e}")
             raise
+
+    def save_chat_messages(self, draft_id: str, messages: List[Dict[str, Any]]):
+        """Save chat conversation history for a draft."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                messages_json = json.dumps(messages)
+
+                cursor.execute(
+                    "UPDATE email_drafts SET chat_messages = ? WHERE draft_id = ?",
+                    (messages_json, draft_id)
+                )
+
+                rows_affected = cursor.rowcount
+                conn.commit()
+
+                if rows_affected > 0:
+                    logger.debug(f"✅ Saved {len(messages)} chat messages for draft {draft_id}")
+                else:
+                    logger.warning(f"⚠️  No draft found with ID {draft_id} - messages not saved!")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to save chat messages: {e}")
+            raise
+
+    def load_chat_messages(self, draft_id: str) -> List[Dict[str, Any]]:
+        """Load chat conversation history for a draft."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    "SELECT chat_messages FROM email_drafts WHERE draft_id = ?",
+                    (draft_id,)
+                )
+
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return json.loads(row[0])
+                return []
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load chat messages: {e}")
+            return []
     
     def thread_has_draft(self, thread_id: str, workspace: str) -> bool:
         """Check if a thread already has a draft."""

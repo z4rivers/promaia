@@ -131,11 +131,12 @@ class DraftChatInterface:
     async def _load_message_context(self, draft: Dict[str, Any]) -> Dict[str, list]:
         """
         Load context for the email thread.
-        
+
         Returns message context formatted for chat (database_name -> pages).
+        Includes BOTH the actual email thread AND vector search results.
         """
         print_text("\n🔍 Loading message context...", style="cyan")
-        
+
         # Build email thread dict for context builder
         thread = {
             'thread_id': draft.get('thread_id'),
@@ -146,28 +147,46 @@ class DraftChatInterface:
             'date': draft.get('inbound_date'),
             'message_count': draft.get('message_count', 1)
         }
-        
+
         # Build context using dual vector search
         context = await self.context_builder.build_context(thread, self.workspace)
-        
+
         print_text(f"✅ Loaded {context.total_sources} sources from your knowledge base\n", style="green")
-        
+
         # Convert ResponseContext to the format expected by chat
         # (database_name -> list of page dicts)
         message_context = {}
+
+        # IMPORTANT: Add the actual email thread as context
+        # This ensures the AI can see the email being replied to
+        message_context['email_thread'] = [{
+            'title': f"Email Thread: {draft.get('inbound_subject', 'No Subject')}",
+            'content': draft.get('inbound_body', ''),
+            'metadata': {
+                'from': draft.get('inbound_from', ''),
+                'to': draft.get('inbound_to', ''),
+                'cc': draft.get('inbound_cc', ''),
+                'date': draft.get('inbound_date', ''),
+                'subject': draft.get('inbound_subject', ''),
+                'message_count': draft.get('message_count', 1),
+            },
+            'database': 'email_thread',
+        }]
+
+        # Add vector search results from knowledge base
         for doc in context.relevant_docs:
             db_name = doc.get('database', 'unknown')
-            
+
             # Ensure consistent database naming with workspace prefix
             if db_name == 'gmail':
                 db_name = f"{self.workspace}.gmail"
             elif '.' not in db_name and db_name not in ['journal', 'stories', 'cpj', 'epics']:
                 # Add workspace prefix if missing for other databases
                 db_name = f"{self.workspace}.{db_name}"
-            
+
             if db_name not in message_context:
                 message_context[db_name] = []
-            
+
             # Convert doc format to page format
             page = {
                 'title': doc.get('title', 'Untitled'),
@@ -176,7 +195,7 @@ class DraftChatInterface:
                 'database': db_name,
             }
             message_context[db_name].append(page)
-        
+
         return message_context
     
     async def run_chat_loop(self):
@@ -215,9 +234,10 @@ class DraftChatInterface:
             
             # Clean email body
             cleaned_body = self._clean_email_body(draft.get('inbound_body', ''))
-            
+
             # Display full email thread
-            print()
+            # Add top margin for terminals with UI elements at top
+            print("\n\n\n")
             print_separator()
             
             message_count = draft.get('message_count', 1)
@@ -269,41 +289,56 @@ class DraftChatInterface:
                 user_email=user_email
             )
             
-            # If there's an existing draft, pre-populate as an artifact
-            initial_messages = []
-            if draft_body and draft_body != 'n/a':
-                # Create an initial artifact with the existing draft
-                initial_messages.append({
+            # Load chat history if it exists
+            chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
+
+            if chat_messages:
+                # Use existing chat history
+                initial_messages = chat_messages
+                logger.info(f"Loaded {len(chat_messages)} messages from chat history")
+            elif draft_body and draft_body != 'n/a':
+                # No history - create initial artifact from draft body
+                initial_messages = [{
                     "role": "assistant",
                     "content": f"<artifact>{draft_body}</artifact>"
-                })
-            
+                }]
+                logger.info(f"Created initial artifact from draft body")
+            else:
+                initial_messages = []
+                logger.info(f"Starting fresh chat session")
+
             # Launch unified chat with DraftMode
             from promaia.chat.interface import chat
-            
-            logger.info(f"🚀 Launching unified chat with DraftMode")
-            logger.info(f"   Workspace: {self.workspace}")
-            logger.info(f"   Mode: {mode}")
-            logger.info(f"   Message context: {len(message_context)} databases")
-            logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
-            
+
+            logger.info(f"Launching unified chat with DraftMode")
+            logger.info(f"  Workspace: {self.workspace}")
+            logger.info(f"  Message context: {len(message_context)} databases")
+            logger.info(f"  Initial messages: {len(initial_messages)}")
+
             # Note: chat() is synchronous and blocking, run in thread to await properly
+            # Chat returns the messages list when it exits
             result = await asyncio.to_thread(
                 chat,
                 workspace=self.workspace,
                 mode=mode,
                 natural_language_content=message_context,  # Pre-loaded context
-                initial_messages=initial_messages,  # Pre-populate first draft
+                initial_messages=initial_messages,  # Chat history
+                draft_id=self.draft_id,  # Pass draft_id for saving messages
             )
-            
-            logger.info(f"✅ Chat returned: {result}")
-        
+
+            logger.info(f"Chat completed, returned {len(result) if result else 0} messages")
+
+            # Save final messages state when chat exits normally
+            if result:
+                try:
+                    self.draft_manager.save_chat_messages(self.draft_id, result)
+                    logger.info(f"Saved {len(result)} messages to database on normal exit")
+                except Exception as e:
+                    logger.error(f"Failed to save chat messages on normal exit: {e}")
+
         except KeyboardInterrupt:
             print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
+            logger.info("Chat interrupted by user (Ctrl+C)")
         except EOFError:
             print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
-        except Exception as e:
-            logger.error(f"❌ Error in draft chat: {e}")
-            print_text(f"\n❌ Error: {e}\n", style="red")
-            import traceback
-            traceback.print_exc()
+            logger.info("Chat interrupted by EOF (Ctrl+D)")

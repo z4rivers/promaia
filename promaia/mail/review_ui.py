@@ -481,9 +481,16 @@ ACTIONS
         except:
             terminal_height = 24  # Default fallback
         
-        # Reserve lines for header (5) + controls (2) + pagination (2) + prompt (1) = 10 lines
-        # Each draft takes ~5 lines
-        max_visible_drafts = max(1, (terminal_height - 10) // 5)
+        # Reserve lines for:
+        # - Top margin (3)
+        # - Header/progress (5)
+        # - Controls (2)
+        # - Pagination (2)
+        # - Prompt (1)
+        # - Bottom margin (2)
+        # = 15 lines total overhead
+        # Each draft takes ~5 lines (4 lines + blank line)
+        max_visible_drafts = max(1, min(5, (terminal_height - 15) // 5))
         
         # Main loop - just show list and open chat
         while True:
@@ -500,11 +507,14 @@ ACTIONS
                 # --- 2. Build Display String ---
                 # Build the entire display as a single string for atomic rendering
                 display_parts = []
-                
+
+                # Top margin (for terminals that have UI elements at top)
+                display_parts.append("\n\n\n")
+
                 # Calculate current stats
                 session_stats = self._calculate_session_stats(len(display_drafts))
                 queue_counts = self._calculate_queue_counts(display_drafts)
-                
+
                 # Header
                 display_parts.append(self._render_status_bar(session_stats, queue_counts))
                 
