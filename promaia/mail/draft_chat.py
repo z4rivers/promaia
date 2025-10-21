@@ -339,6 +339,24 @@ class DraftChatInterface:
         except KeyboardInterrupt:
             print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
             logger.info("Chat interrupted by user (Ctrl+C)")
+            # Ensure messages are saved before exiting
+            try:
+                # The chat function should have saved already, but do a final save to be certain
+                chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
+                if chat_messages:
+                    self.draft_manager.save_chat_messages(self.draft_id, chat_messages)
+                    logger.info(f"💾 Final save: {len(chat_messages)} messages on interrupt")
+            except Exception as e:
+                logger.error(f"Failed to save on interrupt: {e}")
         except EOFError:
             print_text("\n\n↩️  Returning to draft list...\n", style="cyan")
             logger.info("Chat interrupted by EOF (Ctrl+D)")
+            # Ensure messages are saved before exiting
+            try:
+                # The chat function should have saved already, but do a final save to be certain
+                chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
+                if chat_messages:
+                    self.draft_manager.save_chat_messages(self.draft_id, chat_messages)
+                    logger.info(f"💾 Final save: {len(chat_messages)} messages on EOF")
+            except Exception as e:
+                logger.error(f"Failed to save on EOF: {e}")

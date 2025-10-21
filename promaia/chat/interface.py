@@ -4013,13 +4013,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     # Process initial messages for artifacts (e.g., draft mode with existing draft)
     if initial_messages and context_state.get('artifact_manager'):
         artifact_manager = context_state['artifact_manager']
+        logger.info(f"🔍 Checking {len(initial_messages)} initial messages for artifacts to reconstruct")
         
-        for msg in initial_messages:
-            if msg['role'] == 'assistant' and '<artifact>' in msg['content']:
-                # Extract and create artifact
-                artifact_content, commentary = artifact_manager.extract_artifact_content(msg['content'])
-                artifact_id = artifact_manager.create_artifact(artifact_content)
-                logger.info(f"📦 Created artifact #{artifact_id} from initial message")
+        for i, msg in enumerate(initial_messages):
+            if msg['role'] == 'assistant':
+                logger.debug(f"  Message {i}: assistant message, checking for <artifact> tags")
+                if '<artifact>' in msg['content']:
+                    logger.info(f"  ✅ Found artifact in message {i}, reconstructing...")
+                    # Extract and create artifact
+                    artifact_content, commentary = artifact_manager.extract_artifact_content(msg['content'])
+                    artifact_id = artifact_manager.create_artifact(artifact_content)
+                    logger.info(f"📦 Created artifact #{artifact_id} from initial message {i}")
+                else:
+                    logger.debug(f"  ⚠️  No <artifact> tags in message {i}")
     
     # Display previous conversation
     # Skip generic headers if mode is active (mode will display its own)
@@ -4038,9 +4044,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # For mode with artifacts, show artifact history instead of raw messages
         artifact_manager = context_state['artifact_manager']
         if artifact_manager.artifacts:
+            logger.info(f"📝 Displaying {len(artifact_manager.artifacts)} reconstructed artifacts")
+            print_text("--- Previous Draft(s) ---", style="bold yellow")
             for artifact_id in sorted(artifact_manager.artifacts.keys()):
                 print(artifact_manager.render_artifact(artifact_id))
             print()
+        else:
+            logger.warning(f"⚠️  No artifacts to display despite {len(initial_messages)} initial messages")
 
     while True:
         try:
@@ -4064,11 +4074,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if mode:
                 mode_commands = mode.get_additional_commands()
                 user_command = user_input.strip().lower()
+                user_command_base = user_command.split()[0] if user_command else ''
 
                 # Check if it's a mode command
                 command_handled = False
                 for cmd_name, cmd_handler in mode_commands.items():
-                    if user_command == cmd_name or (cmd_name == '/archive' and user_command == '/a'):
+                    # Match exact command or command with arguments (e.g., /send matches /send 2)
+                    # Also support /a as shorthand for /archive
+                    if user_command_base == cmd_name or user_command == cmd_name or (cmd_name == '/archive' and user_command_base == '/a'):
                         command_handled = True
                         try:
                             import asyncio
@@ -4575,8 +4588,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Reset current_images for each new message (fix bug where images from previous message persist)
             current_images = []
 
-            # Auto-detect image paths in regular messages
-            cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
+            # Auto-detect image paths in regular messages (but skip if input starts with /)
+            # Commands starting with / should not be treated as image paths
+            if user_input.strip().startswith('/'):
+                cleaned_message = user_input.strip()
+                detected_paths = []
+            else:
+                cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
 
             if detected_paths:
                 try:
@@ -4632,9 +4650,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     from promaia.mail.draft_manager import DraftManager
                     draft_manager = DraftManager()
                     draft_manager.save_chat_messages(draft_id, messages)
-                    logger.debug(f"Auto-saved {len(messages)} messages after user input")
+                    logger.info(f"💾 Auto-saved {len(messages)} messages after user input for draft {draft_id}")
                 except Exception as e:
                     logger.error(f"Failed to auto-save messages after user input: {e}", exc_info=True)
+            elif draft_id:
+                logger.warning(f"⚠️  Draft mode detected but mode object is None - cannot auto-save")
 
             # Call the appropriate API
             response_content = None
@@ -4952,10 +4972,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         force_artifacts = mode and mode.should_force_artifacts()
 
                         # Check if this is an artifact update or new artifact
+                        is_artifact = False
                         if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
                             # Update existing artifact
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
+                            is_artifact = True
 
                             # Display commentary if present
                             if commentary:
@@ -4968,6 +4990,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Create new artifact (forced by mode or detected by keywords)
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             artifact_id = artifact_manager.create_artifact(artifact_content)
+                            is_artifact = True
 
                             # Display commentary if present
                             if commentary:
@@ -4980,7 +5003,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Normal response (no artifact)
                             print_markdown(response_text)
 
-                        messages.append({"role": "assistant", "content": response_text})
+                        # Save message with artifact tags if it was an artifact
+                        # This ensures artifacts can be reconstructed on reload
+                        if is_artifact and '<artifact>' not in response_text:
+                            # Wrap in artifact tags for persistence
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                            saved_content = f"<artifact>{artifact_content}</artifact>"
+                            if commentary:
+                                saved_content = f"{commentary}\n\n{saved_content}"
+                            messages.append({"role": "assistant", "content": saved_content})
+                        else:
+                            messages.append({"role": "assistant", "content": response_text})
 
                         # Auto-save messages in draft mode after each response
                         if draft_id and mode:
@@ -4988,9 +5021,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 from promaia.mail.draft_manager import DraftManager
                                 draft_manager = DraftManager()
                                 draft_manager.save_chat_messages(draft_id, messages)
-                                logger.debug(f"Auto-saved {len(messages)} messages after AI response")
+                                logger.info(f"💾 Auto-saved {len(messages)} messages after AI response for draft {draft_id}")
                             except Exception as e:
                                 logger.error(f"Failed to auto-save messages after AI response: {e}", exc_info=True)
+                        elif draft_id:
+                            logger.warning(f"⚠️  Draft mode detected but mode object is None - cannot auto-save")
 
                     else:
                         # String response (fallback for responses without token data)
@@ -5006,10 +5041,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         force_artifacts = mode and mode.should_force_artifacts()
 
                         # Check if this is an artifact update or new artifact
+                        is_artifact = False
                         if artifact_manager.should_update_artifact(last_user_message) and artifact_manager.last_artifact_id:
                             # Update existing artifact
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
                             artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
+                            is_artifact = True
 
                             # Display commentary if present
                             if commentary:
@@ -5022,6 +5059,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Create new artifact (forced by mode or detected by keywords)
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
                             artifact_id = artifact_manager.create_artifact(artifact_content)
+                            is_artifact = True
 
                             # Display commentary if present
                             if commentary:
@@ -5034,7 +5072,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             # Normal response (no artifact)
                             print_markdown(response_content)
 
-                        messages.append({"role": "assistant", "content": response_content})
+                        # Save message with artifact tags if it was an artifact
+                        # This ensures artifacts can be reconstructed on reload
+                        if is_artifact and '<artifact>' not in response_content:
+                            # Wrap in artifact tags for persistence
+                            artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
+                            saved_content = f"<artifact>{artifact_content}</artifact>"
+                            if commentary:
+                                saved_content = f"{commentary}\n\n{saved_content}"
+                            messages.append({"role": "assistant", "content": saved_content})
+                        else:
+                            messages.append({"role": "assistant", "content": response_content})
 
                         # Auto-save messages in draft mode after each response
                         if draft_id and mode:
@@ -5042,9 +5090,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 from promaia.mail.draft_manager import DraftManager
                                 draft_manager = DraftManager()
                                 draft_manager.save_chat_messages(draft_id, messages)
-                                logger.debug(f"Auto-saved {len(messages)} messages after AI response")
+                                logger.info(f"💾 Auto-saved {len(messages)} messages after AI response for draft {draft_id}")
                             except Exception as e:
                                 logger.error(f"Failed to auto-save messages after AI response: {e}", exc_info=True)
+                        elif draft_id:
+                            logger.warning(f"⚠️  Draft mode detected but mode object is None - cannot auto-save")
 
                 else:
                     print_text("Error: No response generated.", style="bold red")

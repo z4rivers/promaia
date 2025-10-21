@@ -461,6 +461,15 @@ class DraftManager:
 
     def save_chat_messages(self, draft_id: str, messages: List[Dict[str, Any]]):
         """Save chat conversation history for a draft."""
+        # Validate inputs
+        if not draft_id:
+            logger.error("❌ Cannot save chat messages: draft_id is empty")
+            raise ValueError("draft_id cannot be empty")
+        
+        if not isinstance(messages, list):
+            logger.error(f"❌ Cannot save chat messages: messages must be a list, got {type(messages)}")
+            raise TypeError(f"messages must be a list, got {type(messages)}")
+        
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -475,12 +484,13 @@ class DraftManager:
                 conn.commit()
 
                 if rows_affected > 0:
-                    logger.debug(f"✅ Saved {len(messages)} chat messages for draft {draft_id}")
+                    logger.info(f"✅ Saved {len(messages)} chat messages for draft {draft_id} ({len(messages_json)} bytes)")
                 else:
                     logger.warning(f"⚠️  No draft found with ID {draft_id} - messages not saved!")
+                    raise ValueError(f"No draft found with ID {draft_id}")
 
         except Exception as e:
-            logger.error(f"❌ Failed to save chat messages: {e}")
+            logger.error(f"❌ Failed to save chat messages for draft {draft_id}: {e}", exc_info=True)
             raise
 
     def load_chat_messages(self, draft_id: str) -> List[Dict[str, Any]]:
