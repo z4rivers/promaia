@@ -514,16 +514,23 @@ class DraftManager:
             return []
     
     def thread_has_draft(self, thread_id: str, workspace: str) -> bool:
-        """Check if a thread already has a draft."""
+        """
+        Check if a thread already has an active draft.
+
+        Only returns True for drafts with status in ('pending', 'unsure', 'skipped').
+        Returns False for 'sent' or 'archived' drafts, allowing new replies to be processed.
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
+
                 cursor.execute(
-                    "SELECT COUNT(*) FROM email_drafts WHERE thread_id = ? AND workspace = ?",
+                    """SELECT COUNT(*) FROM email_drafts
+                       WHERE thread_id = ? AND workspace = ?
+                       AND status IN ('pending', 'unsure', 'skipped')""",
                     (thread_id, workspace)
                 )
-                
+
                 count = cursor.fetchone()[0]
                 return count > 0
                 
