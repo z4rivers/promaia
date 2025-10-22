@@ -27,16 +27,18 @@ class DraftChatInterface:
     with DraftMode for specialized email drafting behavior.
     """
     
-    def __init__(self, draft_id: str, workspace: str):
+    def __init__(self, draft_id: str, workspace: str, force_load_context: bool = False):
         """
         Initialize draft chat interface.
-        
+
         Args:
             draft_id: Draft ID to work with
             workspace: Workspace name
+            force_load_context: If True, always load full context (used when -dc flag is passed)
         """
         self.draft_id = draft_id
         self.workspace = workspace
+        self.force_load_context = force_load_context
         self.draft_manager = DraftManager()
         self.context_builder = ResponseContextBuilder()
     
@@ -257,16 +259,11 @@ class DraftChatInterface:
                 print()
                 print_text("📜 Tip: Scroll up ↑ to see earlier messages in the thread", style="dim")
             print()
-            
-            # Load message context (vector search results)
-            message_context = await self._load_message_context(draft)
-            
-            logger.info(f"Loaded message context: {len(message_context)} databases")
-            
+
             # Check draft status
             draft_status = draft.get('status', 'pending')
             draft_body = draft.get('draft_body', '')
-            
+
             if draft_status == 'skipped':
                 # Skipped draft - show AI reasoning
                 print_text("⏭️  SKIPPED - No response needed", style="bold yellow")
@@ -277,6 +274,43 @@ class DraftChatInterface:
                 print()
                 print_text("💬 Want to reply anyway? Just start chatting to create a draft.", style="cyan")
                 print()
+
+            # Smart context loading based on draft status and force_load_context flag
+            load_full_context = True  # Default for pending drafts
+
+            if draft_status == 'skipped' and not self.force_load_context:
+                # For skipped drafts without -dc flag, ask user if they want full context
+                try:
+                    response = input("💡 Load additional context from your knowledge base? (y/N): ").strip().lower()
+                    load_full_context = response in ['y', 'yes']
+                    print()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    load_full_context = False
+
+            # Load message context based on user choice or draft status
+            if load_full_context:
+                message_context = await self._load_message_context(draft)
+                logger.info(f"Loaded message context: {len(message_context)} databases")
+            else:
+                # Minimal context - just the email thread itself
+                message_context = {
+                    'email_thread': [{
+                        'title': f"Email Thread: {draft.get('inbound_subject', 'No Subject')}",
+                        'content': draft.get('inbound_body', ''),
+                        'metadata': {
+                            'from': draft.get('inbound_from', ''),
+                            'to': draft.get('inbound_to', ''),
+                            'cc': draft.get('inbound_cc', ''),
+                            'date': draft.get('inbound_date', ''),
+                            'subject': draft.get('inbound_subject', ''),
+                            'message_count': draft.get('message_count', 1),
+                        },
+                        'database': 'email_thread',
+                    }]
+                }
+                print_text("📧 Proceeding with thread context only (no additional knowledge base context)\n", style="dim")
+                logger.info("Using minimal context (thread only, no vector search)")
             
             # Create DraftMode
             from promaia.chat.modes import DraftMode

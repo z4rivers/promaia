@@ -162,15 +162,15 @@ class DraftMode(ChatMode):
 
     def should_force_artifacts(self) -> bool:
         """
-        Force all responses to be artifacts in draft mode.
+        Allow AI to choose when to use artifacts in draft mode.
 
-        All AI responses are email drafts that need to be available
-        for the /send command.
+        The AI should use <artifact> tags when composing email drafts,
+        but use regular messages for clarifications and questions.
 
         Returns:
-            True - all responses are artifacts
+            False - let AI decide based on system prompt instructions
         """
-        return True
+        return False
     
     def get_welcome_message(self, context_state: Dict[str, Any]) -> Optional[str]:
         """

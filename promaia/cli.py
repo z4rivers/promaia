@@ -2899,6 +2899,12 @@ def main():
         dest="mcp_servers",
         help="Include MCP (Model Context Protocol) servers in chat context. Specify server names from mcp_servers.json. Can be used multiple times. Example: maia chat -mcp filesystem -mcp git"
     )
+    chat_parser.add_argument(
+        "-dc", "--draft-context",
+        action="store_true",
+        dest="draft_context",
+        help="Enable draft context in draft chat (includes email thread and related context)"
+    )
     chat_parser.set_defaults(func=chat_run)
     
     # Add 'r' alias for chat with recents

@@ -963,7 +963,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("-b", "--browse", nargs="*", dest="browse")
             parser.add_argument("-nl", "--natural-language", nargs="*", dest="natural_language")
             parser.add_argument("-mcp", action="append", dest="mcp_servers")
-            
+            parser.add_argument("-dc", "--draft-context", action="store_true", dest="draft_context")
+
             parsed_args, unknown = parser.parse_known_args(args_list)
             
             # Extract parsed values
@@ -2081,7 +2082,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     dest="mcp_servers",
                     help="Include MCP servers in chat context"
                 )
-                
+                parser.add_argument(
+                    "-dc", "--draft-context",
+                    action="store_true",
+                    dest="draft_context",
+                    help="Enable draft context in draft chat"
+                )
+
                 # Parse the arguments
                 parsed_args = parser.parse_args(args_list)
                 

@@ -53,12 +53,14 @@ async def handle_mail(args):
                 return
             
             # Launch draft chat directly
-            chat = DraftChatInterface(draft_id=args.draft, workspace=workspace)
-            
-            # Note: message_context is True by default in DraftChatInterface
-            # The -mc flag is just to explicitly enable it in the command string
-            # It's always enabled unless explicitly disabled via /e in the chat
-            
+            # Pass draft_context flag for smart context loading (especially for skipped drafts)
+            draft_context_enabled = getattr(args, 'draft_context', False)
+            chat = DraftChatInterface(
+                draft_id=args.draft,
+                workspace=workspace,
+                force_load_context=draft_context_enabled
+            )
+
             await chat.run_chat_loop()
             return
         
@@ -70,14 +72,17 @@ async def handle_mail(args):
         
         if explicit_workspaces:
             workspaces = args.workspaces
+            print_text(f"🟣 what is {workspaces}")
+
         else:
-            # Default to default workspace
-            default_workspace = workspace_manager.get_default_workspace()
-            if not default_workspace:
-                print_text("❌ No default workspace configured", style="red")
-                print_text("Use -ws to specify a workspace", style="dim")
+            # Process all workspaces
+            workspace_list = workspace_manager.list_workspaces()
+            print_text(f"🟠 what is {workspace_list}")
+            if not workspace_list:
+                print_text("❌ No workspaces configured", style="red")
+                print_text("Use maia workspace add to add workspace", style="dim")
                 return
-            workspaces = [default_workspace]
+            workspaces = workspace_list
         
         # Validate workspaces
         for workspace in workspaces:
@@ -181,10 +186,10 @@ def add_mail_commands(subparsers):
     )
     
     mail_parser.add_argument(
-        '-mc', '--message-context',
+        '-dc', '--draft-context',
         action='store_true',
-        dest='message_context',
-        help='Enable message context in draft chat (includes email thread and related context)'
+        dest='draft_context',
+        help='Enable draft context in draft chat (includes email thread and related context)'
     )
     
     mail_parser.add_argument(

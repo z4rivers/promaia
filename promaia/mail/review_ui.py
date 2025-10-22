@@ -419,23 +419,86 @@ ACTIONS
             context_sources = context_data.get('documents', [])
         except:
             return "\n❌ No context sources available\n"
-        
+
         if not context_sources:
             return "\n📭 No context sources were used for this draft\n"
-        
+
         output = [
             "\nContext Sources Used for Draft Generation\n"
         ]
-        
+
         for idx, source in enumerate(context_sources, 1):
             output.append(f"[{idx}] {source.get('title', 'Untitled')}")
             output.append(f"    Database: {source.get('database', 'unknown')} | Relevance: {source.get('similarity', 0):.0%}")
             snippet = source.get('snippet', '')[:100]
             output.append(f"    Preview: {snippet}...")
             output.append("")
-        
+
         output.append("\n[b] Back  [q] Quit")
         return '\n'.join(output)
+
+    def _show_queue_cleared_celebration(self):
+        """Show celebration message when queue is completely cleared."""
+        import random
+
+        # Clear screen for celebration
+        self._clear_screen_and_home()
+
+        # Collection of fun celebration messages
+        celebrations = [
+            {
+                "emoji": "🎉🎊✨",
+                "title": "INBOX ZERO ACHIEVED!",
+                "message": "You absolute legend! Every draft reviewed, every email handled.",
+                "tagline": "Time to celebrate with a well-deserved break! ☕️"
+            },
+            {
+                "emoji": "🏆🌟💫",
+                "title": "QUEUE CONQUERED!",
+                "message": "Not a single draft left standing. You're on fire!",
+                "tagline": "Your inbox management skills are unmatched! 🚀"
+            },
+            {
+                "emoji": "✅🎯🔥",
+                "title": "ALL CLEAR!",
+                "message": "Zero drafts pending. Zero stress. One hundred percent awesome.",
+                "tagline": "Enjoy the zen of an empty queue! 🧘"
+            },
+            {
+                "emoji": "🎪🎨🌈",
+                "title": "DRAFT-FREE ZONE!",
+                "message": "Every email responded to, every thread handled. Perfection!",
+                "tagline": "You've earned this moment of peace! ✨"
+            }
+        ]
+
+        celebration = random.choice(celebrations)
+
+        # Stats summary
+        total_resolved = self.session_sent + self.session_archived
+
+        print()
+        print()
+        print_text("═" * 70, style="bold cyan")
+        print()
+        print_text(f"  {celebration['emoji']}", style="bold yellow")
+        print_text(f"  {celebration['title']}", style="bold green")
+        print()
+        print_text(f"  {celebration['message']}", style="cyan")
+        print()
+        print_text("  " + "─" * 66, style="dim")
+        print()
+        print_text(f"  📊 Session Stats:", style="bold")
+        print_text(f"     • Started with: {self.session_start_count} drafts", style="dim")
+        print_text(f"     • Sent: ✅ {self.session_sent}", style="green")
+        print_text(f"     • Archived: 🗄️ {self.session_archived}", style="blue")
+        print_text(f"     • Total cleared: {total_resolved} 🎯", style="bold green")
+        print()
+        print_text(f"  {celebration['tagline']}", style="yellow")
+        print()
+        print_text("═" * 70, style="bold cyan")
+        print()
+        print()
     
     async def launch_review(self, workspaces: List[str], start_in_history: bool = False):
         """
@@ -598,7 +661,12 @@ ACTIONS
                     # Reload drafts after chat (status may have changed)
                     all_drafts = self._load_drafts(workspaces, include_resolved=True)
                     display_drafts = self._filter_queue_drafts(all_drafts)
-                    
+
+                    # Check if queue is now empty (all cleared!)
+                    if len(display_drafts) == 0 and self.session_start_count > 0:
+                        self._show_queue_cleared_celebration()
+                        return
+
                     # Adjust selection if draft was removed from queue
                     if current_selection >= len(display_drafts):
                         current_selection = max(0, len(display_drafts) - 1)
@@ -612,7 +680,12 @@ ACTIONS
                         # Reload drafts after archiving (will remove from queue)
                         all_drafts = self._load_drafts(workspaces, include_resolved=True)
                         display_drafts = self._filter_queue_drafts(all_drafts)
-                        
+
+                        # Check if queue is now empty (all cleared!)
+                        if len(display_drafts) == 0 and self.session_start_count > 0:
+                            self._show_queue_cleared_celebration()
+                            return
+
                         # Adjust selection if needed
                         if current_selection >= len(display_drafts):
                             current_selection = max(0, len(display_drafts) - 1)
