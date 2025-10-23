@@ -72,12 +72,10 @@ async def handle_mail(args):
         
         if explicit_workspaces:
             workspaces = args.workspaces
-            print_text(f"🟣 what is {workspaces}")
 
         else:
             # Process all workspaces
             workspace_list = workspace_manager.list_workspaces()
-            print_text(f"🟠 what is {workspace_list}")
             if not workspace_list:
                 print_text("❌ No workspaces configured", style="red")
                 print_text("Use maia workspace add to add workspace", style="dim")
@@ -120,19 +118,19 @@ async def handle_mail(args):
         
         # Process if requested
         if hasattr(args, 'process') and args.process:
-            print_text("🔄 Processing new emails from last 72 hours...", style="cyan")
+            print_text("🔄 Processing new emails since last sync...", style="cyan")
             print()
-            
+
             processor = EmailProcessor()
-            count = await processor.process_new_emails(workspaces, hours_back=72)
-            
+            count = await processor.process_new_emails(workspaces)
+
             print()
             if count > 0:
                 print_text(f"✅ Generated {count} draft(s)", style="green")
             else:
                 print_text("✅ No new emails requiring response", style="green")
             print()
-            
+
             # If only processing (no workspace specified), exit here to preserve logs
             if not explicit_workspaces:
                 print_text("💡 Use 'maia mail -ws [workspace]' to review drafts", style="dim")
@@ -202,7 +200,7 @@ def add_mail_commands(subparsers):
     mail_parser.add_argument(
         '-p', '--process',
         action='store_true',
-        help='Process new emails from last 72 hours before reviewing (generates drafts for new threads)'
+        help='Process new emails since last sync before reviewing (generates drafts for new threads)'
     )
     
     mail_parser.add_argument(

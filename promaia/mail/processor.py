@@ -31,68 +31,101 @@ class EmailProcessor:
         self.context_builder = ResponseContextBuilder()
         self.response_generator = ResponseGenerator()
     
-    async def process_new_emails(self, workspaces: List[str], hours_back: int = 2) -> int:
+    async def process_new_emails(self, workspaces: List[str], hours_back: int = 72) -> int:
         """
-        Process new emails for specified workspaces.
-        
+        Process new emails for specified workspaces since last sync.
+
         Args:
             workspaces: List of workspace names
-            hours_back: How many hours back to check for new emails
-            
+            hours_back: Fallback hours to check if never synced before (default: 72)
+
         Returns:
             Number of drafts generated
         """
         total_drafts = 0
-        
+        sync_start_time = datetime.now(timezone.utc)
+
         for workspace in workspaces:
             logger.info(f"📧 Processing emails for workspace: {workspace}")
-            
+
             try:
-                drafts_count = await self._process_workspace(workspace, hours_back)
+                # Get last sync time for this workspace
+                last_sync = self.draft_manager.get_last_sync_time(workspace)
+
+                if last_sync:
+                    logger.info(f"📅 Last sync: {last_sync.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                else:
+                    logger.info(f"📅 First sync - checking last {hours_back} hours")
+                    last_sync = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+
+                drafts_count = await self._process_workspace(workspace, last_sync)
                 total_drafts += drafts_count
+
+                # Update last sync time after successful processing
+                self.draft_manager.update_last_sync_time(workspace, sync_start_time)
+
                 logger.info(f"✅ Generated {drafts_count} draft(s) for {workspace}")
-                
+
             except Exception as e:
                 logger.error(f"❌ Failed to process workspace {workspace}: {e}")
                 continue
-        
+
         logger.info(f"🎉 Total drafts generated: {total_drafts}")
         return total_drafts
     
-    async def _process_workspace(self, workspace: str, hours_back: int) -> int:
-        """Process emails for a single workspace."""
+    async def _process_workspace(self, workspace: str, start_date: datetime) -> int:
+        """
+        Process emails for a single workspace since start_date.
+
+        Args:
+            workspace: Workspace name
+            start_date: Process emails received after this time
+
+        Returns:
+            Number of drafts created
+        """
         from promaia.config.databases import get_database_manager
-        
+
         # Get Gmail databases for this workspace
         db_manager = get_database_manager()
         gmail_databases = [
             db for db in db_manager.get_workspace_databases(workspace)
             if db.source_type == "gmail"
         ]
-        
+
         if not gmail_databases:
             logger.warning(f"⚠️  No Gmail databases found for workspace {workspace}")
             return 0
-        
+
         total_drafts = 0
-        
+
         for gmail_db in gmail_databases:
             try:
-                drafts = await self._process_gmail_database(gmail_db, workspace, hours_back)
+                drafts = await self._process_gmail_database(gmail_db, workspace, start_date)
                 total_drafts += drafts
             except Exception as e:
                 logger.error(f"❌ Failed to process Gmail database {gmail_db.get_qualified_name()}: {e}")
                 continue
-        
+
         return total_drafts
     
-    async def _process_gmail_database(self, db_config, workspace: str, hours_back: int) -> int:
-        """Process a single Gmail database."""
+    async def _process_gmail_database(self, db_config, workspace: str, start_date: datetime) -> int:
+        """
+        Process a single Gmail database since start_date.
+
+        Args:
+            db_config: Database configuration
+            workspace: Workspace name
+            start_date: Process emails received after this time
+
+        Returns:
+            Number of drafts created
+        """
         from promaia.connectors.gmail_connector import GmailConnector
         from promaia.connectors.base import DateRangeFilter
-        
-        logger.info(f"📬 Checking {db_config.get_qualified_name()} for new emails...")
-        
+
+        logger.info(f"📬 Checking {db_config.get_qualified_name()} for new emails since {start_date.strftime('%Y-%m-%d %H:%M:%S UTC')}...")
+
         # Create connector with full_thread mode for maia mail
         # (Users need full context to review and refine draft responses)
         connector = GmailConnector({
@@ -100,11 +133,10 @@ class EmailProcessor:
             "workspace": workspace,
             "gmail_content_mode": "full_thread"  # Get complete conversation history
         })
-        
+
         await connector.connect()
-        
-        # Query recent emails (last N hours)
-        start_date = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+
+        # Query emails since start_date
         date_filter = DateRangeFilter(
             property_name="date",
             start_date=start_date
@@ -136,27 +168,32 @@ class EmailProcessor:
         
         # Process each thread
         drafts_created = 0
-        
+
         for thread in inbound_threads:
             try:
-                # Check if we already have a draft for this thread
+                # Check if we already have a draft for this EXACT message
+                # This provides true idempotence - won't re-process same message
+                # But WILL process new replies to existing threads
                 thread_id = thread.get('thread_id')
-                if self.draft_manager.thread_has_draft(thread_id, workspace):
-                    logger.debug(f"Skipping thread {thread_id} - draft already exists")
+                message_ids = thread.get('message_ids', [])
+                last_message_id = message_ids[-1] if message_ids else thread_id
+
+                if self.draft_manager.message_has_draft(thread_id, last_message_id, workspace):
+                    logger.debug(f"Skipping message {last_message_id} - already processed")
                     continue
-                
+
                 # Process thread
                 draft_created = await self._process_thread(thread, workspace, db_config.database_id)
                 if draft_created:
                     drafts_created += 1
-                
+
                 # Small delay to avoid overwhelming API
                 await asyncio.sleep(0.5)
-                
+
             except Exception as e:
                 logger.error(f"❌ Failed to process thread {thread.get('thread_id')}: {e}")
                 continue
-        
+
         return drafts_created
     
     async def _process_thread(self, thread: Dict[str, Any], workspace: str, email: str) -> bool:
@@ -223,10 +260,49 @@ class EmailProcessor:
         logger.debug("  → Building context...")
         context = await self.context_builder.build_context(thread, workspace)
         logger.info(f"  → Found {context.total_sources} relevant sources")
-        
+
+        # Build structured context for EmailPromptBuilder (same format as draft_chat)
+        # Separate email vs non-email documents
+        email_docs = []
+        non_email_docs = []
+
+        for doc in context.relevant_docs:
+            db_name = doc.get('database', 'unknown')
+
+            # Create page dict
+            page = {
+                'title': doc.get('title', 'Untitled'),
+                'content': doc.get('content_snippet', ''),
+                'metadata': doc.get('metadata', {}),
+                'database': db_name,
+                'similarity': doc.get('similarity', 0),
+            }
+
+            # Separate by type
+            if db_name == 'gmail' or db_name.endswith('.gmail'):
+                email_docs.append(page)
+            else:
+                non_email_docs.append(page)
+
+        # Build structured context dict
+        structured_context = {
+            'thread_email': {
+                'from': thread.get('from', ''),
+                'to': thread.get('to', ''),
+                'cc': thread.get('cc', ''),
+                'date': thread.get('date', ''),
+                'subject': subject,
+                'body': thread.get('conversation_body', ''),
+            },
+            'thread_conversation': thread.get('conversation_body', ''),
+            'message_count': thread.get('message_count', 1),
+            'non_email_docs': non_email_docs,
+            'email_docs': email_docs,
+        }
+
         # Step 3: Generate response (for both "pending" and "unsure")
         logger.debug("  → Generating response...")
-        response = await self.response_generator.generate_response(thread, context)
+        response = await self.response_generator.generate_response(thread, workspace, structured_context)
         logger.info(f"  → Generated {len(response['body'].split())} word response")
         
         # Step 4: Save draft
@@ -440,10 +516,49 @@ class EmailProcessor:
         logger.debug("  → Rebuilding context...")
         context = await self.context_builder.build_context(thread, workspace)
         logger.info(f"  → Found {context.total_sources} relevant sources")
-        
+
+        # Build structured context for EmailPromptBuilder (same format as draft_chat)
+        # Separate email vs non-email documents
+        email_docs = []
+        non_email_docs = []
+
+        for doc in context.relevant_docs:
+            db_name = doc.get('database', 'unknown')
+
+            # Create page dict
+            page = {
+                'title': doc.get('title', 'Untitled'),
+                'content': doc.get('content_snippet', ''),
+                'metadata': doc.get('metadata', {}),
+                'database': db_name,
+                'similarity': doc.get('similarity', 0),
+            }
+
+            # Separate by type
+            if db_name == 'gmail' or db_name.endswith('.gmail'):
+                email_docs.append(page)
+            else:
+                non_email_docs.append(page)
+
+        # Build structured context dict
+        structured_context = {
+            'thread_email': {
+                'from': thread.get('from', ''),
+                'to': thread.get('to', ''),
+                'cc': thread.get('cc', ''),
+                'date': thread.get('date', ''),
+                'subject': subject,
+                'body': thread.get('conversation_body', ''),
+            },
+            'thread_conversation': thread.get('conversation_body', ''),
+            'message_count': thread.get('message_count', 1),
+            'non_email_docs': non_email_docs,
+            'email_docs': email_docs,
+        }
+
         # Regenerate response
         logger.debug("  → Regenerating response...")
-        response = await self.response_generator.generate_response(thread, context)
+        response = await self.response_generator.generate_response(thread, workspace, structured_context)
         logger.info(f"  → Generated {len(response['body'].split())} word response")
         
         # Update draft

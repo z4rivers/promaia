@@ -22,11 +22,21 @@ class DraftManager:
         self._ensure_table()
     
     def _ensure_table(self):
-        """Create email_drafts table if it doesn't exist."""
+        """Create email_drafts and mail_sync_state tables if they don't exist."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
+
+                # Create mail_sync_state table for tracking last sync times
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS mail_sync_state (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace TEXT UNIQUE NOT NULL,
+                        last_sync_time TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS email_drafts (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -427,6 +437,25 @@ class DraftManager:
         except sqlite3.Error as e:
             logger.error(f"Database error updating draft body: {e}")
 
+    def update_draft_body_and_subject(self, draft_id: str, draft_body: str, draft_subject: Optional[str] = None):
+        """Update the body and subject of a draft."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if draft_subject is not None:
+                    cursor.execute(
+                        "UPDATE email_drafts SET draft_body = ?, draft_subject = ? WHERE draft_id = ?",
+                        (draft_body, draft_subject, draft_id)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE email_drafts SET draft_body = ? WHERE draft_id = ?",
+                        (draft_body, draft_id)
+                    )
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating draft body and subject: {e}")
+
     def update_inbound_body(self, draft_id: str, new_body: str):
         """Update the inbound_body of a draft."""
         try:
@@ -519,6 +548,9 @@ class DraftManager:
 
         Only returns True for drafts with status in ('pending', 'unsure', 'skipped').
         Returns False for 'sent' or 'archived' drafts, allowing new replies to be processed.
+
+        DEPRECATED: Use message_has_draft() instead for better idempotence.
+        This method kept for backward compatibility.
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -533,7 +565,47 @@ class DraftManager:
 
                 count = cursor.fetchone()[0]
                 return count > 0
-                
+
+        except Exception as e:
+            logger.error(f"❌ Failed to check for existing draft: {e}")
+            return False
+
+    def message_has_draft(self, thread_id: str, message_id: str, workspace: str) -> bool:
+        """
+        Check if a specific message already has a draft (any status).
+
+        This provides true idempotence by checking the exact message, not just the thread.
+        Returns True if this EXACT message has been processed before (any status).
+        Returns False only for genuinely new messages.
+
+        Args:
+            thread_id: Gmail thread ID
+            message_id: Gmail message ID (last message in thread)
+            workspace: Workspace name
+
+        Returns:
+            True if this exact message already has a draft (prevents duplicates)
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check for ANY draft with this exact message_id
+                # This prevents re-processing the same message multiple times
+                cursor.execute(
+                    """SELECT COUNT(*) FROM email_drafts
+                       WHERE thread_id = ? AND message_id = ? AND workspace = ?""",
+                    (thread_id, message_id, workspace)
+                )
+
+                count = cursor.fetchone()[0]
+                exists = count > 0
+
+                if exists:
+                    logger.debug(f"Message {message_id} already has draft - skipping duplicate")
+
+                return exists
+
         except Exception as e:
             logger.error(f"❌ Failed to check for existing draft: {e}")
             return False
@@ -675,5 +747,66 @@ class DraftManager:
                 
         except Exception as e:
             logger.error(f"❌ Failed to update draft after refresh: {e}")
+            raise
+
+    def get_last_sync_time(self, workspace: str) -> Optional[datetime]:
+        """
+        Get the last sync time for a workspace.
+
+        Args:
+            workspace: Workspace name
+
+        Returns:
+            Last sync time as datetime, or None if never synced
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    "SELECT last_sync_time FROM mail_sync_state WHERE workspace = ?",
+                    (workspace,)
+                )
+
+                row = cursor.fetchone()
+                if row:
+                    # Parse ISO format datetime string
+                    return datetime.fromisoformat(row[0].replace('Z', '+00:00'))
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ Failed to get last sync time for {workspace}: {e}")
+            return None
+
+    def update_last_sync_time(self, workspace: str, sync_time: Optional[datetime] = None):
+        """
+        Update the last sync time for a workspace.
+
+        Args:
+            workspace: Workspace name
+            sync_time: Sync time to record (defaults to now)
+        """
+        if sync_time is None:
+            sync_time = datetime.now(timezone.utc)
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Use INSERT OR REPLACE to handle both new and existing records
+                cursor.execute("""
+                    INSERT OR REPLACE INTO mail_sync_state (workspace, last_sync_time, updated_at)
+                    VALUES (?, ?, ?)
+                """, (
+                    workspace,
+                    sync_time.isoformat(),
+                    datetime.now(timezone.utc).isoformat()
+                ))
+
+                conn.commit()
+                logger.debug(f"✅ Updated last sync time for {workspace} to {sync_time.isoformat()}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to update last sync time for {workspace}: {e}")
             raise
 

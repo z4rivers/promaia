@@ -17,29 +17,30 @@ logger = logging.getLogger(__name__)
 
 class ResponseGenerator:
     """Generates email responses using AI with learning."""
-    
-    RESPONSE_PROMPT_TEMPLATE = """{user_persona}
 
-You are writing an email response based on the following context.
+    # DEPRECATED: Old prompt template, replaced by EmailPromptBuilder for consistency
+    # RESPONSE_PROMPT_TEMPLATE = """{user_persona}
+    #
+    # You are writing an email response based on the following context.
+    #
+    # {learned_patterns}
+    #
+    # === THREAD HISTORY ===
+    # {thread_history}
+    #
+    # {context_documents}
+    #
+    # === LATEST MESSAGE TO RESPOND TO ===
+    # From: {from_addr}
+    # Subject: {subject}
+    # Date: {date}"""
 
-{learned_patterns}
-
-=== THREAD HISTORY ===
-{thread_history}
-
-{context_documents}
-
-=== LATEST MESSAGE TO RESPOND TO ===
-From: {from_addr}
-Subject: {subject}
-Date: {date}"""
-    
     def __init__(self):
         """Initialize response generator."""
         self.learning_systems = {}  # Cache learning systems by workspace
         self.ai_client = None
         self.model_type = None
-        self.user_persona = self._load_user_persona()
+        # Note: user_persona loading moved to EmailPromptBuilder
         self.refinement_prompt_template = self._load_refinement_prompt()
     
     def _get_learning_system(self, workspace: str) -> EmailResponseLearningSystem:
@@ -48,31 +49,7 @@ Date: {date}"""
             self.learning_systems[workspace] = EmailResponseLearningSystem(workspace=workspace)
         return self.learning_systems[workspace]
 
-    def _load_user_persona(self):
-        """Loads the user's persona from the prompt file and fills in date/time variables."""
-        prompt_path = "prompts/maia_mail_prompt.md"
-        default_persona = "You are an AI assistant writing an email on behalf of the user. Your goal is to be helpful, professional, and concise."
-        
-        if not os.path.exists(prompt_path):
-            logger.warning(f"'{prompt_path}' not found. Using default persona.")
-            return default_persona
-        
-        try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                persona = f.read()
-                
-                # Fill in date/time variables
-                now = now_utc()
-                persona = persona.format(
-                    today_date=now.strftime("%B %d, %Y"),
-                    current_time=now.strftime("%I:%M %p %Z")
-                )
-                
-                logger.info(f"Loaded user persona from '{prompt_path}'")
-                return persona
-        except Exception as e:
-            logger.error(f"Failed to load persona from '{prompt_path}': {e}")
-            return default_persona
+    # REMOVED: _load_user_persona() - now handled by EmailPromptBuilder
     
     def _load_refinement_prompt(self) -> str:
         """Load refinement prompt template from file."""
@@ -271,50 +248,46 @@ Date: {date}"""
     async def generate_response(
         self,
         email_thread: Dict[str, Any],
-        context: ResponseContext,
+        workspace: str,
+        structured_context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Generate email response with learned patterns.
-        
+        Generate email response using EmailPromptBuilder for consistency.
+
         Args:
             email_thread: Email thread data
-            context: ResponseContext with thread history and relevant docs
-            
+            workspace: Workspace name
+            structured_context: Structured context dict with:
+                - thread_email: Dict with from/to/cc/date/subject/body
+                - thread_conversation: Full thread if multi-message
+                - message_count: Number of messages in thread
+                - non_email_docs: List of relevant non-email documents
+                - email_docs: List of relevant email threads
+
         Returns:
             Dict with 'body' (response text), 'subject', 'model' keys
         """
         try:
-            # Get learned patterns for prompt (workspace-specific)
-            learning_system = self._get_learning_system(context.workspace)
-            learned_patterns = learning_system.get_patterns_for_prompt(limit=10)
-            
             # Extract email details
             from_addr = email_thread.get('from', 'Unknown')
             subject = email_thread.get('subject', 'No Subject')
-            date = email_thread.get('date', 'Unknown')
-            
-            # Build full prompt
-            prompt = self.RESPONSE_PROMPT_TEMPLATE.format(
-                user_persona=self.user_persona,
-                learned_patterns=learned_patterns,
-                thread_history=context.thread_history,
-                context_documents=context.relevant_docs_text,
-                from_addr=from_addr,
-                subject=subject,
-                date=date
-            )
-            
+
+            # Build prompt using shared EmailPromptBuilder for consistency
+            from promaia.mail.prompt_builder import EmailPromptBuilder
+            builder = EmailPromptBuilder(workspace=workspace)
+            prompt = builder.build_prompt(structured_context)
+
             # Get AI client (this sets self.model_type)
             client = self._get_ai_client()
-            
+
             # Save prompt for debugging with full metadata (after getting client so model_type is set)
             self._save_mail_context_log(
-                prompt, 
+                prompt,
                 "initial_draft",
                 subject=subject,
                 from_addr=from_addr,
-                workspace=context.workspace,
-                context=context,
+                workspace=workspace,
+                context=None,  # No longer using ResponseContext
                 model_type=self.model_type
             )
             

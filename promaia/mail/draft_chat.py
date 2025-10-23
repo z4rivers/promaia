@@ -41,6 +41,10 @@ class DraftChatInterface:
         self.force_load_context = force_load_context
         self.draft_manager = DraftManager()
         self.context_builder = ResponseContextBuilder()
+
+        # Initialize response generator for -dc support
+        from promaia.mail.response_generator import ResponseGenerator
+        self.response_generator = ResponseGenerator()
     
     def _get_user_email(self) -> Optional[str]:
         """Get user's email from workspace gmail database."""
@@ -130,12 +134,16 @@ class DraftChatInterface:
         
         return '\n'.join(cleaned_lines).strip()
     
-    async def _load_message_context(self, draft: Dict[str, Any]) -> Dict[str, list]:
+    async def _load_message_context(self, draft: Dict[str, Any]) -> Dict[str, Any]:
         """
         Load context for the email thread.
 
-        Returns message context formatted for chat (database_name -> pages).
-        Includes BOTH the actual email thread AND vector search results.
+        Returns structured context dict with separate sections:
+        - thread_email: The email being replied to
+        - thread_conversation: Full thread if multi-message
+        - non_email_docs: Vector search results from non-email databases
+        - email_docs: Vector search results from email databases
+        - draft_data: Raw draft data for custom prompt building
         """
         print_text("\n🔍 Loading message context...", style="cyan")
 
@@ -155,50 +163,44 @@ class DraftChatInterface:
 
         print_text(f"✅ Loaded {context.total_sources} sources from your knowledge base\n", style="green")
 
-        # Convert ResponseContext to the format expected by chat
-        # (database_name -> list of page dicts)
-        message_context = {}
+        # Separate email vs non-email documents
+        email_docs = []
+        non_email_docs = []
 
-        # IMPORTANT: Add the actual email thread as context
-        # This ensures the AI can see the email being replied to
-        message_context['email_thread'] = [{
-            'title': f"Email Thread: {draft.get('inbound_subject', 'No Subject')}",
-            'content': draft.get('inbound_body', ''),
-            'metadata': {
+        for doc in context.relevant_docs:
+            db_name = doc.get('database', 'unknown')
+
+            # Create page dict
+            page = {
+                'title': doc.get('title', 'Untitled'),
+                'content': doc.get('content_snippet', ''),
+                'metadata': doc.get('metadata', {}),
+                'database': db_name,
+                'similarity': doc.get('similarity', 0),
+            }
+
+            # Separate by type
+            if db_name == 'gmail' or db_name.endswith('.gmail'):
+                email_docs.append(page)
+            else:
+                non_email_docs.append(page)
+
+        # Return structured context for custom prompt building
+        return {
+            'thread_email': {
                 'from': draft.get('inbound_from', ''),
                 'to': draft.get('inbound_to', ''),
                 'cc': draft.get('inbound_cc', ''),
                 'date': draft.get('inbound_date', ''),
                 'subject': draft.get('inbound_subject', ''),
-                'message_count': draft.get('message_count', 1),
+                'body': draft.get('inbound_body', ''),
             },
-            'database': 'email_thread',
-        }]
-
-        # Add vector search results from knowledge base
-        for doc in context.relevant_docs:
-            db_name = doc.get('database', 'unknown')
-
-            # Ensure consistent database naming with workspace prefix
-            if db_name == 'gmail':
-                db_name = f"{self.workspace}.gmail"
-            elif '.' not in db_name and db_name not in ['journal', 'stories', 'cpj', 'epics']:
-                # Add workspace prefix if missing for other databases
-                db_name = f"{self.workspace}.{db_name}"
-
-            if db_name not in message_context:
-                message_context[db_name] = []
-
-            # Convert doc format to page format
-            page = {
-                'title': doc.get('title', 'Untitled'),
-                'content': doc.get('content', ''),
-                'metadata': doc.get('metadata', {}),
-                'database': db_name,
-            }
-            message_context[db_name].append(page)
-
-        return message_context
+            'thread_conversation': draft.get('thread_context', ''),
+            'message_count': draft.get('message_count', 1),
+            'non_email_docs': non_email_docs,
+            'email_docs': email_docs,
+            'draft_data': draft,
+        }
     
     async def run_chat_loop(self):
         """
@@ -264,100 +266,209 @@ class DraftChatInterface:
             draft_status = draft.get('status', 'pending')
             draft_body = draft.get('draft_body', '')
 
-            if draft_status == 'skipped':
-                # Skipped draft - show AI reasoning
+            # Handle skipped drafts with 3-option prompt
+            if draft_status == 'skipped' and not self.force_load_context:
+                # Show AI reasoning
                 print_text("⏭️  SKIPPED - No response needed", style="bold yellow")
                 print()
                 print_text("AI Assessment:", style="dim")
                 if draft.get('classification_reasoning'):
                     print_text(f"  {draft.get('classification_reasoning')}", style="dim")
                 print()
-                print_text("💬 Want to reply anyway? Just start chatting to create a draft.", style="cyan")
+
+                # Show 4 options
+                print_text("Options:", style="cyan")
+                print_text("  ENTER - Load context and generate draft", style="cyan")
+                print_text("  a - Archive and return to queue", style="cyan")
+                print_text("  c - Continue with thread only (use /e -dc later to add context)", style="cyan")
+                print_text("  q - Return to queue without archiving", style="cyan")
                 print()
 
-            # Smart context loading based on draft status and force_load_context flag
-            load_full_context = True  # Default for pending drafts
-
-            if draft_status == 'skipped' and not self.force_load_context:
-                # For skipped drafts without -dc flag, ask user if they want full context
+                # Capture single keypress
                 try:
-                    response = input("💡 Load additional context from your knowledge base? (y/N): ").strip().lower()
-                    load_full_context = response in ['y', 'yes']
-                    print()
+                    import sys
+                    import tty
+                    import termios
+
+                    # Get single keypress without requiring Enter
+                    fd = sys.stdin.fileno()
+                    old_settings = termios.tcgetattr(fd)
+                    try:
+                        tty.setraw(fd)
+                        key = sys.stdin.read(1)
+                    finally:
+                        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+                    # Handle ENTER key (newline/return)
+                    if key in ['\r', '\n']:
+                        choice = ''
+                        print()  # Move to next line after keypress
+                    else:
+                        choice = key.lower()
+                        print(choice)  # Echo the key
+                        print()
+
                 except (EOFError, KeyboardInterrupt):
                     print()
-                    load_full_context = False
+                    print_text("\n↩️  Returning to draft list...\n", style="cyan")
+                    return
+                except Exception as e:
+                    # Fallback to regular input if single keypress fails
+                    logger.debug(f"Single keypress failed, falling back to input: {e}")
+                    try:
+                        choice = input("Your choice: ").strip().lower()
+                        print()
+                    except (EOFError, KeyboardInterrupt):
+                        print()
+                        print_text("\n↩️  Returning to draft list...\n", style="cyan")
+                        return
 
-            # Load message context based on user choice or draft status
-            if load_full_context:
-                message_context = await self._load_message_context(draft)
-                logger.info(f"Loaded message context: {len(message_context)} databases")
-            else:
-                # Minimal context - just the email thread itself
-                message_context = {
-                    'email_thread': [{
-                        'title': f"Email Thread: {draft.get('inbound_subject', 'No Subject')}",
-                        'content': draft.get('inbound_body', ''),
-                        'metadata': {
+                # Handle user choice
+                auto_respond = False  # Initialize flag for auto-response
+                if choice == 'a':
+                    # Archive and return
+                    self.draft_manager.update_draft_status(self.draft_id, 'archived')
+                    print_text("🗄️  Archived - cleared from your queue\n", style="green")
+                    return
+
+                elif choice == '' or choice == 'enter':
+                    # Load context and prompt AI to write draft
+                    print_text("🔍 Loading context...\n", style="cyan")
+
+                    # Load full context with vector search
+                    message_context = await self._load_message_context(draft)
+                    logger.info(f"Loaded message context: {len(message_context.get('non_email_docs', []))} non-email docs, {len(message_context.get('email_docs', []))} email docs")
+
+                    # Set initial user message to prompt the AI
+                    # The AI will decide whether to use <artifact> or ask questions
+                    # based on maia_mail_prompt.md guidelines
+                    initial_messages = [{
+                        "role": "user",
+                        "content": "Write a reply to this email."
+                    }]
+                    auto_respond = True  # Flag to trigger auto-response
+                    logger.info("Set initial user message to prompt draft creation")
+
+                elif choice == 'c':
+                    # Continue with minimal context (thread only, no vector search)
+                    print_text("📧 Proceeding with thread context only\n", style="dim")
+                    message_context = {
+                        'thread_email': {
                             'from': draft.get('inbound_from', ''),
                             'to': draft.get('inbound_to', ''),
                             'cc': draft.get('inbound_cc', ''),
                             'date': draft.get('inbound_date', ''),
                             'subject': draft.get('inbound_subject', ''),
-                            'message_count': draft.get('message_count', 1),
+                            'body': draft.get('inbound_body', ''),
                         },
-                        'database': 'email_thread',
-                    }]
-                }
-                print_text("📧 Proceeding with thread context only (no additional knowledge base context)\n", style="dim")
-                logger.info("Using minimal context (thread only, no vector search)")
+                        'thread_conversation': draft.get('thread_context', ''),
+                        'message_count': draft.get('message_count', 1),
+                        'non_email_docs': [],
+                        'email_docs': [],
+                        'draft_data': draft,
+                    }
+                    logger.info("Using minimal context (thread only, no vector search)")
+
+                elif choice == 'q':
+                    # Return to queue without archiving
+                    print_text("↩️  Returning to draft list...\n", style="cyan")
+                    return
+
+                else:
+                    # Invalid choice - default to minimal context
+                    print_text("⚠️  Invalid choice, proceeding with thread context only\n", style="yellow")
+                    message_context = {
+                        'thread_email': {
+                            'from': draft.get('inbound_from', ''),
+                            'to': draft.get('inbound_to', ''),
+                            'cc': draft.get('inbound_cc', ''),
+                            'date': draft.get('inbound_date', ''),
+                            'subject': draft.get('inbound_subject', ''),
+                            'body': draft.get('inbound_body', ''),
+                        },
+                        'thread_conversation': draft.get('thread_context', ''),
+                        'message_count': draft.get('message_count', 1),
+                        'non_email_docs': [],
+                        'email_docs': [],
+                        'draft_data': draft,
+                    }
+                    logger.info("Using minimal context (thread only, no vector search)")
+
+            else:
+                # For non-skipped drafts or when -dc flag is used, load full context
+                auto_respond = False  # No auto-response for non-skipped drafts
+                message_context = await self._load_message_context(draft)
+                logger.info(f"Loaded message context: {len(message_context.get('non_email_docs', []))} non-email docs, {len(message_context.get('email_docs', []))} email docs")
             
             # Create DraftMode
             from promaia.chat.modes import DraftMode
-            
+
             mode = DraftMode(
                 workspace=self.workspace,
                 draft_id=self.draft_id,
                 draft_data=draft,
                 draft_manager=self.draft_manager,
-                user_email=user_email
+                user_email=user_email,
+                context_builder=self.context_builder,
+                response_generator=self.response_generator,
+                structured_context=message_context  # Pass structured context for custom prompt
             )
             
             # Load chat history if it exists
-            chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
+            # Check if initial_messages was already set (e.g., from ENTER on skipped message)
+            if 'initial_messages' not in locals():
+                chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
 
-            if chat_messages:
-                # Use existing chat history
-                initial_messages = chat_messages
-                logger.info(f"Loaded {len(chat_messages)} messages from chat history")
-            elif draft_body and draft_body != 'n/a':
-                # No history - create initial artifact from draft body
-                initial_messages = [{
-                    "role": "assistant",
-                    "content": f"<artifact>{draft_body}</artifact>"
-                }]
-                logger.info(f"Created initial artifact from draft body")
-            else:
-                initial_messages = []
-                logger.info(f"Starting fresh chat session")
+                if chat_messages:
+                    # Use existing chat history
+                    initial_messages = chat_messages
+                    logger.info(f"Loaded {len(chat_messages)} messages from chat history")
+                elif draft_body and draft_body != 'n/a':
+                    # No history - create initial artifact from draft body
+                    # Check if draft_body already has artifact tags (avoid double-nesting)
+                    if '<artifact>' in draft_body and '</artifact>' in draft_body:
+                        # Already has artifact tags, use as-is
+                        artifact_content = draft_body
+                        logger.info(f"Draft body already contains artifact tags, using as-is")
+                    else:
+                        # Wrap with artifact tags
+                        artifact_content = f"<artifact>{draft_body}</artifact>"
+                        logger.info(f"Wrapped draft body with artifact tags")
+
+                    initial_messages = [{
+                        "role": "assistant",
+                        "content": artifact_content
+                    }]
+                    logger.info(f"Created initial artifact from draft body")
+                else:
+                    initial_messages = []
+                    logger.info(f"Starting fresh chat session")
+
+            # Ensure auto_respond is set (default to False if not already set)
+            if 'auto_respond' not in locals():
+                auto_respond = False
 
             # Launch unified chat with DraftMode
             from promaia.chat.interface import chat
 
             logger.info(f"Launching unified chat with DraftMode")
             logger.info(f"  Workspace: {self.workspace}")
-            logger.info(f"  Message context: {len(message_context)} databases")
+            logger.info(f"  Message context: {len(message_context.get('non_email_docs', []))} non-email docs, {len(message_context.get('email_docs', []))} email docs")
             logger.info(f"  Initial messages: {len(initial_messages)}")
+            logger.info(f"  Auto-respond: {auto_respond}")
 
             # Note: chat() is synchronous and blocking, run in thread to await properly
             # Chat returns the messages list when it exits
+            # NOTE: Don't pass natural_language_content since DraftMode handles its own context
+            # (via structured_context passed to DraftMode constructor)
             result = await asyncio.to_thread(
                 chat,
                 workspace=self.workspace,
                 mode=mode,
-                natural_language_content=message_context,  # Pre-loaded context
+                natural_language_content=None,  # DraftMode handles its own context
                 initial_messages=initial_messages,  # Chat history
                 draft_id=self.draft_id,  # Pass draft_id for saving messages
+                auto_respond_to_initial=auto_respond,  # Auto-trigger AI response if requested
             )
 
             logger.info(f"Chat completed, returned {len(result) if result else 0} messages")

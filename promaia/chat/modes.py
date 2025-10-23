@@ -85,6 +85,19 @@ class ChatMode:
         """
         return False
 
+    def handles_own_context(self) -> bool:
+        """
+        Whether this mode builds its own context in get_system_prompt().
+
+        When True, the chat interface will NOT append generic context formatting
+        to the mode's system prompt. The mode is responsible for including
+        all context in its custom format.
+
+        Returns:
+            True if mode handles its own context formatting
+        """
+        return False
+
 
 class DraftMode(ChatMode):
     """
@@ -94,59 +107,50 @@ class DraftMode(ChatMode):
     """
     
     def __init__(
-        self, 
-        workspace: str, 
+        self,
+        workspace: str,
         draft_id: str,
         draft_data: dict,
         draft_manager,
-        user_email: str
+        user_email: str,
+        context_builder=None,
+        response_generator=None,
+        structured_context=None
     ):
         """
         Initialize draft mode.
-        
+
         Args:
             workspace: Workspace name
             draft_id: Draft ID
             draft_data: Draft data dict
             draft_manager: DraftManager instance
             user_email: User's email address
+            context_builder: ResponseContextBuilder instance for -dc support
+            response_generator: ResponseGenerator instance for -dc support
+            structured_context: Structured context dict with email/non-email docs separated
         """
         super().__init__(workspace)
         self.draft_id = draft_id
         self.draft_data = draft_data
         self.draft_manager = draft_manager
         self.user_email = user_email
+        self.context_builder = context_builder
+        self.response_generator = response_generator
+        self.structured_context = structured_context or {}
     
     def get_system_prompt(self) -> Optional[str]:
         """
-        Load maia_mail_prompt.md as system prompt.
-        
+        Build custom system prompt for draft mode using EmailPromptBuilder.
+
         Returns:
-            System prompt for email drafting
+            Custom system prompt for email drafting
         """
-        prompt_path = "prompts/maia_mail_prompt.md"
-        
-        if not os.path.exists(prompt_path):
-            logger.warning(f"Draft mode prompt not found: {prompt_path}")
-            return None
-        
-        try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                persona = f.read()
-                
-                # Fill in date/time variables
-                from promaia.utils.timezone_utils import now_utc
-                now = now_utc()
-                persona = persona.format(
-                    today_date=now.strftime("%B %d, %Y"),
-                    current_time=now.strftime("%I:%M %p %Z")
-                )
-                
-                logger.info(f"Loaded draft mode persona from '{prompt_path}'")
-                return persona
-        except Exception as e:
-            logger.error(f"Failed to load draft mode persona: {e}")
-            return None
+        from promaia.mail.prompt_builder import EmailPromptBuilder
+
+        # Use shared prompt builder for consistency with batch processing
+        builder = EmailPromptBuilder(workspace=self.workspace)
+        return builder.build_prompt(self.structured_context)
     
     def get_additional_commands(self) -> Dict[str, Callable]:
         """
@@ -171,10 +175,19 @@ class DraftMode(ChatMode):
             False - let AI decide based on system prompt instructions
         """
         return False
+
+    def handles_own_context(self) -> bool:
+        """
+        DraftMode builds its own context in custom format.
+
+        Returns:
+            True - DraftMode handles all context formatting in get_system_prompt()
+        """
+        return True
     
     def get_welcome_message(self, context_state: Dict[str, Any]) -> Optional[str]:
         """
-        Custom welcome for draft chat.
+        Custom welcome for draft chat showing structured context info.
 
         Args:
             context_state: Chat context state dict
@@ -189,15 +202,19 @@ class DraftMode(ChatMode):
         # Header - use ANSI codes directly since we're in a thread
         lines.append("\033[1m\033[95m🐙 maia mail draft chat\033[0m")
 
-        # Show context loaded
-        lines.append("\033[2mContext loaded:\033[0m")
+        # Show context loaded from structured_context
+        non_email_count = len(self.structured_context.get('non_email_docs', []))
+        email_count = len(self.structured_context.get('email_docs', []))
+        total_sources = non_email_count + email_count
 
-        # Show message context if present
-        if context_state.get('natural_language_content'):
-            nl_content = context_state['natural_language_content']
-            if isinstance(nl_content, dict):
-                for db_name, pages in sorted(nl_content.items()):
-                    lines.append(f"\033[2m  {db_name}: {len(pages)}\033[0m")
+        if total_sources > 0:
+            lines.append(f"\033[2mContext loaded: {total_sources} sources\033[0m")
+            if non_email_count > 0:
+                lines.append(f"\033[2m  • {non_email_count} from knowledge base (notes, docs)\033[0m")
+            if email_count > 0:
+                lines.append(f"\033[2m  • {email_count} related email threads\033[0m")
+        else:
+            lines.append("\033[2mContext: Email thread only (no additional sources)\033[0m")
 
         # Model
         try:
