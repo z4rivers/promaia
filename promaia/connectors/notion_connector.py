@@ -275,7 +275,30 @@ class NotionConnector(BaseConnector):
             except Exception as e:
                 self.logger.warning(f"Could not cache database schema: {e}")
                 self._cached_schema = {}
-            
+
+            # Synchronize database schema with hybrid storage tables
+            try:
+                from promaia.storage.hybrid_storage import get_hybrid_registry
+                registry = get_hybrid_registry()
+
+                database_name = self.config.get('nickname', 'unknown')
+
+                # Sync schema if we have valid schema data
+                if self._cached_schema:
+                    sync_success = registry.sync_table_schema_with_properties(
+                        database_id=self.database_id,
+                        database_name=database_name,
+                        properties=self._cached_schema,
+                        remove_columns=False  # Default: don't remove columns for safety
+                    )
+
+                    if sync_success:
+                        self.logger.info(f"Schema synchronized for database '{database_name}'")
+                    else:
+                        self.logger.warning(f"Schema synchronization had issues for '{database_name}'")
+            except Exception as e:
+                self.logger.warning(f"Could not synchronize database schema: {e}")
+
             # Build Notion API filter
             notion_filter = self._build_notion_filter(filters, date_filter)
             

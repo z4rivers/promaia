@@ -208,23 +208,43 @@ class HybridContentRegistry:
                     total_chunks INTEGER NOT NULL,
                     workspace TEXT NOT NULL,
                     database_name TEXT NOT NULL,
-                    
+
                     -- Chunk boundaries
                     char_start INTEGER,
                     char_end INTEGER,
                     estimated_tokens INTEGER,
-                    
+
                     -- Date-based chunking metadata
                     date_boundary TEXT,  -- YYYY-MM-DD if split by date
-                    
+
                     -- References
                     parent_file_path TEXT NOT NULL,
-                    
+
                     -- Timestamps
                     created_time TEXT,
                     synced_time TEXT NOT NULL,
-                    
+
                     UNIQUE(chunk_id)
+                )
+            """)
+
+            # Create notion property schema table to track property definitions
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notion_property_schema (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    database_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL,
+                    table_name TEXT NOT NULL,
+                    property_name TEXT NOT NULL,
+                    column_name TEXT NOT NULL,
+                    property_type TEXT NOT NULL,
+                    notion_type TEXT NOT NULL,
+                    added_time TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+
+                    UNIQUE(database_id, property_name),
+                    UNIQUE(table_name, column_name)
                 )
             """)
             
@@ -450,6 +470,10 @@ class HybridContentRegistry:
         # Chunks indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_page_id ON notion_page_chunks (page_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON notion_page_chunks (workspace, database_name)")
+
+        # Property schema indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_property_schema_db ON notion_property_schema (database_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_property_schema_table ON notion_property_schema (table_name)")
     
     def add_gmail_content(self, content_data: Dict[str, Any]) -> bool:
         """Add Gmail content with optimized schema."""
@@ -559,196 +583,90 @@ class HybridContentRegistry:
     
     def add_notion_journal(self, content_data: Dict[str, Any]) -> bool:
         """Add Notion journal content with optimized schema."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Extract journal-specific fields from metadata
-                metadata = content_data.get('metadata', {})
-                properties = metadata.get('properties', {})
-                
-                # Extract common Notion property patterns
-                status = self._extract_notion_property(properties, 'Status', 'status', 'name')
-                date_value = self._extract_notion_property(properties, 'Date', 'date', 'start')
-                featured = self._extract_notion_property(properties, 'Featured', 'checkbox')
-                author_name = self._extract_notion_property(properties, 'Author Name', 'rich_text', 0, 'plain_text')
-                
-                # Extract tags
-                tags = []
-                if 'Tags' in properties or 'tags' in properties:
-                    tag_prop = properties.get('Tags') or properties.get('tags')
-                    if tag_prop and tag_prop.get('multi_select'):
-                        tags = [tag['name'] for tag in tag_prop['multi_select']]
-                
-                # Ensure last_edited_time is initialized to created_time if missing
-                created_time = content_data.get('created_time')
-                last_edited_time = content_data.get('last_edited_time') or created_time
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO notion_journal (
-                        page_id, workspace, database_id, database_name, file_path, title,
-                        status, date_value, tags, featured, author_name,
-                        created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    content_data['page_id'],
-                    content_data['workspace'],
-                    content_data.get('database_id'),
-                    content_data['database_name'],
-                    content_data['file_path'],
-                    content_data.get('title'),
-                    status,
-                    date_value,
-                    json.dumps(tags),
-                    featured,
-                    author_name,
-                    created_time,
-                    last_edited_time,
-                    content_data['synced_time'],
-                    content_data.get('file_size'),
-                    content_data.get('checksum')
-                ))
-                
-                conn.commit()
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error adding Notion journal content: {e}")
-            return False
+        return self._add_notion_with_properties('notion_journal', content_data)
     
     def add_notion_stories(self, content_data: Dict[str, Any]) -> bool:
         """Add Notion stories content with optimized schema."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Extract stories-specific fields from metadata
-                metadata = content_data.get('metadata', {})
-                properties = metadata.get('properties', {})
-                
-                # Extract common story properties
-                status = self._extract_notion_property(properties, 'Status', 'status', 'name')
-                author_name = self._extract_notion_property(properties, 'Author Name', 'rich_text', 0, 'plain_text')
-                story_points = self._extract_notion_property(properties, 'Story Points', 'number')
-                priority = self._extract_notion_property(properties, 'Priority', 'select', 'name')
-                
-                # Extract epic relation
-                epic_relation = None
-                if 'Epic' in properties and properties['Epic'].get('relation'):
-                    relations = properties['Epic']['relation']
-                    if relations:
-                        epic_relation = relations[0]['id']
-                
-                # Extract labels
-                labels = []
-                if 'Labels' in properties:
-                    label_prop = properties['Labels']
-                    if label_prop and label_prop.get('multi_select'):
-                        labels = [label['name'] for label in label_prop['multi_select']]
-                
-                # Ensure last_edited_time is initialized to created_time if missing
-                created_time = content_data.get('created_time')
-                last_edited_time = content_data.get('last_edited_time') or created_time
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO notion_stories (
-                        page_id, workspace, database_id, database_name, file_path, title,
-                        status, epic_relation, author_name, story_points, priority, labels,
-                        created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    content_data['page_id'],
-                    content_data['workspace'],
-                    content_data.get('database_id'),
-                    content_data['database_name'],
-                    content_data['file_path'],
-                    content_data.get('title'),
-                    status,
-                    epic_relation,
-                    author_name,
-                    story_points,
-                    priority,
-                    json.dumps(labels),
-                    created_time,
-                    last_edited_time,
-                    content_data['synced_time'],
-                    content_data.get('file_size'),
-                    content_data.get('checksum')
-                ))
-                
-                conn.commit()
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error adding Notion stories content: {e}")
-            return False
+        return self._add_notion_with_properties('notion_stories', content_data)
     
     def add_notion_cms(self, content_data: Dict[str, Any]) -> bool:
         """Add Notion CMS content with optimized schema."""
+        return self._add_notion_with_properties('notion_cms', content_data)
+
+    def _add_notion_with_properties(self, table_name: str, content_data: Dict[str, Any]) -> bool:
+        """
+        Add Notion content with dynamic property extraction.
+
+        This method dynamically extracts and stores ALL properties based on the schema.
+
+        Args:
+            table_name: Name of the table (notion_journal, notion_stories, notion_cms)
+            content_data: Content data dictionary
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
-                # Extract CMS-specific fields from metadata
+
+                # Extract metadata and properties
                 metadata = content_data.get('metadata', {})
                 properties = metadata.get('properties', {})
-                
-                # Extract CMS properties
-                status = self._extract_notion_property(properties, 'Status', 'status', 'name')
-                category = self._extract_notion_property(properties, 'Category', 'select', 'name')
-                featured = self._extract_notion_property(properties, 'Featured', 'checkbox')
-                author_name = self._extract_notion_property(properties, 'Author', 'rich_text', 0, 'plain_text')
-                slug = self._extract_notion_property(properties, 'Slug', 'rich_text', 0, 'plain_text')
-                meta_description = self._extract_notion_property(properties, 'Meta Description', 'rich_text', 0, 'plain_text')
-                publish_date = self._extract_notion_property(properties, 'Publish Date', 'date', 'start')
-                
-                # Extract tags
-                tags = []
-                if 'Tags' in properties:
-                    tag_prop = properties['Tags']
-                    if tag_prop and tag_prop.get('multi_select'):
-                        tags = [tag['name'] for tag in tag_prop['multi_select']]
-                
-                # Ensure last_edited_time is initialized to created_time if missing
-                created_time = content_data.get('created_time')
-                last_edited_time = content_data.get('last_edited_time') or created_time
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO notion_cms (
-                        page_id, workspace, database_id, database_name, file_path, title,
-                        status, category, featured, author_name, slug, meta_description,
-                        tags, publish_date, created_time, last_edited_time, synced_time, 
-                        file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                database_id = content_data.get('database_id')
+
+                # Base columns that are always present
+                columns = ['page_id', 'workspace', 'database_id', 'database_name', 'file_path',
+                          'title', 'created_time', 'last_edited_time', 'synced_time',
+                          'file_size', 'checksum']
+                values = [
                     content_data['page_id'],
                     content_data['workspace'],
-                    content_data.get('database_id'),
+                    database_id,
                     content_data['database_name'],
                     content_data['file_path'],
                     content_data.get('title'),
-                    status,
-                    category,
-                    featured,
-                    author_name,
-                    slug,
-                    meta_description,
-                    json.dumps(tags),
-                    publish_date,
-                    created_time,
-                    last_edited_time,
+                    content_data.get('created_time'),
+                    content_data.get('last_edited_time') or content_data.get('created_time'),
                     content_data['synced_time'],
                     content_data.get('file_size'),
                     content_data.get('checksum')
-                ))
-                
+                ]
+
+                # Get property schema for this database
+                if database_id:
+                    property_schema = self.get_property_schema(database_id)
+
+                    # Extract and add dynamic properties
+                    for prop_schema in property_schema:
+                        prop_name = prop_schema['property_name']
+                        column_name = prop_schema['column_name']
+
+                        # Check if property exists in page properties
+                        if prop_name in properties:
+                            # Extract value using flexible extraction
+                            value = self.extract_property_value_flexible(properties[prop_name])
+                            columns.append(column_name)
+                            values.append(value)
+
+                # Build dynamic INSERT query
+                placeholders = ', '.join(['?' for _ in columns])
+                column_str = ', '.join(columns)
+
+                query = f"""
+                    INSERT OR REPLACE INTO {table_name} ({column_str})
+                    VALUES ({placeholders})
+                """
+
+                cursor.execute(query, values)
                 conn.commit()
                 return True
-                
+
         except Exception as e:
-            logger.error(f"Error adding Notion CMS content: {e}")
+            logger.error(f"Error adding Notion content to {table_name}: {e}")
+            logger.debug(f"Content data: {content_data.get('page_id', 'unknown')}")
             return False
-    
+
     def add_generic_content(self, content_data: Dict[str, Any]) -> bool:
         """Add generic content for unknown/new content types."""
         try:
@@ -857,6 +775,50 @@ class HybridContentRegistry:
                 'created_time': content_data.get('created_time', ''),
                 'content_type': content_data.get('content_type', ''),
             }
+
+            # Add properties to metadata (except title, which is in content)
+            try:
+                database_id = content_data.get('database_id')
+                database_name = content_data.get('database_name', '')
+
+                # Determine table name to query properties from
+                table_mapping = {
+                    'journal': 'notion_journal',
+                    'stories': 'notion_stories',
+                    'cms': 'notion_cms',
+                }
+                table_name = table_mapping.get(database_name, None)
+
+                # Query properties if we have a known table
+                if table_name and database_id:
+                    with sqlite3.connect(self.db_path) as conn:
+                        conn.row_factory = sqlite3.Row
+                        cursor = conn.cursor()
+
+                        # Get property schema
+                        property_schema = self.get_property_schema(database_id)
+
+                        if property_schema:
+                            # Build query to fetch page with properties
+                            column_names = [prop['column_name'] for prop in property_schema]
+                            if column_names:
+                                columns_str = ', '.join(column_names)
+                                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+
+                                cursor.execute(query, (page_id,))
+                                row = cursor.fetchone()
+
+                                if row:
+                                    # Add each property to metadata
+                                    for col_name in column_names:
+                                        value = row[col_name]
+                                        if value is not None:  # Only include non-null properties
+                                            metadata[col_name] = value
+
+                logger.debug(f"Added {len(metadata) - 4} properties to vector metadata for {page_id}")
+
+            except Exception as e:
+                logger.warning(f"Could not add properties to vector metadata for {page_id}: {e}")
             
             # Check chunking configuration
             chunking_config = vector_config.get('chunking', {})
@@ -1072,20 +1034,20 @@ class HybridContentRegistry:
         logger.info("If you need to import data, use the database sync commands instead.")
         return False
     
-    def _extract_notion_property(self, properties: Dict[str, Any], 
-                                prop_name: str, prop_type: str, 
+    def _extract_notion_property(self, properties: Dict[str, Any],
+                                prop_name: str, prop_type: str,
                                 *path_elements) -> Any:
         """Extract a property value from Notion property structure."""
         try:
             if prop_name not in properties:
                 return None
-            
+
             prop = properties[prop_name]
             if prop_type not in prop:
                 return None
-            
+
             value = prop[prop_type]
-            
+
             # Navigate through path elements
             for element in path_elements:
                 if isinstance(element, int) and isinstance(value, list):
@@ -1100,10 +1062,113 @@ class HybridContentRegistry:
                         return None
                 else:
                     return None
-            
+
             return value
-            
+
         except Exception:
+            return None
+
+    def extract_property_value_flexible(self, property_data: Dict[str, Any]) -> Any:
+        """
+        Extract value from a Notion property in a flexible way.
+
+        Handles all Notion property types and returns appropriately formatted values.
+
+        Args:
+            property_data: Single property dict from Notion API
+
+        Returns:
+            Extracted value (str, int, float, list, or None)
+        """
+        try:
+            prop_type = property_data.get('type')
+
+            if not prop_type:
+                return None
+
+            # Extract based on type
+            if prop_type == 'title':
+                title_arr = property_data.get('title', [])
+                return title_arr[0]['plain_text'] if title_arr else None
+
+            elif prop_type == 'rich_text':
+                text_arr = property_data.get('rich_text', [])
+                return ' '.join([t['plain_text'] for t in text_arr]) if text_arr else None
+
+            elif prop_type == 'number':
+                return property_data.get('number')
+
+            elif prop_type == 'select':
+                select_data = property_data.get('select')
+                return select_data['name'] if select_data else None
+
+            elif prop_type == 'multi_select':
+                multi_arr = property_data.get('multi_select', [])
+                return json.dumps([item['name'] for item in multi_arr]) if multi_arr else None
+
+            elif prop_type == 'status':
+                status_data = property_data.get('status')
+                return status_data['name'] if status_data else None
+
+            elif prop_type == 'date':
+                date_data = property_data.get('date')
+                return date_data['start'] if date_data else None
+
+            elif prop_type == 'checkbox':
+                return 1 if property_data.get('checkbox') else 0
+
+            elif prop_type == 'url':
+                return property_data.get('url')
+
+            elif prop_type == 'email':
+                return property_data.get('email')
+
+            elif prop_type == 'phone_number':
+                return property_data.get('phone_number')
+
+            elif prop_type == 'relation':
+                relation_arr = property_data.get('relation', [])
+                return json.dumps([r['id'] for r in relation_arr]) if relation_arr else None
+
+            elif prop_type == 'people':
+                people_arr = property_data.get('people', [])
+                return json.dumps([p['id'] for p in people_arr]) if people_arr else None
+
+            elif prop_type == 'files':
+                files_arr = property_data.get('files', [])
+                return json.dumps([f.get('name', f.get('file', {}).get('url', ''))
+                                  for f in files_arr]) if files_arr else None
+
+            elif prop_type == 'formula':
+                formula_data = property_data.get('formula', {})
+                formula_type = formula_data.get('type')
+                if formula_type:
+                    return formula_data.get(formula_type)
+                return None
+
+            elif prop_type == 'rollup':
+                rollup_data = property_data.get('rollup', {})
+                rollup_type = rollup_data.get('type')
+                if rollup_type == 'number':
+                    return rollup_data.get('number')
+                elif rollup_type == 'array':
+                    return json.dumps(rollup_data.get('array', []))
+                return None
+
+            elif prop_type in ['created_time', 'last_edited_time']:
+                return property_data.get(prop_type)
+
+            elif prop_type in ['created_by', 'last_edited_by']:
+                user_data = property_data.get(prop_type)
+                return user_data.get('id') if user_data else None
+
+            else:
+                # Unknown type, try to serialize as JSON
+                logger.warning(f"Unknown property type: {prop_type}")
+                return json.dumps(property_data)
+
+        except Exception as e:
+            logger.error(f"Error extracting property value: {e}")
             return None
 
     def get_content_by_file_path(self, file_path: str) -> Optional[Dict[str, Any]]:
@@ -1206,10 +1271,10 @@ class HybridContentRegistry:
     def remove_chunks_for_page(self, page_id: str) -> bool:
         """
         Remove all chunks for a given page.
-        
+
         Args:
             page_id: Page identifier
-        
+
         Returns:
             True if successful, False otherwise
         """
@@ -1225,7 +1290,375 @@ class HybridContentRegistry:
         except Exception as e:
             logger.error(f"Error removing chunks for page {page_id}: {e}")
             return False
-            
+
+    @staticmethod
+    def sanitize_property_name(property_name: str) -> str:
+        """
+        Sanitize a Notion property name to create a valid SQLite column name.
+
+        Rules:
+        - Convert to lowercase
+        - Replace spaces with underscores
+        - Remove special characters except underscores
+        - Ensure it starts with a letter or underscore
+        - Truncate to 64 characters
+
+        Args:
+            property_name: Original Notion property name
+
+        Returns:
+            Sanitized column name safe for SQLite
+        """
+        import re
+
+        # Convert to lowercase
+        sanitized = property_name.lower()
+
+        # Replace spaces and hyphens with underscores
+        sanitized = sanitized.replace(' ', '_').replace('-', '_')
+
+        # Remove all characters except alphanumeric and underscores
+        sanitized = re.sub(r'[^a-z0-9_]', '', sanitized)
+
+        # Ensure it starts with a letter or underscore
+        if sanitized and not sanitized[0].isalpha() and sanitized[0] != '_':
+            sanitized = 'prop_' + sanitized
+
+        # If empty after sanitization, use a default
+        if not sanitized:
+            sanitized = 'property_value'
+
+        # Truncate to 64 characters
+        sanitized = sanitized[:64]
+
+        # Avoid SQL keywords
+        sql_keywords = {'select', 'from', 'where', 'table', 'index', 'order', 'group', 'by', 'having', 'join', 'union'}
+        if sanitized in sql_keywords:
+            sanitized = sanitized + '_prop'
+
+        return sanitized
+
+    @staticmethod
+    def get_sqlite_type_for_notion_property(notion_type: str) -> str:
+        """
+        Map Notion property type to SQLite column type.
+
+        Args:
+            notion_type: Notion property type (e.g., 'select', 'number', 'checkbox')
+
+        Returns:
+            SQLite column type (TEXT, INTEGER, REAL, BOOLEAN)
+        """
+        type_mapping = {
+            'title': 'TEXT',
+            'rich_text': 'TEXT',
+            'number': 'REAL',
+            'select': 'TEXT',
+            'multi_select': 'TEXT',  # Will store as JSON array
+            'status': 'TEXT',
+            'date': 'TEXT',  # Store as ISO format string
+            'checkbox': 'INTEGER',  # SQLite boolean (0/1)
+            'url': 'TEXT',
+            'email': 'TEXT',
+            'phone_number': 'TEXT',
+            'formula': 'TEXT',  # Complex, store as text
+            'relation': 'TEXT',  # Store as JSON array of IDs
+            'rollup': 'TEXT',  # Complex, store as JSON
+            'people': 'TEXT',  # Store as JSON array
+            'files': 'TEXT',  # Store as JSON array
+            'created_time': 'TEXT',
+            'last_edited_time': 'TEXT',
+            'created_by': 'TEXT',
+            'last_edited_by': 'TEXT',
+        }
+
+        return type_mapping.get(notion_type, 'TEXT')
+
+    def get_property_schema(self, database_id: str) -> List[Dict[str, Any]]:
+        """
+        Get the property schema for a specific Notion database.
+
+        Args:
+            database_id: Notion database ID
+
+        Returns:
+            List of property definitions
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM notion_property_schema
+                    WHERE database_id = ? AND is_active = TRUE
+                    ORDER BY added_time
+                """, (database_id,))
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting property schema for database {database_id}: {e}")
+            return []
+
+    def update_property_schema(self, database_id: str, database_name: str,
+                              table_name: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update the property schema for a Notion database.
+
+        Compares current properties against stored schema and returns
+        changes (added/removed/unchanged properties).
+
+        Args:
+            database_id: Notion database ID
+            database_name: Notion database name
+            table_name: SQL table name (e.g., 'notion_journal')
+            properties: Dict of Notion properties from API
+
+        Returns:
+            Dict with keys: 'added', 'removed', 'unchanged'
+        """
+        try:
+            now = datetime.utcnow().isoformat()
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Get current schema from database
+                cursor.execute("""
+                    SELECT property_name, column_name, notion_type
+                    FROM notion_property_schema
+                    WHERE database_id = ? AND is_active = TRUE
+                """, (database_id,))
+
+                current_schema = {row[0]: {'column_name': row[1], 'notion_type': row[2]}
+                                 for row in cursor.fetchall()}
+
+                # Analyze changes
+                current_props = set(current_schema.keys())
+                new_props = set(properties.keys())
+
+                added_props = new_props - current_props
+                removed_props = current_props - new_props
+                unchanged_props = current_props & new_props
+
+                result = {
+                    'added': [],
+                    'removed': [],
+                    'unchanged': list(unchanged_props)
+                }
+
+                # Add new properties to schema
+                for prop_name in added_props:
+                    prop_data = properties[prop_name]
+                    notion_type = prop_data.get('type', 'rich_text')
+                    column_name = self.sanitize_property_name(prop_name)
+                    sqlite_type = self.get_sqlite_type_for_notion_property(notion_type)
+
+                    # Check if column name already exists (collision)
+                    cursor.execute("""
+                        SELECT property_name FROM notion_property_schema
+                        WHERE table_name = ? AND column_name = ? AND is_active = TRUE
+                    """, (table_name, column_name))
+
+                    existing = cursor.fetchone()
+                    if existing:
+                        # Column name collision - append a suffix
+                        suffix = 1
+                        original_column = column_name
+                        while existing:
+                            column_name = f"{original_column}_{suffix}"
+                            cursor.execute("""
+                                SELECT property_name FROM notion_property_schema
+                                WHERE table_name = ? AND column_name = ? AND is_active = TRUE
+                            """, (table_name, column_name))
+                            existing = cursor.fetchone()
+                            suffix += 1
+
+                        logger.warning(f"Column name collision for '{prop_name}', using '{column_name}'")
+
+                    cursor.execute("""
+                        INSERT INTO notion_property_schema (
+                            database_id, database_name, table_name, property_name,
+                            column_name, property_type, notion_type, added_time, last_seen
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (database_id, database_name, table_name, prop_name,
+                          column_name, sqlite_type, notion_type, now, now))
+
+                    result['added'].append({
+                        'property_name': prop_name,
+                        'column_name': column_name,
+                        'sqlite_type': sqlite_type,
+                        'notion_type': notion_type
+                    })
+
+                # Mark removed properties as inactive
+                for prop_name in removed_props:
+                    cursor.execute("""
+                        UPDATE notion_property_schema
+                        SET is_active = FALSE
+                        WHERE database_id = ? AND property_name = ?
+                    """, (database_id, prop_name))
+
+                    result['removed'].append({
+                        'property_name': prop_name,
+                        'column_name': current_schema[prop_name]['column_name']
+                    })
+
+                # Update last_seen for unchanged properties
+                for prop_name in unchanged_props:
+                    cursor.execute("""
+                        UPDATE notion_property_schema
+                        SET last_seen = ?
+                        WHERE database_id = ? AND property_name = ?
+                    """, (now, database_id, prop_name))
+
+                conn.commit()
+
+                if result['added']:
+                    logger.info(f"Added {len(result['added'])} properties to schema for {database_name}")
+                if result['removed']:
+                    logger.info(f"Removed {len(result['removed'])} properties from schema for {database_name}")
+
+                return result
+
+        except Exception as e:
+            logger.error(f"Error updating property schema: {e}")
+            return {'added': [], 'removed': [], 'unchanged': []}
+
+    def apply_schema_changes(self, table_name: str, schema_changes: Dict[str, Any],
+                            remove_columns: bool = False) -> bool:
+        """
+        Apply schema changes to a table (add/remove columns).
+
+        Args:
+            table_name: Name of the table to modify
+            schema_changes: Dict from update_property_schema with 'added' and 'removed' lists
+            remove_columns: If True, remove columns for removed properties (dangerous!)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Add new columns
+                for prop in schema_changes.get('added', []):
+                    column_name = prop['column_name']
+                    sqlite_type = prop['sqlite_type']
+
+                    # Check if column already exists
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = {row[1] for row in cursor.fetchall()}
+
+                    if column_name in columns:
+                        logger.warning(f"Column '{column_name}' already exists in {table_name}, skipping")
+                        continue
+
+                    # Add the column
+                    alter_query = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sqlite_type}"
+                    logger.info(f"Adding column: {alter_query}")
+
+                    try:
+                        cursor.execute(alter_query)
+                    except sqlite3.OperationalError as e:
+                        logger.error(f"Failed to add column '{column_name}' to {table_name}: {e}")
+                        continue
+
+                # Remove columns (if requested and supported)
+                # Note: SQLite doesn't support DROP COLUMN directly in older versions
+                # This is a destructive operation and should be used carefully
+                if remove_columns and schema_changes.get('removed'):
+                    logger.warning(f"Column removal requested for {table_name}")
+
+                    # Check SQLite version
+                    cursor.execute("SELECT sqlite_version()")
+                    version = cursor.fetchone()[0]
+                    major_version = int(version.split('.')[0])
+                    minor_version = int(version.split('.')[1])
+
+                    # DROP COLUMN supported in SQLite 3.35.0+
+                    if major_version > 3 or (major_version == 3 and minor_version >= 35):
+                        for prop in schema_changes['removed']:
+                            column_name = prop['column_name']
+                            drop_query = f"ALTER TABLE {table_name} DROP COLUMN {column_name}"
+                            logger.warning(f"Removing column: {drop_query}")
+
+                            try:
+                                cursor.execute(drop_query)
+                            except sqlite3.OperationalError as e:
+                                logger.error(f"Failed to drop column '{column_name}' from {table_name}: {e}")
+                    else:
+                        logger.warning(f"SQLite version {version} does not support DROP COLUMN. "
+                                     f"Columns marked inactive in schema but not removed from table.")
+
+                conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"Error applying schema changes to {table_name}: {e}")
+            return False
+
+    def sync_table_schema_with_properties(self, database_id: str, database_name: str,
+                                         properties: Dict[str, Any],
+                                         remove_columns: bool = False) -> bool:
+        """
+        Synchronize a table's schema with Notion properties.
+
+        This is the main entry point for schema synchronization. It:
+        1. Determines the correct table for the database
+        2. Updates the property schema tracking
+        3. Applies changes to the actual database table
+
+        Args:
+            database_id: Notion database ID
+            database_name: Notion database name
+            properties: Dict of Notion properties
+            remove_columns: If True, remove columns for deleted properties (default: False)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Determine table name
+            table_mapping = {
+                'journal': 'notion_journal',
+                'stories': 'notion_stories',
+                'cms': 'notion_cms',
+            }
+
+            table_name = table_mapping.get(database_name, 'generic_content')
+
+            # Skip universal properties that are handled separately
+            excluded_props = {
+                'Title', 'title',
+                'Created time', 'created_time',
+                'Last edited time', 'last_edited_time',
+                'Created by', 'created_by',
+                'Last edited by', 'last_edited_by'
+            }
+
+            filtered_properties = {k: v for k, v in properties.items()
+                                  if k not in excluded_props}
+
+            # Update schema tracking
+            schema_changes = self.update_property_schema(
+                database_id, database_name, table_name, filtered_properties
+            )
+
+            # Apply changes to table (only if not generic_content)
+            if table_name != 'generic_content':
+                success = self.apply_schema_changes(table_name, schema_changes, remove_columns)
+                if not success:
+                    logger.error(f"Failed to apply schema changes to {table_name}")
+                    return False
+
+            logger.info(f"Schema synchronized for {database_name} ({table_name})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error synchronizing table schema: {e}")
+            return False
+
     def close(self):
         """Close the database connection."""
         # The connection is now managed with 'with' statements, so this is less critical

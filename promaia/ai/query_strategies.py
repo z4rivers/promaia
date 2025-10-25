@@ -56,7 +56,9 @@ class QueryStrategy(ABC):
         self,
         query: Any,
         verbose: bool,
-        debug: bool
+        debug: bool,
+        n_results: Optional[int] = None,
+        min_similarity: Optional[float] = None
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
         """
         Execute the query.
@@ -206,9 +208,11 @@ SQL only (no markdown):"""
         self,
         query: str,
         verbose: bool,
-        debug: bool
+        debug: bool,
+        n_results: Optional[int] = None,
+        min_similarity: Optional[float] = None
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-        """Execute SQL query."""
+        """Execute SQL query. (n_results and min_similarity are ignored for SQL queries)"""
         if debug:
             print_text("\n" + "=" * 70, style="dim")
             print_text("⚡ CHAIN OF THOUGHT: SQL Execution", style="bold yellow")
@@ -444,23 +448,27 @@ Return ONLY the JSON object:"""
         self,
         query: Dict[str, Any],
         verbose: bool,
-        debug: bool
+        debug: bool,
+        n_results: Optional[int] = None,
+        min_similarity: Optional[float] = None
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-        """Execute vector search."""
+        """Execute vector search with configurable n_results and min_similarity."""
         if debug:
             print_text("\n" + "=" * 70, style="dim")
             print_text("⚡ CHAIN OF THOUGHT: Vector Search Execution", style="bold yellow")
             print_text("=" * 70, style="dim")
             print_text(f"\n🔍 Searching with: {query.get('search_text')}", style="cyan")
-        
+
         try:
-            # Get config for defaults
+            # Get config for defaults (used if parameters not provided)
             config_path = "promaia.config.json"
             with open(config_path, 'r') as f:
                 config = json.load(f)
             vector_config = config.get('global', {}).get('vector_search', {})
-            n_results = vector_config.get('default_n_results', 20)
-            min_similarity = vector_config.get('default_similarity_threshold', 0.75)
+
+            # Use passed parameters, fall back to config defaults
+            n_results = n_results if n_results is not None else vector_config.get('default_n_results', 20)
+            min_similarity = min_similarity if min_similarity is not None else vector_config.get('default_similarity_threshold', 0.75)
             
             if verbose:
                 print_text(f"\nSearch Configuration:", style="white")

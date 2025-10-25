@@ -1370,7 +1370,13 @@ def chat_run(args):
                                     print_text(f"🔍 Processing VS query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
 
                                 # Process with verbose output (includes user interaction)
-                                vs_content = process_vector_search_to_content(vs_prompt, workspace=None, verbose=True)
+                                vs_content = process_vector_search_to_content(
+                                    vs_prompt,
+                                    workspace=None,
+                                    verbose=True,
+                                    n_results=getattr(args, 'top_k', 20),
+                                    min_similarity=getattr(args, 'threshold', 0.75)
+                                )
 
                                 if vs_content:
                                     # Merge results
@@ -1600,7 +1606,13 @@ def chat_run(args):
                                 print_text(f"🔍 Processing VS query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
 
                             # Process with verbose output (includes user interaction)
-                            vs_content = process_vector_search_to_content(vs_prompt, workspace=None, verbose=True)
+                            vs_content = process_vector_search_to_content(
+                                vs_prompt,
+                                workspace=None,
+                                verbose=True,
+                                n_results=getattr(args, 'top_k', 20),
+                                min_similarity=getattr(args, 'threshold', 0.75)
+                            )
 
                             if vs_content:
                                 # Merge results
@@ -1792,9 +1804,11 @@ def chat_run(args):
                 
                 # Process vector search
                 vs_content = process_vector_search_to_content(
-                    vs_prompt, 
+                    vs_prompt,
                     workspace=None,  # Allow cross-workspace searches
-                    verbose=True  # Show detailed processing steps (matching SQL mode)
+                    verbose=True,  # Show detailed processing steps (matching SQL mode)
+                    n_results=getattr(args, 'top_k', 20),
+                    min_similarity=getattr(args, 'threshold', 0.75)
                 )
                 
                 if vs_content:
@@ -2892,6 +2906,18 @@ def main():
         action="append",
         nargs="+",
         help="Use semantic vector search to find similar content. Can be used multiple times for separate queries. Example: maia chat -vs 'international launch stories' -vs 'product planning discussions'"
+    )
+    chat_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=20,
+        help="Maximum number of results to return from vector search (default: 20)"
+    )
+    chat_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.75,
+        help="Minimum similarity threshold for vector search results, 0-1 scale (default: 0.75)"
     )
     chat_parser.add_argument(
         "--mcp", "-mcp",

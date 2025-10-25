@@ -310,7 +310,14 @@ class ResultValidator:
             # Give context about what was searched for
             goal = intent.get('goal', 'unknown goal')
             databases = intent.get('databases', [])
-            return False, f"Query returned 0 rows. Goal was: {goal}. Searched databases: {databases}."
+
+            # Format database list nicely (handle empty list)
+            if databases:
+                db_str = f"Searched databases: {', '.join(databases)}"
+            else:
+                db_str = "Searched: all databases"
+
+            return False, f"Query returned 0 rows. Goal was: {goal}. {db_str}."
         
         # Check if result count is reasonable
         result_count = len(results)

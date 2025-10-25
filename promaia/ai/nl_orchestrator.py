@@ -231,7 +231,9 @@ class AgenticNLQueryProcessor:
         self,
         user_query: str,
         workspace: Optional[str] = None,
-        max_retries: int = 2
+        max_retries: int = 2,
+        n_results: Optional[int] = None,
+        min_similarity: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Process NL query with support for user modification.
@@ -248,7 +250,7 @@ class AgenticNLQueryProcessor:
             Dictionary with results, SQL, intent, and learning info
         """
         while True:
-            result = self.process_query(user_query, workspace, max_retries)
+            result = self.process_query(user_query, workspace, max_retries, n_results, min_similarity)
             
             # If user wants to quit, return immediately (exit to terminal)
             if result.get('action') == 'quit':
@@ -258,14 +260,23 @@ class AgenticNLQueryProcessor:
             elif result.get('action') == 'modify':
                 print_text("\n✏️  Modify your query (edit and press Enter, or Ctrl+C to cancel):", style="bold cyan")
                 try:
-                    # Pre-fill input with original query for editing
-                    modified_query = self._get_input_with_prefill("   Query: ", user_query)
-                    if not modified_query:
+                    # Reconstruct full query with flags for editing
+                    full_query = user_query
+                    if n_results is not None:
+                        full_query += f" --top-k {n_results}"
+                    if min_similarity is not None:
+                        full_query += f" --threshold {min_similarity}"
+
+                    # Pre-fill input with full query including flags for editing
+                    modified_input = self._get_input_with_prefill("   Query: ", full_query)
+                    if not modified_input:
                         print_text("   Empty query, returning to previous results.", style="yellow")
                         result.pop('action')  # Remove 'modify' action
                         return result
-                    user_query = modified_query
-                    # Loop will re-run with new query
+
+                    # Parse the modified input to extract query and any updated flags
+                    user_query, n_results, min_similarity = self._parse_query_with_flags(modified_input, n_results, min_similarity)
+                    # Loop will re-run with new query and potentially new parameters
                 except (KeyboardInterrupt, EOFError):
                     print_text("\n   Quitting...", style="dim")
                     result['action'] = 'quit'  # Change to quit action
@@ -274,6 +285,42 @@ class AgenticNLQueryProcessor:
                 # Normal completion (user pressed Enter to save)
                 return result
     
+    def _parse_query_with_flags(self, query_string: str, default_n_results: Optional[int],
+                                default_min_similarity: Optional[float]) -> tuple:
+        """
+        Parse a query string that may contain --top-k and --threshold flags.
+
+        Args:
+            query_string: Full query string potentially with flags
+            default_n_results: Default n_results to use if not in query
+            default_min_similarity: Default min_similarity to use if not in query
+
+        Returns:
+            Tuple of (query_text, n_results, min_similarity)
+        """
+        import re
+
+        # Extract --top-k flag
+        n_results = default_n_results
+        top_k_match = re.search(r'--top-k\s+(\d+)', query_string)
+        if top_k_match:
+            n_results = int(top_k_match.group(1))
+            # Remove the flag from query string
+            query_string = re.sub(r'\s*--top-k\s+\d+\s*', ' ', query_string)
+
+        # Extract --threshold flag
+        min_similarity = default_min_similarity
+        threshold_match = re.search(r'--threshold\s+([\d.]+)', query_string)
+        if threshold_match:
+            min_similarity = float(threshold_match.group(1))
+            # Remove the flag from query string
+            query_string = re.sub(r'\s*--threshold\s+[\d.]+\s*', ' ', query_string)
+
+        # Clean up the query string
+        query_text = query_string.strip()
+
+        return query_text, n_results, min_similarity
+
     def _get_input_with_prefill(self, prompt: str, prefill: str) -> str:
         """Get user input with pre-filled text for editing."""
         try:
@@ -310,7 +357,9 @@ class AgenticNLQueryProcessor:
         self,
         user_query: str,
         workspace: Optional[str] = None,
-        max_retries: int = 2
+        max_retries: int = 2,
+        n_results: Optional[int] = None,
+        min_similarity: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Process a natural language query with agentic features.
@@ -399,7 +448,9 @@ Please adjust the query to fix this issue.
             results, sql_error = self.strategy.execute_query(
                 query=generated_query,
                 verbose=self.verbose,
-                debug=self.debug
+                debug=self.debug,
+                n_results=n_results,
+                min_similarity=min_similarity
             )
             
             # If SQL error, use that as validation feedback
@@ -448,15 +499,52 @@ Please adjust the query to fix this issue.
                 intent['_validation_feedback'] = message
                 attempt += 1
         
-        # If all retries failed
+        # If all retries failed, give user options instead of just failing
         if results is None or not validation_result['is_valid']:
-            return {
-                "success": False,
-                "error": validation_result['message'] if validation_result else "Query execution failed",
-                "intent": intent,
-                "query": generated_query,
-                "results": {}
-            }
+            error_msg = validation_result['message'] if validation_result else "Query execution failed"
+
+            # For vector search with 0 results, suggest modifying threshold
+            if self.query_mode == "vector" and results is not None and len(results) == 0:
+                print_text(f"\n⚠️  {error_msg}", style="yellow")
+                if min_similarity:
+                    print_text(f"   Current threshold: {min_similarity}", style="dim")
+                    print_text(f"   💡 Tip: Try lowering --threshold or adjusting your query", style="cyan")
+            else:
+                # For other failures
+                print_text(f"\n⚠️  {error_msg}", style="yellow")
+                if max_retries > 0:
+                    print_text(f"   Query failed after {max_retries} retries", style="dim")
+
+            # Ask user what to do (same prompt as success case)
+            print()  # Blank line before prompt
+            user_action = self._ask_user_confirmation_on_failure()
+
+            if user_action == 'modify':
+                return {
+                    "success": False,
+                    "action": "modify",
+                    "error": error_msg,
+                    "intent": intent,
+                    "query": generated_query,
+                    "results": {}
+                }
+            elif user_action == 'quit':
+                return {
+                    "success": False,
+                    "action": "quit",
+                    "error": error_msg,
+                    "intent": intent,
+                    "query": generated_query,
+                    "results": {}
+                }
+            else:  # accept with empty results
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "intent": intent,
+                    "query": generated_query,
+                    "results": {}
+                }
         
         # Step 5: Generate result summary
         summary = self.validator.generate_result_summary(results)
@@ -681,6 +769,30 @@ Return ONLY the JSON object:"""
         
         print()  # Blank line before prompt
     
+    def _ask_user_confirmation_on_failure(self) -> str:
+        """
+        Ask user what to do when query returns no results or fails validation.
+
+        Returns:
+            'accept' - Continue with no results (rarely useful but allowed)
+            'modify' - Modify the query and try again
+            'quit' - Exit to terminal
+        """
+        try:
+            response = input("Enter (continue) / m(odify) / q(uit): ").strip().lower()
+
+            if response == 'm':
+                return 'modify'
+            elif response == 'q':
+                print_text("   Quitting...", style="dim")
+                return 'quit'
+            else:  # Enter or any other key = accept
+                return 'accept'
+
+        except (KeyboardInterrupt, EOFError):
+            print_text("\n   Quitting...", style="dim")
+            return 'quit'
+
     def _ask_user_confirmation(self, summary: Dict[str, Any]) -> str:
         """
         Ask user if the query was successful and should be learned.

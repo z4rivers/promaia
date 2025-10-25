@@ -124,9 +124,16 @@ def process_vector_search_to_content(
     """
     try:
         processor = get_nl_processor(verbose=verbose, query_mode="vector")
-        
+
         # Process the query with the agentic system (includes modification support)
-        result = processor.process_query_with_modification(vs_prompt, workspace=workspace, max_retries=2)
+        # Note: Vector search is deterministic, so retries are pointless - set max_retries=0
+        result = processor.process_query_with_modification(
+            vs_prompt,
+            workspace=workspace,
+            max_retries=0,  # No auto-retry for vector search (deterministic)
+            n_results=n_results,
+            min_similarity=min_similarity
+        )
         
         # Check if user chose to quit (exit to terminal)
         if result.get("action") == "quit":
