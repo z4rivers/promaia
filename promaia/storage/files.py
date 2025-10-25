@@ -620,6 +620,99 @@ def load_json_files_with_property_filter(property_filters: Dict[str, Any], json_
     
     return matching_page_ids
 
+def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: str, db_path: str) -> str:
+    """
+    Query properties from SQLite for a specific page and format them for display.
+
+    Args:
+        page_id: Page identifier
+        database_id: Notion database ID
+        database_name: Database nickname (e.g., 'journal', 'stories', 'cms')
+        db_path: Path to SQLite database
+
+    Returns:
+        Formatted property string, or empty string if no properties
+    """
+    from promaia.storage.hybrid_storage import get_hybrid_registry
+
+    try:
+        registry = get_hybrid_registry(db_path)
+
+        # Determine which table to query
+        table_mapping = {
+            'journal': 'notion_journal',
+            'stories': 'notion_stories',
+            'cms': 'notion_cms',
+        }
+        table_name = table_mapping.get(database_name)
+
+        if not table_name or not database_id:
+            return ""
+
+        # Get property schema for this database
+        property_schema = registry.get_property_schema(database_id)
+        if not property_schema:
+            return ""
+
+        # Query the specialized table for this page
+        import sqlite3
+        with sqlite3.connect(registry.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Get property column names
+            property_columns = [prop['column_name'] for prop in property_schema]
+            if not property_columns:
+                return ""
+
+            # Build query to fetch properties
+            columns_str = ', '.join(property_columns)
+            query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+
+            cursor.execute(query, (page_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                return ""
+
+            # Format properties for display
+            property_lines = ["**Properties:**"]
+
+            for prop in property_schema:
+                prop_name = prop['property_name']
+                col_name = prop['column_name']
+                value = row[col_name]
+
+                if value is not None:
+                    # Format based on type
+                    if isinstance(value, str) and value.startswith('['):
+                        # JSON array (multi-select, relation, etc.) - parse and format
+                        try:
+                            import json
+                            items = json.loads(value)
+                            if items:
+                                value_str = ', '.join(str(item) for item in items)
+                            else:
+                                value_str = None
+                        except:
+                            value_str = value
+                    else:
+                        value_str = str(value)
+
+                    if value_str:
+                        property_lines.append(f"- {prop_name}: {value_str}")
+
+            # Return formatted properties if we have any
+            if len(property_lines) > 1:
+                return '\n'.join(property_lines)
+
+        return ""
+
+    except Exception as e:
+        print(f"⚠️  Error querying properties for {page_id}: {e}")
+        return ""
+
+
 def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_metadata.db", expand_gmail_threads: bool = True) -> Dict[str, List[Dict[str, Any]]]:
     """
     Universal adapter to load full markdown content for specific page IDs using the registry.
@@ -779,7 +872,42 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                 # Read the markdown content
                 with open(md_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
+
+                # Inject properties from SQLite if database config specifies include_properties
+                # This replaces the old behavior of storing properties in markdown
+                try:
+                    from promaia.config.databases import get_database_manager
+                    db_manager = get_database_manager()
+
+                    workspace = entry['workspace']
+                    db_config = None
+
+                    # Try to get database config
+                    if workspace and '.' not in database_name:
+                        qualified_name = f"{workspace}.{database_name}"
+                        db_config = db_manager.get_database_by_qualified_name(qualified_name)
+
+                    if not db_config:
+                        db_config = db_manager.get_database(database_name, workspace)
+
+                    # Check if we should include properties in context
+                    if db_config and getattr(db_config, 'include_properties', False):
+                        # Query properties from SQLite
+                        properties_str = _get_properties_from_sqlite(
+                            page_id=page_id,
+                            database_id=entry['database_id'],
+                            database_name=database_name,
+                            db_path=db_path
+                        )
+
+                        if properties_str:
+                            # Prepend properties to content
+                            content = properties_str + "\n\n" + content
+
+                except Exception as e:
+                    # Don't fail if property injection fails
+                    print(f"⚠️  Failed to inject properties for {page_id}: {e}")
+
                 # Parse created_time
                 try:
                     if entry['created_time']:

@@ -254,11 +254,11 @@ class NotionConnector(BaseConnector):
             self.logger.error(f"Failed to get page properties for {page_id}: {e}")
             return {}
     
-    async def sync_to_local(self, 
+    async def sync_to_local(self,
                            output_directory: str,
                            filters: Optional[List[QueryFilter]] = None,
                            date_filter: Optional[DateRangeFilter] = None,
-                           include_properties: bool = True,
+                           include_properties: bool = False,  # Don't write properties to markdown (stored in SQLite)
                            force_update: bool = False,
                            excluded_properties: List[str] = None) -> SyncResult:
         """Sync Notion database content to local storage."""
