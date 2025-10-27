@@ -659,7 +659,7 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
             f.write(f"Resolved Workspace: {context_state.get('resolved_workspace')}\n")
             f.write(f"Sources: {context_state.get('sources')}\n")
             f.write(f"Filters: {context_state.get('filters')}\n")
-            f.write(f"Natural Language Prompt: {context_state.get('natural_language_prompt')}\n")
+            f.write(f"Natural Language Prompt: {context_state.get('sql_query_prompt')}\n")
             f.write(f"Query Command: {context_state.get('query_command')}\n")
             f.write(f"Total Pages Loaded: {total_pages_loaded}\n")
             f.write(f"System Prompt Length: {len(system_prompt)} characters\n")
@@ -762,7 +762,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
         return create_system_prompt(multi_source_data, mcp_tools_info)
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None, auto_respond_to_initial=False, top_k=None, threshold=None, vector_search_queries=None, initial_vs_per_query_cache=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, sql_query_content=None, sql_query_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None, auto_respond_to_initial=False, top_k=None, threshold=None, vector_search_queries=None, initial_vs_per_query_cache=None):
     """
     Main chat function with simplified, unified logic.
 
@@ -778,7 +778,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     if mode:
         logger.info(f"🎭 Chat called with mode: {type(mode).__name__}")
         logger.info(f"   Workspace: {workspace}")
-        logger.info(f"   Natural language content: {bool(natural_language_content)}")
+        logger.info(f"   Natural language content: {bool(sql_query_content)}")
         logger.info(f"   Initial messages: {len(initial_messages) if initial_messages else 0}")
         
         # Prevent browser auto-launch when mode is active (e.g., draft mode has pre-loaded context)
@@ -788,18 +788,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     # Detect mixed commands: when user provides both sources and browse arguments
     has_regular_sources = bool(sources)
     has_browse_command = bool(browse_databases) or bool(original_browse_command and '-b' in original_browse_command)
-    has_natural_language = bool(natural_language_prompt)
+    has_natural_language = bool(sql_query_prompt)
 
     
     # Detect mixed browse+NL commands from CLI: sources from browser + natural language
     # These should use OR logic (independent operation) not AND logic (filtering)
-    # CLI mixed commands have: sources (from browser) + natural_language_prompt + original_browse_command + browse_databases=None
+    # CLI mixed commands have: sources (from browser) + sql_query_prompt + original_browse_command + browse_databases=None
     is_cli_mixed_command = has_regular_sources and has_natural_language and browse_selections and not browse_databases
     debug_print(f"🐛 Mixed command check: has_regular_sources={has_regular_sources}, has_natural_language={has_natural_language}, browse_selections={bool(browse_selections)}, has_browse_command={has_browse_command}, browse_databases={bool(browse_databases)}")
     is_mixed_browse_nl_command = is_cli_mixed_command
     
     if is_mixed_browse_nl_command:
-        debug_print(f"🔍 Detected mixed browse+NL command: sources={bool(sources)}, nl={bool(natural_language_prompt)}, browse_sel={bool(browse_selections)}, browse_cmd={has_browse_command}")
+        debug_print(f"🔍 Detected mixed browse+NL command: sources={bool(sources)}, nl={bool(sql_query_prompt)}, browse_sel={bool(browse_selections)}, browse_cmd={has_browse_command}")
     else:
         debug_print(f"🚫 NOT detected as mixed browse+NL command")
     
@@ -920,8 +920,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 query_parts.extend(["-f", f'"{filter_expr}"'])
         if workspace:
             query_parts.extend(["-ws", workspace])
-        if natural_language_prompt:
-            query_parts.extend(["-nl", natural_language_prompt])
+        if sql_query_prompt:
+            query_parts.extend(["-nl", sql_query_prompt])
         if mcp_servers:
             for server in mcp_servers:
                 query_parts.extend(["-mcp", server])
@@ -988,7 +988,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("-f", "--filter", action="append", dest="filters")
             parser.add_argument("-w", "--workspace", dest="workspace")
             parser.add_argument("-b", "--browse", nargs="*", dest="browse")
-            parser.add_argument("-nl", "--natural-language", nargs="*", dest="natural_language")
+            parser.add_argument("-sql", "--sql-query", nargs="*", dest="sql_query")
+            parser.add_argument("-nl", nargs="*", dest="sql_query", help=argparse.SUPPRESS)  # Deprecated alias
             parser.add_argument("-vs", "--vector-search", nargs="*", dest="vector_search")
             parser.add_argument("-tk", "--top-k", type=int, dest="top_k")
             parser.add_argument("-th", "--threshold", type=float, dest="threshold")
@@ -1004,8 +1005,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 filters = parsed_args.filters
             if parsed_args.workspace and not workspace:
                 workspace = parsed_args.workspace
-            if parsed_args.natural_language and not natural_language_prompt:
-                natural_language_prompt = " ".join(parsed_args.natural_language)
+            if parsed_args.natural_language and not sql_query_prompt:
+                sql_query_prompt = " ".join(parsed_args.natural_language)
             if parsed_args.mcp_servers and not mcp_servers:
                 mcp_servers = parsed_args.mcp_servers
                 
@@ -1027,12 +1028,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'system_prompt': None,
         'query_command': None,
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
-        'natural_language_content': None,  # Will be set from initial_nl_content if provided
+        'sql_query_content': None,  # Will be set from initial_nl_content if provided
         'vector_search_content': None,  # Store VS content separately for independent tracking
         'vector_search_per_query_cache': initial_vs_per_query_cache if initial_vs_per_query_cache else {},  # Per-query cache for efficient -vs editing
         'vector_search_queries': vector_search_queries if vector_search_queries else [],  # Store individual -vs queries as list
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store browser selections from CLI
-        'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
+        'sql_query_prompt': sql_query_prompt,  # Store the original NL prompt
         'is_vector_search': is_vector_search,  # Track if using vector search instead of natural language
         'mcp_servers': mcp_servers,  # Store MCP server names to include
         'mcp_tools_info': None,  # Store MCP tools information for prompt
@@ -1067,12 +1068,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Initialize NL and VS content separately from CLI
     if initial_nl_content:
-        context_state['natural_language_content'] = initial_nl_content
+        context_state['sql_query_content'] = initial_nl_content
         debug_print(f"🔧 Initialized NL content from CLI: {len(initial_nl_content)} databases, {sum(len(pages) for pages in initial_nl_content.values())} pages")
-    elif natural_language_content:
-        # Backwards compatibility: if natural_language_content parameter is provided (old code path)
-        context_state['natural_language_content'] = natural_language_content
-        debug_print(f"🔧 Initialized NL content from parameter: {len(natural_language_content)} databases")
+    elif sql_query_content:
+        # Backwards compatibility: if sql_query_content parameter is provided (old code path)
+        context_state['sql_query_content'] = sql_query_content
+        debug_print(f"🔧 Initialized NL content from parameter: {len(sql_query_content)} databases")
 
     if initial_vs_content:
         context_state['vector_search_content'] = initial_vs_content
@@ -1080,8 +1081,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Set up separate caches for NL and VS if provided by CLI
     if initial_nl_prompt or initial_nl_content:
-        context_state['cached_natural_language_prompt'] = initial_nl_prompt or ''
-        context_state['cached_natural_language_content'] = initial_nl_content or {}
+        context_state['cached_sql_query_prompt'] = initial_nl_prompt or ''
+        context_state['cached_sql_query_content'] = initial_nl_content or {}
         debug_print(f"🔧 Set up NL cache from CLI: prompt='{initial_nl_prompt}'")
 
     if initial_vs_prompt or initial_vs_content:
@@ -1137,8 +1138,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 else:
                     # Old format: just a string
                     query_parts.extend(["-vs", vs_query])
-        elif context_state['natural_language_prompt']:
-            nl_prompt = context_state['natural_language_prompt']
+        elif context_state['sql_query_prompt']:
+            nl_prompt = context_state['sql_query_prompt']
             # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
             # Adding quotes is redundant and makes commands harder to read and copy
             query_parts.extend(["-nl", nl_prompt])
@@ -1165,7 +1166,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if original_browse_command:
             # Use the provided original browse command
             context_state['original_query_format'] = original_browse_command
-        elif sources or filters or workspace or natural_language_prompt or mcp_servers or vector_search_queries:
+        elif sources or filters or workspace or sql_query_prompt or mcp_servers or vector_search_queries:
             # Build and store the original query format for regular commands to preserve day specifications
             query_parts = ["maia", "chat"]
             if sources:
@@ -1190,8 +1191,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         # Old format: just a string
                         query_parts.extend(["-vs", vs_query])
-            elif natural_language_prompt:
-                query_parts.extend(["-nl", natural_language_prompt])
+            elif sql_query_prompt:
+                query_parts.extend(["-nl", sql_query_prompt])
             if mcp_servers:
                 for server in mcp_servers:
                     query_parts.extend(["-mcp", server])
@@ -1202,13 +1203,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     def reload_context(skip_nl_cache_messages=False):
         """Reload the chat context with current state configuration."""
-        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command, natural_language_content, sources
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt, query_command, sql_query_content, sources
 
         # Debug: Log reload_context entry
         debug_print(f"\n🔄 reload_context() called:")
         debug_print(f"  context_state['sources']: {context_state.get('sources', [])}")
-        debug_print(f"  context_state['natural_language_prompt']: {bool(context_state.get('natural_language_prompt'))}")
-        debug_print(f"  context_state['natural_language_content']: {len(context_state.get('natural_language_content', {})) if context_state.get('natural_language_content') else 0} databases")
+        debug_print(f"  context_state['sql_query_prompt']: {bool(context_state.get('sql_query_prompt'))}")
+        debug_print(f"  context_state['sql_query_content']: {len(context_state.get('sql_query_content', {})) if context_state.get('sql_query_content') else 0} databases")
         debug_print(f"  context_state['vector_search_content']: {len(context_state.get('vector_search_content', {})) if context_state.get('vector_search_content') else 0} databases")
         debug_print(f"  context_state['is_mixed_browse_nl_command']: {context_state.get('is_mixed_browse_nl_command')}")
 
@@ -1217,9 +1218,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
         # Check if we have pre-processed NL content (from CLI) - separate from VS content
         # This happens when CLI processes NL queries before calling chat()
-        if context_state.get('natural_language_content') and not context_state.get('natural_language_prompt'):
+        if context_state.get('sql_query_content') and not context_state.get('sql_query_prompt'):
             debug_print(f"🔍 Using pre-processed NL content from CLI")
-            nl_content = context_state.get('natural_language_content', {})
+            nl_content = context_state.get('sql_query_content', {})
             if nl_content:
                 debug_print(f"  Found {len(nl_content)} databases with {sum(len(pages) for pages in nl_content.values())} NL pages")
                 for db_name, pages in nl_content.items():
@@ -1242,14 +1243,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
         # Process natural language query if present (prompt needs processing)
         natural_language_data = {}
-        if context_state.get('natural_language_prompt'):
-            debug_print(f"🔍 Processing natural language prompt: '{context_state.get('natural_language_prompt')}'")
+        if context_state.get('sql_query_prompt'):
+            debug_print(f"🔍 Processing natural language prompt: '{context_state.get('sql_query_prompt')}'")
             debug_print(f"🔍 Vector search mode: {context_state.get('is_vector_search', False)}")
-            nl_prompt = context_state['natural_language_prompt']
+            nl_prompt = context_state['sql_query_prompt']
             
             # Check if we already have content from CLI (first time) or cached results
-            existing_nl_content = context_state.get('natural_language_content', {})
-            cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+            existing_nl_content = context_state.get('sql_query_content', {})
+            cached_nl_prompt = context_state.get('cached_sql_query_prompt', '')
             
             # DEBUG: Add logging to understand cache behavior
             debug_print(f"🔍 NL Cache Debug:")
@@ -1263,7 +1264,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if existing_nl_content and not cached_nl_prompt:
                 natural_language_data = existing_nl_content
                 # Set up cache for future reloads
-                context_state['cached_natural_language_prompt'] = nl_prompt
+                context_state['cached_sql_query_prompt'] = nl_prompt
                 debug_print(f"  → Using CLI content, caching prompt")
             # If we have cached content for this exact prompt, reuse it (no re-processing needed)
             elif nl_prompt == cached_nl_prompt and existing_nl_content:
@@ -1318,7 +1319,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if context_state.get('is_vector_search'):
                         # Use vector search processor instead of natural language SQL query
                         from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
-                        natural_language_content = process_vector_search_to_content(
+                        sql_query_content = process_vector_search_to_content(
                             nl_prompt,
                             workspace=None,  # Allow cross-workspace searches
                             verbose=True,  # Show detailed processing steps
@@ -1328,25 +1329,25 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     else:
                         # Always allow cross-workspace queries for natural language
                         # Workspace is just a classifier/tag, not a mandatory constraint
-                        natural_language_content = query_interface.natural_language_query(nl_prompt, None, database_names)
+                        sql_query_content = query_interface.natural_language_query(nl_prompt, None, database_names)
                     
-                    if not natural_language_content:
+                    if not sql_query_content:
                         print_text("❌ No content found for natural language query", style="bold red")
                         return False
                     
                     # Cache both the results and prompt for future use
-                    context_state['natural_language_content'] = natural_language_content
-                    context_state['cached_natural_language_prompt'] = nl_prompt
+                    context_state['sql_query_content'] = sql_query_content
+                    context_state['cached_sql_query_prompt'] = nl_prompt
                     
                     # IMPORTANT: Set natural_language_data for integration with combined_multi_source_data
-                    natural_language_data = natural_language_content
+                    natural_language_data = sql_query_content
                     
                 except Exception as e:
                     print_text(f"Error processing natural language content: {e}", style="bold red")
                     # Continue with regular sources even if NL fails
                     # Clear cache on error
-                    context_state['natural_language_content'] = {}
-                    context_state['cached_natural_language_prompt'] = ''
+                    context_state['sql_query_content'] = {}
+                    context_state['cached_sql_query_prompt'] = ''
             
             # Add natural language data to combined results (whether cached or fresh)
             if natural_language_data:
@@ -1395,8 +1396,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if connected_servers:
                     # Use compact format if we have other content to avoid prompt issues
                     # Also use compact format when we have no content at all to prevent content filtering
-                    has_other_content = bool(sources or natural_language_content)
-                    compact_format = has_other_content or (not sources and not natural_language_content)
+                    has_other_content = bool(sources or sql_query_content)
+                    compact_format = has_other_content or (not sources and not sql_query_content)
                     
                     # Format tools information for the system prompt
                     mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=compact_format)
@@ -1446,14 +1447,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Don't calculate total here - calculate it from final data to ensure consistency
 
         # Only auto-load workspace databases if user provided NO arguments at all
-        # Also check for pre-loaded natural_language_content (e.g., from draft mode) or if a mode is active
-        user_provided_args = bool(sources or filters or natural_language_prompt or context_state.get('browse_selections') or mcp_servers or context_state.get('natural_language_content') or mode)
+        # Also check for pre-loaded sql_query_content (e.g., from draft mode) or if a mode is active
+        user_provided_args = bool(sources or filters or sql_query_prompt or context_state.get('browse_selections') or mcp_servers or context_state.get('sql_query_content') or mode)
         
         # Check if user provided workspace but no sources (workspace browse mode)
         # BUT don't launch browser if we already have sources (e.g., from edit context)
         # Only launch browser if user explicitly provided a workspace (not defaulted)
         # Also don't launch browser if we're in a mode (e.g., draft mode)
-        user_provided_workspace_only = bool(current_workspace and not sources and not filters and not natural_language_prompt)
+        user_provided_workspace_only = bool(current_workspace and not sources and not filters and not sql_query_prompt)
 
         if user_provided_workspace_only and not current_sources and not mode:
             debug_print(f"Opening workspace browser for '{actual_workspace}'.")
@@ -1865,8 +1866,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if context_state['sources']:
             databases_to_sync = context_state['sources']
         # Check if we have databases from natural language queries
-        elif context_state.get('natural_language_content'):
-            databases_to_sync = list(context_state['natural_language_content'].keys())
+        elif context_state.get('sql_query_content'):
+            databases_to_sync = list(context_state['sql_query_content'].keys())
         # Check if we have databases from initial multi-source data
         elif context_state.get('initial_multi_source_data'):
             databases_to_sync = list(context_state['initial_multi_source_data'].keys())
@@ -2030,15 +2031,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Old format: just a string
                         current_args.extend(['-vs', vs_query])
             # Check if we're in natural language mode or vector search mode (old format)
-            elif context_state.get('natural_language_prompt'):
+            elif context_state.get('sql_query_prompt'):
                 # Check if this was originally a vector search command
                 original_cmd = context_state.get('original_query_format', '')
-                if '-vs' in original_cmd and context_state.get('natural_language_content'):
+                if '-vs' in original_cmd and context_state.get('sql_query_content'):
                     # This is vector search mode - use -vs flag
-                    current_args.extend(['-vs', context_state['natural_language_prompt']])
+                    current_args.extend(['-vs', context_state['sql_query_prompt']])
                 else:
                     # This is regular natural language mode - use -nl flag
-                    current_args.extend(['-nl', context_state['natural_language_prompt']])
+                    current_args.extend(['-nl', context_state['sql_query_prompt']])
             else:
                 # Regular mode with sources and filters
                 if context_state['sources']:
@@ -2146,15 +2147,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     help="Specify which workspace to use"
                 )
                 parser.add_argument(
-                    "--natural-language", "-nl",
+                    "--sql-query", "-sql",
                     action="append",
                     nargs="+",
-                    help="Use natural language to specify what content to load for chat context. Can be used multiple times."
+                    help="Use SQL-based queries to search content. Can be used multiple times."
                 )
-                # NOTE: This -nl parsing MUST stay in sync with:
-                # 1. Top-level CLI parsing in promaia/cli.py (lines ~1507-1520, 1674-1693, 2576-2579)
+                # Deprecated: Keep -nl as an alias for backward compatibility
+                parser.add_argument(
+                    "-nl",
+                    action="append",
+                    nargs="+",
+                    dest="sql_query",
+                    help=argparse.SUPPRESS
+                )
+                # NOTE: This -sql parsing MUST stay in sync with:
+                # 1. Top-level CLI parsing in promaia/cli.py (lines ~2918-2936)
                 # 2. safe_split_command() function above (line ~514)
-                # These are two sides of one feature and must handle multiple -nl arguments identically.
+                # These are two sides of one feature and must handle multiple -sql arguments identically.
                 parser.add_argument(
                     "--vector-search", "-vs",
                     action="append",
@@ -2227,7 +2236,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             )
                             loop.close()
 
-                            # Convert context to natural_language_content format for chat
+                            # Convert context to sql_query_content format for chat
                             message_context = {}
 
                             # Add email thread
@@ -2268,7 +2277,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 message_context[db_name].append(page)
 
                             # Update context state with loaded context
-                            context_state['natural_language_content'] = message_context
+                            context_state['sql_query_content'] = message_context
 
                             print_text(f"📚 Loaded {context.total_sources} sources from your knowledge base\n", style="green")
 
@@ -2287,14 +2296,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             return False
 
                 # Check if natural language mode is being used
-                natural_language_args = getattr(parsed_args, 'natural_language', None)
+                sql_query_args = getattr(parsed_args, 'sql_query', None)
                 
-                if natural_language_args is not None:
+                if sql_query_args is not None:
                     # Natural language mode - handle multiple -nl queries
                     # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
                     # Both edit mode and top-level query are two sides of one feature.
                     # With action="append" and nargs="+", we get a list of lists
-                    nl_prompts = [' '.join(nl_args) for nl_args in natural_language_args if nl_args]
+                    nl_prompts = [' '.join(nl_args) for nl_args in sql_query_args if nl_args]
                     
                     if not nl_prompts:
                         print_text("Error: Natural language prompt is empty.", style="bold red")
@@ -2305,8 +2314,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else ""
                     
                     # Check if we already have cached results for this exact NL prompt
-                    cached_nl_content = context_state.get('natural_language_content', {})
-                    cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
+                    cached_nl_content = context_state.get('sql_query_content', {})
+                    cached_nl_prompt = context_state.get('cached_sql_query_prompt', '')
                     
                     # DEBUG: Log cache check in edit context
                     debug_print(f"🔍 Edit Context NL Cache Check:")
@@ -2317,14 +2326,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                         print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
-                        natural_language_content = cached_nl_content
+                        sql_query_content = cached_nl_content
                         debug_print(f"  → Using cached results (edit context cache hit)")
                     else:
                         # Only clear cache if the prompt is actually different (not empty)
                         if cached_nl_prompt and combined_nl_prompt != cached_nl_prompt:
                             debug_print(f"  → Prompt changed, clearing cache")
-                            context_state['natural_language_content'] = None
-                            context_state['cached_natural_language_prompt'] = ''
+                            context_state['sql_query_content'] = None
+                            context_state['cached_sql_query_prompt'] = ''
                         elif not cached_nl_prompt:
                             debug_print(f"  → No cached prompt yet, will process and cache")
                         else:
@@ -2398,21 +2407,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 return False
                             
                             print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
-                            natural_language_content = combined_nl_content
+                            sql_query_content = combined_nl_content
                             
                             # Cache both the results and combined prompt for future use
-                            context_state['natural_language_content'] = natural_language_content
-                            context_state['cached_natural_language_prompt'] = combined_nl_prompt
+                            context_state['sql_query_content'] = sql_query_content
+                            context_state['cached_sql_query_prompt'] = combined_nl_prompt
                             
                         except Exception as e:
                             print_text(f"Error processing natural language query: {e}", style="bold red")
                             return False
                     
                     # Update context state for natural language mode
-                    # natural_language_content is already set above (either from cache or fresh query)
-                    context_state['natural_language_prompt'] = combined_nl_prompt
+                    # sql_query_content is already set above (either from cache or fresh query)
+                    context_state['sql_query_prompt'] = combined_nl_prompt
                     
-                    # NOTE: Don't update cached_natural_language_prompt here!
+                    # NOTE: Don't update cached_sql_query_prompt here!
                     # Let reload_context() handle cache updates after processing new queries
                     
                     # Update sources and filters based on the edited command, not the old state
@@ -2593,8 +2602,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Update caches
                         context_state['vector_search_per_query_cache'] = per_query_cache
-                        context_state['natural_language_content'] = vs_content
-                        context_state['cached_natural_language_prompt'] = combined_vs_prompt
+                        context_state['sql_query_content'] = vs_content
+                        context_state['cached_sql_query_prompt'] = combined_vs_prompt
 
                     except Exception as e:
                         print_text(f"Error processing vector search query: {e}", style="bold red")
@@ -2603,7 +2612,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         return False
                     
                     # Update context state for vector search mode (reuse natural_language fields)
-                    context_state['natural_language_prompt'] = combined_vs_prompt
+                    context_state['sql_query_prompt'] = combined_vs_prompt
                     
                     # Update other fields from parsed args
                     new_sources = getattr(parsed_args, 'sources', []) or []
@@ -2650,8 +2659,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
                     
                     # Check if we're switching from NL mode to regular mode
-                    had_nl_content = bool(context_state.get('natural_language_content'))
-                    had_nl_prompt = bool(context_state.get('natural_language_prompt'))
+                    had_nl_content = bool(context_state.get('sql_query_content'))
+                    had_nl_prompt = bool(context_state.get('sql_query_prompt'))
                     nl_was_removed = had_nl_content or had_nl_prompt
                     
                     # Update context state
@@ -2672,10 +2681,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("🔄 Removing natural language results from context...", style="cyan")
                         
                         # IMPORTANT: Capture NL sources before clearing state to prevent any confusion  
-                        nl_sources_to_remove = set(context_state.get('natural_language_content', {}).keys() if context_state.get('natural_language_content') else [])
-                        context_state['natural_language_content'] = None
-                        context_state['natural_language_prompt'] = None
-                        context_state['cached_natural_language_prompt'] = ''
+                        nl_sources_to_remove = set(context_state.get('sql_query_content', {}).keys() if context_state.get('sql_query_content') else [])
+                        context_state['sql_query_content'] = None
+                        context_state['sql_query_prompt'] = None
+                        context_state['cached_sql_query_prompt'] = ''
                         
                         try:
                             nonlocal initial_multi_source_data, total_pages_loaded
@@ -2733,9 +2742,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             debug_print(f"NL removal error: {e}")
                             # Fall back to full reload if manual update fails
                             # Ensure NL state is still cleared before reload
-                            context_state['natural_language_content'] = None
-                            context_state['natural_language_prompt'] = None
-                            context_state['cached_natural_language_prompt'] = ''
+                            context_state['sql_query_content'] = None
+                            context_state['sql_query_prompt'] = None
+                            context_state['cached_sql_query_prompt'] = ''
                             if reload_context():
                                 print_text("Context updated successfully via reload!", style="bold green")
                                 return True
@@ -2788,8 +2797,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("--filter", "-f", action="append", dest="filters")
             parser.add_argument("--workspace", "-ws", dest="workspace")
             parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
-            # NOTE: This MUST match the other -nl/-vs parsers (top-level CLI and normal edit mode)
-            parser.add_argument("--natural-language", "-nl", action="append", nargs="+", dest="natural_language")
+            # NOTE: This MUST match the other -sql/-vs parsers (top-level CLI and normal edit mode)
+            parser.add_argument("--sql-query", "-sql", action="append", nargs="+", dest="sql_query")
+            parser.add_argument("--sql-query", "-nl", action="append", nargs="+", dest="sql_query", help=argparse.SUPPRESS)  # Deprecated alias
             parser.add_argument("--vector-search", "-vs", action="append", nargs="+", dest="vector_search")
             parser.add_argument("--top-k", "-tk", type=int, help="Maximum number of results from vector search")
             parser.add_argument("--threshold", "-th", type=float, help="Minimum similarity threshold for vector search")
@@ -2818,8 +2828,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             workspace = parsed_args.workspace or context_state.get('workspace')
             # NOTE: With action="append" and nargs="+", natural_language is a list of lists
             # Convert to list of strings, matching the other implementations
-            natural_language_raw = parsed_args.natural_language or []
-            natural_language_parts = [' '.join(nl_args) for nl_args in natural_language_raw if nl_args] if natural_language_raw else []
+            sql_query_raw = parsed_args.natural_language or []
+            sql_query_parts = [' '.join(nl_args) for nl_args in sql_query_raw if nl_args] if sql_query_raw else []
             
             # Detect if the browse part of the command actually changed
             original_command = context_state.get('original_query_format', '')
@@ -2876,43 +2886,43 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Detect if natural language was removed FIRST (before processing)
             nl_was_removed = False
             nl_sources_to_remove = set()  # Initialize for use throughout function
-            if not natural_language_parts and (context_state.get('natural_language_content') or context_state.get('natural_language_prompt')):
+            if not sql_query_parts and (context_state.get('sql_query_content') or context_state.get('sql_query_prompt')):
                 print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
                 nl_was_removed = True
                 # Capture NL sources before any state changes
-                nl_sources_to_remove = set(context_state.get('natural_language_content', {}).keys() if context_state.get('natural_language_content') else [])
+                nl_sources_to_remove = set(context_state.get('sql_query_content', {}).keys() if context_state.get('sql_query_content') else [])
                 
             # Process natural language query if present (supports multiple -nl queries)
             nl_prompt = None
-            natural_language_content = None
-            if natural_language_parts:
+            sql_query_content = None
+            if sql_query_parts:
                 # Create combined prompt for caching (WITHOUT -nl prefix for comparison)
-                combined_nl_prompt = " ".join(natural_language_parts)
+                combined_nl_prompt = " ".join(sql_query_parts)
 
                 # Check cache first - compare against NL-specific cache key
-                cached_nl_prompt = context_state.get('cached_natural_language_prompt', '')
-                cached_nl_content = context_state.get('cached_natural_language_content', {})
+                cached_nl_prompt = context_state.get('cached_sql_query_prompt', '')
+                cached_nl_content = context_state.get('cached_sql_query_content', {})
 
                 debug_print(f"🔍 Manual Browse Edit NL Cache Check:")
-                debug_print(f"  New prompt(s): {natural_language_parts}")
+                debug_print(f"  New prompt(s): {sql_query_parts}")
                 debug_print(f"  Cached NL prompt: '{cached_nl_prompt}'")
                 debug_print(f"  Prompts match: {combined_nl_prompt == cached_nl_prompt}")
                 debug_print(f"  Has cached content: {bool(cached_nl_content)}")
 
                 if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                     print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="cyan")
-                    natural_language_content = cached_nl_content
+                    sql_query_content = cached_nl_content
                     debug_print(f"  → Using cached NL results from separate cache")
                 else:
                     debug_print(f"  → Cache miss, will re-process query")
                     
                     # Display processing message
-                    if len(natural_language_parts) > 1:
-                        print_text(f"🤖 Processing {len(natural_language_parts)} separate natural language queries", style="cyan")
-                        for i, prompt in enumerate(natural_language_parts):
+                    if len(sql_query_parts) > 1:
+                        print_text(f"🤖 Processing {len(sql_query_parts)} separate natural language queries", style="cyan")
+                        for i, prompt in enumerate(sql_query_parts):
                             print_text(f"   {i+1}. '{prompt}'", style="dim")
                     else:
-                        print_text(f"🤖 Processing natural language query: '{natural_language_parts[0]}'", style="cyan")
+                        print_text(f"🤖 Processing natural language query: '{sql_query_parts[0]}'", style="cyan")
                     
                     # Process the natural language queries (multiple prompts supported)
                     try:
@@ -2930,9 +2940,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             query_interface = get_query_interface()
                             combined_nl_content = {}
                             
-                            for i, nl_query in enumerate(natural_language_parts):
-                                if len(natural_language_parts) > 1:
-                                    print_text(f"🔍 Processing query {i+1}/{len(natural_language_parts)}: '{nl_query}'", style="dim")
+                            for i, nl_query in enumerate(sql_query_parts):
+                                if len(sql_query_parts) > 1:
+                                    print_text(f"🔍 Processing query {i+1}/{len(sql_query_parts)}: '{nl_query}'", style="dim")
                                 
                                 # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
                                 # Browser selections will be loaded separately and combined with NL results
@@ -2954,20 +2964,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                         else:
                                             combined_nl_content[db_name] = pages
                             
-                            natural_language_content = combined_nl_content
+                            sql_query_content = combined_nl_content
 
-                            if natural_language_content:
-                                total_results = sum(len(pages) for pages in natural_language_content.values())
-                                print_text(f"✅ NL results: {total_results} entries from {len(natural_language_content)} databases", style="green")
+                            if sql_query_content:
+                                total_results = sum(len(pages) for pages in sql_query_content.values())
+                                print_text(f"✅ NL results: {total_results} entries from {len(sql_query_content)} databases", style="green")
 
                                 # Cache NL results separately (not mixed with VS)
-                                context_state['cached_natural_language_prompt'] = combined_nl_prompt
-                                context_state['cached_natural_language_content'] = natural_language_content
+                                context_state['cached_sql_query_prompt'] = combined_nl_prompt
+                                context_state['cached_sql_query_content'] = sql_query_content
                                 debug_print(f"  → Processed and cached new NL results (separate cache)")
 
                                 # Store NL content separately from VS content
-                                context_state['natural_language_content'] = natural_language_content
-                                debug_print(f"  → Stored NL content separately in context_state['natural_language_content']")
+                                context_state['sql_query_content'] = sql_query_content
+                                debug_print(f"  → Stored NL content separately in context_state['sql_query_content']")
 
                                 # Show combined total if we also have VS content
                                 vs_content = context_state.get('vector_search_content', {})
@@ -2984,9 +2994,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text(f"❌ Error processing natural language query: {e}", style="yellow")
             elif nl_was_removed:
                 # Clear NL cache and content when removed (but keep VS cache if present)
-                context_state['cached_natural_language_prompt'] = ''
-                context_state['cached_natural_language_content'] = {}
-                context_state['natural_language_content'] = None
+                context_state['cached_sql_query_prompt'] = ''
+                context_state['cached_sql_query_content'] = {}
+                context_state['sql_query_content'] = None
                 debug_print(f"🗑️  Cleared NL content and cache (NL query removed)")
 
             # Process vector search query if present (supports multiple -vs queries)
@@ -3016,7 +3026,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             if vector_search_parts:
                 # If we have both NL and VS, we'll merge the results
-                if natural_language_parts and natural_language_content:
+                if sql_query_parts and sql_query_content:
                     print_text("📊 Processing both natural language and vector search queries - results will be combined", style="bold cyan")
 
                 # Create combined prompt for caching (without -vs flag)
@@ -3198,7 +3208,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             debug_print(f"  → Stored VS content separately in context_state['vector_search_content']")
 
                             # Show combined total if we also have NL content
-                            nl_content = context_state.get('natural_language_content', {})
+                            nl_content = context_state.get('sql_query_content', {})
                             if nl_content:
                                 nl_total = sum(len(pages) for pages in nl_content.values())
                                 combined_total = vs_total_results + nl_total
@@ -3214,6 +3224,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['cached_vector_search_content'] = {}
                 context_state['vector_search_content'] = None
                 context_state['vector_search_per_query_cache'] = {}
+                context_state['vector_search_queries'] = []
                 debug_print(f"🗑️  Cleared VS content and cache (VS query removed)")
 
             # Parse browse databases and expand workspace names (same logic as cli.py)
@@ -3473,33 +3484,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 
                 # Update only natural language/vector search context without re-launching browser
                 # NOTE: NL and VS content are now stored separately for proper attribution
-                if natural_language_content or 'combined_nl_content' in locals() or 'combined_vs_content' in locals():
+                if sql_query_content or 'combined_nl_content' in locals() or 'combined_vs_content' in locals():
                     # Determine what was processed
-                    has_nl = 'combined_nl_prompt' in locals() and natural_language_parts and 'combined_nl_content' in locals()
+                    has_nl = 'combined_nl_prompt' in locals() and sql_query_parts and 'combined_nl_content' in locals()
                     has_vs = 'combined_vs_content' in locals() and vector_search_parts
 
                     if has_nl and has_vs:
                         print_text("🔄 Updating natural language + vector search context (browse unchanged)...", style="dim")
                         # Store NL and VS separately (don't merge them here)
-                        context_state['natural_language_content'] = combined_nl_content
+                        context_state['sql_query_content'] = combined_nl_content
                         context_state['vector_search_content'] = combined_vs_content
-                        context_state['natural_language_prompt'] = None  # Already processed, don't re-process
+                        context_state['sql_query_prompt'] = None  # Already processed, don't re-process
                         context_state['is_vector_search'] = 'mixed'  # Mark as mixed mode
                     elif has_vs:
                         print_text("🔄 Updating vector search context (browse unchanged)...", style="dim")
                         # VS content was already stored in context_state['vector_search_content'] above
                         # Just ensure NL prompt is cleared since we're not processing NL
-                        context_state['natural_language_prompt'] = None
+                        context_state['sql_query_prompt'] = None
                         context_state['is_vector_search'] = True
                     else:
                         print_text("🔄 Updating natural language context (browse unchanged)...", style="dim")
                         # Store NL content separately
                         if 'combined_nl_content' in locals():
-                            context_state['natural_language_content'] = combined_nl_content
-                        elif natural_language_content:
+                            context_state['sql_query_content'] = combined_nl_content
+                        elif sql_query_content:
                             # Backwards compatibility for old code paths
-                            context_state['natural_language_content'] = natural_language_content
-                        context_state['natural_language_prompt'] = None  # Already processed, don't re-process
+                            context_state['sql_query_content'] = sql_query_content
+                        context_state['sql_query_prompt'] = None  # Already processed, don't re-process
                         context_state['is_vector_search'] = False
                     
                     # Set the mixed browse+NL flag for OR logic
@@ -3604,13 +3615,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Fall back to full reload if manual update fails
                         # Ensure query state is still cleared before reload
                         if nl_was_removed:
-                            context_state['natural_language_content'] = None
-                            context_state['natural_language_prompt'] = None
-                            context_state['cached_natural_language_prompt'] = ''
+                            context_state['sql_query_content'] = None
+                            context_state['sql_query_prompt'] = None
+                            context_state['cached_sql_query_prompt'] = ''
                         if vs_was_removed:
                             context_state['vector_search_content'] = None
                             context_state['cached_vector_search_prompt'] = ''
                             context_state['vector_search_per_query_cache'] = {}
+                            context_state['vector_search_queries'] = []
                         if reload_context(skip_nl_cache_messages=True):
                             print_text("Context updated successfully via reload!", style="bold green")
                             return True
@@ -4236,7 +4248,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     selected_query = edited_query
                 
                 # Check if this is a natural language query
-                if hasattr(selected_query, 'natural_language_prompt') and selected_query.natural_language_prompt:
+                if hasattr(selected_query, 'sql_query_prompt') and selected_query.sql_query_prompt:
                     # Natural language query - process it
                     try:
                         from promaia.storage.unified_query import get_query_interface
@@ -4252,7 +4264,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_text("Error: No workspace available for natural language query.", style="bold red")
                             return False
                         
-                        print_text(f"🤖 Processing natural language query from recent: '{selected_query.natural_language_prompt}'", style="dim")
+                        print_text(f"🤖 Processing natural language query from recent: '{selected_query.sql_query_prompt}'", style="dim")
                         
                         # Process the natural language query
                         query_interface = get_query_interface()
@@ -4263,25 +4275,25 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             from promaia.cli import extract_database_names_from_sources
                             database_names = extract_database_names_from_sources(context_state['browse_selections'])
                             
-                        natural_language_content = query_interface.natural_language_query(
-                            selected_query.natural_language_prompt, workspace, database_names
+                        sql_query_content = query_interface.natural_language_query(
+                            selected_query.sql_query_prompt, workspace, database_names
                         )
                         
-                        if not natural_language_content:
+                        if not sql_query_content:
                             print_text("❌ No content found for natural language query", style="bold red")
                             return False
                         
                         # Update context state for natural language mode
-                        context_state['natural_language_content'] = natural_language_content
-                        context_state['natural_language_prompt'] = selected_query.natural_language_prompt
+                        context_state['sql_query_content'] = sql_query_content
+                        context_state['sql_query_prompt'] = selected_query.sql_query_prompt
                         context_state['sources'] = []  # Clear regular sources
                         context_state['filters'] = []  # Clear regular filters
                         
                         # Reload with natural language content
                         if reload_context():
-                            query_desc = f"Recent NL: {selected_query.natural_language_prompt}"
+                            query_desc = f"Recent NL: {selected_query.sql_query_prompt}"
                             if action == 'edit':
-                                query_desc = f"Edited recent NL: {selected_query.natural_language_prompt}"
+                                query_desc = f"Edited recent NL: {selected_query.sql_query_prompt}"
                             print_text(f"Context updated from {query_desc.lower()}", style="bold green")
                             return True
                         else:
@@ -4299,8 +4311,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         context_state['workspace'] = selected_query.workspace
                     
                     # Clear natural language state
-                    context_state['natural_language_content'] = None
-                    context_state['natural_language_prompt'] = None
+                    context_state['sql_query_content'] = None
+                    context_state['sql_query_prompt'] = None
                     
                     # Reload context with the new settings
                     if reload_context():
@@ -4889,7 +4901,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             current_sources = context_state.get('sources', [])
                             current_filters = context_state.get('filters', [])
                             current_workspace = context_state.get('workspace')
-                            current_nl_prompt = context_state.get('natural_language_prompt')
+                            current_nl_prompt = context_state.get('sql_query_prompt')
                             # Clean up extra spaces in natural language prompt
                             if current_nl_prompt:
                                 current_nl_prompt = ' '.join(current_nl_prompt.split())
@@ -4901,7 +4913,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     sources=current_sources,
                                     filters=current_filters,
                                     workspace=current_workspace,
-                                    natural_language_prompt=current_nl_prompt,
+                                    sql_query_prompt=current_nl_prompt,
                                     original_browse_command=current_browse_command
                                 )
                         except Exception as e:
@@ -5195,8 +5207,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         'workspace': context_state.get('workspace'),
                         'resolved_workspace': context_state.get('resolved_workspace'),
                         'query_command': context_state.get('query_command'),
-                        'natural_language_prompt': context_state.get('natural_language_prompt'),
-                        'natural_language_content': context_state.get('natural_language_content'),  # Save the actual content for faster restore
+                        'sql_query_prompt': context_state.get('sql_query_prompt'),
+                        'sql_query_content': context_state.get('sql_query_content'),  # Save the actual content for faster restore
                         'original_query_format': context_state.get('original_query_format'),  # Save original browse command
                         'browse_selections': context_state.get('browse_selections')  # Save browse selections for re-editing
                     }

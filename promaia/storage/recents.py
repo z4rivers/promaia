@@ -16,7 +16,7 @@ class RecentQuery:
     filters: Optional[List[str]] = None
     workspace: Optional[str] = None
     timestamp: Optional[str] = None
-    natural_language_prompt: Optional[str] = None  # New field for NL queries
+    sql_query_prompt: Optional[str] = None  # New field for NL queries
     original_browse_command: Optional[str] = None  # Original browse command for display
     
     def to_dict(self) -> Dict[str, Any]:
@@ -31,8 +31,8 @@ class RecentQuery:
     def __str__(self) -> str:
         """Human-readable representation of the query."""
         # If this is a natural language query, show it differently
-        if self.natural_language_prompt:
-            command_str = f"maia chat -nl {self.natural_language_prompt}"
+        if self.sql_query_prompt:
+            command_str = f"maia chat -nl {self.sql_query_prompt}"
         elif self.original_browse_command:
             # Use the original browse command for display
             command_str = self.original_browse_command
@@ -92,7 +92,7 @@ class RecentsManager:
     def add_query(self, sources: Optional[List[str]] = None, 
                   filters: Optional[List[str]] = None, 
                   workspace: Optional[str] = None,
-                  natural_language_prompt: Optional[str] = None,
+                  sql_query_prompt: Optional[str] = None,
                   original_browse_command: Optional[str] = None) -> None:
         """Add a new query to recents."""
         new_query = RecentQuery(
@@ -101,7 +101,7 @@ class RecentsManager:
             filters=filters,
             workspace=workspace,
             timestamp=datetime.now().isoformat(),
-            natural_language_prompt=natural_language_prompt,
+            sql_query_prompt=sql_query_prompt,
             original_browse_command=original_browse_command
         )
         
@@ -121,12 +121,12 @@ class RecentsManager:
     def _queries_equal(self, q1: RecentQuery, q2: RecentQuery) -> bool:
         """Check if two queries are equal (ignoring timestamp)."""
         # If both are natural language queries, compare prompts
-        if q1.natural_language_prompt and q2.natural_language_prompt:
-            return (q1.natural_language_prompt == q2.natural_language_prompt and
+        if q1.sql_query_prompt and q2.sql_query_prompt:
+            return (q1.sql_query_prompt == q2.sql_query_prompt and
                     q1.workspace == q2.workspace)
         
         # If one is NL and one is traditional, they're different
-        if q1.natural_language_prompt or q2.natural_language_prompt:
+        if q1.sql_query_prompt or q2.sql_query_prompt:
             return False
         
         # Both are traditional queries

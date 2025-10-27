@@ -132,15 +132,15 @@ class ChatHistoryManager:
     
     def is_natural_language_thread(self, thread: ChatThread) -> bool:
         """Check if a thread was created with a natural language query."""
-        return thread.context.get('natural_language_prompt') is not None
+        return thread.context.get('sql_query_prompt') is not None
     
     def get_thread_query_command(self, thread: ChatThread) -> str:
         """Get the command string for a thread, prioritizing natural language format."""
         context = thread.context
         
         # Check if this was a natural language thread
-        if context.get('natural_language_prompt'):
-            return f"maia chat -nl {context['natural_language_prompt']}"
+        if context.get('sql_query_prompt'):
+            return f"maia chat -nl {context['sql_query_prompt']}"
         
         # Fall back to traditional format
         return context.get('query_command', 'maia chat')

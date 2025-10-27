@@ -469,13 +469,13 @@ class DraftChatInterface:
 
             # Note: chat() is synchronous and blocking, run in thread to await properly
             # Chat returns the messages list when it exits
-            # NOTE: Don't pass natural_language_content since DraftMode handles its own context
+            # NOTE: Don't pass sql_query_content since DraftMode handles its own context
             # (via structured_context passed to DraftMode constructor)
             result = await asyncio.to_thread(
                 chat,
                 workspace=self.workspace,
                 mode=mode,
-                natural_language_content=None,  # DraftMode handles its own context
+                sql_query_content=None,  # DraftMode handles its own context
                 initial_messages=initial_messages,  # Chat history
                 draft_id=self.draft_id,  # Pass draft_id for saving messages
                 auto_respond_to_initial=auto_respond,  # Auto-trigger AI response if requested

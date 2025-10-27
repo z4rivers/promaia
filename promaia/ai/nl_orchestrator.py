@@ -877,14 +877,16 @@ Return ONLY the JSON object:"""
                     # Map semantic name variations to column name
                     # e.g., "Name" → "name_2", "Epic" → "_epics"
                     semantic_name = prop_name.lower().strip()
-                    property_mapping[semantic_name] = col_name
 
-                    # Also map column name to itself for exact matches
-                    property_mapping[col_name.lower()] = col_name
-
-                    # For title types, also map "title" to the column
+                    # For title types, always use standardized name "title"
+                    # (embeddings are stored with property_name="title" regardless of column name)
                     if notion_type == 'title':
-                        property_mapping['title'] = col_name
+                        property_mapping[semantic_name] = 'title'
+                        property_mapping['title'] = 'title'
+                    else:
+                        property_mapping[semantic_name] = col_name
+                        # Also map column name to itself for exact matches
+                        property_mapping[col_name.lower()] = col_name
 
             # Normalize property_constraints using the mapping
             normalized_constraints = {}

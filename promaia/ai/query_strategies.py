@@ -552,14 +552,15 @@ Return ONLY the JSON object:"""
                     if verbose:
                         print_text(f"      → Found {len(prop_page_ids)} pages with matching '{prop_name}'", style="green" if prop_page_ids else "yellow")
 
-                    # Intersect with existing results
+                    # Intersect with existing results (or skip if property not found)
                     before_count = len(content_page_ids)
-                    if content_page_ids:
+                    if content_page_ids and prop_page_ids:
                         content_page_ids = content_page_ids.intersection(prop_page_ids)
                         if verbose and before_count > 0:
                             print_text(f"      → After intersection: {len(content_page_ids)} pages", style="dim")
-                    else:
+                    elif prop_page_ids:
                         content_page_ids = prop_page_ids
+                    # If prop_page_ids is empty, keep content_page_ids as-is (don't intersect with empty set)
 
                 # Apply filter properties
                 for prop_name, constraint in filter_properties.items():

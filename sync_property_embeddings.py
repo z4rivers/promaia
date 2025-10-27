@@ -432,12 +432,15 @@ def sync_property_embeddings(
 
         logger.info(f"  Found {len(embeddable_props)} embeddable properties: {', '.join(p['column_name'] for p in embeddable_props)}")
 
-        # Get table name for this database (from first property schema entry)
-        table_name = property_schema[0]['table_name'] if property_schema else None
-        if not table_name:
-            logger.warning(f"  Could not determine table name for {db_name}, skipping...")
-            stats['skipped_no_schema'] += len(db_pages)
-            continue
+        # Determine the actual data table name from workspace and database name
+        # Notion tables follow pattern: notion_{workspace}_{database_name}
+        if db_workspace and db_name:
+            table_name = f"notion_{db_workspace}_{db_name}"
+        else:
+            # Fallback to generic table name if workspace not specified
+            table_name = f"notion_{db_name}"
+
+        logger.debug(f"  Using table: {table_name}")
 
         # Process each page in this database (with batching for progress tracking)
         total_properties_in_db = 0
@@ -480,8 +483,12 @@ def sync_property_embeddings(
                         if value is None or value == '':
                             continue
 
+                        # For title properties, use standardized name "title" instead of column name
+                        # This ensures consistent property_name across all databases
+                        property_name = "title" if prop_type == 'title' else col_name
+
                         # Check if property embedding already exists
-                        vector_id = f"{page_id}_prop_{col_name}"
+                        vector_id = f"{page_id}_prop_{property_name}"
 
                         if skip_existing:
                             try:
@@ -501,7 +508,7 @@ def sync_property_embeddings(
                             continue
 
                         if dry_run:
-                            logger.debug(f"[DRY RUN] Would embed property: {page_id}.{col_name}")
+                            logger.debug(f"[DRY RUN] Would embed property: {page_id}.{property_name}")
                             props_created += 1
                             continue
 
@@ -509,7 +516,7 @@ def sync_property_embeddings(
                         success = _add_property_embedding_with_retry(
                             vector_db=vector_db,
                             page_id=page_id,
-                            property_name=col_name,
+                            property_name=property_name,
                             property_value=formatted_value,
                             property_type=prop_type,
                             base_metadata={
@@ -523,9 +530,9 @@ def sync_property_embeddings(
 
                         if success:
                             props_created += 1
-                            logger.debug(f"  ✅ Created property embedding: {page_id}.{col_name}")
+                            logger.debug(f"  ✅ Created property embedding: {page_id}.{property_name}")
                         else:
-                            logger.warning(f"  ❌ Failed to create embedding for {page_id}.{col_name}")
+                            logger.warning(f"  ❌ Failed to create embedding for {page_id}.{property_name}")
 
                     if props_created > 0:
                         stats['newly_embedded_properties'] += props_created

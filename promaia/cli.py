@@ -1077,9 +1077,9 @@ def chat_run(args):
             else:
                 browse_args.append(item)
     
-    # Detect mixed commands: when user provides sources + browse, OR browse + natural language, OR browse + vector search
+    # Detect mixed commands: when user provides sources + browse, OR browse + SQL query, OR browse + vector search
     # ANY command with browse args should be treated as a mixed command to ensure browser launches first
-    has_mixed_command = bool(browse_args) and (bool(sources) or (hasattr(args, 'natural_language') and args.natural_language) or (hasattr(args, 'vector_search') and args.vector_search))
+    has_mixed_command = bool(browse_args) and (bool(sources) or (hasattr(args, 'sql_query') and args.sql_query) or (hasattr(args, 'vector_search') and args.vector_search))
     
     if browse_args is not None:
         # If this is a mixed command, handle it specially
@@ -1089,7 +1089,7 @@ def chat_run(args):
             elif hasattr(args, 'vector_search') and args.vector_search:
                 print_text("🔄 Detected mixed command with browse and vector search. Browser will launch first...", style="cyan")
             else:
-                print_text("🔄 Detected mixed command with browse and natural language. Browser will launch first...", style="cyan")
+                print_text("🔄 Detected mixed command with browse and SQL query. Browser will launch first...", style="cyan")
             
             # browse_args is already flattened earlier
             browse_databases = browse_args or []
@@ -1098,28 +1098,28 @@ def chat_run(args):
             filters = getattr(args, 'filters', None)
             original_workspace = getattr(args, 'workspace', None)
             mcp_servers = getattr(args, 'mcp_servers', None)
-            nl_prompt = None
+            sql_prompt = None
             
-            # Handle natural language processing
-            nl_prompts = []
-            if hasattr(args, 'natural_language') and args.natural_language:
+            # Handle SQL query processing
+            sql_prompts = []
+            if hasattr(args, 'sql_query') and args.sql_query:
                 # Handle both formats: list of strings (pre-processed) or list of lists (from argparse)
-                if args.natural_language:
-                    if isinstance(args.natural_language[0], list):
+                if args.sql_query:
+                    if isinstance(args.sql_query[0], list):
                         # From argparse: list of lists
-                        nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
+                        sql_prompts = [' '.join(sql_args) for sql_args in args.sql_query if sql_args]
                     else:
                         # Pre-processed: list of strings
-                        nl_prompts = args.natural_language
+                        sql_prompts = args.sql_query
                 else:
-                    nl_prompts = []
+                    sql_prompts = []
 
-                if len(nl_prompts) > 1:
-                    print_text(f"🤖 Will process {len(nl_prompts)} natural language queries after browser", style="white")
-                    for i, prompt in enumerate(nl_prompts):
+                if len(sql_prompts) > 1:
+                    print_text(f"🤖 Will process {len(sql_prompts)} SQL queries after browser", style="white")
+                    for i, prompt in enumerate(sql_prompts):
                         print_text(f"   {i+1}. '{prompt}'", style="dim")
-                elif nl_prompts:
-                    print_text(f"🤖 Will process natural language query after browser: '{nl_prompts[0]}'", style="white")
+                elif sql_prompts:
+                    print_text(f"🤖 Will process SQL query after browser: '{sql_prompts[0]}'", style="white")
 
             # Handle vector search processing
             vs_prompts = []
@@ -1146,11 +1146,11 @@ def chat_run(args):
             if browse_args:
                 original_command_parts.append("-b")
                 original_command_parts.extend(browse_args)
-            if nl_prompts:
-                # For original command reconstruction, combine all NL prompts
-                # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
-                combined_nl = " ".join([f'-nl {prompt}' for prompt in nl_prompts])
-                original_command_parts.append(combined_nl)
+            if sql_prompts:
+                # For original command reconstruction, combine all SQL prompts
+                # Don't add quotes - the -sql argument parser handles multiple words with nargs="*"
+                combined_sql = " ".join([f'-sql {prompt}' for prompt in sql_prompts])
+                original_command_parts.append(combined_sql)
             if vs_prompts:
                 # For original command reconstruction, combine all VS prompts
                 # Don't add quotes - the -vs argument parser handles multiple words with nargs="*"
@@ -1161,8 +1161,8 @@ def chat_run(args):
                     original_command_parts.extend(["-mcp", server])
             original_browse_command = " ".join(original_command_parts)
 
-            # For mixed commands with browse: -s + -b, -b + -nl, or -b + -vs combinations
-            if browse_databases and (sources or nl_prompts or vs_prompts):
+            # For mixed commands with browse: -s + -b, -b + -sql, or -b + -vs combinations
+            if browse_databases and (sources or sql_prompts or vs_prompts):
                 print_text("🔄 Processing mixed command with browse. Launching browser first...", style="cyan")
 
                 # Use the same browser launch logic as regular browse commands
@@ -1333,33 +1333,33 @@ def chat_run(args):
                     print_text(f"🔄 Using sources from browser: {len(all_sources)} total", style="green")
 
                     # Process queries sequentially, then merge results
-                    natural_language_content = None
+                    sql_query_content= None
 
-                    # Step 1: Process natural language queries (if present)
-                    if nl_prompts:
+                    # Step 1: Process SQL queries (if present)
+                    if sql_prompts:
                         try:
                             from promaia.storage.unified_query import get_query_interface
                             query_interface = get_query_interface()
 
-                            combined_nl_content = {}
-                            for i, nl_prompt in enumerate(nl_prompts):
-                                if len(nl_prompts) > 1:
-                                    print_text(f"🔍 Processing NL query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+                            combined_sql_content = {}
+                            for i, sql_prompt in enumerate(sql_prompts):
+                                if len(sql_prompts) > 1:
+                                    print_text(f"🔍 Processing SQL query {i+1}/{len(sql_prompts)}: '{sql_prompt}'", style="cyan")
 
                                 # Process with verbose output (includes user interaction)
-                                nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
+                                sql_content = query_interface.natural_language_query(sql_prompt, None, None, verbose=True)
 
-                                if nl_content:
+                                if sql_content:
                                     # Merge results
-                                    for db_name, entries in nl_content.items():
-                                        if db_name not in combined_nl_content:
-                                            combined_nl_content[db_name] = []
-                                        combined_nl_content[db_name].extend(entries)
+                                    for db_name, entries in sql_content.items():
+                                        if db_name not in combined_sql_content:
+                                            combined_sql_content[db_name] = []
+                                        combined_sql_content[db_name].extend(entries)
 
-                            natural_language_content = combined_nl_content if combined_nl_content else None
+                            sql_query_content= combined_sql_content if combined_sql_content else None
 
                         except Exception as e:
-                            print_text(f"❌ Error processing natural language query: {e}", style="red")
+                            print_text(f"❌ Error processing SQL query: {e}", style="red")
                             # Continue with VS query if present
 
                     # Step 2: Process vector search queries (if present)
@@ -1391,11 +1391,11 @@ def chat_run(args):
                         except Exception as e:
                             print_text(f"❌ Error processing vector search query: {e}", style="red")
 
-                    # Step 3: Launch chat with separate NL and VS content (don't merge here)
+                    # Step 3: Launch chat with separate SQL and VS content (don't merge here)
                     from promaia.chat.interface import chat
 
-                    # Prepare cache parameters for separate NL and VS caching
-                    combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                    # Prepare cache parameters for separate SQL and VS caching
+                    combined_sql_prompt = " ".join(sql_prompts) if sql_prompts else None
                     combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
 
                     chat(
@@ -1405,12 +1405,12 @@ def chat_run(args):
                         mcp_servers=mcp_servers,
                         original_browse_command=original_browse_command,
                         browse_selections=selected_sources,
-                        natural_language_content=None,  # Will be set from initial_nl_content in chat()
-                        natural_language_prompt=None,  # Already processed
+                        sql_query_content=None,  # Will be set from initial_nl_content in chat()
+                        sql_query_prompt=None,  # Already processed
                         is_vector_search=False,  # Already processed
-                        # Pass separate NL and VS content for independent tracking
-                        initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
-                        initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
+                        # Pass separate SQL and VS content for independent tracking
+                        initial_nl_prompt=combined_sql_prompt if sql_prompts else None,
+                        initial_nl_content=combined_sql_content if sql_prompts and 'combined_sql_content' in locals() else None,
                         initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
                         initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None,
                         top_k=getattr(args, 'top_k', None),
@@ -1422,8 +1422,8 @@ def chat_run(args):
                     print_text(f"❌ Error in mixed command execution: {e}", style="red")
                     return
 
-            # For -b + -nl combinations (no explicit sources), launch browser first
-            elif not sources and browse_databases and nl_prompts:
+            # For -b + -sql combinations (no explicit sources), launch browser first
+            elif not sources and browse_databases and sql_prompts:
                 try:
                     # Determine workspace and setup browser parameters (copied from browse logic below)
                     from promaia.config.workspaces import get_workspace_manager
@@ -1571,30 +1571,30 @@ def chat_run(args):
 
             # For mixed commands, process queries sequentially then merge results
             try:
-                natural_language_content = None
+                sql_query_content= None
 
                 # Step 1: Process natural language queries (if present)
-                if nl_prompts:
+                if sql_prompts:
                     try:
                         from promaia.storage.unified_query import get_query_interface
                         query_interface = get_query_interface()
 
-                        combined_nl_content = {}
-                        for i, nl_prompt in enumerate(nl_prompts):
-                            if len(nl_prompts) > 1:
-                                print_text(f"🔍 Processing NL query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+                        combined_sql_content = {}
+                        for i, sql_prompt in enumerate(sql_prompts):
+                            if len(sql_prompts) > 1:
+                                print_text(f"🔍 Processing NL query {i+1}/{len(sql_prompts)}: '{sql_prompt}'", style="cyan")
 
                             # Process with verbose output (includes user interaction)
-                            nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
+                            sql_content = query_interface.natural_language_query(sql_prompt, None, None, verbose=True)
 
-                            if nl_content:
+                            if sql_content:
                                 # Merge results
-                                for db_name, entries in nl_content.items():
-                                    if db_name not in combined_nl_content:
-                                        combined_nl_content[db_name] = []
-                                    combined_nl_content[db_name].extend(entries)
+                                for db_name, entries in sql_content.items():
+                                    if db_name not in combined_sql_content:
+                                        combined_sql_content[db_name] = []
+                                    combined_sql_content[db_name].extend(entries)
 
-                        natural_language_content = combined_nl_content if combined_nl_content else None
+                        sql_query_content= combined_sql_content if combined_sql_content else None
 
                     except Exception as e:
                         print_text(f"❌ Error processing natural language query: {e}", style="red")
@@ -1631,7 +1631,7 @@ def chat_run(args):
 
                 # Step 3: Pass separate NL and VS content to chat (don't merge here)
                 # Prepare cache parameters for separate NL and VS caching
-                combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
+                combined_sql_prompt = " ".join(sql_prompts) if sql_prompts else None
                 combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else None
 
                 chat(
@@ -1639,16 +1639,16 @@ def chat_run(args):
                     filters=filters,
                     workspace=original_workspace,
                     non_interactive=getattr(args, 'non_interactive', False),
-                    natural_language_content=None,  # Will be set from initial_nl_content in chat()
-                    natural_language_prompt=None,  # Already processed
+                    sql_query_content=None,  # Will be set from initial_nl_content in chat()
+                    sql_query_prompt=None,  # Already processed
                     browse_databases=None,
                     original_browse_command=original_browse_command,
                     browse_selections=selected_sources,
                     mcp_servers=mcp_servers,
                     is_vector_search=False,  # Already processed
                     # Pass separate NL and VS content for independent tracking
-                    initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
-                    initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
+                    initial_nl_prompt=combined_sql_prompt if sql_prompts else None,
+                    initial_nl_content=combined_sql_content if sql_prompts and 'combined_sql_content' in locals() else None,
                     initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
                     initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None,
                     top_k=getattr(args, 'top_k', None),
@@ -1698,18 +1698,18 @@ def chat_run(args):
     filters = getattr(args, 'filters', None)
     original_workspace = getattr(args, 'workspace', None)
     mcp_servers = getattr(args, 'mcp_servers', None)
-    nl_prompt = None
+    sql_prompt = None
     
-    # Handle natural language processing
-    # NOTE: This -nl parsing MUST stay in sync with:
-    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~1872-1900)
+    # Handle SQL query processing
+    # NOTE: This -sql parsing MUST stay in sync with:
+    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~2148-2163)
     # 2. safe_split_command() function in interface.py (line ~514)
-    # These are two sides of one feature and must handle multiple -nl arguments identically.
-    nl_prompts = []
-    if hasattr(args, 'natural_language') and args.natural_language:
+    # These are two sides of one feature and must handle multiple -sql arguments identically.
+    sql_prompts = []
+    if hasattr(args, 'sql_query') and args.sql_query:
         # With action="append" and nargs="+", we get a list of lists
-        # Each inner list contains the tokens for one -nl argument
-        nl_prompts = [' '.join(nl_args) for nl_args in args.natural_language if nl_args]
+        # Each inner list contains the tokens for one -sql argument
+        sql_prompts = [' '.join(sql_args) for sql_args in args.sql_query if sql_args]
         # Note: Don't print "Processing..." messages here - the processor handles output
 
         try:
@@ -1732,40 +1732,40 @@ def chat_run(args):
             query_interface = get_query_interface()
 
             # Process each NL query separately and combine results
-            combined_nl_content = {}
+            combined_sql_content = {}
             total_results = 0
 
-            for i, nl_prompt in enumerate(nl_prompts):
+            for i, sql_prompt in enumerate(sql_prompts):
                 # Show query number only for multiple queries
-                if len(nl_prompts) > 1:
-                    print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
+                if len(sql_prompts) > 1:
+                    print_text(f"🔍 Processing query {i+1}/{len(sql_prompts)}: '{sql_prompt}'", style="cyan")
 
                 # Always allow cross-workspace queries for natural language
                 # Workspace is just a classifier/tag, not a mandatory constraint
                 # Enable verbose=True to show SQL generation steps and chain of thought
-                nl_content = query_interface.natural_language_query(nl_prompt, None, None, verbose=True)
+                sql_content = query_interface.natural_language_query(sql_prompt, None, None, verbose=True)
 
-                if nl_content:
+                if sql_content:
                     # Merge results from this query into combined content
-                    for db_name, entries in nl_content.items():
-                        if db_name not in combined_nl_content:
-                            combined_nl_content[db_name] = []
-                        combined_nl_content[db_name].extend(entries)
+                    for db_name, entries in sql_content.items():
+                        if db_name not in combined_sql_content:
+                            combined_sql_content[db_name] = []
+                        combined_sql_content[db_name].extend(entries)
 
-                    query_results = sum(len(entries) for entries in nl_content.values())
+                    query_results = sum(len(entries) for entries in sql_content.values())
                     total_results += query_results
-                    if len(nl_prompts) > 1:
+                    if len(sql_prompts) > 1:
                         print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                 else:
-                    if len(nl_prompts) > 1:
+                    if len(sql_prompts) > 1:
                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
 
-            if not combined_nl_content:
+            if not combined_sql_content:
                 return
 
-            if len(nl_prompts) > 1:
-                print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
-            natural_language_content = combined_nl_content
+            if len(sql_prompts) > 1:
+                print_text(f"🎯 Combined {len(sql_prompts)} queries: {total_results} total results", style="green")
+            sql_query_content= combined_sql_content
 
             # Keep both regular sources and natural language content
             # The chat interface will combine them
@@ -1777,7 +1777,7 @@ def chat_run(args):
             print_text(f"Error processing natural language query: {e}", style="red")
             return
     else:
-        natural_language_content = None
+        sql_query_content= None
     
     # Process vector search queries (similar to natural language but uses semantic search)
     # Parse -vs queries with their per-query -tk/-th parameters from sys.argv
@@ -1858,17 +1858,17 @@ def chat_run(args):
                 print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
             
             # Store vector search content for passing to chat
-            # IMPORTANT: DO NOT add vs_prompts to nl_prompts - they are separate query types!
-            # The browser uses nl_prompts/combined_nl_prompt to create new queries, so we must keep VS separate
-            if natural_language_content:
+            # IMPORTANT: DO NOT add vs_prompts to sql_prompts - they are separate query types!
+            # The browser uses sql_prompts/combined_sql_prompt to create new queries, so we must keep VS separate
+            if sql_query_content:
                 # Merge VS results with existing NL results (content only, not prompts)
                 for db_name, entries in combined_vs_content.items():
-                    if db_name not in natural_language_content:
-                        natural_language_content[db_name] = []
-                    natural_language_content[db_name].extend(entries)
+                    if db_name not in sql_query_content:
+                        sql_query_content[db_name] = []
+                    sql_query_content[db_name].extend(entries)
             else:
                 # Just use VS content directly (content only, not prompts)
-                natural_language_content = combined_vs_content
+                sql_query_content= combined_vs_content
         
         except ImportError as e:
             print_text(f"Error importing vector search processor: {e}", style="red")
@@ -1916,15 +1916,15 @@ def chat_run(args):
         # Save query to recents before executing (for both traditional and NL queries)
         # Skip if this is being called from browse mode (which handles its own recents saving)
         skip_recents = getattr(args, 'skip_recents_save', False)
-        combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else None
-        if not skip_recents and (sources or filters or original_workspace or combined_nl_prompt):
+        combined_sql_prompt = " ".join(sql_prompts) if sql_prompts else None
+        if not skip_recents and (sources or filters or original_workspace or combined_sql_prompt):
             from promaia.storage.recents import RecentsManager
             recents_manager = RecentsManager()
             recents_manager.add_query(
                 sources=sources,
                 filters=filters,
                 workspace=original_workspace,
-                natural_language_prompt=combined_nl_prompt
+                sql_query_prompt=combined_sql_prompt
             )
         
         # The `chat` function will now need to handle the main loop
@@ -1940,7 +1940,7 @@ def chat_run(args):
         # Pass per-query cache if available (from vector search processing)
         vs_cache = vs_per_query_cache if is_vector_search_mode and 'vs_per_query_cache' in locals() else None
 
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers, is_vector_search=is_vector_search_mode, top_k=getattr(args, 'top_k', None), threshold=getattr(args, 'threshold', None), vector_search_queries=vs_queries_structured if is_vector_search_mode else None, initial_vs_per_query_cache=vs_cache)
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, sql_query_content=sql_query_content, sql_query_prompt=combined_sql_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers, is_vector_search=is_vector_search_mode, top_k=getattr(args, 'top_k', None), threshold=getattr(args, 'threshold', None), vector_search_queries=vs_queries_structured if is_vector_search_mode else None, initial_vs_per_query_cache=vs_cache)
 
     except ImportError as e:
         print_text(f"Error importing chat interface: {e}", style="red")
@@ -2008,14 +2008,15 @@ def chat_run_recents(args):
                 parser.add_argument("--filter", "-f", action="append", dest="filters")
                 parser.add_argument("--workspace", "-ws", dest="workspace")
                 parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
-                parser.add_argument("--natural-language", "-nl", nargs="*", dest="natural_language")
+                parser.add_argument("--sql-query", "-sql", nargs="*", dest="sql_query")
+                parser.add_argument("--natural-language", "-nl", nargs="*", dest="sql_query")  # Deprecated alias
 
                 parsed_args = parser.parse_args(processed_args)
                 parsed_args.recent = False  # Prevent recursion
 
-                # Add the collected NL arguments
+                # Add the collected SQL arguments
                 if nl_arguments:
-                    parsed_args.natural_language = nl_arguments
+                    parsed_args.sql_query = nl_arguments
                 
                 # Execute using the main chat function
                 chat_run(parsed_args)
@@ -2033,9 +2034,9 @@ def chat_run_recents(args):
                 self.workspace = query.workspace or getattr(args, 'workspace', None)
                 self.recent = False  # Prevent infinite recursion
                 self.browse = None  # No browse mode for regular queries
-                # Add natural language support
-                if hasattr(query, 'natural_language_prompt') and query.natural_language_prompt:
-                    self.natural_language = [query.natural_language_prompt]
+                # Add SQL query support
+                if hasattr(query, 'sql_query_prompt') and query.sql_query_prompt:
+                    self.natural_language = [query.sql_query_prompt]
                 else:
                     self.natural_language = None
         
@@ -2419,21 +2420,21 @@ def history_run(args):
             # Reconstruct the context from the saved thread
             context = selected_thread.context
             
-            # Check if this is a natural language thread
-            nl_prompt = context.get('natural_language_prompt')
-            
+            # Check if this is a SQL query thread
+            sql_prompt = context.get('sql_query_prompt')
+
             print_text(f"\nLoading conversation: {selected_thread.name}", style="white")
-            
-            if nl_prompt:
-                # This is a natural language thread - restore using NL query
-                print_text(f"Context: maia chat -nl {nl_prompt}", style="dim")
-                
-                # Use cached natural language content if available, otherwise regenerate
+
+            if sql_prompt:
+                # This is a SQL query thread - restore using SQL query
+                print_text(f"Context: maia chat -sql {sql_prompt}", style="dim")
+
+                # Use cached SQL query content if available, otherwise regenerate
                 try:
                     # Check if we have cached content from the saved thread
-                    natural_language_content = context.get('natural_language_content')
+                    sql_query_content= context.get('sql_query_content')
                     
-                    if natural_language_content:
+                    if sql_query_content:
                         print_text("🔄 Using cached natural language results from history", style="dim")
                     else:
                         # Fall back to regenerating if no cached content available
@@ -2447,12 +2448,12 @@ def history_run(args):
                         if actual_workspace:
                             print_text("🤖 Regenerating context from natural language query...", style="white")
                             query_interface = get_query_interface()
-                            natural_language_content = query_interface.natural_language_query(nl_prompt, actual_workspace, None)
+                            sql_query_content= query_interface.natural_language_query(sql_prompt, actual_workspace, None)
                         else:
                             print_text("❌ No workspace available to regenerate natural language context", style="red")
                             return
                     
-                    if natural_language_content:
+                    if sql_query_content:
                         # Start chat with natural language content (cached or regenerated)
                         workspace = context.get('workspace')
                         resolved_workspace = context.get('resolved_workspace')
@@ -2464,8 +2465,8 @@ def history_run(args):
                             non_interactive=False,
                             initial_messages=selected_thread.messages,
                             current_thread_id=selected_thread.id,
-                            natural_language_content=natural_language_content,
-                            natural_language_prompt=nl_prompt
+                            sql_query_content=sql_query_content,
+                            sql_query_prompt=sql_prompt
                         )
                     else:
                         print_text("❌ No natural language content available", style="red")
@@ -2492,7 +2493,7 @@ def history_run(args):
                 resolved_workspace = context.get('resolved_workspace')
                 original_query_format = context.get('original_query_format')
                 browse_selections = context.get('browse_selections')
-                natural_language_prompt = context.get('natural_language_prompt')
+                sql_query_prompt= context.get('sql_query_prompt')
                 
                 # Check if this was originally a browse command
                 if original_query_format and '-b ' in original_query_format:
@@ -2542,7 +2543,7 @@ def history_run(args):
                     non_interactive=False,
                     initial_messages=selected_thread.messages,
                     current_thread_id=selected_thread.id,
-                    natural_language_prompt=natural_language_prompt
+                    sql_query_prompt=sql_query_prompt
                 )
         
     except ImportError as e:
@@ -2916,15 +2917,24 @@ def main():
         help="Run in non-interactive mode for testing"
     )
     chat_parser.add_argument(
+        "--sql-query", "-sql",
+        action="append",
+        nargs="+",
+        dest="sql_query",
+        help="Use SQL-based natural language queries to search content. Can be used multiple times for separate queries. Example: maia chat -sql 'emails about avask' -sql 'stories about canada'"
+    )
+    # Deprecated: Keep -nl as an alias for backward compatibility
+    chat_parser.add_argument(
         "--natural-language", "-nl",
         action="append",
         nargs="+",
-        help="Use natural language to specify what content to load for chat context. Can be used multiple times for separate queries. Example: maia chat -nl 'emails about avask' -nl 'stories about canada'"
+        dest="sql_query",
+        help=argparse.SUPPRESS  # Hide from help, deprecated in favor of -sql
     )
-    # NOTE: This -nl argument definition MUST stay in sync with:
-    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~1872-1900)
+    # NOTE: This -sql argument definition MUST stay in sync with:
+    # 1. Edit mode parsing in promaia/chat/interface.py (lines ~2148-2163)
     # 2. Top-level processing above (lines ~1507-1520)
-    # These are two sides of one feature and must handle multiple -nl arguments identically.
+    # These are two sides of one feature and must handle multiple -sql arguments identically.
     chat_parser.add_argument(
         "--vector-search", "-vs",
         action="append",

@@ -210,8 +210,8 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
         Modified query or None if cancelled
     """
     # Handle natural language queries differently
-    if hasattr(query, 'natural_language_prompt') and query.natural_language_prompt:
-        current_command = f"-nl {query.natural_language_prompt}"
+    if hasattr(query, 'sql_query_prompt') and query.sql_query_prompt:
+        current_command = f"-nl {query.sql_query_prompt}"
     else:
         # Create the command string for editing (traditional format)
         parts = []
@@ -277,7 +277,7 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
             nl_prompt = ' '.join(args[1:])
             return RecentQuery(
                 command="chat",
-                natural_language_prompt=nl_prompt
+                sql_query_prompt=nl_prompt
             )
         
         # Parse arguments manually (traditional format)
@@ -302,7 +302,7 @@ def edit_query_string(query: RecentQuery) -> Optional[RecentQuery]:
                     nl_prompt = ' '.join(args[i + 1:])
                     return RecentQuery(
                         command="chat",
-                        natural_language_prompt=nl_prompt,
+                        sql_query_prompt=nl_prompt,
                         sources=sources if sources else None,
                         filters=filters if filters else None,
                         workspace=workspace
