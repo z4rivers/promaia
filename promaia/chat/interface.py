@@ -2504,30 +2504,35 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     queries_to_run = []
                     cached_queries = []
 
-                    for i, vs_prompt in enumerate(vs_prompts):
-                        if vs_prompt in per_query_cache:
-                            cached_queries.append((i, vs_prompt))
+                    # Build cache keys for each query (including per-query params)
+                    query_cache_keys = []
+                    for i, vs_query_obj in enumerate(vs_queries_structured):
+                        cache_key = f"{vs_query_obj['query']}|{vs_query_obj['top_k']}|{vs_query_obj['threshold']}"
+                        query_cache_keys.append(cache_key)
+
+                        if cache_key in per_query_cache:
+                            cached_queries.append((i, vs_query_obj['query']))
                         else:
-                            queries_to_run.append((i, vs_prompt))
+                            queries_to_run.append((i, vs_query_obj['query']))
 
                     # Show cache status if we have multiple queries
-                    if len(vs_prompts) > 1:
+                    if len(vs_queries_structured) > 1:
                         if cached_queries and queries_to_run:
-                            print_text(f"🤖 Processing {len(vs_prompts)} vector search queries ({len(cached_queries)} cached, {len(queries_to_run)} new)", style="dim")
+                            print_text(f"🤖 Processing {len(vs_queries_structured)} vector search queries ({len(cached_queries)} cached, {len(queries_to_run)} new)", style="dim")
                         elif cached_queries:
                             print_text(f"🔄 Reusing cached results for all {len(cached_queries)} vector search queries", style="dim")
                         else:
-                            print_text(f"🤖 Processing {len(vs_prompts)} separate vector search queries", style="dim")
+                            print_text(f"🤖 Processing {len(vs_queries_structured)} separate vector search queries", style="dim")
 
                         # Show query list
-                        for i, prompt in enumerate(vs_prompts):
-                            cached_marker = " (cached)" if prompt in per_query_cache else ""
-                            print_text(f"   {i+1}. '{prompt}'{cached_marker}", style="dim")
+                        for i, cache_key in enumerate(query_cache_keys):
+                            cached_marker = " (cached)" if cache_key in per_query_cache else ""
+                            print_text(f"   {i+1}. '{vs_queries_structured[i]['query']}'{cached_marker}", style="dim")
                     else:
-                        if vs_prompts[0] in per_query_cache:
+                        if query_cache_keys[0] in per_query_cache:
                             print_text(f"🔄 Reusing cached vector search results (query unchanged)", style="dim")
                         else:
-                            print_text(f"🤖 Processing vector search query: '{vs_prompts[0]}'", style="dim")
+                            print_text(f"🤖 Processing vector search query: '{vs_queries_structured[0]['query']}'", style="dim")
 
                     # Process queries
                     try:
@@ -2537,11 +2542,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         total_results = 0
                         new_queries_processed = 0
 
-                        for i, vs_prompt in enumerate(vs_prompts):
-                            # Check if we have cached results for this specific query
-                            if vs_prompt in per_query_cache:
+                        for i, vs_query_obj in enumerate(vs_queries_structured):
+                            vs_prompt = vs_query_obj['query']
+                            query_top_k = vs_query_obj['top_k']
+                            query_threshold = vs_query_obj['threshold']
+                            cache_key = query_cache_keys[i]
+
+                            # Check if we have cached results for this specific query (with params)
+                            if cache_key in per_query_cache:
                                 # Use cached results
-                                cached_result = per_query_cache[vs_prompt]
+                                cached_result = per_query_cache[cache_key]
 
                                 # Merge cached results
                                 for db_name, entries in cached_result.items():
@@ -2552,25 +2562,25 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 query_results = sum(len(entries) for entries in cached_result.values())
                                 total_results += query_results
 
-                                if len(vs_prompts) > 1 and len(queries_to_run) > 0:
+                                if len(vs_queries_structured) > 1 and len(queries_to_run) > 0:
                                     print_text(f"   ♻️  Query {i+1} using cache: {query_results} results", style="dim green")
                             else:
                                 # Need to run this query
-                                if len(vs_prompts) > 1:
-                                    print_text(f"🔍 Processing query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
+                                if len(vs_queries_structured) > 1:
+                                    print_text(f"🔍 Processing query {i+1}/{len(vs_queries_structured)}: '{vs_prompt}'", style="cyan")
 
-                                # Process vector search
+                                # Process vector search with per-query parameters
                                 vs_result = process_vector_search_to_content(
                                     vs_prompt,
                                     workspace=None,  # Allow cross-workspace searches
                                     verbose=True,  # Show detailed processing steps
-                                    n_results=context_state.get('top_k', 20),
-                                    min_similarity=context_state.get('threshold', 0.75)
+                                    n_results=query_top_k,
+                                    min_similarity=query_threshold
                                 )
 
                                 if vs_result:
-                                    # Cache this query's results
-                                    per_query_cache[vs_prompt] = vs_result
+                                    # Cache this query's results (with params in key)
+                                    per_query_cache[cache_key] = vs_result
 
                                     # Merge results from this query into combined content
                                     for db_name, entries in vs_result.items():
@@ -2581,23 +2591,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     query_results = sum(len(entries) for entries in vs_result.values())
                                     total_results += query_results
                                     new_queries_processed += 1
-                                    if len(vs_prompts) > 1:
+                                    if len(vs_queries_structured) > 1:
                                         print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                                 else:
-                                    # Cache empty result to avoid re-running failed queries
-                                    per_query_cache[vs_prompt] = {}
-                                    if len(vs_prompts) > 1:
+                                    # Cache empty result to avoid re-running failed queries (with params in key)
+                                    per_query_cache[cache_key] = {}
+                                    if len(vs_queries_structured) > 1:
                                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
 
                         if not combined_vs_content:
                             print_text("❌ No content found for any vector search queries", style="red")
                             return False
 
-                        if len(vs_prompts) > 1:
+                        if len(vs_queries_structured) > 1:
                             if new_queries_processed > 0 and len(cached_queries) > 0:
-                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
+                                print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
                             else:
-                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
+                                print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results", style="green")
                         vs_content = combined_vs_content
 
                         # Update caches
