@@ -507,8 +507,13 @@ Return ONLY the JSON object:"""
                         filter_properties[prop_name] = constraint
 
                 # Start with all page_ids from base content search (if we have base search text)
+                # Skip content search display when we have semantic property constraints
+                # (property search is more specific and content search usually returns 0)
                 content_page_ids = set()
-                if query.get('search_text'):
+
+                if query.get('search_text') and not semantic_properties:
+                    # Only show/perform content search if we don't have semantic properties
+                    # With semantic properties, we rely on property search alone
                     if verbose:
                         print_text(f"\n   📚 Searching content collection", style="cyan")
                         print_text(f"      Query: \"{query['search_text']}\"", style="dim")
