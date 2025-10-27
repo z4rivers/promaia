@@ -391,11 +391,15 @@ Return ONLY the JSON object:"""
                 # Multiple conditions require $and operator
                 filters = {"$and": filter_conditions}
             
+            # Extract property constraints from intent
+            property_constraints = intent.get('property_constraints', {})
+
             query_params = {
                 'search_text': search_text,
-                'filters': filters if filters else None
+                'filters': filters if filters else None,
+                'property_constraints': property_constraints
             }
-            
+
             if debug:
                 print_text(f"\n📝 Vector Query Parameters:", style="cyan")
                 print_text(f"   Search text: {search_text}", style="dim")
@@ -405,7 +409,9 @@ Return ONLY the JSON object:"""
                 if target_workspaces:
                     print_text(f"   Workspaces (extracted): {', '.join(sorted(target_workspaces))}", style="yellow")
                 print_text(f"   Final filters: {filters}", style="dim")
-            
+                if property_constraints:
+                    print_text(f"   Property constraints: {property_constraints}", style="yellow")
+
             return query_params
         
         except Exception as e:
@@ -452,7 +458,14 @@ Return ONLY the JSON object:"""
         n_results: Optional[int] = None,
         min_similarity: Optional[float] = None
     ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-        """Execute vector search with configurable n_results and min_similarity."""
+        """
+        Execute vector search with property constraint routing.
+
+        Routes queries based on property constraints:
+        - Semantic properties: Search property embeddings
+        - Filter properties: Apply metadata filters
+        - No constraints: Regular vector search
+        """
         if debug:
             print_text("\n" + "=" * 70, style="dim")
             print_text("⚡ CHAIN OF THOUGHT: Vector Search Execution", style="bold yellow")
@@ -460,7 +473,7 @@ Return ONLY the JSON object:"""
             print_text(f"\n🔍 Searching with: {query.get('search_text')}", style="cyan")
 
         try:
-            # Get config for defaults (used if parameters not provided)
+            # Get config for defaults
             config_path = "promaia.config.json"
             with open(config_path, 'r') as f:
                 config = json.load(f)
@@ -469,62 +482,187 @@ Return ONLY the JSON object:"""
             # Use passed parameters, fall back to config defaults
             n_results = n_results if n_results is not None else vector_config.get('default_n_results', 20)
             min_similarity = min_similarity if min_similarity is not None else vector_config.get('default_similarity_threshold', 0.75)
-            
+
             if verbose:
                 print_text(f"\nSearch Configuration:", style="white")
                 print_text(f"  Max results: {n_results}", style="dim")
                 print_text(f"  Min similarity threshold: {min_similarity}", style="dim")
-                print_text(f"  Embedding model: text-embedding-3-small", style="dim")
-            
-            # Execute vector search
-            search_results = self.vector_db.search(
-                query_text=query['search_text'],
-                filters=query.get('filters'),
-                n_results=n_results,
-                min_similarity=min_similarity
-            )
-            
-            if debug:
-                print_text(f"\n✅ Search successful", style="green")
-                print_text(f"   Returned {len(search_results)} results above {min_similarity} similarity", style="dim")
-                if search_results:
-                    print_text(f"   Top score: {search_results[0].get('similarity_score', 0):.3f}", style="dim")
-            
-            if verbose:
-                result_color = "green" if search_results else "yellow"
-                print_text(f"✅ Execution successful: {len(search_results)} results returned", style=result_color)
-                
-                if search_results:
-                    # Show similarity score range
-                    top_score = search_results[0].get('similarity_score', 0)
-                    bottom_score = search_results[-1].get('similarity_score', 0)
-                    print_text(f"   Similarity range: {bottom_score:.3f} - {top_score:.3f}", style="dim")
-                    
-                    # Show database breakdown
-                    db_counts = {}
-                    for result in search_results:
-                        db = result.get('metadata', {}).get('database_name', 'unknown')
-                        workspace = result.get('metadata', {}).get('workspace', '')
-                        qualified_name = f"{workspace}.{db}" if workspace else db
-                        db_counts[qualified_name] = db_counts.get(qualified_name, 0) + 1
-                    
-                    db_breakdown = ', '.join([f"{db}: {count}" for db, count in db_counts.items()])
-                    print_text(f"   Database breakdown: {db_breakdown}", style="dim")
-            
-            # Convert to unified_content-like format for compatibility
-            results = []
-            for result in search_results:
-                results.append({
-                    'page_id': result['page_id'],
-                    'similarity_score': result['similarity_score'],
-                    'database_name': result['metadata'].get('database_name', ''),
-                    'workspace': result['metadata'].get('workspace', ''),
-                    'created_time': result['metadata'].get('created_time', ''),
-                    'content_type': result['metadata'].get('content_type', ''),
-                })
-            
-            return results, None
-        
+
+            # Check for property constraints
+            property_constraints = query.get('property_constraints', {})
+
+            if property_constraints:
+                # PROPERTY-AWARE SEARCH PATH
+                if debug or verbose:
+                    print_text(f"\n🎯 Property-aware search with {len(property_constraints)} constraints", style="cyan")
+
+                # Separate semantic vs filter properties
+                semantic_properties = {}
+                filter_properties = {}
+
+                for prop_name, constraint in property_constraints.items():
+                    if constraint.get('type') == 'semantic':
+                        semantic_properties[prop_name] = constraint
+                    else:  # filter
+                        filter_properties[prop_name] = constraint
+
+                # Start with all page_ids from base content search (if we have base search text)
+                content_page_ids = set()
+                if query.get('search_text'):
+                    if verbose:
+                        print_text(f"\n   📚 Searching content collection", style="cyan")
+                        print_text(f"      Query: \"{query['search_text']}\"", style="dim")
+                        if query.get('filters'):
+                            print_text(f"      Filters: {query.get('filters')}", style="dim")
+
+                    # Base content search
+                    content_results = self.vector_db.search(
+                        query_text=query['search_text'],
+                        filters=query.get('filters'),
+                        n_results=n_results,
+                        min_similarity=min_similarity
+                    )
+                    content_page_ids = {
+                        result['metadata'].get('page_id', result['page_id'].rsplit('_chunk_', 1)[0] if '_chunk_' in result['page_id'] else result['page_id'])
+                        for result in content_results
+                    }
+
+                    if verbose:
+                        print_text(f"      → Found {len(content_page_ids)} pages", style="green" if content_page_ids else "yellow")
+
+                # Search semantic properties
+                for prop_name, constraint in semantic_properties.items():
+                    prop_value = constraint.get('value', '')
+                    if verbose:
+                        print_text(f"\n   🏷️  Searching property collection: '{prop_name}'", style="cyan")
+                        print_text(f"      Query: \"{prop_value}\"", style="dim")
+                        if query.get('filters'):
+                            print_text(f"      Filters: {query.get('filters')}", style="dim")
+
+                    prop_results = self.vector_db.search_property(
+                        property_name=prop_name,
+                        query_text=prop_value,
+                        filters=query.get('filters'),
+                        n_results=n_results,
+                        min_similarity=min_similarity
+                    )
+
+                    prop_page_ids = {r['page_id'] for r in prop_results}
+
+                    if verbose:
+                        print_text(f"      → Found {len(prop_page_ids)} pages with matching '{prop_name}'", style="green" if prop_page_ids else "yellow")
+
+                    # Intersect with existing results
+                    before_count = len(content_page_ids)
+                    if content_page_ids:
+                        content_page_ids = content_page_ids.intersection(prop_page_ids)
+                        if verbose and before_count > 0:
+                            print_text(f"      → After intersection: {len(content_page_ids)} pages", style="dim")
+                    else:
+                        content_page_ids = prop_page_ids
+
+                # Apply filter properties
+                for prop_name, constraint in filter_properties.items():
+                    if verbose:
+                        print_text(f"   🔍 Filter on '{prop_name}': {constraint.get('value')}", style="cyan")
+
+                    filter_page_ids = self._filter_property(
+                        property_name=prop_name,
+                        constraint=constraint,
+                        filters=query.get('filters'),
+                        debug=debug
+                    )
+
+                    if debug:
+                        print_text(f"      Found {len(filter_page_ids)} pages", style="dim")
+
+                    # Intersect
+                    if filter_page_ids:
+                        if content_page_ids:
+                            content_page_ids = content_page_ids.intersection(set(filter_page_ids))
+                        else:
+                            content_page_ids = set(filter_page_ids)
+
+                # Load results by page_ids
+                if content_page_ids:
+                    results = self._load_results_by_page_ids(
+                        page_ids=list(content_page_ids)[:n_results],  # Limit to n_results
+                        verbose=verbose,
+                        debug=debug
+                    )
+
+                    if verbose:
+                        print_text(f"✅ Property search returned {len(results)} results", style="green")
+
+                    return results, None
+                else:
+                    if verbose:
+                        print_text(f"⚠️  No results matched all property constraints", style="yellow")
+                    return [], None
+
+            else:
+                # STANDARD VECTOR SEARCH PATH (no property constraints)
+                if debug:
+                    print_text(f"   Using standard vector search (no property constraints)", style="dim")
+
+                # Execute vector search
+                search_results = self.vector_db.search(
+                    query_text=query['search_text'],
+                    filters=query.get('filters'),
+                    n_results=n_results,
+                    min_similarity=min_similarity
+                )
+
+                if debug:
+                    print_text(f"\n✅ Search successful", style="green")
+                    print_text(f"   Returned {len(search_results)} results above {min_similarity} similarity", style="dim")
+                    if search_results:
+                        print_text(f"   Top score: {search_results[0].get('similarity_score', 0):.3f}", style="dim")
+
+                if verbose:
+                    result_color = "green" if search_results else "yellow"
+                    print_text(f"✅ Execution successful: {len(search_results)} results returned", style=result_color)
+
+                    if search_results:
+                        # Show similarity score range
+                        top_score = search_results[0].get('similarity_score', 0)
+                        bottom_score = search_results[-1].get('similarity_score', 0)
+                        print_text(f"   Similarity range: {bottom_score:.3f} - {top_score:.3f}", style="dim")
+
+                        # Show database breakdown
+                        db_counts = {}
+                        for result in search_results:
+                            db = result.get('metadata', {}).get('database_name', 'unknown')
+                            workspace = result.get('metadata', {}).get('workspace', '')
+                            qualified_name = f"{workspace}.{db}" if workspace else db
+                            db_counts[qualified_name] = db_counts.get(qualified_name, 0) + 1
+
+                        db_breakdown = ', '.join([f"{db}: {count}" for db, count in db_counts.items()])
+                        print_text(f"   Database breakdown: {db_breakdown}", style="dim")
+
+                # Convert to unified_content-like format for compatibility
+                results = []
+                for result in search_results:
+                    # Extract base page_id
+                    vector_id = result['page_id']
+                    base_page_id = result['metadata'].get('page_id', vector_id)
+
+                    if '_chunk_' in vector_id and base_page_id == vector_id:
+                        base_page_id = vector_id.rsplit('_chunk_', 1)[0]
+
+                    results.append({
+                        'page_id': base_page_id,
+                        'chunk_id': vector_id if '_chunk_' in vector_id else None,
+                        'similarity_score': result['similarity_score'],
+                        'database_name': result['metadata'].get('database_name', ''),
+                        'workspace': result['metadata'].get('workspace', ''),
+                        'created_time': result['metadata'].get('created_time', ''),
+                        'content_type': result['metadata'].get('content_type', ''),
+                        'title': result['metadata'].get('title', ''),
+                    })
+
+                return results, None
+
         except Exception as e:
             error_msg = f"Vector search error: {str(e)}"
             if debug:
@@ -535,8 +673,116 @@ Return ONLY the JSON object:"""
     def should_save_pattern(self) -> bool:
         """Vector mode doesn't support pattern learning."""
         return False
-    
+
     def save_pattern(self, pattern: Dict[str, Any]) -> None:
         """Vector mode doesn't save patterns."""
         pass
+
+    def _filter_property(
+        self,
+        property_name: str,
+        constraint: Dict[str, Any],
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> List[str]:
+        """
+        Apply filter-type property constraint using metadata filtering.
+
+        Args:
+            property_name: Property to filter on
+            constraint: Constraint dict with type, value, operator
+            filters: Base metadata filters (workspace, database_name)
+            debug: Debug mode flag
+
+        Returns:
+            List of page_ids matching the filter
+        """
+        try:
+            if debug:
+                print_text(f"\n🔍 Applying filter on property '{property_name}'", style="cyan")
+                print_text(f"   Value: {constraint.get('value')}", style="dim")
+                print_text(f"   Operator: {constraint.get('operator', 'equals')}", style="dim")
+
+            # Use hybrid storage to query property values
+            from promaia.storage.hybrid_storage import get_hybrid_registry
+            registry = get_hybrid_registry()
+
+            # Build SQL filter based on operator
+            operator = constraint.get('operator', 'equals')
+            value = constraint.get('value')
+
+            if operator == 'not_empty':
+                where_clause = f"{property_name} IS NOT NULL AND {property_name} != ''"
+            elif operator == 'equals':
+                where_clause = f"{property_name} = ?"
+            elif operator == 'contains':
+                where_clause = f"{property_name} LIKE ?"
+                value = f"%{value}%"
+            elif operator == 'greater_than':
+                where_clause = f"{property_name} > ?"
+            elif operator == 'less_than':
+                where_clause = f"{property_name} < ?"
+            else:
+                where_clause = f"{property_name} = ?"
+
+            # Query unified_content with property filter
+            # TODO: This needs to be implemented in hybrid_storage
+            # For now, return empty list
+            if debug:
+                print_text(f"   ⚠️  Filter query not yet implemented: {where_clause}", style="yellow")
+
+            return []
+
+        except Exception as e:
+            if debug:
+                print_text(f"   ❌ Filter failed: {e}", style="red")
+            return []
+
+    def _load_results_by_page_ids(
+        self,
+        page_ids: List[str],
+        verbose: bool,
+        debug: bool
+    ) -> List[Dict[str, Any]]:
+        """
+        Load full results from unified_content by page_ids.
+
+        Args:
+            page_ids: List of page_ids to load
+            verbose: Verbose mode flag
+            debug: Debug mode flag
+
+        Returns:
+            List of result dicts with page metadata
+        """
+        try:
+            if debug:
+                print_text(f"\n📄 Loading {len(page_ids)} pages from unified_content", style="cyan")
+
+            from promaia.storage.hybrid_storage import get_hybrid_registry
+            registry = get_hybrid_registry()
+
+            results = []
+            for page_id in page_ids:
+                # Get page metadata
+                page_info = registry.get_page_metadata(page_id)
+                if page_info:
+                    results.append({
+                        'page_id': page_id,
+                        'database_name': page_info.get('database_name', ''),
+                        'workspace': page_info.get('workspace', ''),
+                        'created_time': page_info.get('created_time', ''),
+                        'content_type': page_info.get('content_type', ''),
+                        'title': page_info.get('title', '')
+                    })
+
+            if debug:
+                print_text(f"   ✅ Loaded {len(results)} pages", style="green")
+
+            return results
+
+        except Exception as e:
+            if debug:
+                print_text(f"   ❌ Failed to load pages: {e}", style="red")
+            return []
 

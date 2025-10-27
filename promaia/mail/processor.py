@@ -199,15 +199,20 @@ class EmailProcessor:
     async def _process_thread(self, thread: Dict[str, Any], workspace: str, email: str) -> bool:
         """
         Process a single email thread through the pipeline.
-        
+
         Returns:
             True if draft was created, False otherwise
         """
         thread_id = thread.get('thread_id')
         subject = thread.get('subject', 'No Subject')
-        
+
         logger.info(f"Processing: {subject}")
-        
+
+        # Check if user has already replied to this thread
+        if thread.get('last_message_from_user', False):
+            logger.info(f"  ⏭️  Skipping - last message was sent by user (already replied)")
+            return False
+
         # Step 1: Classify
         logger.debug("  → Classifying...")
         classification = await self.classifier.classify(thread, user_email=email, workspace=workspace)
@@ -479,7 +484,24 @@ class EmailProcessor:
         except Exception as e:
             logger.error(f"❌ Failed to fetch thread from Gmail: {e}")
             return False
-        
+
+        # Check if user has already replied to this thread
+        if thread.get('last_message_from_user', False):
+            logger.info(f"  ⏭️  User has replied - archiving draft")
+            # Update draft to archived status
+            self.draft_manager.update_draft_refresh(
+                draft_id=draft_id,
+                status='archived',
+                classification={'pertains_to_me': True, 'is_spam': False, 'requires_response': False, 'reasoning': 'User has already replied to this thread'},
+                thread=thread,
+                draft_body='n/a',
+                response_context=None,
+                system_prompt=None,
+                ai_model=None
+            )
+            logger.info(f"  📦 Draft archived: {draft_id}")
+            return True
+
         # Re-classify
         logger.debug("  → Re-classifying...")
         classification = await self.classifier.classify(thread, user_email=gmail_db.database_id, workspace=workspace)

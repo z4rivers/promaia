@@ -620,7 +620,7 @@ def load_json_files_with_property_filter(property_filters: Dict[str, Any], json_
     
     return matching_page_ids
 
-def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: str, db_path: str) -> str:
+def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: str, workspace: str, db_path: str) -> str:
     """
     Query properties from SQLite for a specific page and format them for display.
 
@@ -628,6 +628,7 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
         page_id: Page identifier
         database_id: Notion database ID
         database_name: Database nickname (e.g., 'journal', 'stories', 'cms')
+        workspace: Workspace name (e.g., 'koii', 'trass')
         db_path: Path to SQLite database
 
     Returns:
@@ -638,13 +639,12 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
     try:
         registry = get_hybrid_registry(db_path)
 
-        # Determine which table to query
-        table_mapping = {
-            'journal': 'notion_journal',
-            'stories': 'notion_stories',
-            'cms': 'notion_cms',
-        }
-        table_name = table_mapping.get(database_name)
+        # Use workspace-specific table naming for all Notion databases
+        if workspace and database_name:
+            table_name = f"notion_{workspace}_{database_name}"
+        else:
+            # Fallback for non-Notion sources (gmail, discord, etc.)
+            table_name = None
 
         if not table_name or not database_id:
             return ""
@@ -897,6 +897,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                             page_id=page_id,
                             database_id=entry['database_id'],
                             database_name=database_name,
+                            workspace=workspace,
                             db_path=db_path
                         )
 

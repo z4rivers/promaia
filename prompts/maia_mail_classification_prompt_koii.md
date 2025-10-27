@@ -37,4 +37,3 @@ Respond with ONLY valid JSON in this exact format:
     "requires_response": true/false,
     "reasoning": "Brief explanation of your classification"
 }}
-

@@ -159,12 +159,51 @@ maia chat -s workspace.discord:7 -f 'workspace.discord:author_name=admin'
 
 # Available in chat:
 # /pull        - Sync all databases and reload context
-# /days        - Change context days 
+# /days        - Change context days
 # /switch      - Change AI model (anthropic/openai/gemini)
 # /clear       - Clear chat history
 # /push        - Push conversation to Notion
 # /quit        - Exit
 ```
+
+### Property-Aware Search & Embeddings
+
+Property embeddings enable semantic search on Notion database properties for queries like "stories with epic holiday launch".
+
+#### Query Examples
+```bash
+# Semantic property search (title, text, rich_text, relation)
+maia chat "stories with epic 2025 holiday launch"
+maia chat "journal entries about project milestone 1.0"
+
+# Filter property search (select, status, multi_select, people)
+maia chat "stories with status in progress"
+maia chat "tasks assigned to Consumer Product team"
+
+# Combined constraints
+maia chat "in-progress stories with epic holiday launch from last sprint"
+```
+
+#### Backfill Property Embeddings
+```bash
+# Sync property embeddings for existing content
+python sync_property_embeddings.py
+
+# Dry run to preview
+python sync_property_embeddings.py --dry-run
+
+# Sync specific workspace or database
+python sync_property_embeddings.py --workspace trass
+python sync_property_embeddings.py --database stories
+
+# Force re-embed (overwrite existing)
+python sync_property_embeddings.py --force
+
+# Verbose output for debugging
+python sync_property_embeddings.py --verbose
+```
+
+**See [property_embeddings.md](property_embeddings.md) for complete documentation.**
 
 ### Content Generation
 ```bash
@@ -223,7 +262,16 @@ Configuration is stored in `promaia.config.json`:
 {
   "global": {
     "default_sync_days": 7,
-    "default_output_directory": "data"
+    "default_output_directory": "data",
+    "vector_search": {
+      "enabled": true,
+      "property_embeddings": {
+        "enabled": true,
+        "embeddable_types": ["title", "text", "rich_text", "relation"],
+        "filter_types": ["select", "status", "multi_select", "people"],
+        "default_property_similarity_threshold": 0.75
+      }
+    }
   },
   "databases": {
     "journal": {
@@ -232,7 +280,7 @@ Configuration is stored in `promaia.config.json`:
       "nickname": "journal",
       "description": "Personal journal entries",
       "sync_enabled": true,
-      "include_properties": false,
+      "include_properties": true,
       "default_days": 7,
       "output_directory": "data/journal"
     }

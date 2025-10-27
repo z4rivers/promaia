@@ -225,22 +225,37 @@ class NotionConnector(BaseConnector):
                 params = {"block_id": block_id, "page_size": 100}
                 if start_cursor:
                     params["start_cursor"] = start_cursor
-                
-                response = await self.client.blocks.children.list(**params)
-                blocks.extend(response.get("results", []))
-                
-                if not response.get("has_more", False):
+
+                try:
+                    response = await self.client.blocks.children.list(**params)
+                    blocks.extend(response.get("results", []))
+
+                    if not response.get("has_more", False):
+                        break
+                    start_cursor = response.get("next_cursor")
+                except Exception as api_error:
+                    # If we can't fetch this block's children, log and return what we have so far
+                    error_msg = str(api_error)
+                    if "Could not find block" in error_msg or "Make sure the relevant pages" in error_msg:
+                        self.logger.warning(f"Block {block_id} or its children are inaccessible (may be deleted or not shared): {api_error}")
+                    else:
+                        self.logger.error(f"API error fetching block {block_id}: {api_error}")
+                    # Return what we have so far instead of crashing
                     break
-                start_cursor = response.get("next_cursor")
             
             # Recursively get child blocks
             for block in blocks:
                 if block.get("has_children", False):
-                    child_blocks = await self._get_block_content(block["id"])
-                    block["children"] = child_blocks
-            
+                    try:
+                        child_blocks = await self._get_block_content(block["id"])
+                        block["children"] = child_blocks
+                    except Exception as child_error:
+                        # Log the error but don't crash - just skip this block's children
+                        self.logger.warning(f"Skipping children of block {block.get('id', 'unknown')}: {child_error}")
+                        block["children"] = []
+
             return blocks
-            
+
         except Exception as e:
             self.logger.error(f"Failed to get block content for {block_id}: {e}")
             return []
@@ -285,10 +300,12 @@ class NotionConnector(BaseConnector):
 
                 # Sync schema if we have valid schema data
                 if self._cached_schema:
+                    workspace = self.config.get('workspace')
                     sync_success = registry.sync_table_schema_with_properties(
                         database_id=self.database_id,
                         database_name=database_name,
                         properties=self._cached_schema,
+                        workspace=workspace,
                         remove_columns=False  # Default: don't remove columns for safety
                     )
 
@@ -695,7 +712,7 @@ class NotionConnector(BaseConnector):
         
         return None
     
-    async def sync_to_local_unified(self, 
+    async def sync_to_local_unified(self,
                                    storage,
                                    db_config,
                                    filters: Optional[List[QueryFilter]] = None,
@@ -703,7 +720,8 @@ class NotionConnector(BaseConnector):
                                    include_properties: bool = True,
                                    force_update: bool = False,
                                    excluded_properties: List[str] = None,
-                                   complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
+                                   complex_filter: Optional[Dict[str, Any]] = None,
+                                   properties_only: bool = False) -> SyncResult:
         """Sync Notion database content to local storage using the unified storage system."""
         result = SyncResult()
         result.start_time = now_utc()
@@ -715,6 +733,37 @@ class NotionConnector(BaseConnector):
             try:
                 result.add_api_call()  # MONITORING: Track API call
                 self._cached_schema = await self.get_database_schema()
+
+                # Update property schema in hybrid registry for property embeddings
+                if self._cached_schema:
+                    try:
+                        database_id = getattr(db_config, 'database_id', None)
+                        database_name = getattr(db_config, 'nickname', None)  # Use nickname to avoid qualified names
+
+                        if database_id and database_name:
+                            # Get workspace for table name determination
+                            workspace = self.config.get('workspace')
+
+                            # Sync property schema and create columns
+                            from promaia.storage.hybrid_storage import get_hybrid_registry
+                            registry = get_hybrid_registry()
+                            registry.sync_table_schema_with_properties(
+                                database_id=database_id,
+                                database_name=database_name,
+                                properties=self._cached_schema,  # _cached_schema IS the properties dict
+                                workspace=workspace,
+                                remove_columns=False  # Don't remove columns for safety
+                            )
+
+                            # Determine table name for logging
+                            if workspace and database_name:
+                                table_name = f"notion_{workspace}_{database_name}"
+                            else:
+                                table_name = 'generic_content'
+
+                            self.logger.debug(f"✅ Synced property schema and columns for {database_name} (table: {table_name})")
+                    except Exception as schema_update_error:
+                        self.logger.warning(f"Failed to update property schema: {schema_update_error}")
             except Exception as e:
                 result.add_api_error()  # MONITORING: Track API error
                 self.logger.warning(f"Could not cache database schema: {e}")
@@ -757,15 +806,25 @@ class NotionConnector(BaseConnector):
                 )
             
             result.pages_fetched = len(pages)
-            self.logger.info(f"Found {len(pages)} pages to sync")
-            
+
+            if properties_only:
+                self.logger.info(f"Found {len(pages)} pages for property-only sync")
+            else:
+                self.logger.info(f"Found {len(pages)} pages to sync")
+
             # OPTIMIZATION: Process pages in batches for improved performance
             if pages:
-                # Use batch processing for better concurrency
-                batch_results = await self._process_page_batch(
-                    pages, storage, db_config, include_properties, force_update, excluded_properties
-                )
-                
+                # Use property-only batch processing if requested (much faster)
+                if properties_only:
+                    batch_results = await self._process_properties_only_batch(
+                        pages, storage, db_config
+                    )
+                else:
+                    # Use full batch processing for complete sync
+                    batch_results = await self._process_page_batch(
+                        pages, storage, db_config, include_properties, force_update, excluded_properties
+                    )
+
                 # Process results and update counters (with clean progress)
                 saved_count = 0
                 skipped_count = 0
@@ -790,7 +849,10 @@ class NotionConnector(BaseConnector):
                         error_count += 1
                 
                 # Individual processing messages removed for clean 3-line output per database
-                self.logger.info(f"Batch processing completed: {saved_count} saved, {skipped_count} skipped, {error_count} failed")
+                if properties_only:
+                    self.logger.info(f"Property sync completed: {saved_count} updated, {skipped_count} skipped, {error_count} failed")
+                else:
+                    self.logger.info(f"Batch processing completed: {saved_count} saved, {skipped_count} skipped, {error_count} failed")
         
         except Exception as e:
             self.logger.error(f"Sync failed: {e}")
@@ -957,5 +1019,69 @@ class NotionConnector(BaseConnector):
             # Small delay between batches to respect rate limits
             if i + BATCH_SIZE < len(pages_batch):
                 await asyncio.sleep(BATCH_DELAY)
-        
-        return results 
+
+        return results
+
+    async def _process_properties_only_batch(self, pages_batch: List[Dict[str, Any]], storage,
+                                            db_config) -> List[Dict[str, Any]]:
+        """
+        Process a batch of pages for property-only sync (no content fetching).
+
+        This is much faster than full sync as it only updates property columns
+        without fetching page blocks or generating markdown.
+
+        Args:
+            pages_batch: List of page objects from query_pages (already includes properties)
+            storage: HybridRegistryStorage instance
+            db_config: Database configuration
+
+        Returns:
+            List of result dicts with status, page_id, title
+        """
+        database_id = getattr(db_config, 'database_id', None)
+        database_name = getattr(db_config, 'nickname', None)  # Use nickname to avoid qualified names
+        workspace = self.config.get('workspace', '')
+
+        if not database_id or not database_name or not workspace:
+            self.logger.error("Missing database_id, database_name, or workspace for property-only sync")
+            return [{"status": "error", "error": "Missing required configuration"}]
+
+        results = []
+
+        for page in pages_batch:
+            page_id = page["id"]
+
+            # Extract title for logging
+            title_for_log = page_id  # Default to ID
+            try:
+                properties = page.get("properties", {})
+                for prop_name, prop_data in properties.items():
+                    if prop_data.get("type") == "title" and prop_data.get("title"):
+                        title_for_log = prop_data["title"][0].get("plain_text", page_id)
+                        break
+            except Exception:
+                pass  # Use default
+
+            try:
+                # Update properties in storage
+                success = storage.update_page_properties(
+                    page_id=page_id,
+                    database_id=database_id,
+                    database_name=database_name,
+                    workspace=workspace,
+                    properties=page.get("properties", {})
+                )
+
+                if success:
+                    results.append({"status": "saved", "page_id": page_id, "title": title_for_log})
+                    self.logger.debug(f"✅ Updated properties for: {title_for_log}")
+                else:
+                    results.append({"status": "error", "page_id": page_id, "title": title_for_log,
+                                  "error": "Failed to update properties"})
+
+            except Exception as e:
+                self.logger.error(f"Failed to update properties for {page_id}: {e}")
+                results.append({"status": "error", "page_id": page_id, "title": title_for_log,
+                              "error": str(e)})
+
+        return results

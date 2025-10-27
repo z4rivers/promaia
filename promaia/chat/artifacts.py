@@ -5,6 +5,7 @@ Provides Claude-style inline artifacts for generated content like emails,
 blog posts, documents, and code.
 """
 import logging
+import re
 from typing import Dict, Tuple, Optional
 
 logger = logging.getLogger(__name__)
@@ -42,24 +43,26 @@ class ArtifactManager:
                         'guide', 'tutorial', 'proposal', 'spec', 'contract']
         
         user_lower = user_input.lower()
-        
+
+        # Check for AI artifact tags FIRST (respect AI's decision)
+        # Use regex to handle both simple and attributed artifact tags
+        artifact_pattern = r'<artifact(?:\s+[^>]*)?>(.+?)</artifact>'
+        if re.search(artifact_pattern, ai_response, re.DOTALL):
+            logger.debug("Artifact triggered by AI tags")
+            return True
+
         # Check for explicit "as an artifact" or "as artifact"
         if 'as an artifact' in user_lower or 'as artifact' in user_lower:
             logger.debug("Artifact triggered by explicit 'as artifact' phrase")
             return True
-        
-        # Check for keyword + content type combinations
+
+        # Check for keyword + content type combinations (fallback)
         for keyword in keywords:
             for content_type in content_types:
                 if keyword in user_lower and content_type in user_lower:
                     logger.debug(f"Artifact triggered by keywords: '{keyword}' + '{content_type}'")
                     return True
-        
-        # Check for AI artifact tags
-        if '<artifact>' in ai_response and '</artifact>' in ai_response:
-            logger.debug("Artifact triggered by AI tags")
-            return True
-        
+
         return False
     
     def should_update_artifact(self, user_input: str) -> bool:
@@ -89,28 +92,38 @@ class ArtifactManager:
     def extract_artifact_content(self, ai_response: str) -> Tuple[str, str]:
         """
         Extract artifact content from AI response.
-        
+
+        Handles both simple <artifact> tags and Claude's native format with attributes:
+        - Simple: <artifact>content</artifact>
+        - With attributes: <artifact identifier="..." type="..." title="...">content</artifact>
+
         Args:
             ai_response: AI's full response
-            
+
         Returns:
             Tuple of (artifact_content, remaining_response)
         """
-        if '<artifact>' in ai_response and '</artifact>' in ai_response:
-            # AI explicitly marked content as artifact
-            parts = ai_response.split('<artifact>')
-            before = parts[0].strip()
-            
-            after_parts = parts[1].split('</artifact>')
-            artifact = after_parts[0].strip()
-            after = after_parts[1].strip() if len(after_parts) > 1 else ""
-            
+        # Use regex to match artifact tags with or without attributes
+        # Pattern matches: <artifact [anything]> ... </artifact>
+        artifact_pattern = r'<artifact(?:\s+[^>]*)?>(.+?)</artifact>'
+        match = re.search(artifact_pattern, ai_response, re.DOTALL)
+
+        if match:
+            # Extract content between tags (group 1)
+            artifact = match.group(1).strip()
+
+            # Get text before artifact
+            before = ai_response[:match.start()].strip()
+
+            # Get text after artifact
+            after = ai_response[match.end():].strip()
+
             # Combine before and after commentary
             commentary = (before + "\n\n" + after).strip() if before or after else ""
-            
+
             return artifact, commentary
         else:
-            # Entire response is the artifact
+            # No artifact tags found - entire response is the artifact
             return ai_response, ""
     
     def create_artifact(self, content: str, artifact_type: str = "text") -> int:

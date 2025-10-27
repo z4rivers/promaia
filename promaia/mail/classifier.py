@@ -22,16 +22,48 @@ class EmailClassifier:
         # Will use the existing AI client infrastructure
         self.ai_client = None
         self.model_type = None
-        self.classification_prompt_template = self._load_classification_prompt()
-    
-    def _load_classification_prompt(self) -> str:
-        """Load classification prompt template from file."""
-        prompt_file = os.path.join("prompts", "maia_mail_classification_prompt.md")
+        # Cache for loaded prompts per workspace
+        self._prompt_cache = {}
+
+    def _load_classification_prompt(self, workspace: str) -> str:
+        """
+        Load classification prompt template from file.
+
+        Tries to load workspace-specific prompt first (e.g., maia_mail_classification_prompt_trass.md),
+        falls back to generic prompt if not found.
+
+        Args:
+            workspace: Workspace name
+
+        Returns:
+            Prompt template string
+        """
+        # Check cache first
+        if workspace in self._prompt_cache:
+            return self._prompt_cache[workspace]
+
+        # Try workspace-specific prompt first
+        workspace_prompt_file = os.path.join("prompts", f"maia_mail_classification_prompt_{workspace}.md")
+
         try:
-            with open(prompt_file, 'r') as f:
-                return f.read()
+            with open(workspace_prompt_file, 'r') as f:
+                prompt = f.read()
+                self._prompt_cache[workspace] = prompt
+                logger.info(f"Loaded workspace-specific classification prompt for '{workspace}'")
+                return prompt
         except FileNotFoundError:
-            logger.error(f"Classification prompt file not found: {prompt_file}")
+            logger.debug(f"No workspace-specific prompt found at {workspace_prompt_file}, trying generic")
+
+        # Fall back to generic prompt
+        generic_prompt_file = os.path.join("prompts", "maia_mail_classification_prompt.md")
+        try:
+            with open(generic_prompt_file, 'r') as f:
+                prompt = f.read()
+                self._prompt_cache[workspace] = prompt
+                logger.warning(f"Using generic classification prompt for workspace '{workspace}' (no workspace-specific prompt found)")
+                return prompt
+        except FileNotFoundError:
+            logger.error(f"Classification prompt file not found: {generic_prompt_file}")
             raise
         except Exception as e:
             logger.error(f"Error loading classification prompt: {e}")
@@ -93,9 +125,12 @@ class EmailClassifier:
             # Truncate body if too long (keep first 1000 chars)
             if len(body) > 1000:
                 body = body[:1000] + "\n[... truncated ...]"
-            
+
+            # Load workspace-specific prompt
+            prompt_template = self._load_classification_prompt(workspace)
+
             # Build prompt with user identity
-            prompt = self.classification_prompt_template.format(
+            prompt = prompt_template.format(
                 user_email=user_email,
                 workspace=workspace,
                 from_addr=from_addr,

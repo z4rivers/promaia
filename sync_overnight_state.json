@@ -1,0 +1,32 @@
+{
+  "completed": [
+    "koii.journal",
+    "koii.cms",
+    "koii.stories",
+    "koii.epics",
+    "koii.projects",
+    "koii.awakenings",
+    "trass.journal",
+    "trass.stories",
+    "trass.cpj",
+    "trass.epics"
+  ],
+  "failed": [
+    {
+      "name": "koii.journal",
+      "error": "Exit code 139: Failed to get block content for 241d1339-6967-813e-9a7b-fe5526d7319d: Could not find block with ID: 22cd1339-6967-809c-9f4e-f44d66b85a79. Make sure the relevant pages and databases are shared with your integration.\n/Users/kb20250422/bin/maia: line 16: 62864 Segmentation fault: 11  python -m promaia \"$@\"\n",
+      "timestamp": "2025-10-27 08:15:01"
+    },
+    {
+      "name": "koii.cms",
+      "error": "Exit code 139: /Users/kb20250422/bin/maia: line 16: 62871 Segmentation fault: 11  python -m promaia \"$@\"\n",
+      "timestamp": "2025-10-27 08:15:11"
+    },
+    {
+      "name": "koii.stories",
+      "error": "Exit code 139: /Users/kb20250422/bin/maia: line 16: 62878 Segmentation fault: 11  python -m promaia \"$@\"\n",
+      "timestamp": "2025-10-27 08:15:21"
+    }
+  ],
+  "last_run": "2025-10-27 09:10:34"
+}

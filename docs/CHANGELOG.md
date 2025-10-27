@@ -2,7 +2,79 @@
 
 All notable changes to Promaia will be documented in this file.
 
-## [Unreleased] - 2025-10-20
+## [Unreleased] - 2025-10-26
+
+### 🔍 Property Embeddings - Semantic Search on Notion Properties
+
+#### Added
+- **Property-Aware Search**: Natural language queries can now search Notion database properties (e.g., "stories with epic holiday launch")
+- **Separate Property Collection**: New ChromaDB collection `promaia_properties` for property-specific embeddings
+- **Property Schema Tracking**: New `notion_property_schema` table tracks available properties per database
+- **Automatic Sync Integration**: Property schemas and embeddings created automatically during database sync
+- **Backfill Script**: `sync_property_embeddings.py` for backfilling embeddings on existing content
+- **Property Type Classification**: Embeddable properties (title, text, rich_text, relation) vs filterable properties (select, status, multi_select, people)
+
+#### Enhanced
+- **Intent Parser**: Extracts property constraints from natural language queries
+- **Query Router**: Intelligently routes queries based on property types (semantic vs filter)
+- **Relation Resolution**: Relation properties resolved to page titles for meaningful semantic search
+- **Result Intersection**: Combined constraints (semantic + filter + date) properly intersected
+- **Vector DB Manager**: New `add_property_embedding()` and `search_property()` methods
+
+#### Configuration
+```json
+{
+  "global": {
+    "vector_search": {
+      "property_embeddings": {
+        "enabled": true,
+        "embeddable_types": ["title", "text", "rich_text", "relation"],
+        "filter_types": ["select", "status", "multi_select", "people"],
+        "default_property_similarity_threshold": 0.75
+      }
+    }
+  },
+  "databases": {
+    "your_database": {
+      "include_properties": true  // Required for property embeddings
+    }
+  }
+}
+```
+
+#### Query Examples
+```bash
+# Semantic property search
+maia chat "stories with epic 2025 holiday launch"
+
+# Filter property search
+maia chat "stories with status in progress"
+
+# Combined constraints
+maia chat "in-progress stories with epic holiday launch from last sprint"
+```
+
+#### Implementation Details
+- **Files Modified**: `vector_db.py`, `hybrid_storage.py`, `nl_orchestrator.py`, `query_strategies.py`, `notion_connector.py`
+- **Vector ID Format**: `{page_id}_prop_{property_name}`
+- **Property Embedding Metadata**: Includes workspace, database, property name/type for filtering
+- **Schema Population**: Automatic during sync after database schema caching
+
+#### Benefits
+- Natural language queries on structured properties (no more exact property value matching)
+- Semantic search on relations enables powerful cross-database queries
+- Clean separation of concerns (semantic embeddings vs exact filters)
+- Automatic integration with existing sync workflow
+- Backfill support for existing content
+- Performance optimized with separate collection and result intersection
+
+#### Documentation
+- **[NEW] docs/property_embeddings.md**: Complete feature documentation with architecture, usage, examples
+- **[NEW] docs/PROPERTY_EMBEDDINGS_CHEATSHEET.md**: Quick reference guide
+- **[UPDATED] docs/QUICK_REFERENCE.md**: Added property embeddings section
+- **[UPDATED] docs/README.md**: Added property embeddings to navigation
+
+## [Previous] - 2025-10-20
 
 ### 📧 Maia Mail - History Feature
 

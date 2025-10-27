@@ -10,6 +10,7 @@ import os
 import sys
 import time
 import json
+import re
 import shlex
 import logging
 from prompt_toolkit import PromptSession
@@ -33,6 +34,7 @@ from promaia.utils.display import print_markdown, print_code, print_text, print_
 from promaia.utils.timezone_utils import now_utc
 from promaia.storage.chat_history import ChatHistoryManager
 from promaia.storage.recents import RecentsManager
+from promaia.utils.query_parsing import parse_vs_queries_with_params
 
 import google.generativeai as genai
 
@@ -131,6 +133,23 @@ def debug_print(message):
         except Exception:
             pass
         print(f"DEBUG ({timestamp}){caller_name}: {message}")
+
+def has_artifact_tags(text: str) -> bool:
+    """
+    Check if text contains artifact tags (with or without attributes).
+
+    Handles both:
+    - Simple: <artifact>...</artifact>
+    - With attributes: <artifact identifier="..." type="..." title="...">...</artifact>
+
+    Args:
+        text: Text to check
+
+    Returns:
+        True if artifact tags are present
+    """
+    artifact_pattern = r'<artifact(?:\s+[^>]*)?>(.+?)</artifact>'
+    return bool(re.search(artifact_pattern, text, re.DOTALL))
 
 # Local Llama client initialization (after debug_print is defined)
 def initialize_llama_client():
@@ -304,6 +323,7 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
+    print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
     print_text("")
 
 
@@ -321,7 +341,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /m", style="dim")
     print_text("")
 
 
@@ -714,7 +734,7 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None):
+def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None, mode=None):
     """
     Build system prompt, respecting mode-specific prompts while including context.
 
@@ -722,6 +742,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
         multi_source_data: Dict of database_name -> pages
         mcp_tools_info: MCP tools info string
         mode_system_prompt: Optional mode-specific base prompt
+        mode: Optional ChatMode instance to check if it handles its own context
 
     Returns:
         Complete system prompt with context
@@ -729,20 +750,26 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
     from promaia.ai.prompts import create_system_prompt, format_context_data
 
     if mode_system_prompt:
-        # Start with mode prompt, append context so AI has access to both
-        return mode_system_prompt + format_context_data(multi_source_data, mcp_tools_info)
+        # Check if mode handles its own context formatting
+        if mode and hasattr(mode, 'handles_own_context') and mode.handles_own_context():
+            # Mode builds complete prompt with context - don't append generic format
+            return mode_system_prompt
+        else:
+            # Start with mode prompt, append context so AI has access to both
+            return mode_system_prompt + format_context_data(multi_source_data, mcp_tools_info)
     else:
         # Standard prompt with context
         return create_system_prompt(multi_source_data, mcp_tools_info)
 
 
-def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None):
+def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, natural_language_content=None, natural_language_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None, auto_respond_to_initial=False, top_k=None, threshold=None, vector_search_queries=None, initial_vs_per_query_cache=None):
     """
     Main chat function with simplified, unified logic.
 
     Args:
         mode: ChatMode instance for specialized behavior (e.g., DraftMode)
         mode_config: Additional mode configuration dict
+        auto_respond_to_initial: If True, automatically trigger AI response to initial user message before interactive loop
         ... (other existing args)
     """
     global current_api, DEBUG_MODE
@@ -962,6 +989,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("-w", "--workspace", dest="workspace")
             parser.add_argument("-b", "--browse", nargs="*", dest="browse")
             parser.add_argument("-nl", "--natural-language", nargs="*", dest="natural_language")
+            parser.add_argument("-vs", "--vector-search", nargs="*", dest="vector_search")
+            parser.add_argument("-tk", "--top-k", type=int, dest="top_k")
+            parser.add_argument("-th", "--threshold", type=float, dest="threshold")
             parser.add_argument("-mcp", action="append", dest="mcp_servers")
             parser.add_argument("-dc", "--draft-context", action="store_true", dest="draft_context")
 
@@ -999,6 +1029,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'current_thread_id': current_thread_id,  # Track if we're continuing a thread
         'natural_language_content': None,  # Will be set from initial_nl_content if provided
         'vector_search_content': None,  # Store VS content separately for independent tracking
+        'vector_search_per_query_cache': initial_vs_per_query_cache if initial_vs_per_query_cache else {},  # Per-query cache for efficient -vs editing
+        'vector_search_queries': vector_search_queries if vector_search_queries else [],  # Store individual -vs queries as list
         'browse_selections': browse_selections if browse_selections is not None else [],  # Store browser selections from CLI
         'natural_language_prompt': natural_language_prompt,  # Store the original NL prompt
         'is_vector_search': is_vector_search,  # Track if using vector search instead of natural language
@@ -1010,6 +1042,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command,  # Flag for OR logic in NL processing
         'mode': mode,  # Store chat mode for specialized behavior
         'mode_config': mode_config or {},  # Store mode configuration
+        'top_k': top_k if top_k is not None else 20,  # Maximum vector search results
+        'threshold': threshold if threshold is not None else 0.75,  # Minimum similarity threshold
     }
     
     # Mode-specific setup
@@ -1087,7 +1121,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 query_parts.extend(["-f", f'"{filter_expr}"'])
         if context_state['workspace']:  # Only show workspace if explicitly provided by user
             query_parts.extend(["-ws", context_state['workspace']])
-        if context_state['natural_language_prompt']:
+        # Check for vector search queries first (new format with multiple -vs)
+        has_structured_queries = False
+        if context_state.get('vector_search_queries'):
+            for vs_query in context_state['vector_search_queries']:
+                # Handle both dict format (new) and string format (old/backward compatibility)
+                if isinstance(vs_query, dict):
+                    has_structured_queries = True
+                    query_parts.extend(["-vs", vs_query['query']])
+                    # Include per-query parameters if they differ from defaults
+                    if vs_query.get('top_k', 20) != 20:
+                        query_parts.extend(["-tk", str(vs_query['top_k'])])
+                    if vs_query.get('threshold', 0.75) != 0.75:
+                        query_parts.extend(["-th", str(vs_query['threshold'])])
+                else:
+                    # Old format: just a string
+                    query_parts.extend(["-vs", vs_query])
+        elif context_state['natural_language_prompt']:
             nl_prompt = context_state['natural_language_prompt']
             # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
             # Adding quotes is redundant and makes commands harder to read and copy
@@ -1095,7 +1145,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if context_state['mcp_servers']:
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
-        
+
+        # Include global vector search parameters only if we don't have per-query parameters
+        if not has_structured_queries:
+            if context_state.get('top_k') != 20:
+                query_parts.extend(["--top-k", str(context_state['top_k'])])
+            if context_state.get('threshold') != 0.75:
+                query_parts.extend(["--threshold", str(context_state['threshold'])])
+
         # Update query_command but preserve original_query_format if it exists
         built_command = " ".join(query_parts)
         context_state['query_command'] = built_command
@@ -1108,7 +1165,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if original_browse_command:
             # Use the provided original browse command
             context_state['original_query_format'] = original_browse_command
-        elif sources or filters or workspace or natural_language_prompt or mcp_servers:
+        elif sources or filters or workspace or natural_language_prompt or mcp_servers or vector_search_queries:
             # Build and store the original query format for regular commands to preserve day specifications
             query_parts = ["maia", "chat"]
             if sources:
@@ -1119,7 +1176,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     query_parts.extend(["-f", f'"{filter_expr}"'])
             if workspace:
                 query_parts.extend(["-ws", workspace])
-            if natural_language_prompt:
+            # Check for vector search queries first (multiple -vs format)
+            if vector_search_queries:
+                for vs_query in vector_search_queries:
+                    # Handle both dict format (new) and string format (old/backward compatibility)
+                    if isinstance(vs_query, dict):
+                        query_parts.extend(["-vs", vs_query['query']])
+                        # Include per-query parameters if they differ from defaults
+                        if vs_query.get('top_k', 20) != 20:
+                            query_parts.extend(["-tk", str(vs_query['top_k'])])
+                        if vs_query.get('threshold', 0.75) != 0.75:
+                            query_parts.extend(["-th", str(vs_query['threshold'])])
+                    else:
+                        # Old format: just a string
+                        query_parts.extend(["-vs", vs_query])
+            elif natural_language_prompt:
                 query_parts.extend(["-nl", natural_language_prompt])
             if mcp_servers:
                 for server in mcp_servers:
@@ -1250,7 +1321,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         natural_language_content = process_vector_search_to_content(
                             nl_prompt,
                             workspace=None,  # Allow cross-workspace searches
-                            verbose=True  # Show detailed processing steps
+                            verbose=True,  # Show detailed processing steps
+                            n_results=context_state.get('top_k', 20),
+                            min_similarity=context_state.get('threshold', 0.75)
                         )
                     else:
                         # Always allow cross-workspace queries for natural language
@@ -1374,7 +1447,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
         # Only auto-load workspace databases if user provided NO arguments at all
         # Also check for pre-loaded natural_language_content (e.g., from draft mode) or if a mode is active
-        user_provided_args = bool(sources or filters or natural_language_prompt or browse_selections or mcp_servers or context_state.get('natural_language_content') or mode)
+        user_provided_args = bool(sources or filters or natural_language_prompt or context_state.get('browse_selections') or mcp_servers or context_state.get('natural_language_content') or mode)
         
         # Check if user provided workspace but no sources (workspace browse mode)
         # BUT don't launch browser if we already have sources (e.g., from edit context)
@@ -1415,7 +1488,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         elif not current_sources and len(combined_multi_source_data) == 0 and not user_provided_args:
             # For plain "maia chat" with no args, start with blank slate instead of loading defaults
             debug_print(f"No arguments provided, starting with blank slate (no default databases loaded).")
-            print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
             context_state['blank_slate_message_shown'] = True  # Track that we've shown this message
         elif len(combined_multi_source_data) > 0 and not current_sources:
             debug_print(f"Have natural language content only (no browser selections) - using NL content only")
@@ -1732,10 +1804,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text("❌ No content could be loaded from any source", style="bold red")
                 print_text("💡 MCP tools are available for interaction", style="cyan")
             else:
-                # Only show blank slate message if we haven't already shown it
-                if not context_state.get('blank_slate_message_shown'):
-                    print_text("💬 Starting chat with blank slate (no context loaded)", style="bold cyan")
                 # Continue with blank slate - don't return False
+                pass
         
         # Update context state
         context_state['initial_multi_source_data'] = new_multi_source_data
@@ -1756,7 +1826,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Generate new system prompt
         mcp_tools_info = context_state.get('mcp_tools_info')
-        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt)
+        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
         context_state['system_prompt'] = system_prompt
         
         # Save context log when MCP servers are connected (for transparency)
@@ -1944,8 +2014,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             else:
                 current_args_str = original_cmd  # Use the whole thing as args
         else:
-            # Check if we're in natural language mode or vector search mode
-            if context_state.get('natural_language_prompt'):
+            # Check if we have multiple vector search queries (new format)
+            if context_state.get('vector_search_queries'):
+                # Reconstruct multiple -vs flags from the list
+                for vs_query in context_state['vector_search_queries']:
+                    # Handle both dict format (new) and string format (old/backward compatibility)
+                    if isinstance(vs_query, dict):
+                        current_args.extend(['-vs', vs_query['query']])
+                        # Include per-query parameters if they differ from defaults
+                        if vs_query.get('top_k', 20) != 20:
+                            current_args.extend(['-tk', str(vs_query['top_k'])])
+                        if vs_query.get('threshold', 0.75) != 0.75:
+                            current_args.extend(['-th', str(vs_query['threshold'])])
+                    else:
+                        # Old format: just a string
+                        current_args.extend(['-vs', vs_query])
+            # Check if we're in natural language mode or vector search mode (old format)
+            elif context_state.get('natural_language_prompt'):
                 # Check if this was originally a vector search command
                 original_cmd = context_state.get('original_query_format', '')
                 if '-vs' in original_cmd and context_state.get('natural_language_content'):
@@ -2077,6 +2162,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     help="Use semantic vector search to find similar content. Can be used multiple times."
                 )
                 parser.add_argument(
+                    "--top-k", "-tk",
+                    type=int,
+                    help="Maximum number of results to return from vector search (default: 20)"
+                )
+                parser.add_argument(
+                    "--threshold", "-th",
+                    type=float,
+                    help="Minimum similarity threshold for vector search results, 0-1 scale (default: 0.75)"
+                )
+                parser.add_argument(
                     "--mcp", "-mcp",
                     action="append",
                     dest="mcp_servers",
@@ -2091,7 +2186,106 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                 # Parse the arguments
                 parsed_args = parser.parse_args(args_list)
-                
+
+                # Parse structured -vs queries with per-query parameters (-tk/-th)
+                vs_queries_structured = []
+                if getattr(parsed_args, 'vector_search', None):
+                    # Reconstruct the command as a list including 'maia chat' prefix for parsing
+                    command_with_prefix = ['maia', 'chat'] + args_list
+                    vs_queries_structured = parse_vs_queries_with_params(command_with_prefix)
+
+                # Check if -dc (draft context) flag is being used in draft mode
+                if getattr(parsed_args, 'draft_context', False) and mode:
+                    from promaia.chat.modes import DraftMode
+                    if isinstance(mode, DraftMode):
+                        # Load context and prompt AI to write draft
+                        print_text("\n🔍 Loading context...\n", style="cyan")
+
+                        if not mode.context_builder:
+                            print_text("❌ Context builder not available", style="red")
+                            return False
+
+                        try:
+                            import asyncio
+
+                            # Build thread dict from draft data
+                            thread = {
+                                'thread_id': mode.draft_data.get('thread_id'),
+                                'subject': mode.draft_data.get('inbound_subject'),
+                                'body': mode.draft_data.get('inbound_body'),
+                                'conversation_body': mode.draft_data.get('thread_context', ''),
+                                'from': mode.draft_data.get('inbound_from'),
+                                'date': mode.draft_data.get('inbound_date'),
+                                'message_count': mode.draft_data.get('message_count', 1)
+                            }
+
+                            # Build context using context builder
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            context = loop.run_until_complete(
+                                mode.context_builder.build_context(thread, mode.workspace)
+                            )
+                            loop.close()
+
+                            # Convert context to natural_language_content format for chat
+                            message_context = {}
+
+                            # Add email thread
+                            message_context['email_thread'] = [{
+                                'title': f"Email Thread: {mode.draft_data.get('inbound_subject', 'No Subject')}",
+                                'content': mode.draft_data.get('inbound_body', ''),
+                                'metadata': {
+                                    'from': mode.draft_data.get('inbound_from', ''),
+                                    'to': mode.draft_data.get('inbound_to', ''),
+                                    'cc': mode.draft_data.get('inbound_cc', ''),
+                                    'date': mode.draft_data.get('inbound_date', ''),
+                                    'subject': mode.draft_data.get('inbound_subject', ''),
+                                    'message_count': mode.draft_data.get('message_count', 1),
+                                },
+                                'database': 'email_thread',
+                            }]
+
+                            # Add vector search results
+                            for doc in context.relevant_docs:
+                                db_name = doc.get('database', 'unknown')
+
+                                # Ensure consistent database naming with workspace prefix
+                                if db_name == 'gmail':
+                                    db_name = f"{mode.workspace}.gmail"
+                                elif '.' not in db_name and db_name not in ['journal', 'stories', 'cpj', 'epics']:
+                                    db_name = f"{mode.workspace}.{db_name}"
+
+                                if db_name not in message_context:
+                                    message_context[db_name] = []
+
+                                # Convert doc format to page format
+                                page = {
+                                    'title': doc.get('title', 'Untitled'),
+                                    'content': doc.get('content', ''),
+                                    'metadata': doc.get('metadata', {}),
+                                    'database': db_name,
+                                }
+                                message_context[db_name].append(page)
+
+                            # Update context state with loaded context
+                            context_state['natural_language_content'] = message_context
+
+                            print_text(f"📚 Loaded {context.total_sources} sources from your knowledge base\n", style="green")
+
+                            # The user message has been added to the messages list
+                            # The AI will respond in the chat loop and decide whether to use <artifact> tags
+                            # based on maia_mail_prompt.md guidelines
+
+                            # Return True to indicate context was updated
+                            return True
+
+                        except Exception as e:
+                            print_text(f"❌ Error generating draft: {e}", style="red")
+                            logger.error(f"Draft generation error in edit context: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            return False
+
                 # Check if natural language mode is being used
                 natural_language_args = getattr(parsed_args, 'natural_language', None)
                 
@@ -2272,87 +2466,141 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("Failed to reload context with natural language content.", style="bold red")
                         return False
                 
+                # Extract top_k and threshold if provided
+                if hasattr(parsed_args, 'top_k') and parsed_args.top_k is not None:
+                    context_state['top_k'] = parsed_args.top_k
+                if hasattr(parsed_args, 'threshold') and parsed_args.threshold is not None:
+                    context_state['threshold'] = parsed_args.threshold
+
                 # Check if vector search mode is being used
                 vector_search_args = getattr(parsed_args, 'vector_search', None)
-                
+
                 if vector_search_args is not None:
                     # Vector search mode - handle multiple -vs queries
                     # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
                     vs_prompts = [' '.join(vs_args) for vs_args in vector_search_args if vs_args]
-                    
+
                     if not vs_prompts:
                         print_text("Error: Vector search prompt is empty.", style="bold red")
                         return False
-                    
-                    # Create combined prompt for caching
+
+                    # Create combined prompt for display/tracking
                     combined_vs_prompt = " ".join(vs_prompts) if vs_prompts else ""
-                    
-                    # Check if we already have cached results for this exact VS prompt
-                    cached_vs_content = context_state.get('natural_language_content', {})
-                    cached_vs_prompt = context_state.get('cached_natural_language_prompt', '')
-                    
-                    if combined_vs_prompt == cached_vs_prompt and cached_vs_content:
-                        print_text("🔄 Reusing cached vector search results (prompt unchanged)", style="dim")
-                        vs_content = cached_vs_content
+
+                    # Per-query caching: Check which queries changed vs stayed the same
+                    # Get the per-query cache from context_state
+                    per_query_cache = context_state.get('vector_search_per_query_cache', {})
+
+                    # Track which queries need to be run and which can be reused
+                    queries_to_run = []
+                    cached_queries = []
+
+                    for i, vs_prompt in enumerate(vs_prompts):
+                        if vs_prompt in per_query_cache:
+                            cached_queries.append((i, vs_prompt))
+                        else:
+                            queries_to_run.append((i, vs_prompt))
+
+                    # Show cache status if we have multiple queries
+                    if len(vs_prompts) > 1:
+                        if cached_queries and queries_to_run:
+                            print_text(f"🤖 Processing {len(vs_prompts)} vector search queries ({len(cached_queries)} cached, {len(queries_to_run)} new)", style="dim")
+                        elif cached_queries:
+                            print_text(f"🔄 Reusing cached results for all {len(cached_queries)} vector search queries", style="dim")
+                        else:
+                            print_text(f"🤖 Processing {len(vs_prompts)} separate vector search queries", style="dim")
+
+                        # Show query list
+                        for i, prompt in enumerate(vs_prompts):
+                            cached_marker = " (cached)" if prompt in per_query_cache else ""
+                            print_text(f"   {i+1}. '{prompt}'{cached_marker}", style="dim")
                     else:
-                        # Process multiple vector search queries
-                        try:
-                            from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
-                            
-                            if len(vs_prompts) > 1:
-                                print_text(f"🤖 Processing {len(vs_prompts)} separate vector search queries", style="dim")
-                                for i, prompt in enumerate(vs_prompts):
-                                    print_text(f"   {i+1}. '{prompt}'", style="dim")
+                        if vs_prompts[0] in per_query_cache:
+                            print_text(f"🔄 Reusing cached vector search results (query unchanged)", style="dim")
+                        else:
+                            print_text(f"🤖 Processing vector search query: '{vs_prompts[0]}'", style="dim")
+
+                    # Process queries
+                    try:
+                        from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
+
+                        combined_vs_content = {}
+                        total_results = 0
+                        new_queries_processed = 0
+
+                        for i, vs_prompt in enumerate(vs_prompts):
+                            # Check if we have cached results for this specific query
+                            if vs_prompt in per_query_cache:
+                                # Use cached results
+                                cached_result = per_query_cache[vs_prompt]
+
+                                # Merge cached results
+                                for db_name, entries in cached_result.items():
+                                    if db_name not in combined_vs_content:
+                                        combined_vs_content[db_name] = []
+                                    combined_vs_content[db_name].extend(entries)
+
+                                query_results = sum(len(entries) for entries in cached_result.values())
+                                total_results += query_results
+
+                                if len(vs_prompts) > 1 and len(queries_to_run) > 0:
+                                    print_text(f"   ♻️  Query {i+1} using cache: {query_results} results", style="dim green")
                             else:
-                                print_text(f"🤖 Processing vector search query: '{vs_prompts[0]}'", style="dim")
-                            
-                            # Process each VS query separately and combine results
-                            combined_vs_content = {}
-                            total_results = 0
-                            
-                            for i, vs_prompt in enumerate(vs_prompts):
+                                # Need to run this query
                                 if len(vs_prompts) > 1:
                                     print_text(f"🔍 Processing query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
-                                
+
                                 # Process vector search
                                 vs_result = process_vector_search_to_content(
-                                    vs_prompt, 
+                                    vs_prompt,
                                     workspace=None,  # Allow cross-workspace searches
-                                    verbose=True  # Show detailed processing steps
+                                    verbose=True,  # Show detailed processing steps
+                                    n_results=context_state.get('top_k', 20),
+                                    min_similarity=context_state.get('threshold', 0.75)
                                 )
-                                
+
                                 if vs_result:
+                                    # Cache this query's results
+                                    per_query_cache[vs_prompt] = vs_result
+
                                     # Merge results from this query into combined content
                                     for db_name, entries in vs_result.items():
                                         if db_name not in combined_vs_content:
                                             combined_vs_content[db_name] = []
                                         combined_vs_content[db_name].extend(entries)
-                                    
+
                                     query_results = sum(len(entries) for entries in vs_result.values())
                                     total_results += query_results
+                                    new_queries_processed += 1
                                     if len(vs_prompts) > 1:
                                         print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                                 else:
+                                    # Cache empty result to avoid re-running failed queries
+                                    per_query_cache[vs_prompt] = {}
                                     if len(vs_prompts) > 1:
                                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
-                            
-                            if not combined_vs_content:
-                                print_text("❌ No content found for any vector search queries", style="red")
-                                return False
-                            
-                            if len(vs_prompts) > 1:
-                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
-                            vs_content = combined_vs_content
-                            
-                            # Cache both the results and combined prompt for future use
-                            context_state['natural_language_content'] = vs_content
-                            context_state['cached_natural_language_prompt'] = combined_vs_prompt
-                            
-                        except Exception as e:
-                            print_text(f"Error processing vector search query: {e}", style="bold red")
-                            import traceback
-                            traceback.print_exc()
+
+                        if not combined_vs_content:
+                            print_text("❌ No content found for any vector search queries", style="red")
                             return False
+
+                        if len(vs_prompts) > 1:
+                            if new_queries_processed > 0 and len(cached_queries) > 0:
+                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
+                            else:
+                                print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
+                        vs_content = combined_vs_content
+
+                        # Update caches
+                        context_state['vector_search_per_query_cache'] = per_query_cache
+                        context_state['natural_language_content'] = vs_content
+                        context_state['cached_natural_language_prompt'] = combined_vs_prompt
+
+                    except Exception as e:
+                        print_text(f"Error processing vector search query: {e}", style="bold red")
+                        import traceback
+                        traceback.print_exc()
+                        return False
                     
                     # Update context state for vector search mode (reuse natural_language fields)
                     context_state['natural_language_prompt'] = combined_vs_prompt
@@ -2473,7 +2721,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             
                             # Update the system prompt with the remaining data
                             mcp_tools_info = context_state.get('mcp_tools_info')
-                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt)
+                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode)
                             context_state['system_prompt'] = system_prompt
                             
                             debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -2537,15 +2785,24 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Create parser that handles browse commands
             parser = argparse.ArgumentParser(description="Manual browse command editor", add_help=False)
             parser.add_argument("--source", "-s", action="append", dest="sources")
-            parser.add_argument("--filter", "-f", action="append", dest="filters") 
+            parser.add_argument("--filter", "-f", action="append", dest="filters")
             parser.add_argument("--workspace", "-ws", dest="workspace")
             parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
             # NOTE: This MUST match the other -nl/-vs parsers (top-level CLI and normal edit mode)
             parser.add_argument("--natural-language", "-nl", action="append", nargs="+", dest="natural_language")
             parser.add_argument("--vector-search", "-vs", action="append", nargs="+", dest="vector_search")
-            
+            parser.add_argument("--top-k", "-tk", type=int, help="Maximum number of results from vector search")
+            parser.add_argument("--threshold", "-th", type=float, help="Minimum similarity threshold for vector search")
+
             parsed_args = parser.parse_args(args_list)
-            
+
+            # Parse structured -vs queries with per-query parameters (-tk/-th)
+            vs_queries_structured = []
+            if getattr(parsed_args, 'vector_search', None):
+                # Reconstruct the command as a list including 'maia chat' prefix for parsing
+                command_with_prefix = ['maia', 'chat'] + args_list
+                vs_queries_structured = parse_vs_queries_with_params(command_with_prefix)
+
             # Extract components
             regular_sources = parsed_args.sources or []
             # Flatten nested lists from multiple -b flags: [['trass'], ['trass.tg']] -> ['trass', 'trass.tg']
@@ -2737,6 +2994,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             vector_search_raw = parsed_args.vector_search or []
             vector_search_parts = [' '.join(vs_args) for vs_args in vector_search_raw if vs_args] if vector_search_raw else []
 
+            # Store structured queries in context_state for per-query parameter handling
+            if vs_queries_structured:
+                context_state['vector_search_queries'] = vs_queries_structured
+            else:
+                # Backward compatibility: convert simple string queries to dict format with defaults
+                context_state['vector_search_queries'] = [
+                    {'query': vs_query, 'top_k': 20, 'threshold': 0.75}
+                    for vs_query in vector_search_parts
+                ]
+
             # Detect if VS was removed and capture sources BEFORE clearing
             vs_was_removed = False
             vs_sources_to_remove = set()  # Initialize for use throughout function
@@ -2775,32 +3042,95 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if not vs_cache_hit:
                     debug_print(f"  → Cache miss, will re-process vector search query")
 
-                    # Process vector search queries
+                    # Per-query caching for manual browse edit
+                    per_query_cache = context_state.get('vector_search_per_query_cache', {})
+
+                    # Track which queries need to be run vs cached
+                    queries_to_run = []
+                    cached_queries = []
+
+                    # Build cache keys for all queries first
+                    for i, vs_prompt in enumerate(vector_search_parts):
+                        # Get parameters for this query
+                        vs_queries = context_state.get('vector_search_queries', [])
+                        query_top_k = 20
+                        query_threshold = 0.75
+                        if i < len(vs_queries) and isinstance(vs_queries[i], dict):
+                            query_top_k = vs_queries[i].get('top_k', 20)
+                            query_threshold = vs_queries[i].get('threshold', 0.75)
+
+                        cache_key = f"{vs_prompt}|{query_top_k}|{query_threshold}"
+
+                        if cache_key in per_query_cache:
+                            cached_queries.append((i, vs_prompt))
+                        else:
+                            queries_to_run.append((i, vs_prompt))
+
+                    # Show cache status
                     if len(vector_search_parts) > 1:
-                        print_text(f"🤖 Processing {len(vector_search_parts)} separate vector search queries", style="cyan")
+                        if cached_queries and queries_to_run:
+                            print_text(f"🤖 Processing {len(vector_search_parts)} vector search queries ({len(cached_queries)} cached, {len(queries_to_run)} new)", style="cyan")
+                        elif cached_queries:
+                            print_text(f"🔄 Reusing cached results for all {len(cached_queries)} vector search queries", style="cyan")
+                        else:
+                            print_text(f"🤖 Processing {len(vector_search_parts)} separate vector search queries", style="cyan")
+
+                        # Show query list
                         for i, prompt in enumerate(vector_search_parts):
-                            print_text(f"   {i+1}. '{prompt}'", style="dim")
+                            # Check if this specific query+params is cached
+                            vs_queries = context_state.get('vector_search_queries', [])
+                            query_top_k = 20
+                            query_threshold = 0.75
+                            if i < len(vs_queries) and isinstance(vs_queries[i], dict):
+                                query_top_k = vs_queries[i].get('top_k', 20)
+                                query_threshold = vs_queries[i].get('threshold', 0.75)
+                            cache_key = f"{prompt}|{query_top_k}|{query_threshold}"
+                            cached_marker = " (cached)" if cache_key in per_query_cache else ""
+                            print_text(f"   {i+1}. '{prompt}'{cached_marker}", style="dim")
                     else:
-                        print_text(f"🤖 Processing vector search query: '{vector_search_parts[0]}'", style="cyan")
+                        # Single query case
+                        vs_queries = context_state.get('vector_search_queries', [])
+                        query_top_k = 20
+                        query_threshold = 0.75
+                        if len(vs_queries) > 0 and isinstance(vs_queries[0], dict):
+                            query_top_k = vs_queries[0].get('top_k', 20)
+                            query_threshold = vs_queries[0].get('threshold', 0.75)
+                        cache_key = f"{vector_search_parts[0]}|{query_top_k}|{query_threshold}"
+                        if cache_key in per_query_cache:
+                            print_text(f"🔄 Reusing cached vector search results (query unchanged)", style="cyan")
+                        else:
+                            print_text(f"🤖 Processing vector search query: '{vector_search_parts[0]}'", style="cyan")
 
                     try:
                         from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
 
                         # Process each vector search query and combine results
                         combined_vs_content = {}
+                        new_queries_processed = 0
+
                         for i, vs_prompt in enumerate(vector_search_parts):
-                            if len(vector_search_parts) > 1:
-                                print_text(f"🔍 Processing query {i+1}/{len(vector_search_parts)}: '{vs_prompt}'", style="dim")
+                            # Get per-query parameters from structured queries
+                            query_top_k = 20  # default
+                            query_threshold = 0.75  # default
+                            vs_queries = context_state.get('vector_search_queries', [])
+                            if i < len(vs_queries) and isinstance(vs_queries[i], dict):
+                                query_top_k = vs_queries[i].get('top_k', 20)
+                                query_threshold = vs_queries[i].get('threshold', 0.75)
 
-                            vs_result = process_vector_search_to_content(
-                                vs_prompt,
-                                workspace=None,  # Allow cross-workspace
-                                verbose=True
-                            )
+                            # Create cache key with query text AND parameters
+                            cache_key = f"{vs_prompt}|{query_top_k}|{query_threshold}"
 
-                            # Merge results
-                            if vs_result:
-                                for db_name, pages in vs_result.items():
+                            # Check if we have cached content for this exact query+params combination
+                            if cache_key in per_query_cache:
+                                # Use cached content (not just search results - full loaded content)
+                                cached_result = per_query_cache[cache_key]
+
+                                # Count total pages in cached result
+                                cached_page_count = sum(len(pages) for pages in cached_result.values())
+                                print_text(f"   ♻️  Using cached content for query {i+1}: {cached_page_count} pages", style="dim green")
+
+                                # Merge cached results
+                                for db_name, pages in cached_result.items():
                                     if db_name in combined_vs_content:
                                         # Combine pages, avoiding duplicates
                                         existing_ids = {p.get('id') for p in combined_vs_content[db_name] if isinstance(p, dict) and 'id' in p}
@@ -2811,13 +3141,54 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                                     existing_ids.add(page['id'])
                                     else:
                                         combined_vs_content[db_name] = pages
+                            else:
+                                # Need to run this query
+                                if len(vector_search_parts) > 1:
+                                    print_text(f"🔍 Processing query {i+1}/{len(vector_search_parts)}: '{vs_prompt}'", style="dim")
+
+                                vs_result = process_vector_search_to_content(
+                                    vs_prompt,
+                                    workspace=None,  # Allow cross-workspace
+                                    verbose=True,
+                                    n_results=query_top_k,  # Use per-query parameter
+                                    min_similarity=query_threshold  # Use per-query parameter
+                                )
+
+                                # Cache this query's LOADED CONTENT with query+params as key
+                                if vs_result:
+                                    per_query_cache[cache_key] = vs_result
+                                    new_queries_processed += 1
+
+                                    # Merge results
+                                    for db_name, pages in vs_result.items():
+                                        if db_name in combined_vs_content:
+                                            # Combine pages, avoiding duplicates
+                                            existing_ids = {p.get('id') for p in combined_vs_content[db_name] if isinstance(p, dict) and 'id' in p}
+                                            for page in pages:
+                                                if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                                                    combined_vs_content[db_name].append(page)
+                                                    if isinstance(page, dict) and 'id' in page:
+                                                        existing_ids.add(page['id'])
+                                        else:
+                                            combined_vs_content[db_name] = pages
+                                else:
+                                    # Cache empty result
+                                    per_query_cache[cache_key] = {}
 
                         # Store VS results separately (don't merge with NL here - let reload_context do it)
                         if combined_vs_content:
                             vs_total_results = sum(len(pages) for pages in combined_vs_content.values())
-                            print_text(f"✅ VS results: {vs_total_results} entries from {len(combined_vs_content)} databases", style="green")
+
+                            if len(vector_search_parts) > 1:
+                                if new_queries_processed > 0 and len(cached_queries) > 0:
+                                    print_text(f"✅ VS results: {vs_total_results} entries from {len(combined_vs_content)} databases ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
+                                else:
+                                    print_text(f"✅ VS results: {vs_total_results} entries from {len(combined_vs_content)} databases", style="green")
+                            else:
+                                print_text(f"✅ VS results: {vs_total_results} entries from {len(combined_vs_content)} databases", style="green")
 
                             # Cache VS results separately (not mixed with NL)
+                            context_state['vector_search_per_query_cache'] = per_query_cache
                             context_state['cached_vector_search_prompt'] = combined_vs_prompt
                             context_state['cached_vector_search_content'] = combined_vs_content
                             debug_print(f"  → Processed and cached new VS results (separate cache)")
@@ -2842,6 +3213,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['cached_vector_search_prompt'] = ''
                 context_state['cached_vector_search_content'] = {}
                 context_state['vector_search_content'] = None
+                context_state['vector_search_per_query_cache'] = {}
                 debug_print(f"🗑️  Cleared VS content and cache (VS query removed)")
 
             # Parse browse databases and expand workspace names (same logic as cli.py)
@@ -3220,7 +3592,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
-                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt)
+                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode)
                         context_state['system_prompt'] = system_prompt
 
                         debug_print(f"After query removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -3238,6 +3610,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         if vs_was_removed:
                             context_state['vector_search_content'] = None
                             context_state['cached_vector_search_prompt'] = ''
+                            context_state['vector_search_per_query_cache'] = {}
                         if reload_context(skip_nl_cache_messages=True):
                             print_text("Context updated successfully via reload!", style="bold green")
                             return True
@@ -4025,7 +4398,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         for i, msg in enumerate(initial_messages):
             if msg['role'] == 'assistant':
                 logger.debug(f"  Message {i}: assistant message, checking for <artifact> tags")
-                if '<artifact>' in msg['content']:
+                if has_artifact_tags(msg['content']):
                     logger.info(f"  ✅ Found artifact in message {i}, reconstructing...")
                     # Extract and create artifact
                     artifact_content, commentary = artifact_manager.extract_artifact_content(msg['content'])
@@ -4048,16 +4421,361 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         print_text("--- Continuing Conversation ---", style="bold yellow")
         print()
     elif initial_messages and mode and context_state.get('artifact_manager'):
-        # For mode with artifacts, show artifact history instead of raw messages
-        artifact_manager = context_state['artifact_manager']
-        if artifact_manager.artifacts:
-            logger.info(f"📝 Displaying {len(artifact_manager.artifacts)} reconstructed artifacts")
-            print_text("--- Previous Draft(s) ---", style="bold yellow")
-            for artifact_id in sorted(artifact_manager.artifacts.keys()):
-                print(artifact_manager.render_artifact(artifact_id))
-            print()
-        else:
-            logger.warning(f"⚠️  No artifacts to display despite {len(initial_messages)} initial messages")
+        # Check if there are any assistant messages before looking for artifacts
+        has_assistant_messages = any(msg.get('role') == 'assistant' for msg in initial_messages)
+
+        if has_assistant_messages:
+            # For mode with artifacts, show artifact history instead of raw messages
+            artifact_manager = context_state['artifact_manager']
+            if artifact_manager.artifacts:
+                logger.info(f"📝 Displaying {len(artifact_manager.artifacts)} reconstructed artifacts")
+                print_text("--- Previous Draft(s) ---", style="bold yellow")
+                for artifact_id in sorted(artifact_manager.artifacts.keys()):
+                    print(artifact_manager.render_artifact(artifact_id))
+                print()
+            else:
+                logger.warning(f"⚠️  No artifacts to display despite {len(initial_messages)} assistant messages")
+
+    # Auto-respond to initial user message if requested
+    if auto_respond_to_initial and messages and messages[-1].get('role') == 'user':
+        logger.info("🤖 Auto-responding to initial user message")
+
+        # Log the draft context for debugging
+        if draft_id and mode:
+            try:
+                import os
+                from datetime import datetime
+                from promaia.chat.modes import DraftMode
+
+                if isinstance(mode, DraftMode):
+                    # Create log directory if it doesn't exist
+                    log_dir = '/Users/kb20250422/Documents/dev/promaia/context_logs/mail_draft_logs'
+                    os.makedirs(log_dir, exist_ok=True)
+
+                    # Generate filename with timestamp and draft subject
+                    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+                    draft_subject = mode.draft_data.get('inbound_subject', 'no_subject')
+                    # Clean subject for filename
+                    safe_subject = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in draft_subject)
+                    safe_subject = safe_subject.replace(' ', '_')[:50]  # Limit length
+                    filename = f"{timestamp}_initial_draft_{safe_subject}.txt"
+                    log_path = os.path.join(log_dir, filename)
+
+                    # Write log
+                    with open(log_path, 'w', encoding='utf-8') as f:
+                        f.write("=" * 80 + "\n")
+                        f.write("DRAFT CONTEXT LOG - AUTO-RESPONSE\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write(f"Draft ID: {draft_id}\n")
+                        f.write(f"Workspace: {workspace}\n")
+                        f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+                        f.write(f"Model: {current_api}\n\n")
+
+                        f.write("=" * 80 + "\n")
+                        f.write("SYSTEM PROMPT\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write(system_prompt)
+                        f.write("\n\n")
+
+                        f.write("=" * 80 + "\n")
+                        f.write("MESSAGES\n")
+                        f.write("=" * 80 + "\n\n")
+                        for i, msg in enumerate(messages):
+                            f.write(f"Message {i+1} - {msg.get('role', 'unknown')}:\n")
+                            f.write(f"{msg.get('content', '')}\n\n")
+
+                        f.write("=" * 80 + "\n")
+
+                    logger.info(f"📝 Draft context log saved to: {log_path}")
+
+            except Exception as e:
+                logger.error(f"Failed to save draft context log: {e}", exc_info=True)
+
+        # The user message is already in messages list, now call the AI
+        try:
+            # Check for images in current message
+            current_message_images = []
+            if messages and "images" in messages[-1]:
+                current_message_images = messages[-1].get("images", [])
+
+            # Call the appropriate API
+            response_content = None
+            if current_api == "anthropic" and anthropic_client:
+                if current_message_images:
+                    formatted_messages = _format_anthropic_with_images(messages, current_message_images)
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages)
+                else:
+                    clean_messages = []
+                    for msg in messages:
+                        clean_msg = {"role": msg["role"], "content": msg["content"]}
+                        clean_messages.append(clean_msg)
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages)
+
+                if response and response.content:
+                    response_text = response.content[0].text
+
+                    # Execute MCP tools if present
+                    import asyncio
+                    response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+
+                    # Extract token usage
+                    if hasattr(response, 'usage'):
+                        input_tokens = response.usage.input_tokens
+                        output_tokens = response.usage.output_tokens
+                        total_tokens = input_tokens + output_tokens
+
+                        from promaia.utils.ai import calculate_ai_cost
+                        cost_data = calculate_ai_cost(input_tokens, output_tokens, "claude-sonnet-4")
+                        total_cost = cost_data["total_cost"]
+
+                        response_content = {
+                            'text': response_text,
+                            'tokens': {
+                                'prompt_tokens': input_tokens,
+                                'response_tokens': output_tokens,
+                                'total_tokens': total_tokens,
+                                'cost': total_cost,
+                                'model': 'Claude 3 Sonnet'
+                            }
+                        }
+                    else:
+                        response_content = {
+                            'text': response_text,
+                            'tokens': None
+                        }
+
+            elif current_api == "openai" and openai_client:
+                if current_message_images:
+                    formatted_messages = _format_openai_with_images(system_prompt, messages, current_message_images)
+                else:
+                    formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=formatted_messages,
+                    max_tokens=4096,
+                    temperature=0.7
+                )
+                if response.choices:
+                    response_text = response.choices[0].message.content
+
+                    # Execute MCP tools if present
+                    import asyncio
+                    response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+
+                    # Extract token usage
+                    if hasattr(response, 'usage') and response.usage:
+                        prompt_tokens = response.usage.prompt_tokens
+                        completion_tokens = response.usage.completion_tokens
+                        total_tokens = response.usage.total_tokens
+
+                        from promaia.utils.ai import calculate_ai_cost
+                        cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, "gpt-4o")
+                        total_cost = cost_data["total_cost"]
+
+                        response_content = {
+                            'text': response_text,
+                            'tokens': {
+                                'prompt_tokens': prompt_tokens,
+                                'response_tokens': completion_tokens,
+                                'total_tokens': total_tokens,
+                                'cost': total_cost,
+                                'model': 'GPT-4'
+                            }
+                        }
+                    else:
+                        response_content = {
+                            'text': response_text,
+                            'tokens': None
+                        }
+
+            elif current_api == "gemini" and gemini_client:
+                response_text_with_tools = None
+                try:
+                    if current_message_images:
+                        current_gemini_model, gemini_messages = _format_gemini_with_images(system_prompt, messages, current_message_images)
+                        response = current_gemini_model.generate_content(
+                            contents=gemini_messages,
+                            generation_config={
+                                "temperature": 0.7,
+                            }
+                        )
+                    else:
+                        # Format message for Gemini
+                        formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
+                        for msg in messages:
+                            formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
+                        response = gemini_client.generate_content(formatted_prompt)
+
+                    if response.text:
+                        response_text = response.text
+
+                        # Execute MCP tools if present
+                        import asyncio
+                        response_text_with_tools = asyncio.run(execute_mcp_tools_in_response(response_text))
+                    else:
+                        response_text_with_tools = f"I encountered an error: No response text generated. Please try again."
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(f"Error calling Gemini API during auto-respond: {error_msg}")
+                    response_text_with_tools = f"I encountered an error with Gemini: {error_msg}. Please try again."
+
+                if response_text_with_tools:
+                    # Extract token usage for Gemini
+                    if 'response' in locals() and hasattr(response, 'usage_metadata') and response.usage_metadata:
+                        prompt_tokens = response.usage_metadata.prompt_token_count
+                        completion_tokens = response.usage_metadata.candidates_token_count
+                        total_tokens = response.usage_metadata.total_token_count
+
+                        from promaia.utils.ai import calculate_ai_cost
+                        gemini_model = "gemini-2.5-pro-short" if total_tokens <= 128000 else "gemini-2.5-pro-long"
+                        cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model)
+                        total_cost = cost_data["total_cost"]
+
+                        response_content = {
+                            'text': response_text_with_tools,
+                            'tokens': {
+                                'prompt_tokens': prompt_tokens,
+                                'response_tokens': completion_tokens,
+                                'total_tokens': total_tokens,
+                                'cost': total_cost,
+                                'model': 'Gemini 2.5 Pro'
+                            }
+                        }
+                    else:
+                        response_content = {
+                            'text': response_text_with_tools,
+                            'tokens': None
+                        }
+
+            elif current_api == "llama":
+                # Ensure llama client is initialized
+                if not llama_client:
+                    from promaia.utils.config import load_environment
+                    load_environment()
+                    initialize_llama_client()
+
+                if llama_client:
+                    if current_message_images:
+                        formatted_messages = _format_llama_with_images(system_prompt, messages, current_message_images)
+                    else:
+                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+
+                    model_name = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
+
+                    try:
+                        response = llama_client.chat.completions.create(
+                            model=model_name,
+                            messages=formatted_messages,
+                            max_tokens=4096,
+                            temperature=0.7
+                        )
+                        if response.choices:
+                            response_text = response.choices[0].message.content
+
+                            # Execute MCP tools if present
+                            import asyncio
+                            response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+
+                            response_content = {
+                                'text': response_text,
+                                'tokens': None  # Llama doesn't provide token usage in same format
+                            }
+                    except Exception as e:
+                        logger.error(f"Error calling Llama during auto-respond: {e}")
+                        response_content = {
+                            'text': f"I encountered an error with Llama: {str(e)}. Please try again.",
+                            'tokens': None
+                        }
+
+            # Handle API response
+            if response_content:
+                # Lazy-initialize artifact manager if needed
+                if context_state['artifact_manager'] is None:
+                    from promaia.chat.artifacts import ArtifactManager
+                    context_state['artifact_manager'] = ArtifactManager()
+
+                artifact_manager = context_state['artifact_manager']
+
+                if isinstance(response_content, dict):
+                    response_text = response_content['text']
+                    token_data = response_content.get('tokens')
+
+                    timestamp = get_local_timestamp()
+                    metadata_parts = [f"{timestamp} Maia"]
+                    if token_data:
+                        metadata_parts.append(f"{token_data['prompt_tokens']:,}, {token_data['response_tokens']:,}, {token_data['total_tokens']:,}")
+                        metadata_parts.append(f"${token_data['cost']:.6f}")
+
+                    # Print metadata
+                    print()
+                    if metadata_parts:
+                        print_text(metadata_parts[0])
+                    for part in metadata_parts[1:]:
+                        print_text(part, style="dim")
+                    print()
+
+                    # Check if response should be an artifact
+                    last_user_message = messages[-1]['content'] if messages else ""
+                    force_artifacts = mode and mode.should_force_artifacts()
+
+                    # Check if this is an artifact
+                    # For auto-response, ONLY respect AI's <artifact> tags (no keyword matching)
+                    # The AI's system prompt (maia_mail_prompt.md) already tells it when to use artifacts
+                    is_artifact = False
+                    if force_artifacts:
+                        # Mode forces all responses to be artifacts
+                        artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                        artifact_id = artifact_manager.create_artifact(artifact_content)
+                        is_artifact = True
+
+                        # Display commentary if present
+                        if commentary:
+                            print_markdown(commentary)
+                            print()
+
+                        # Display artifact
+                        print(artifact_manager.render_artifact(artifact_id))
+                    elif has_artifact_tags(response_text):
+                        # AI explicitly used artifact tags - respect that decision
+                        artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                        artifact_id = artifact_manager.create_artifact(artifact_content)
+                        is_artifact = True
+
+                        # Display commentary if present
+                        if commentary:
+                            print_markdown(commentary)
+                            print()
+
+                        # Display artifact
+                        print(artifact_manager.render_artifact(artifact_id))
+                    else:
+                        # No artifact - display as normal markdown
+                        print_markdown(response_text)
+
+                    # Save message with artifact tags if it was an artifact
+                    if is_artifact and not has_artifact_tags(response_text):
+                        artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
+                        saved_content = f"<artifact>{artifact_content}</artifact>"
+                        if commentary:
+                            saved_content = f"{commentary}\n\n{saved_content}"
+                        messages.append({"role": "assistant", "content": saved_content})
+                    else:
+                        messages.append({"role": "assistant", "content": response_text})
+
+                    # Auto-save messages in draft mode
+                    if draft_id and mode:
+                        try:
+                            from promaia.mail.draft_manager import DraftManager
+                            draft_manager = DraftManager()
+                            draft_manager.save_chat_messages(draft_id, messages)
+                            logger.info(f"💾 Auto-saved {len(messages)} messages after auto-response for draft {draft_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to auto-save messages after auto-response: {e}", exc_info=True)
+
+        except Exception as e:
+            logger.error(f"Error in auto-response: {e}", exc_info=True)
+            print_text(f"❌ Error generating response: {e}", style="red")
 
     while True:
         try:
@@ -4268,6 +4986,117 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text("Usage: /edit <number>", style="yellow")
                 continue
 
+            elif user_input.strip().lower() == '/m' or user_input.strip().lower().startswith('/m '):
+                # Manual edit mode - edit artifact directly with keyboard
+                try:
+                    parts = user_input.strip().split()
+
+                    # Determine which artifact to edit
+                    if len(parts) == 1:
+                        # No number provided, use latest artifact
+                        if context_state['artifact_manager'] and context_state['artifact_manager'].last_artifact_id:
+                            artifact_num = context_state['artifact_manager'].last_artifact_id
+                        else:
+                            print_text("No artifacts available to edit.", style="yellow")
+                            continue
+                    else:
+                        # Artifact number provided
+                        artifact_num = int(parts[1])
+
+                    # Check if artifact exists
+                    if not context_state['artifact_manager'] or artifact_num not in context_state['artifact_manager'].artifacts:
+                        print_text(f"Artifact #{artifact_num} not found.", style="red")
+                        continue
+
+                    # Get current artifact content
+                    artifact = context_state['artifact_manager'].get_artifact(artifact_num)
+                    current_content = artifact['content']
+
+                    # Show header
+                    print()
+                    print_text(f"✏️  Manual Edit Mode - Artifact #{artifact_num}", style="bold cyan")
+                    print_text("SHIFT+ENTER: New line  •  ENTER: Save  •  ESC/Ctrl+C: Cancel", style="dim")
+                    print()
+
+                    # Create a separate editing session with custom key bindings
+                    edit_bindings = KeyBindings()
+
+                    @edit_bindings.add('enter')
+                    def _(event):
+                        """Enter key saves and exits."""
+                        event.app.exit(result=event.app.current_buffer.text)
+
+                    @edit_bindings.add('c-j')
+                    def _(event):
+                        """Ctrl+J (Shift+Enter) adds a new line."""
+                        event.current_buffer.insert_text('\n')
+
+                    @edit_bindings.add('escape')
+                    def _(event):
+                        """ESC cancels edit."""
+                        event.app.exit(result=None)
+
+                    @edit_bindings.add('c-c')
+                    def _(event):
+                        """Ctrl+C cancels edit."""
+                        event.app.exit(result=None)
+
+                    # Create editing session with pre-populated content
+                    edit_session = PromptSession(
+                        multiline=True,
+                        key_bindings=edit_bindings
+                    )
+
+                    try:
+                        # Prompt with current content as default
+                        edited_content = edit_session.prompt(
+                            "Edit: ",
+                            default=current_content,
+                            style=style
+                        )
+
+                        # If user didn't cancel (ESC/Ctrl+C returns None)
+                        if edited_content is not None:
+                            # Update the artifact
+                            context_state['artifact_manager'].update_artifact(artifact_num, edited_content)
+
+                            # Add to message history as an update
+                            messages.append({
+                                "role": "user",
+                                "content": f"[Manually edited artifact #{artifact_num}]"
+                            })
+                            messages.append({
+                                "role": "assistant",
+                                "content": f"<artifact>{edited_content}</artifact>"
+                            })
+
+                            print()
+                            print_text(f"✅ Artifact #{artifact_num} updated successfully!", style="green")
+                            print()
+
+                            # Save chat messages if in draft mode
+                            if draft_id and mode:
+                                try:
+                                    mode.draft_manager.save_chat_messages(mode.draft_id, messages)
+                                    logger.info(f"💾 Saved {len(messages)} messages after manual edit")
+                                except Exception as e:
+                                    logger.error(f"Failed to save after manual edit: {e}")
+                        else:
+                            # User cancelled
+                            print()
+                            print_text("❌ Edit cancelled.", style="yellow")
+                            print()
+
+                    except (KeyboardInterrupt, EOFError):
+                        # Handle Ctrl+C or Ctrl+D
+                        print()
+                        print_text("❌ Edit cancelled.", style="yellow")
+                        print()
+
+                except (ValueError, IndexError):
+                    print_text("Usage: /m [artifact-number]  (defaults to latest artifact)", style="yellow")
+                continue
+
             elif user_input.strip().lower().startswith('/image'):
                 # Handle multiple image attachments
                 try:
@@ -4468,7 +5297,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
                                 context_state['system_prompt'] = system_prompt
 
                                 # Save context log when MCP servers are connected (for transparency)
@@ -4509,7 +5338,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                     context_state['mcp_tools_info'] = mcp_tools_info
 
                                     # Regenerate system prompt with new tools
-                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
+                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
                                     context_state['system_prompt'] = system_prompt
 
                                     # Save context log when MCP servers are connected (for transparency)
@@ -4561,7 +5390,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
                                 context_state['system_prompt'] = system_prompt
 
                                 print_text("🔍 Internet search disabled and MCP servers reconnected", style="bold yellow")
@@ -4580,7 +5409,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             context_state['mcp_tools_info'] = mcp_tools_info
 
                             # Regenerate system prompt with new tools
-                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt)
+                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
                             context_state['system_prompt'] = system_prompt
 
                             print_text("🔍 Internet search disabled - web search tools removed", style="bold yellow")
@@ -5012,7 +5841,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Save message with artifact tags if it was an artifact
                         # This ensures artifacts can be reconstructed on reload
-                        if is_artifact and '<artifact>' not in response_text:
+                        if is_artifact and not has_artifact_tags(response_text):
                             # Wrap in artifact tags for persistence
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             saved_content = f"<artifact>{artifact_content}</artifact>"
@@ -5081,7 +5910,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Save message with artifact tags if it was an artifact
                         # This ensures artifacts can be reconstructed on reload
-                        if is_artifact and '<artifact>' not in response_content:
+                        if is_artifact and not has_artifact_tags(response_content):
                             # Wrap in artifact tags for persistence
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_content)
                             saved_content = f"<artifact>{artifact_content}</artifact>"

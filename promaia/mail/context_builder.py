@@ -237,11 +237,8 @@ Date: {date}
                         if os.path.exists(file_path):
                             with open(file_path, 'r', encoding='utf-8') as f:
                                 content = f.read()
-                            
-                            # Truncate if too long (keep first 500 chars)
-                            if len(content) > 500:
-                                content = content[:500] + "..."
-                            
+
+                            # Keep full content (no truncation)
                             docs.append({
                                 'page_id': page_id,
                                 'title': title,

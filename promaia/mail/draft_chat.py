@@ -262,12 +262,23 @@ class DraftChatInterface:
                 print_text("📜 Tip: Scroll up ↑ to see earlier messages in the thread", style="dim")
             print()
 
+            # Load chat history first (before any other logic)
+            chat_history = self.draft_manager.load_chat_messages(self.draft_id)
+            logger.info(f"Loaded {len(chat_history)} messages from chat history")
+
             # Check draft status
             draft_status = draft.get('status', 'pending')
             draft_body = draft.get('draft_body', '')
 
             # Handle skipped drafts with 3-option prompt
-            if draft_status == 'skipped' and not self.force_load_context:
+            # Only show menu if no chat history exists (preserves existing conversations)
+            if chat_history:
+                # Chat history exists - skip the menu and resume the conversation
+                logger.info("Chat history exists, skipping skipped menu and resuming conversation")
+                message_context = await self._load_message_context(draft)
+                initial_messages = chat_history
+                auto_respond = False
+            elif draft_status == 'skipped' and not self.force_load_context:
                 # Show AI reasoning
                 print_text("⏭️  SKIPPED - No response needed", style="bold yellow")
                 print()
@@ -414,32 +425,31 @@ class DraftChatInterface:
                 structured_context=message_context  # Pass structured context for custom prompt
             )
             
-            # Load chat history if it exists
-            # Check if initial_messages was already set (e.g., from ENTER on skipped message)
+            # Set initial_messages if not already set by earlier logic
+            # (chat_history branch or skipped menu sets initial_messages and auto_respond)
             if 'initial_messages' not in locals():
-                chat_messages = self.draft_manager.load_chat_messages(self.draft_id)
-
-                if chat_messages:
-                    # Use existing chat history
-                    initial_messages = chat_messages
-                    logger.info(f"Loaded {len(chat_messages)} messages from chat history")
+                if chat_history:
+                    # Use loaded chat history
+                    initial_messages = chat_history
+                    logger.info(f"Using {len(chat_history)} messages from loaded chat history")
                 elif draft_body and draft_body != 'n/a':
-                    # No history - create initial artifact from draft body
-                    # Check if draft_body already has artifact tags (avoid double-nesting)
+                    # No history - load draft body as initial message
+                    # Only wrap in artifact tags if it already has them (respect AI's decision)
                     if '<artifact>' in draft_body and '</artifact>' in draft_body:
-                        # Already has artifact tags, use as-is
-                        artifact_content = draft_body
+                        # Already has artifact tags, use as-is (this is an email draft)
+                        message_content = draft_body
                         logger.info(f"Draft body already contains artifact tags, using as-is")
                     else:
-                        # Wrap with artifact tags
-                        artifact_content = f"<artifact>{draft_body}</artifact>"
-                        logger.info(f"Wrapped draft body with artifact tags")
+                        # No artifact tags - this is conversational text, not an email draft
+                        # Don't wrap it, load as regular assistant message
+                        message_content = draft_body
+                        logger.info(f"Draft body is conversational text (no artifact tags), loading as regular message")
 
                     initial_messages = [{
                         "role": "assistant",
-                        "content": artifact_content
+                        "content": message_content
                     }]
-                    logger.info(f"Created initial artifact from draft body")
+                    logger.info(f"Loaded draft body as initial message")
                 else:
                     initial_messages = []
                     logger.info(f"Starting fresh chat session")

@@ -66,6 +66,9 @@ load_environment()
 # Initialize console for rich output - Replaced with standard print
 # console = Console()
 
+# Import query parsing utilities
+from promaia.utils.query_parsing import parse_vs_queries_with_params
+
 # ==================== EDIT COMMAND HANDLERS ====================
 
 def handle_edit_list_pages(args):
@@ -1409,7 +1412,9 @@ def chat_run(args):
                         initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
                         initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
                         initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
-                        initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None
+                        initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None,
+                        top_k=getattr(args, 'top_k', None),
+                        threshold=getattr(args, 'threshold', None)
                     )
                     return
 
@@ -1645,7 +1650,9 @@ def chat_run(args):
                     initial_nl_prompt=combined_nl_prompt if nl_prompts else None,
                     initial_nl_content=combined_nl_content if nl_prompts and 'combined_nl_content' in locals() else None,
                     initial_vs_prompt=combined_vs_prompt if vs_prompts else None,
-                    initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None
+                    initial_vs_content=combined_vs_content if vs_prompts and 'combined_vs_content' in locals() else None,
+                    top_k=getattr(args, 'top_k', None),
+                    threshold=getattr(args, 'threshold', None)
                 )
                 return
             except Exception as e:
@@ -1773,10 +1780,15 @@ def chat_run(args):
         natural_language_content = None
     
     # Process vector search queries (similar to natural language but uses semantic search)
-    vs_prompts = []
+    # Parse -vs queries with their per-query -tk/-th parameters from sys.argv
+    vs_queries_structured = []
     if hasattr(args, 'vector_search') and args.vector_search:
-        vs_prompts = [' '.join(vs_args) for vs_args in args.vector_search if vs_args]
-        
+        import sys
+        vs_queries_structured = parse_vs_queries_with_params(sys.argv)
+
+        # Backward compatibility: extract simple query list
+        vs_prompts = [q['query'] for q in vs_queries_structured]
+
         try:
             from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
             
@@ -1796,33 +1808,45 @@ def chat_run(args):
             # Process each vector search query separately and combine results
             combined_vs_content = {}
             total_results = 0
-            
-            for i, vs_prompt in enumerate(vs_prompts):
+            vs_per_query_cache = {}  # Build cache for initial queries
+
+            for i, vs_query_obj in enumerate(vs_queries_structured):
+                vs_prompt = vs_query_obj['query']
+                query_top_k = vs_query_obj['top_k']
+                query_threshold = vs_query_obj['threshold']
+
                 # Show query number only for multiple queries
-                if len(vs_prompts) > 1:
-                    print_text(f"🔍 Processing query {i+1}/{len(vs_prompts)}: '{vs_prompt}'", style="cyan")
-                
-                # Process vector search
+                if len(vs_queries_structured) > 1:
+                    print_text(f"🔍 Processing query {i+1}/{len(vs_queries_structured)}: '{vs_prompt}'", style="cyan")
+
+                # Process vector search with per-query parameters
                 vs_content = process_vector_search_to_content(
                     vs_prompt,
                     workspace=None,  # Allow cross-workspace searches
                     verbose=True,  # Show detailed processing steps (matching SQL mode)
-                    n_results=getattr(args, 'top_k', 20),
-                    min_similarity=getattr(args, 'threshold', 0.75)
+                    n_results=query_top_k,
+                    min_similarity=query_threshold
                 )
-                
+
                 if vs_content:
+                    # Cache this query's LOADED CONTENT with query+params as key
+                    cache_key = f"{vs_prompt}|{query_top_k}|{query_threshold}"
+                    vs_per_query_cache[cache_key] = vs_content
+
                     # Merge results from this query into combined content
                     for db_name, entries in vs_content.items():
                         if db_name not in combined_vs_content:
                             combined_vs_content[db_name] = []
                         combined_vs_content[db_name].extend(entries)
-                    
+
                     query_results = sum(len(entries) for entries in vs_content.values())
                     total_results += query_results
                     if len(vs_prompts) > 1:
                         print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                 else:
+                    # Cache empty result with query+params as key
+                    cache_key = f"{vs_prompt}|{query_top_k}|{query_threshold}"
+                    vs_per_query_cache[cache_key] = {}
                     if len(vs_prompts) > 1:
                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
             
@@ -1833,21 +1857,18 @@ def chat_run(args):
             if len(vs_prompts) > 1:
                 print_text(f"🎯 Combined {len(vs_prompts)} queries: {total_results} total results", style="green")
             
-            # Merge vector search results into natural_language_content or create new
+            # Store vector search content for passing to chat
+            # IMPORTANT: DO NOT add vs_prompts to nl_prompts - they are separate query types!
+            # The browser uses nl_prompts/combined_nl_prompt to create new queries, so we must keep VS separate
             if natural_language_content:
-                # Merge VS results with NL results
+                # Merge VS results with existing NL results (content only, not prompts)
                 for db_name, entries in combined_vs_content.items():
                     if db_name not in natural_language_content:
                         natural_language_content[db_name] = []
                     natural_language_content[db_name].extend(entries)
-                # Also merge the prompts
-                if vs_prompts:
-                    nl_prompts.extend(vs_prompts)
             else:
+                # Just use VS content directly (content only, not prompts)
                 natural_language_content = combined_vs_content
-                # Set NL prompts from vector search
-                if vs_prompts:
-                    nl_prompts = vs_prompts
         
         except ImportError as e:
             print_text(f"Error importing vector search processor: {e}", style="red")
@@ -1916,7 +1937,10 @@ def chat_run(args):
         # Determine if this is vector search mode - check if we have vector search prompts
         is_vector_search_mode = bool(hasattr(args, 'vector_search') and args.vector_search)
 
-        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers, is_vector_search=is_vector_search_mode)
+        # Pass per-query cache if available (from vector search processing)
+        vs_cache = vs_per_query_cache if is_vector_search_mode and 'vs_per_query_cache' in locals() else None
+
+        chat(sources=sources, filters=filters, workspace=original_workspace, resolved_workspace=resolved_workspace, non_interactive=non_interactive, natural_language_content=natural_language_content, natural_language_prompt=combined_nl_prompt, original_browse_command=original_browse_command, browse_selections=browse_selections, mcp_servers=mcp_servers, is_vector_search=is_vector_search_mode, top_k=getattr(args, 'top_k', None), threshold=getattr(args, 'threshold', None), vector_search_queries=vs_queries_structured if is_vector_search_mode else None, initial_vs_per_query_cache=vs_cache)
 
     except ImportError as e:
         print_text(f"Error importing chat interface: {e}", style="red")
@@ -2908,13 +2932,13 @@ def main():
         help="Use semantic vector search to find similar content. Can be used multiple times for separate queries. Example: maia chat -vs 'international launch stories' -vs 'product planning discussions'"
     )
     chat_parser.add_argument(
-        "--top-k",
+        "--top-k", "-tk",
         type=int,
         default=20,
         help="Maximum number of results to return from vector search (default: 20)"
     )
     chat_parser.add_argument(
-        "--threshold",
+        "--threshold", "-th",
         type=float,
         default=0.75,
         help="Minimum similarity threshold for vector search results, 0-1 scale (default: 0.75)"

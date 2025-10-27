@@ -313,7 +313,21 @@ class UnifiedStorage:
         # This method will need to be updated to query the hybrid registry
         # For now, it will return an empty set as the JSON registry is removed
         return set()
-    
+
+    def update_page_properties(self, page_id: str, database_id: str, database_name: str,
+                              workspace: str, properties: Dict[str, Any]) -> bool:
+        """
+        Update only the property columns for an existing page without touching content.
+        Delegates to hybrid registry storage.
+        """
+        return self.hybrid_registry.update_page_properties(
+            page_id=page_id,
+            database_id=database_id,
+            database_name=database_name,
+            workspace=workspace,
+            properties=properties
+        )
+
     def files_exist_locally(self, page_id: str, title: str, database_config: DatabaseConfig) -> Dict[str, bool]:
         """
         Check if files exist locally for a given page.

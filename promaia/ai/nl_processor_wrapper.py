@@ -146,27 +146,30 @@ def process_vector_search_to_content(
             
             for db_name, entries in result["results"].items():
                 for entry in entries:
-                    # Check if this is a chunk (chunk_id exists in metadata)
-                    metadata = entry.get('metadata', {})
-                    page_id = metadata.get('page_id') or entry.get('page_id')
-                    
+                    # Get page_id (already base page_id from query strategy)
+                    page_id = entry.get('page_id')
+                    chunk_id = entry.get('chunk_id')  # Present if result is from a chunk
+
                     if page_id:
                         if page_id not in page_ids:
                             page_ids.append(page_id)
-                        
-                        # Track chunk matches
-                        if metadata.get('is_chunk'):
-                            chunk_index = metadata.get('chunk_index', 0)
-                            if page_id not in chunk_matches:
-                                chunk_matches[page_id] = []
-                            if chunk_index not in chunk_matches[page_id]:
-                                chunk_matches[page_id].append(chunk_index)
+
+                        # Track chunk matches - extract chunk index from chunk_id
+                        if chunk_id and '_chunk_' in chunk_id:
+                            try:
+                                chunk_index = int(chunk_id.rsplit('_chunk_', 1)[1])
+                                if page_id not in chunk_matches:
+                                    chunk_matches[page_id] = []
+                                if chunk_index not in chunk_matches[page_id]:
+                                    chunk_matches[page_id].append(chunk_index)
+                            except (ValueError, IndexError):
+                                pass  # Skip if chunk_id format is unexpected
             
             if not page_ids:
                 if verbose:
                     print_text("⚠️  No page IDs found in search results", style="yellow")
                 return {}
-            
+
             # Use the universal adapter to load full content
             if verbose:
                 chunks_info = f" (with {len(chunk_matches)} chunked pages)" if chunk_matches else ""

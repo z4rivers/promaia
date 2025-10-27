@@ -51,7 +51,15 @@ class VectorDBManager:
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"}  # Use cosine similarity
             )
+
+            # Initialize property collection for property-specific embeddings
+            self.property_collection = self.client.get_or_create_collection(
+                name="promaia_properties",
+                metadata={"hnsw:space": "cosine"}
+            )
+
             logger.info(f"✅ ChromaDB initialized at {chroma_path}")
+            logger.info("✅ Property embeddings collection initialized")
         except Exception as e:
             import traceback
             logger.error(f"❌ Failed to initialize ChromaDB: {e}")
@@ -136,20 +144,64 @@ class VectorDBManager:
             True if successful, False otherwise
         """
         try:
+            # Validate inputs before calling ChromaDB
+            if not content_text or not isinstance(content_text, str):
+                logger.warning(f"Invalid content_text for {page_id}, skipping vector embedding")
+                return False
+
+            if not page_id or not isinstance(page_id, str):
+                logger.warning(f"Invalid page_id, skipping vector embedding")
+                return False
+
             # Generate embedding
             embedding = self.generate_embedding(content_text)
-            
-            # Add to collection
-            self.collection.add(
-                ids=[page_id],
-                documents=[content_text],
-                embeddings=[embedding],
-                metadatas=[metadata]
-            )
-            
-            logger.debug(f"✅ Added embedding for page_id: {page_id}")
-            return True
-        
+
+            # Validate embedding
+            if embedding is None or not isinstance(embedding, list) or len(embedding) == 0:
+                logger.warning(f"Invalid embedding generated for {page_id}, skipping")
+                return False
+
+            # Check for NaN or inf values that would crash hnswlib
+            try:
+                import math
+                if any(not math.isfinite(x) for x in embedding):
+                    logger.warning(f"Embedding for {page_id} contains NaN or inf values, skipping")
+                    return False
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Invalid embedding values for {page_id}: {e}, skipping")
+                return False
+
+            # Remove None values and ensure valid types (ChromaDB requires str, int, float, or bool)
+            clean_metadata = {}
+            for k, v in metadata.items():
+                if v is None:
+                    continue
+                if isinstance(v, (str, int, float, bool)):
+                    clean_metadata[k] = v
+                elif isinstance(v, (list, dict)):
+                    # Convert complex types to strings
+                    clean_metadata[k] = str(v)
+                else:
+                    # Skip unsupported types
+                    logger.debug(f"Skipping metadata key '{k}' with unsupported type {type(v)}")
+
+            # Add to collection with extra safety
+            try:
+                self.collection.add(
+                    ids=[page_id],
+                    documents=[content_text],
+                    embeddings=[embedding],
+                    metadatas=[clean_metadata]
+                )
+                logger.debug(f"✅ Added embedding for page_id: {page_id}")
+                return True
+            except Exception as chroma_error:
+                # ChromaDB/hnswlib can crash with certain data
+                # Log the error but return False to allow sync to continue
+                logger.error(f"ChromaDB error adding {page_id}: {chroma_error}")
+                logger.warning(f"Skipping vector embedding for {page_id} due to ChromaDB error")
+                return False
+
         except Exception as e:
             logger.error(f"❌ Failed to add content for {page_id}: {e}")
             return False
@@ -226,7 +278,10 @@ class VectorDBManager:
                         'is_chunk': True,  # Flag to indicate this is a chunk
                         'estimated_tokens': chunk.get('estimated_tokens', 0)
                     }
-                    
+
+                    # Remove None values from metadata (ChromaDB requires str, int, float, or bool)
+                    chunk_metadata = {k: v for k, v in chunk_metadata.items() if v is not None}
+
                     # Add to collection with chunk_id as the ID
                     self.collection.add(
                         ids=[chunk_id],
@@ -255,7 +310,221 @@ class VectorDBManager:
         except Exception as e:
             logger.error(f"❌ Failed to add chunked content for {page_id}: {e}")
             return False
-    
+
+    def add_property_embedding(
+        self,
+        page_id: str,
+        property_name: str,
+        property_value: str,
+        property_type: str,
+        base_metadata: Dict[str, Any]
+    ) -> bool:
+        """
+        Add property-specific embedding to separate collection.
+
+        Args:
+            page_id: Base page ID
+            property_name: Column name (e.g., "epic", "status")
+            property_value: Formatted text value to embed
+            property_type: Notion type (e.g., "relation", "select")
+            base_metadata: Base metadata (workspace, database_name, etc.)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Generate embedding
+            embedding = self.generate_embedding(property_value)
+
+            # Create unique ID: page123_prop_epic
+            vector_id = f"{page_id}_prop_{property_name}"
+
+            # Metadata for filtering (filter out None values - ChromaDB doesn't accept them)
+            metadata = {
+                **base_metadata,
+                "page_id": page_id,
+                "property_name": property_name,
+                "property_type": property_type
+            }
+
+            # Remove None values from metadata (ChromaDB requires str, int, float, or bool)
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+
+            # Add to property collection
+            self.property_collection.add(
+                ids=[vector_id],
+                documents=[property_value],
+                embeddings=[embedding],
+                metadatas=[metadata]
+            )
+
+            logger.debug(f"✅ Added property embedding: {vector_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to add property embedding for {page_id}.{property_name}: {e}")
+            return False
+
+    def delete_property_embedding(
+        self,
+        page_id: str,
+        property_name: str
+    ) -> bool:
+        """
+        Delete a single property embedding.
+
+        Args:
+            page_id: Base page ID
+            property_name: Property column name
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        try:
+            vector_id = f"{page_id}_prop_{property_name}"
+
+            # Check if exists first
+            existing = self.property_collection.get(ids=[vector_id])
+            if not existing['ids']:
+                logger.debug(f"Property embedding not found: {vector_id}")
+                return False
+
+            # Delete from collection
+            self.property_collection.delete(ids=[vector_id])
+            logger.debug(f"🗑️ Deleted property embedding: {vector_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to delete property embedding {page_id}.{property_name}: {e}")
+            return False
+
+    def delete_property_embeddings(
+        self,
+        property_name: str,
+        database_id: str = None,
+        workspace: str = None,
+        database_name: str = None
+    ) -> int:
+        """
+        Delete all embeddings for a specific property.
+
+        Args:
+            property_name: Property column name to delete
+            database_id: Optional database ID filter
+            workspace: Optional workspace filter
+            database_name: Optional database name filter
+
+        Returns:
+            Number of embeddings deleted
+        """
+        try:
+            # Build filter
+            where_filter = {"property_name": property_name}
+            if database_id:
+                where_filter["database_id"] = database_id
+            if workspace:
+                where_filter["workspace"] = workspace
+            if database_name:
+                where_filter["database_name"] = database_name
+
+            # Get all matching embeddings
+            results = self.property_collection.get(
+                where=where_filter,
+                include=[]  # Only need IDs
+            )
+
+            if not results['ids']:
+                logger.debug(f"No property embeddings found for {property_name}")
+                return 0
+
+            # Delete all matching embeddings
+            count = len(results['ids'])
+            self.property_collection.delete(ids=results['ids'])
+
+            logger.info(f"🗑️ Deleted {count} property embeddings for {property_name}")
+            return count
+
+        except Exception as e:
+            logger.error(f"❌ Failed to delete property embeddings for {property_name}: {e}")
+            return 0
+
+    def search_property(
+        self,
+        property_name: str,
+        query_text: str,
+        filters: Optional[Dict[str, Any]] = None,
+        n_results: int = 20,
+        min_similarity: float = 0.75
+    ) -> List[Dict[str, Any]]:
+        """
+        Search specific property embeddings.
+
+        Args:
+            property_name: Property to search (e.g., "epic", "title")
+            query_text: Semantic query text
+            filters: Additional metadata filters (workspace, database_name)
+            n_results: Max results
+            min_similarity: Minimum similarity threshold
+
+        Returns:
+            List of results with page_id and similarity scores
+        """
+        try:
+            # Generate query embedding
+            query_embedding = self.generate_embedding(query_text)
+
+            # Build combined filters
+            # Always use $and when combining property_name with other filters
+            if filters:
+                # Check if filters contains operators (e.g., $and, $or)
+                if any(key.startswith('$') for key in filters.keys()):
+                    # Filters has operators, wrap both in $and
+                    combined_filters = {
+                        "$and": [
+                            {"property_name": property_name},
+                            filters
+                        ]
+                    }
+                else:
+                    # Flat dict - convert each key-value to separate condition
+                    filter_conditions = [{"property_name": property_name}]
+                    for key, value in filters.items():
+                        filter_conditions.append({key: value})
+                    combined_filters = {"$and": filter_conditions}
+            else:
+                # No additional filters, just property_name
+                combined_filters = {"property_name": property_name}
+
+            # Search property collection
+            results = self.property_collection.query(
+                query_embeddings=[query_embedding],
+                where=combined_filters,
+                n_results=n_results
+            )
+
+            # Format results
+            formatted_results = []
+            if results['ids'] and results['ids'][0]:
+                for i, doc_id in enumerate(results['ids'][0]):
+                    distance = results['distances'][0][i]
+                    similarity = 1 - distance
+
+                    if similarity >= min_similarity:
+                        formatted_results.append({
+                            'id': doc_id,
+                            'page_id': results['metadatas'][0][i]['page_id'],
+                            'similarity_score': similarity,
+                            'metadata': results['metadatas'][0][i],
+                            'property_value': results['documents'][0][i]
+                        })
+
+            logger.info(f"🔍 Property search '{property_name}' returned {len(formatted_results)} results")
+            return formatted_results
+
+        except Exception as e:
+            logger.error(f"❌ Property search failed: {e}")
+            return []
+
     def search(
         self,
         query_text: str,

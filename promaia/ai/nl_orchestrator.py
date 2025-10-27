@@ -656,6 +656,62 @@ Please adjust the query to fix this issue.
             "learned": (user_action == 'save')
         }
     
+    def _format_property_schema_context(self, database_names: List[str]) -> str:
+        """
+        Format available property schemas for given databases.
+
+        Queries the hybrid storage registry to get property schemas and formats
+        them for the LLM to understand what properties are available for filtering.
+
+        Args:
+            database_names: List of database names to get schemas for
+
+        Returns:
+            Formatted string with property schemas
+        """
+        try:
+            from promaia.storage.hybrid_storage import get_hybrid_registry
+            registry = get_hybrid_registry(db_path=self.db_path)
+
+            output = "=== AVAILABLE PROPERTIES ===\n\n"
+
+            for db_name in database_names:
+                # Get property schema for this database
+                property_schema = registry.get_property_schema(db_name)
+
+                if not property_schema:
+                    continue
+
+                output += f"{db_name}:\n"
+
+                # Group by embeddable vs filterable
+                embeddable = []
+                filterable = []
+
+                EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
+
+                for prop in property_schema:
+                    col_name = prop['column_name']
+                    notion_type = prop['notion_type']
+
+                    if notion_type in EMBEDDABLE_TYPES:
+                        embeddable.append(f"{col_name} ({notion_type})")
+                    else:
+                        filterable.append(f"{col_name} ({notion_type})")
+
+                if embeddable:
+                    output += f"  Semantic search properties: {', '.join(embeddable)}\n"
+                if filterable:
+                    output += f"  Filter properties: {', '.join(filterable)}\n"
+                output += "\n"
+
+            return output if len(output) > len("=== AVAILABLE PROPERTIES ===\n\n") else ""
+
+        except Exception as e:
+            if self.debug:
+                print_text(f"⚠️  Could not load property schemas: {e}", style="yellow")
+            return ""
+
     def _parse_intent(
         self,
         user_query: str,
@@ -664,9 +720,12 @@ Please adjust the query to fix this issue.
     ) -> Optional[Dict[str, Any]]:
         """Parse user query into structured intent using LLM."""
         available_dbs = schema.get('available_databases', [])
-        
+
         workspace_context = self._format_workspace_config()
-        
+
+        # Get property schema context for all available databases
+        property_context = self._format_property_schema_context(available_dbs)
+
         prompt = f"""Parse this natural language query into structured intent:
 
 Query: "{user_query}"
@@ -676,6 +735,8 @@ Query: "{user_query}"
 
 Available databases: {available_dbs}
 
+{property_context if property_context else ""}
+
 Available tables and their columns:
 {self._format_schema_for_prompt(schema)}
 
@@ -684,8 +745,24 @@ Respond with JSON in this exact format:
     "goal": "what the user wants to find",
     "databases": ["list", "of", "relevant", "databases"],
     "search_terms": ["key", "content", "search", "terms"],
-    "date_filter": {{"days_back": null, "description": ""}}
+    "date_filter": {{"days_back": null, "description": ""}},
+    "property_constraints": {{}}
 }}
+
+Rules for property_constraints:
+- Extract property constraints mentioned in the query (e.g., "stories with epic 2025 holiday launch")
+- For semantic properties (title, text, rich_text, relation), use type "semantic" with the search value
+- For filter properties (select, status, multi_select, people), use type "filter" with normalized value
+- Normalize filter values: "done" → "Done", "in progress" → "In Progress", "todo" → "To Do"
+- Use operators: "equals" (default), "not_empty", "contains", "greater_than", "less_than"
+- Format: {{"property_name": {{"type": "semantic|filter", "value": "search term", "operator": "equals"}}}}
+- If no properties mentioned, leave property_constraints as empty object {{}}
+
+Examples:
+- "stories with epic 2025 holiday launch" → {{"epic": {{"type": "semantic", "value": "2025 holiday launch", "operator": "equals"}}}}
+- "stories with status done" → {{"status": {{"type": "filter", "value": "Done", "operator": "equals"}}}}
+- "tasks assigned to John" → {{"assigned_to": {{"type": "filter", "value": "John", "operator": "contains"}}}}
+- "pages with non-empty title" → {{"title": {{"type": "filter", "value": "", "operator": "not_empty"}}}}
 
 Rules for database names - CRITICAL:
 - ONLY include databases that are EXPLICITLY mentioned in the query (e.g., "gmail", "stories", "notion")
@@ -730,12 +807,105 @@ Return ONLY the JSON object:"""
             
             import json
             intent = json.loads(content)
+
+            # Normalize property names in constraints to actual column names
+            intent = self._normalize_property_names(intent)
+
             return intent
-        
+
         except Exception as e:
             print_text(f"❌ Intent parsing failed: {e}", style="red")
             return None
     
+    def _normalize_property_names(self, intent: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize property names in property_constraints from semantic names to actual column names.
+
+        For example: "title" → "name_2", "epic" → "_epics"
+        """
+        property_constraints = intent.get('property_constraints', {})
+        if not property_constraints:
+            return intent
+
+        databases = intent.get('databases', [])
+        if not databases:
+            return intent
+
+        try:
+            from promaia.storage.hybrid_storage import get_hybrid_registry
+            registry = get_hybrid_registry()
+
+            # Get database IDs for the target databases
+            import json
+            with open('promaia.config.json', 'r') as f:
+                config = json.load(f)
+
+            # Build property name mapping for all target databases
+            property_mapping = {}  # semantic_name → column_name
+            for db_ref in databases:
+                # Parse database reference (may be "workspace.database" or just "database")
+                if '.' in db_ref:
+                    workspace, db_nickname = db_ref.split('.', 1)
+                else:
+                    db_nickname = db_ref
+
+                # Find database in config
+                db_config = config.get('databases', {}).get(db_nickname) or \
+                           config.get('databases', {}).get(db_ref)
+
+                if not db_config:
+                    continue
+
+                database_id = db_config.get('database_id')
+                if not database_id:
+                    continue
+
+                # Get property schema for this database
+                property_schema = registry.get_property_schema(database_id)
+                if not property_schema:
+                    continue
+
+                # Build mapping from property_name (user-friendly) to column_name (actual)
+                for prop in property_schema:
+                    prop_name = prop.get('property_name', '')
+                    col_name = prop.get('column_name', '')
+                    notion_type = prop.get('notion_type', '')
+
+                    if not prop_name or not col_name:
+                        continue
+
+                    # Map semantic name variations to column name
+                    # e.g., "Name" → "name_2", "Epic" → "_epics"
+                    semantic_name = prop_name.lower().strip()
+                    property_mapping[semantic_name] = col_name
+
+                    # Also map column name to itself for exact matches
+                    property_mapping[col_name.lower()] = col_name
+
+                    # For title types, also map "title" to the column
+                    if notion_type == 'title':
+                        property_mapping['title'] = col_name
+
+            # Normalize property_constraints using the mapping
+            normalized_constraints = {}
+            for prop_name, constraint in property_constraints.items():
+                # Try to find the actual column name
+                semantic_key = prop_name.lower().strip()
+                actual_column = property_mapping.get(semantic_key, prop_name)
+
+                normalized_constraints[actual_column] = constraint
+
+                if self.debug and actual_column != prop_name:
+                    print_text(f"   Mapped property: '{prop_name}' → '{actual_column}'", style="yellow")
+
+            intent['property_constraints'] = normalized_constraints
+            return intent
+
+        except Exception as e:
+            if self.debug:
+                print_text(f"⚠️  Could not normalize property names: {e}", style="yellow")
+            return intent
+
     def _display_intent(self, intent: Dict[str, Any]):
         """Display parsed intent to user (verbose mode only)."""
         print_text("\n🎯 Parsed Intent:", style="cyan")

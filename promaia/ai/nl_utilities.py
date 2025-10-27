@@ -472,8 +472,8 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
                     # Return first 60 chars with ellipsis
                     return content[:60] + "..." if len(content) > 60 else content
             
-            elif content_type == 'notion' or database_name in ['stories', 'yp', 'notion']:
-                # For Notion, try to get title from unified_content
+            elif content_type == 'notion' or database_name in ['stories', 'yp', 'notion', 'projects', 'cms', 'epics', 'journal', 'awakenings']:
+                # For Notion databases, try to get title from unified_content
                 cursor.execute(
                     "SELECT title FROM unified_content WHERE page_id = ?",
                     (page_id,)

@@ -12,6 +12,7 @@ This directory contains documentation for end-users of Promaia. For internal dev
 ### 🎮 Core Features
 - **[DISCORD_INTEGRATION.md](DISCORD_INTEGRATION.md)**: Complete Discord setup, sync, and troubleshooting
 - **[ENHANCED_FILTERING.md](ENHANCED_FILTERING.md)**: Advanced filtering and query syntax for all sources
+- **[property_embeddings.md](property_embeddings.md)**: Property-aware semantic search for Notion databases
 
 ### 📖 Reference
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**: CLI command reference with examples
@@ -42,6 +43,7 @@ This directory contains documentation for end-users of Promaia. For internal dev
 |---------------|----------|
 | **Get started quickly** | [Getting Started Guide](GETTING_STARTED.md) |
 | **Set up Discord** | [Discord Integration](DISCORD_INTEGRATION.md) |
+| **Use property-aware search** | [Property Embeddings](property_embeddings.md) |
 | **Learn advanced filtering** | [Enhanced Filtering](ENHANCED_FILTERING.md) |
 | **See command examples** | [Quick Reference](QUICK_REFERENCE.md) |
 | **Configure my setup** | [Configuration Examples](examples/) |

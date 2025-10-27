@@ -593,6 +593,50 @@ class HybridContentRegistry:
         """Add Notion CMS content with optimized schema."""
         return self._add_notion_with_properties('notion_cms', content_data)
 
+    def _ensure_notion_table_exists(self, table_name: str) -> bool:
+        """
+        Ensure a Notion content table exists with base schema.
+
+        Args:
+            table_name: Name of the table to create
+
+        Returns:
+            True if successful or already exists, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Create table with base schema (similar to notion_journal)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        page_id TEXT UNIQUE NOT NULL,
+                        workspace TEXT NOT NULL,
+                        database_id TEXT,
+                        database_name TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        title TEXT,
+                        created_time TEXT,
+                        last_edited_time TEXT,
+                        synced_time TEXT NOT NULL,
+                        file_size INTEGER,
+                        checksum TEXT,
+                        UNIQUE(page_id)
+                    )
+                """)
+
+                # Create indexes
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_workspace ON {table_name} (workspace, database_name)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_page_id ON {table_name} (page_id)")
+
+                conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to create table {table_name}: {e}")
+            return False
+
     def _add_notion_with_properties(self, table_name: str, content_data: Dict[str, Any]) -> bool:
         """
         Add Notion content with dynamic property extraction.
@@ -607,6 +651,9 @@ class HybridContentRegistry:
             True if successful, False otherwise
         """
         try:
+            # Ensure table exists before attempting insert
+            self._ensure_notion_table_exists(table_name)
+
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
 
@@ -704,7 +751,205 @@ class HybridContentRegistry:
         except Exception as e:
             logger.error(f"Error adding generic content: {e}")
             return False
-    
+
+    def update_page_properties(self, page_id: str, database_id: str, database_name: str,
+                              workspace: str, properties: Dict[str, Any]) -> bool:
+        """
+        Update only the property columns for an existing page without touching content.
+
+        This is used for property-only sync mode to backfill properties without re-downloading content.
+
+        Args:
+            page_id: The Notion page ID
+            database_id: The Notion database ID
+            database_name: The database nickname
+            workspace: The workspace name
+            properties: The properties dict from Notion API response
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Determine table name
+            table_name = f"notion_{workspace}_{database_name}"
+
+            # Ensure table exists
+            self._ensure_notion_table_exists(table_name)
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if page exists
+                cursor.execute(f"SELECT page_id FROM {table_name} WHERE page_id = ?", (page_id,))
+                if not cursor.fetchone():
+                    logger.warning(f"Page {page_id} not found in {table_name}, skipping property update")
+                    return False
+
+                # Get property schema for this database
+                property_schema = self.get_property_schema(database_id)
+
+                if not property_schema:
+                    logger.debug(f"No property schema found for database {database_id}")
+                    return False
+
+                # Build UPDATE query with only property columns
+                update_columns = []
+                update_values = []
+
+                for prop_schema in property_schema:
+                    prop_name = prop_schema['property_name']
+                    column_name = prop_schema['column_name']
+
+                    # Check if property exists in page properties
+                    if prop_name in properties:
+                        # Extract value using flexible extraction
+                        value = self.extract_property_value_flexible(properties[prop_name])
+                        update_columns.append(f"{column_name} = ?")
+                        update_values.append(value)
+
+                if not update_columns:
+                    logger.debug(f"No properties to update for page {page_id}")
+                    return True  # Not an error, just nothing to update
+
+                # Build and execute UPDATE query
+                update_sql = f"UPDATE {table_name} SET {', '.join(update_columns)} WHERE page_id = ?"
+                update_values.append(page_id)
+
+                cursor.execute(update_sql, update_values)
+                conn.commit()
+
+                logger.debug(f"✅ Updated {len(update_columns)} properties for page {page_id}")
+
+            # Generate property embeddings
+            self._generate_property_embeddings_only(
+                page_id=page_id,
+                database_id=database_id,
+                database_name=database_name,
+                workspace=workspace,
+                table_name=table_name
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error updating page properties for {page_id}: {e}")
+            return False
+
+    def _generate_property_embeddings_only(self, page_id: str, database_id: str,
+                                           database_name: str, workspace: str,
+                                           table_name: str) -> bool:
+        """
+        Generate property embeddings only (without content embeddings).
+
+        Used for property-only sync mode.
+
+        Args:
+            page_id: The page ID
+            database_id: The database ID
+            database_name: The database nickname
+            workspace: The workspace name
+            table_name: The SQL table name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Check if vector search is enabled
+            import json
+            import os
+            config_path = "promaia.config.json"
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            vector_config = config.get('global', {}).get('vector_search', {})
+
+            if not vector_config.get('enabled', False):
+                return False  # Vector search disabled
+
+            if not vector_config.get('property_embeddings', {}).get('enabled', False):
+                return False  # Property embeddings disabled
+
+            # Initialize vector DB
+            from promaia.storage.vector_db import VectorDBManager
+            vector_db = VectorDBManager(chroma_path=vector_config.get('chroma_path', 'chroma_db'))
+
+            # Get property schema
+            property_schema = self.get_property_schema(database_id)
+            if not property_schema:
+                return False
+
+            EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
+
+            # Query properties from SQLite
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                column_names = [prop['column_name'] for prop in property_schema]
+                if not column_names:
+                    return False
+
+                columns_str = ', '.join(column_names)
+                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+
+                cursor.execute(query, (page_id,))
+                row = cursor.fetchone()
+
+                if not row:
+                    logger.warning(f"Page {page_id} not found in {table_name}")
+                    return False
+
+                # Base metadata for embeddings
+                base_metadata = {
+                    'workspace': workspace,
+                    'database_name': database_name,
+                    'database_id': database_id,
+                    'content_type': 'notion'
+                }
+
+                # Create embeddings for embeddable properties
+                for prop_schema_item in property_schema:
+                    col_name = prop_schema_item['column_name']
+                    prop_type = prop_schema_item['notion_type']
+                    value = row[col_name]
+
+                    if value is not None and value != '':
+                        # Create property embedding if type is embeddable
+                        if prop_type in EMBEDDABLE_TYPES:
+                            formatted_value = self._format_property_for_embedding(
+                                value, prop_type, table_name
+                            )
+
+                            if formatted_value:
+                                try:
+                                    vector_db.add_property_embedding(
+                                        page_id=page_id,
+                                        property_name=col_name,
+                                        property_value=formatted_value,
+                                        property_type=prop_type,
+                                        base_metadata=base_metadata
+                                    )
+                                    logger.debug(f"✅ Created property embedding: {page_id}.{col_name}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to embed property {col_name}: {e}")
+                    else:
+                        # Value is None or empty - delete embedding if it exists
+                        if prop_type in EMBEDDABLE_TYPES:
+                            try:
+                                deleted = vector_db.delete_property_embedding(
+                                    page_id=page_id,
+                                    property_name=col_name
+                                )
+                                if deleted:
+                                    logger.debug(f"🗑️ Deleted property embedding for cleared value: {page_id}.{col_name}")
+                            except Exception as e:
+                                logger.warning(f"Failed to delete property embedding {col_name}: {e}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error generating property embeddings for {page_id}: {e}")
+            return False
+
     def add_content(self, content_data: Dict[str, Any]) -> bool:
         """Add content using the appropriate table based on content type."""
         database_name = content_data.get('database_name', '')
@@ -713,14 +958,13 @@ class HybridContentRegistry:
         # Route to appropriate table based on content type
         if database_name == 'gmail' or 'gmail' in database_name:
             sql_success = self.add_gmail_content(content_data)
-        elif database_name == 'journal':
-            sql_success = self.add_notion_journal(content_data)
-        elif database_name == 'stories':
-            sql_success = self.add_notion_stories(content_data)
-        elif database_name == 'cms':
-            sql_success = self.add_notion_cms(content_data)
+        elif database_name and workspace:
+            # Route ALL Notion databases to workspace-specific tables
+            # This ensures every database gets proper schema with property columns
+            table_name = f"notion_{workspace}_{database_name}"
+            sql_success = self._add_notion_with_properties(table_name, content_data)
         else:
-            # Use generic table for unknown types
+            # Fallback to generic table only if missing database_name or workspace
             sql_success = self.add_generic_content(content_data)
         
         # If SQL insertion succeeded, also embed to ChromaDB (if enabled)
@@ -732,18 +976,24 @@ class HybridContentRegistry:
     def _embed_to_vector_db(self, content_data: Dict[str, Any]) -> bool:
         """
         Embed content to ChromaDB for vector search.
-        
+
         This is called after successful SQL insertion and runs silently
         to avoid disrupting the sync flow if vector DB is unavailable.
         """
         try:
+            # Check for emergency disable flag (to bypass ChromaDB crashes)
+            import os
+            if os.environ.get('DISABLE_VECTOR_EMBEDDINGS') == '1':
+                logger.debug("Vector embeddings disabled via DISABLE_VECTOR_EMBEDDINGS env var")
+                return False
+
             # Check if vector search is enabled - load from main config file
             import json
             config_path = "promaia.config.json"
             with open(config_path, 'r') as f:
                 config = json.load(f)
             vector_config = config.get('global', {}).get('vector_search', {})
-            
+
             if not vector_config.get('enabled', False):
                 return False  # Vector search disabled, skip silently
             
@@ -780,14 +1030,20 @@ class HybridContentRegistry:
             try:
                 database_id = content_data.get('database_id')
                 database_name = content_data.get('database_name', '')
+                workspace = content_data.get('workspace', '')
 
-                # Determine table name to query properties from
-                table_mapping = {
-                    'journal': 'notion_journal',
-                    'stories': 'notion_stories',
-                    'cms': 'notion_cms',
-                }
-                table_name = table_mapping.get(database_name, None)
+                # Determine table name to query properties from (use workspace-specific tables)
+                if workspace and database_name:
+                    # ALL Notion databases use workspace-specific tables now
+                    table_name = f"notion_{workspace}_{database_name}"
+                else:
+                    # Fallback for backwards compatibility with old data
+                    table_mapping = {
+                        'journal': 'notion_journal',
+                        'stories': 'notion_stories',
+                        'cms': 'notion_cms',
+                    }
+                    table_name = table_mapping.get(database_name, None)
 
                 # Query properties if we have a known table
                 if table_name and database_id:
@@ -799,6 +1055,9 @@ class HybridContentRegistry:
                         property_schema = self.get_property_schema(database_id)
 
                         if property_schema:
+                            # Embeddable property types (for separate property embeddings)
+                            EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
+
                             # Build query to fetch page with properties
                             column_names = [prop['column_name'] for prop in property_schema]
                             if column_names:
@@ -809,11 +1068,51 @@ class HybridContentRegistry:
                                 row = cursor.fetchone()
 
                                 if row:
-                                    # Add each property to metadata
-                                    for col_name in column_names:
+                                    # Add each property to metadata AND create embeddings
+                                    for i, prop_schema_item in enumerate(property_schema):
+                                        col_name = prop_schema_item['column_name']
+                                        prop_type = prop_schema_item['notion_type']
                                         value = row[col_name]
-                                        if value is not None:  # Only include non-null properties
+
+                                        if value is not None and value != '':
+                                            # Add to metadata (for filtering)
                                             metadata[col_name] = value
+
+                                            # Create property embedding if type is embeddable
+                                            if prop_type in EMBEDDABLE_TYPES:
+                                                formatted_value = self._format_property_for_embedding(
+                                                    value, prop_type, table_name
+                                                )
+
+                                                if formatted_value:
+                                                    try:
+                                                        vector_db.add_property_embedding(
+                                                            page_id=page_id,
+                                                            property_name=col_name,
+                                                            property_value=formatted_value,
+                                                            property_type=prop_type,
+                                                            base_metadata={
+                                                                'workspace': metadata.get('workspace'),
+                                                                'database_name': metadata.get('database_name'),
+                                                                'database_id': metadata.get('database_id'),
+                                                                'content_type': metadata.get('content_type')
+                                                            }
+                                                        )
+                                                        logger.debug(f"✅ Created property embedding: {page_id}.{col_name}")
+                                                    except Exception as e:
+                                                        logger.warning(f"Failed to embed property {col_name}: {e}")
+                                        else:
+                                            # Value is None or empty - delete embedding if it exists
+                                            if prop_type in EMBEDDABLE_TYPES:
+                                                try:
+                                                    deleted = vector_db.delete_property_embedding(
+                                                        page_id=page_id,
+                                                        property_name=col_name
+                                                    )
+                                                    if deleted:
+                                                        logger.debug(f"🗑️ Deleted property embedding for cleared value: {page_id}.{col_name}")
+                                                except Exception as e:
+                                                    logger.warning(f"Failed to delete property embedding {col_name}: {e}")
 
                 logger.debug(f"Added {len(metadata) - 4} properties to vector metadata for {page_id}")
 
@@ -1171,6 +1470,138 @@ class HybridContentRegistry:
             logger.error(f"Error extracting property value: {e}")
             return None
 
+    def _format_property_for_embedding(
+        self,
+        value: Any,
+        prop_type: str,
+        table_name: str = None
+    ) -> Optional[str]:
+        """
+        Format property value as text for embedding.
+
+        Args:
+            value: Raw property value
+            prop_type: Notion property type
+            table_name: Table name for relation resolution
+
+        Returns:
+            Formatted text string or None
+        """
+        MAX_TOKENS = 8000  # Maximum tokens for property embeddings
+
+        if value is None or value == '':
+            return None
+
+        # Format value based on type
+        formatted_value = None
+
+        if prop_type == 'relation':
+            # Resolve relation IDs to titles
+            formatted_value = self._resolve_relation_titles(value)
+
+        elif prop_type in ['people', 'multi_select']:
+            # Already comma-separated strings or JSON arrays
+            if isinstance(value, str):
+                # If it's a JSON array string, parse and format nicely
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        formatted_value = ", ".join(str(item) for item in parsed)
+                except:
+                    pass
+            if formatted_value is None:
+                formatted_value = str(value)
+
+        else:
+            # title, text, rich_text, select, status
+            formatted_value = str(value)
+
+        if formatted_value is None:
+            return None
+
+        # Truncate if exceeds max tokens
+        try:
+            # Try using tiktoken for accurate token counting (OpenAI)
+            try:
+                import tiktoken
+                encoding = tiktoken.get_encoding("cl100k_base")
+                tokens = encoding.encode(formatted_value)
+
+                if len(tokens) > MAX_TOKENS:
+                    # Truncate to max tokens
+                    truncated_tokens = tokens[:MAX_TOKENS]
+                    formatted_value = encoding.decode(truncated_tokens)
+                    logger.warning(
+                        f"⚠️ Property value truncated from {len(tokens)} to {MAX_TOKENS} tokens "
+                        f"(type: {prop_type})"
+                    )
+            except ImportError:
+                # Fallback: rough character-based estimation (1 token ≈ 4 chars)
+                estimated_tokens = len(formatted_value) // 4
+                if estimated_tokens > MAX_TOKENS:
+                    max_chars = MAX_TOKENS * 4
+                    formatted_value = formatted_value[:max_chars]
+                    logger.warning(
+                        f"⚠️ Property value truncated (estimated {estimated_tokens} tokens, "
+                        f"max {MAX_TOKENS} tokens, type: {prop_type})"
+                    )
+        except Exception as e:
+            logger.debug(f"Could not check token length, using value as-is: {e}")
+
+        return formatted_value
+
+    def _resolve_relation_titles(self, relation_value: str) -> Optional[str]:
+        """
+        Resolve relation page IDs to titles.
+
+        Args:
+            relation_value: JSON array string of page IDs or comma-separated IDs
+
+        Returns:
+            Comma-separated titles or None
+        """
+        if not relation_value:
+            return None
+
+        try:
+            # Parse relation value (could be JSON array or comma-separated)
+            if relation_value.startswith('['):
+                # JSON array: ["page_id1", "page_id2"]
+                page_ids = json.loads(relation_value)
+            else:
+                # Comma-separated: "page_id1,page_id2"
+                page_ids = [pid.strip() for pid in relation_value.split(',') if pid.strip()]
+
+            if not page_ids:
+                return None
+
+            titles = []
+            not_found = []
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                for page_id in page_ids:
+                    cursor.execute(
+                        "SELECT title FROM unified_content WHERE page_id = ?",
+                        (page_id,)
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        titles.append(row[0])
+                    else:
+                        not_found.append(page_id)
+                        logger.debug(f"Relation page not found (may have been deleted): {page_id}")
+
+            if not_found and not titles:
+                logger.debug(f"All relation pages not found: {len(not_found)} missing")
+                return None  # All relations are broken
+
+            return ", ".join(titles) if titles else None
+
+        except Exception as e:
+            logger.warning(f"Failed to resolve relation titles: {e}")
+            return None
+
     def get_content_by_file_path(self, file_path: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single content entry by its file path."""
         query = "SELECT * FROM unified_content WHERE file_path = ?"
@@ -1268,6 +1699,45 @@ class HybridContentRegistry:
             logger.error(f"Error retrieving chunks for page {page_id}: {e}")
             return []
     
+    def get_page_metadata(self, page_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata for a specific page by page_id from unified_content.
+        
+        Args:
+            page_id: Page identifier
+            
+        Returns:
+            Dict with page metadata or None if not found
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT page_id, workspace, database_name, content_type, 
+                           title, created_time, last_edited_time, synced_time
+                    FROM unified_content 
+                    WHERE page_id = ?
+                """, (page_id,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                    
+                return {
+                    'page_id': row['page_id'],
+                    'workspace': row['workspace'],
+                    'database_name': row['database_name'],
+                    'content_type': row['content_type'],
+                    'title': row['title'],
+                    'created_time': row['created_time'],
+                    'last_edited_time': row['last_edited_time'],
+                    'synced_time': row['synced_time']
+                }
+        except Exception as e:
+            logger.error(f"Error getting page metadata for {page_id}: {e}")
+            return None
+
     def remove_chunks_for_page(self, page_id: str) -> bool:
         """
         Remove all chunks for a given page.
@@ -1438,13 +1908,37 @@ class HybridContentRegistry:
 
                 added_props = new_props - current_props
                 removed_props = current_props - new_props
-                unchanged_props = current_props & new_props
+                potentially_unchanged = current_props & new_props
+
+                # Check for type changes in "unchanged" properties
+                actually_unchanged = set()
+                type_changed = set()
+
+                for prop_name in potentially_unchanged:
+                    old_type = current_schema[prop_name]['notion_type']
+                    new_type = properties[prop_name].get('type', 'rich_text')
+
+                    if old_type != new_type:
+                        type_changed.add(prop_name)
+                        logger.info(f"Property type changed: {prop_name} ({old_type} → {new_type})")
+                    else:
+                        actually_unchanged.add(prop_name)
 
                 result = {
                     'added': [],
                     'removed': [],
-                    'unchanged': list(unchanged_props)
+                    'unchanged': list(actually_unchanged),
+                    'type_changed': []
                 }
+
+                # Detect likely property renames (heuristic)
+                if len(added_props) > 0 and len(added_props) == len(removed_props):
+                    logger.warning(
+                        f"⚠️ Detected {len(added_props)} properties added and {len(removed_props)} removed. "
+                        f"This may indicate property renames in Notion. "
+                        f"If properties were renamed, their embeddings will be recreated. "
+                        f"Removed: {', '.join(removed_props)} | Added: {', '.join(added_props)}"
+                    )
 
                 # Add new properties to schema
                 for prop_name in added_props:
@@ -1475,13 +1969,40 @@ class HybridContentRegistry:
 
                         logger.warning(f"Column name collision for '{prop_name}', using '{column_name}'")
 
+                    # Check if property already exists (may be inactive)
                     cursor.execute("""
-                        INSERT INTO notion_property_schema (
-                            database_id, database_name, table_name, property_name,
-                            column_name, property_type, notion_type, added_time, last_seen
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (database_id, database_name, table_name, prop_name,
-                          column_name, sqlite_type, notion_type, now, now))
+                        SELECT added_time, is_active, column_name FROM notion_property_schema
+                        WHERE database_id = ? AND property_name = ?
+                    """, (database_id, prop_name))
+
+                    existing = cursor.fetchone()
+                    if existing:
+                        # Property exists (maybe inactive) - reactivate and update it
+                        added_time_to_use = existing[0]  # Keep original added_time
+                        existing_column_name = existing[2]  # Keep existing column name!
+
+                        # Use existing column name to maintain consistency
+                        column_name = existing_column_name
+
+                        cursor.execute("""
+                            UPDATE notion_property_schema
+                            SET property_type = ?, notion_type = ?,
+                                is_active = TRUE, last_seen = ?, table_name = ?
+                            WHERE database_id = ? AND property_name = ?
+                        """, (sqlite_type, notion_type, now, table_name,
+                              database_id, prop_name))
+
+                        if not existing[1]:  # was inactive
+                            logger.info(f"Reactivated previously removed property: {prop_name} (column: {column_name})")
+                    else:
+                        # New property - insert it
+                        cursor.execute("""
+                            INSERT INTO notion_property_schema (
+                                database_id, database_name, table_name, property_name,
+                                column_name, property_type, notion_type, added_time, last_seen
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (database_id, database_name, table_name, prop_name,
+                              column_name, sqlite_type, notion_type, now, now))
 
                     result['added'].append({
                         'property_name': prop_name,
@@ -1503,8 +2024,79 @@ class HybridContentRegistry:
                         'column_name': current_schema[prop_name]['column_name']
                     })
 
+                # Delete orphaned property embeddings for removed properties
+                if removed_props:
+                    try:
+                        # Load vector config to check if embeddings are enabled
+                        config_path = "promaia.config.json"
+                        with open(config_path, 'r') as f:
+                            config = json.load(f)
+                        vector_config = config.get('global', {}).get('vector_search', {})
+
+                        if vector_config.get('enabled') and vector_config.get('property_embeddings', {}).get('enabled'):
+                            from promaia.storage.vector_db import VectorDBManager
+                            vector_db = VectorDBManager(chroma_path=vector_config.get('chroma_path', 'chroma_db'))
+
+                            EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
+
+                            for prop_name in removed_props:
+                                prop_info = current_schema[prop_name]
+                                # Only delete embeddings for embeddable types
+                                if prop_info['notion_type'] in EMBEDDABLE_TYPES:
+                                    deleted_count = vector_db.delete_property_embeddings(
+                                        property_name=prop_info['column_name'],
+                                        database_id=database_id
+                                    )
+                                    logger.info(f"🗑️ Deleted {deleted_count} embeddings for removed property: {prop_name}")
+                    except Exception as e:
+                        logger.warning(f"Could not delete orphaned property embeddings: {e}")
+
+                # Handle property type changes
+                if type_changed:
+                    try:
+                        # Load vector config to check if embeddings are enabled
+                        config_path = "promaia.config.json"
+                        with open(config_path, 'r') as f:
+                            config = json.load(f)
+                        vector_config = config.get('global', {}).get('vector_search', {})
+
+                        if vector_config.get('enabled') and vector_config.get('property_embeddings', {}).get('enabled'):
+                            from promaia.storage.vector_db import VectorDBManager
+                            vector_db = VectorDBManager(chroma_path=vector_config.get('chroma_path', 'chroma_db'))
+
+                            EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
+
+                            for prop_name in type_changed:
+                                old_type = current_schema[prop_name]['notion_type']
+                                new_type = properties[prop_name].get('type', 'rich_text')
+                                col_name = current_schema[prop_name]['column_name']
+
+                                # Delete old embeddings if old type was embeddable
+                                if old_type in EMBEDDABLE_TYPES:
+                                    deleted_count = vector_db.delete_property_embeddings(
+                                        property_name=col_name,
+                                        database_id=database_id
+                                    )
+                                    logger.info(f"🗑️ Deleted {deleted_count} embeddings for type-changed property: {prop_name} ({old_type} → {new_type})")
+
+                                # Update schema with new type
+                                cursor.execute("""
+                                    UPDATE notion_property_schema
+                                    SET notion_type = ?, last_seen = ?
+                                    WHERE database_id = ? AND property_name = ?
+                                """, (new_type, now, database_id, prop_name))
+
+                                result['type_changed'].append({
+                                    'property_name': prop_name,
+                                    'column_name': col_name,
+                                    'old_type': old_type,
+                                    'new_type': new_type
+                                })
+                    except Exception as e:
+                        logger.warning(f"Could not handle property type changes: {e}")
+
                 # Update last_seen for unchanged properties
-                for prop_name in unchanged_props:
+                for prop_name in actually_unchanged:
                     cursor.execute("""
                         UPDATE notion_property_schema
                         SET last_seen = ?
@@ -1517,12 +2109,14 @@ class HybridContentRegistry:
                     logger.info(f"Added {len(result['added'])} properties to schema for {database_name}")
                 if result['removed']:
                     logger.info(f"Removed {len(result['removed'])} properties from schema for {database_name}")
+                if result['type_changed']:
+                    logger.info(f"Type changed for {len(result['type_changed'])} properties in schema for {database_name}")
 
                 return result
 
         except Exception as e:
             logger.error(f"Error updating property schema: {e}")
-            return {'added': [], 'removed': [], 'unchanged': []}
+            return {'added': [], 'removed': [], 'unchanged': [], 'type_changed': []}
 
     def apply_schema_changes(self, table_name: str, schema_changes: Dict[str, Any],
                             remove_columns: bool = False) -> bool:
@@ -1600,6 +2194,7 @@ class HybridContentRegistry:
 
     def sync_table_schema_with_properties(self, database_id: str, database_name: str,
                                          properties: Dict[str, Any],
+                                         workspace: str = None,
                                          remove_columns: bool = False) -> bool:
         """
         Synchronize a table's schema with Notion properties.
@@ -1613,20 +2208,25 @@ class HybridContentRegistry:
             database_id: Notion database ID
             database_name: Notion database name
             properties: Dict of Notion properties
+            workspace: Workspace name (for determining table name)
             remove_columns: If True, remove columns for deleted properties (default: False)
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Determine table name
-            table_mapping = {
-                'journal': 'notion_journal',
-                'stories': 'notion_stories',
-                'cms': 'notion_cms',
-            }
-
-            table_name = table_mapping.get(database_name, 'generic_content')
+            # Determine table name using workspace-specific naming
+            if workspace and database_name:
+                # ALL Notion databases use workspace-specific tables now
+                table_name = f"notion_{workspace}_{database_name}"
+            else:
+                # Fallback for backwards compatibility with old data
+                table_mapping = {
+                    'journal': 'notion_journal',
+                    'stories': 'notion_stories',
+                    'cms': 'notion_cms',
+                }
+                table_name = table_mapping.get(database_name, 'generic_content')
 
             # Skip universal properties that are handled separately
             excluded_props = {
@@ -1647,6 +2247,38 @@ class HybridContentRegistry:
 
             # Apply changes to table (only if not generic_content)
             if table_name != 'generic_content':
+                # Ensure table exists before trying to add columns
+                if table_name.startswith('notion_') and table_name not in ['notion_journal', 'notion_stories', 'notion_cms']:
+                    # This is a workspace-specific table, ensure it exists
+                    self._ensure_notion_table_exists(table_name)
+
+                # Check for missing columns (properties in schema but not in table)
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+
+                    # Get current table columns
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    existing_columns = {row[1] for row in cursor.fetchall()}
+
+                    # Get all active properties from schema
+                    cursor.execute("""
+                        SELECT column_name, property_name, notion_type, property_type
+                        FROM notion_property_schema
+                        WHERE database_id = ? AND is_active = TRUE
+                    """, (database_id,))
+
+                    # Add missing columns to the "added" list
+                    for row in cursor.fetchall():
+                        col_name, prop_name, notion_type, sqlite_type = row
+                        if col_name not in existing_columns:
+                            logger.info(f"Found missing column in table: {col_name} (adding to sync)")
+                            schema_changes['added'].append({
+                                'property_name': prop_name,
+                                'column_name': col_name,
+                                'sqlite_type': sqlite_type,
+                                'notion_type': notion_type
+                            })
+
                 success = self.apply_schema_changes(table_name, schema_changes, remove_columns)
                 if not success:
                     logger.error(f"Failed to apply schema changes to {table_name}")

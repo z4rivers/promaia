@@ -1084,7 +1084,8 @@ async def sync_database(source_spec: Dict[str, Any], args):
             include_properties=db_config.include_properties,
             force_update=getattr(args, 'force', False),
             excluded_properties=db_config.excluded_properties,
-            complex_filter=complex_filter
+            complex_filter=complex_filter,
+            properties_only=getattr(args, 'properties_only', False)
         )
         
         # Ensure database name is set in result
@@ -1925,23 +1926,31 @@ def build_date_filter(source_spec: Dict[str, Any], db_config, args) -> Optional[
     """Build DateRangeFilter from source specification and arguments."""
     force_sync = getattr(args, 'force', False)
     
-    # Case 1: --force without --days (sync all, respecting other filters if any)
-    if force_sync:
+    # Check if days or date ranges were specified
+    has_days_spec = source_spec.get("days") is not None
+    has_days_arg = hasattr(args, 'days') and args.days is not None
+    has_date_range = hasattr(args, 'date_range') and args.date_range
+    has_start_date = hasattr(args, 'start_date') and args.start_date
+    has_end_date = hasattr(args, 'end_date') and args.end_date
+    
+    # Check for date filters in source spec (e.g., database[date_after>2023-01-01])
+    spec_filters = source_spec.get("filters", {})
+    comparison_filters = source_spec.get("comparison_filters", {})
+    all_filters = {**spec_filters, **comparison_filters}
+    has_spec_date_filters = any(key.endswith('_after') or key.endswith('_before') for key in all_filters.keys())
+    
+    # Case 1: --force without any date/days specification (sync all, respecting other filters if any)
+    if force_sync and not has_days_spec and not has_days_arg and not has_date_range and not has_start_date and not has_end_date and not has_spec_date_filters:
         # No specific date range, sync all (or based on other non-date filters)
         # If a date_prop was specified in db_config (e.g. for "Date" field), respect it for Notion query
         # otherwise, no date filter is applied here by default for --force. Connector might have its own.
-        logger.debug(f"Using --force, so no date filter will be applied.")
+        logger.debug(f"Using --force without days specification, so no date filter will be applied.")
         return None
     
     date_prop = db_config.date_filters.get("property") # Default to None, will be handled
     
-    spec_filters = source_spec.get("filters", {})
-    comparison_filters = source_spec.get("comparison_filters", {})
     spec_start_date_str = None
     spec_end_date_str = None
-
-    # Check both regular filters and comparison filters for date filters
-    all_filters = {**spec_filters, **comparison_filters}
     
     for key, value in all_filters.items():
         if key.endswith('_after'):
@@ -2774,7 +2783,8 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     sync_parser.add_argument('--workspace', '-ws', help='Workspace to sync (expands to all enabled databases in workspace with default days)')
     sync_parser.add_argument('--days', type=int, help='Number of days to sync')
     sync_parser.add_argument('--force', action='store_true', help='Force update all files')
-    
+    sync_parser.add_argument('--properties-only', action='store_true', help='Only sync properties without re-downloading page content (much faster)')
+
     # Add simple date range arguments
     sync_parser.add_argument('--start-date', help='Start date for sync (e.g., 2025-02-01)')
     sync_parser.add_argument('--end-date', help='End date for sync (e.g., 2025-03-31)')
