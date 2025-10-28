@@ -1320,11 +1320,21 @@ def chat_run(args):
                             # Regular database source
                             processed_sources.append(source)
 
-                    # Convert Discord groups to filter format
-                    for db_key, channels in discord_db_groups.items():
-                        db_name, days_part = db_key.rsplit(':', 1)
-                        processed_sources.append(f"{db_name}:{days_part}")
-                        processed_filters.append(f"channel:{','.join(channels)}")
+                    # Convert Discord groups to source + filter combinations
+                    for db_spec, channels in discord_db_groups.items():
+                        processed_sources.append(db_spec)
+
+                        # Create filter for channels
+                        if len(channels) == 1:
+                            # Single channel
+                            filter_spec = f"{db_spec}:discord_channel_name={channels[0]}"
+                            processed_filters.append(filter_spec)
+                        else:
+                            # Multiple channels - use OR logic
+                            channel_conditions = [f"discord_channel_name={ch}" for ch in channels]
+                            combined_filter = " or ".join(channel_conditions)
+                            filter_spec = f"{db_spec}:({combined_filter})"
+                            processed_filters.append(filter_spec)
 
                     # Browser already includes user preferences, so just use the processed sources
                     all_sources = processed_sources
