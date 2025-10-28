@@ -1005,8 +1005,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 filters = parsed_args.filters
             if parsed_args.workspace and not workspace:
                 workspace = parsed_args.workspace
-            if parsed_args.natural_language and not sql_query_prompt:
-                sql_query_prompt = " ".join(parsed_args.natural_language)
+            if parsed_args.sql_query and not sql_query_prompt:
+                sql_query_prompt = " ".join(parsed_args.sql_query)
             if parsed_args.mcp_servers and not mcp_servers:
                 mcp_servers = parsed_args.mcp_servers
                 
@@ -2836,9 +2836,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         browse_databases.append(item)
             original_filters = parsed_args.filters or []
             workspace = parsed_args.workspace or context_state.get('workspace')
-            # NOTE: With action="append" and nargs="+", natural_language is a list of lists
+            # NOTE: With action="append" and nargs="+", sql_query is a list of lists
             # Convert to list of strings, matching the other implementations
-            sql_query_raw = parsed_args.natural_language or []
+            sql_query_raw = parsed_args.sql_query or []
             sql_query_parts = [' '.join(nl_args) for nl_args in sql_query_raw if nl_args] if sql_query_raw else []
             
             # Detect if the browse part of the command actually changed
