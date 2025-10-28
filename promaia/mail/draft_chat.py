@@ -434,16 +434,30 @@ class DraftChatInterface:
                     logger.info(f"Using {len(chat_history)} messages from loaded chat history")
                 elif draft_body and draft_body != 'n/a':
                     # No history - load draft body as initial message
-                    # Only wrap in artifact tags if it already has them (respect AI's decision)
                     if '<artifact>' in draft_body and '</artifact>' in draft_body:
                         # Already has artifact tags, use as-is (this is an email draft)
                         message_content = draft_body
                         logger.info(f"Draft body already contains artifact tags, using as-is")
                     else:
-                        # No artifact tags - this is conversational text, not an email draft
-                        # Don't wrap it, load as regular assistant message
-                        message_content = draft_body
-                        logger.info(f"Draft body is conversational text (no artifact tags), loading as regular message")
+                        # No artifact tags - determine if this is an email draft or skip reasoning
+                        # Skip reasoning messages start with phrases like "This is", "While", etc.
+                        draft_start = draft_body.strip()[:100].lower()
+                        is_skip_reasoning = (
+                            draft_start.startswith('this is') or
+                            draft_start.startswith('while') or
+                            "doesn't require" in draft_start or
+                            "does not require" in draft_start or
+                            "no response needed" in draft_start
+                        )
+
+                        if is_skip_reasoning:
+                            # This is skip reasoning text, not an email draft
+                            message_content = draft_body
+                            logger.info(f"Draft body is skip reasoning (no artifact tags), loading as regular message")
+                        else:
+                            # This is an email draft without artifact tags - wrap it for proper display
+                            message_content = f"<artifact>\n{draft_body}\n</artifact>"
+                            logger.info(f"Draft body is email content without artifact tags, wrapping for display")
 
                     initial_messages = [{
                         "role": "assistant",
