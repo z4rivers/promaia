@@ -67,14 +67,14 @@ class DatabaseConfig:
         
         # Subpage sync settings
         self.sync_subpages = config_data.get("sync_subpages", False)
-        
-        # Property mapping
-        self.property_mapping = config_data.get("property_mapping", {})
-        self.required_properties = config_data.get("required_properties", [])
-        self.excluded_properties = config_data.get("excluded_properties", [])
-        
-        # Authentication (for future extensibility)
-        self.auth_config = config_data.get("auth", {})
+
+        # Property mapping - defensive: ensure never None
+        self.property_mapping = config_data.get("property_mapping", {}) or {}
+        self.required_properties = config_data.get("required_properties", []) or []
+        self.excluded_properties = config_data.get("excluded_properties", []) or []
+
+        # Authentication (for future extensibility) - defensive: ensure never None
+        self.auth_config = config_data.get("auth", {}) or {}
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert database config to dictionary."""
