@@ -1074,19 +1074,25 @@ async def sync_database(source_spec: Dict[str, Any], args):
         # Use the new unified storage system instead of old output_directory
         from promaia.storage.unified_storage import get_unified_storage
         storage = get_unified_storage()
-        
+
+        # Build sync arguments - properties_only only supported by Notion connector
+        sync_args = {
+            'storage': storage,
+            'db_config': db_config,
+            'filters': filters,
+            'date_filter': date_filter if date_filter else None,
+            'include_properties': db_config.include_properties,
+            'force_update': getattr(args, 'force', False),
+            'excluded_properties': db_config.excluded_properties,
+            'complex_filter': complex_filter
+        }
+
+        # Only pass properties_only to Notion connectors
+        if db_config.source_type == 'notion':
+            sync_args['properties_only'] = getattr(args, 'properties_only', False)
+
         # Perform sync using unified storage
-        result = await connector.sync_to_local_unified(
-            storage=storage,
-            db_config=db_config,
-            filters=filters,
-            date_filter=date_filter if date_filter else None,
-            include_properties=db_config.include_properties,
-            force_update=getattr(args, 'force', False),
-            excluded_properties=db_config.excluded_properties,
-            complex_filter=complex_filter,
-            properties_only=getattr(args, 'properties_only', False)
-        )
+        result = await connector.sync_to_local_unified(**sync_args)
         
         # Ensure database name is set in result
         if not result.database_name:
