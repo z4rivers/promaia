@@ -185,15 +185,15 @@ class VectorDBManager:
                     # Skip unsupported types
                     logger.debug(f"Skipping metadata key '{k}' with unsupported type {type(v)}")
 
-            # Add to collection with extra safety
+            # Upsert to collection (updates existing or inserts new) with extra safety
             try:
-                self.collection.add(
+                self.collection.upsert(
                     ids=[page_id],
                     documents=[content_text],
                     embeddings=[embedding],
                     metadatas=[clean_metadata]
                 )
-                logger.debug(f"✅ Added embedding for page_id: {page_id}")
+                logger.debug(f"✅ Upserted embedding for page_id: {page_id}")
                 return True
             except Exception as chroma_error:
                 # ChromaDB/hnswlib can crash with certain data
@@ -282,16 +282,16 @@ class VectorDBManager:
                     # Remove None values from metadata (ChromaDB requires str, int, float, or bool)
                     chunk_metadata = {k: v for k, v in chunk_metadata.items() if v is not None}
 
-                    # Add to collection with chunk_id as the ID
-                    self.collection.add(
+                    # Upsert to collection (updates existing or inserts new) with chunk_id as the ID
+                    self.collection.upsert(
                         ids=[chunk_id],
                         documents=[chunk_content],
                         embeddings=[embedding],
                         metadatas=[chunk_metadata]
                     )
-                    
+
                     success_count += 1
-                    logger.debug(f"✅ Added chunk {chunk['chunk_index'] + 1}/{chunk['total_chunks']} for page {page_id}")
+                    logger.debug(f"✅ Upserted chunk {chunk['chunk_index'] + 1}/{chunk['total_chunks']} for page {page_id}")
                     
                 except Exception as e:
                     logger.error(f"❌ Failed to embed chunk {chunk.get('chunk_id')}: {e}")
@@ -350,15 +350,15 @@ class VectorDBManager:
             # Remove None values from metadata (ChromaDB requires str, int, float, or bool)
             metadata = {k: v for k, v in metadata.items() if v is not None}
 
-            # Add to property collection
-            self.property_collection.add(
+            # Upsert to property collection (updates existing or inserts new)
+            self.property_collection.upsert(
                 ids=[vector_id],
                 documents=[property_value],
                 embeddings=[embedding],
                 metadatas=[metadata]
             )
 
-            logger.debug(f"✅ Added property embedding: {vector_id}")
+            logger.debug(f"✅ Upserted property embedding: {vector_id}")
             return True
 
         except Exception as e:
