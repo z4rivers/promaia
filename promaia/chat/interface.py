@@ -3960,7 +3960,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Update the query command display to reflect the new state
                     update_query_command()
-                    
+
+                    # Clear old query content to prevent accumulation with new browser data
+                    # When browse selections change, old NL/VS content should not be merged
+                    if context_state.get('sql_query_content'):
+                        debug_print("🧹 Clearing old sql_query_content to prevent data accumulation")
+                        context_state['sql_query_content'] = {}
+                    if context_state.get('vector_search_content'):
+                        debug_print("🧹 Clearing old vector_search_content to prevent data accumulation")
+                        context_state['vector_search_content'] = {}
+                    if context_state.get('cached_sql_query_prompt'):
+                        debug_print("🧹 Clearing cached SQL query prompt")
+                        context_state['cached_sql_query_prompt'] = ''
+
                     # Reload context with the updated information
                     if reload_context():
                         print_text("Context updated successfully from unified browser!", style="green")
