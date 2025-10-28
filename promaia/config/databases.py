@@ -41,9 +41,9 @@ class DatabaseConfig:
         self.last_sync_time = config_data.get("last_sync_time", None)
         
         # Filtering settings
-        self.filters = config_data.get("filters", {})
-        self.property_filters = config_data.get("property_filters", {})
-        self.date_filters = config_data.get("date_filters", {})
+        self.filters = config_data.get("filters", {}) or {}
+        self.property_filters = config_data.get("property_filters", {}) or {}
+        self.date_filters = config_data.get("date_filters", {}) or {}
 
         # Storage settings - new generalized structure: data/{app}/{workspace}/
         source_type = config_data.get("source_type", "notion")
@@ -91,9 +91,9 @@ class DatabaseConfig:
             "default_include": self.default_include,
             "browser_include": self.browser_include,
             "last_sync_time": self.last_sync_time,
-            "filters": self.filters,
-            "property_filters": self.property_filters,
-            "date_filters": self.date_filters,
+            "filters": self.filters or {},
+            "property_filters": self.property_filters or {},
+            "date_filters": self.date_filters or {},
             "markdown_directory": self.markdown_directory,
             "primary_format": self.primary_format,
             "save_markdown": self.save_markdown,

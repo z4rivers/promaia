@@ -247,191 +247,15 @@ class HybridContentRegistry:
                     UNIQUE(table_name, column_name)
                 )
             """)
-            
-            # Create unified view that combines all tables with direct column access
-            # Drop and recreate to ensure latest schema (CREATE VIEW IF NOT EXISTS doesn't update)
-            cursor.execute("DROP VIEW IF EXISTS unified_content")
-            cursor.execute("""
-                CREATE VIEW unified_content AS
-                
-                SELECT 
-                    page_id,
-                    workspace,
-                    database_id,
-                    'gmail' as database_name,
-                    'gmail' as content_type,
-                    file_path,
-                    subject as title,
-                    created_time,
-                    last_edited_time,
-                    synced_time,
-                    file_size,
-                    checksum,
-                    -- Direct columns for Gmail
-                    NULL as status,
-                    sender_email,
-                    sender_name,
-                    has_attachments,
-                    is_unread,
-                    NULL as featured,
-                    NULL as priority,
-                    NULL as category,
-                    email_date,  -- Add email_date as direct column for Gmail queries
-                    -- Metadata for complex fields
-                    json_object(
-                        'subject', subject,
-                        'sender_email', sender_email,
-                        'sender_name', sender_name,
-                        'recipient_emails', recipient_emails,
-                        'labels', gmail_labels,
-                        'has_attachments', has_attachments,
-                        'is_unread', is_unread,
-                        'email_date', email_date
-                    ) as metadata
-                FROM gmail_content
-                
-                UNION ALL
-                
-                SELECT 
-                    page_id,
-                    workspace,
-                    database_id,
-                    database_name,
-                    'notion_journal' as content_type,
-                    file_path,
-                    title,
-                    created_time,
-                    last_edited_time,
-                    synced_time,
-                    file_size,
-                    checksum,
-                    -- Direct columns for Journal
-                    status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    featured,
-                    NULL as priority,
-                    NULL as category,
-                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
-                    -- Metadata for complex fields
-                    json_object(
-                        'status', status,
-                        'date_value', date_value,
-                        'tags', tags,
-                        'featured', featured,
-                        'author_name', author_name
-                    ) as metadata
-                FROM notion_journal
-                
-                UNION ALL
-                
-                SELECT 
-                    page_id,
-                    workspace,
-                    database_id,
-                    database_name,
-                    'notion_stories' as content_type,
-                    file_path,
-                    title,
-                    created_time,
-                    last_edited_time,
-                    synced_time,
-                    file_size,
-                    checksum,
-                    -- Direct columns for Stories
-                    status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    NULL as featured,
-                    priority,
-                    NULL as category,
-                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
-                    -- Metadata for complex fields
-                    json_object(
-                        'status', status,
-                        'epic_relation', epic_relation,
-                        'author_name', author_name,
-                        'story_points', story_points,
-                        'priority', priority,
-                        'labels', labels
-                    ) as metadata
-                FROM notion_stories
-                
-                UNION ALL
-                
-                SELECT 
-                    page_id,
-                    workspace,
-                    database_id,
-                    database_name,
-                    'notion_cms' as content_type,
-                    file_path,
-                    title,
-                    created_time,
-                    last_edited_time,
-                    synced_time,
-                    file_size,
-                    checksum,
-                    -- Direct columns for CMS
-                    status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    featured,
-                    NULL as priority,
-                    category,
-                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
-                    -- Metadata for complex fields
-                    json_object(
-                        'status', status,
-                        'category', category,
-                        'featured', featured,
-                        'author_name', author_name,
-                        'slug', slug,
-                        'publish_date', publish_date,
-                        'tags', tags
-                    ) as metadata
-                FROM notion_cms
-                
-                UNION ALL
-                
-                SELECT 
-                    page_id,
-                    workspace,
-                    database_id,
-                    database_name,
-                    content_type,
-                    file_path,
-                    title,
-                    created_time,
-                    last_edited_time,
-                    synced_time,
-                    file_size,
-                    checksum,
-                    -- Direct columns for Generic (use JSON extraction as needed)
-                    json_extract(metadata, '$.status') as status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    CAST(json_extract(metadata, '$.featured') AS INTEGER) as featured,
-                    json_extract(metadata, '$.priority') as priority,
-                    json_extract(metadata, '$.category') as category,
-                    NULL as email_date,  -- Add NULL email_date for non-Gmail content
-                    metadata
-                FROM generic_content
-            """)
-            
+
             # Create indexes for better performance
             self._create_indexes(cursor)
-            
+
             conn.commit()
             logger.info(f"Initialized hybrid content registry at {self.db_path}")
+
+        # Build unified view dynamically to include all workspace tables
+        self.rebuild_unified_content_view()
     
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
@@ -474,7 +298,169 @@ class HybridContentRegistry:
         # Property schema indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_property_schema_db ON notion_property_schema (database_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_property_schema_table ON notion_property_schema (table_name)")
-    
+
+    def rebuild_unified_content_view(self):
+        """
+        Dynamically rebuild the unified_content view to include all workspace-specific tables.
+
+        This method scans for all tables matching the pattern notion_{workspace}_{database}
+        and creates a unified view that includes them along with legacy tables.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Find all workspace-specific Notion tables
+                cursor.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name LIKE 'notion_%'
+                    AND name NOT IN ('notion_page_chunks', 'notion_property_schema')
+                    ORDER BY name
+                """)
+
+                notion_tables = [row[0] for row in cursor.fetchall()]
+                logger.info(f"Found {len(notion_tables)} Notion tables for unified view: {notion_tables}")
+
+                # Start building the view SQL
+                view_parts = []
+
+                # 1. Gmail content (always included)
+                view_parts.append("""
+                SELECT
+                    page_id,
+                    workspace,
+                    database_id,
+                    'gmail' as database_name,
+                    'gmail' as content_type,
+                    file_path,
+                    subject as title,
+                    created_time,
+                    last_edited_time,
+                    synced_time,
+                    file_size,
+                    checksum,
+                    NULL as status,
+                    sender_email,
+                    sender_name,
+                    has_attachments,
+                    is_unread,
+                    NULL as featured,
+                    NULL as priority,
+                    NULL as category,
+                    email_date,
+                    json_object(
+                        'subject', subject,
+                        'sender_email', sender_email,
+                        'sender_name', sender_name,
+                        'recipient_emails', recipient_emails,
+                        'labels', gmail_labels,
+                        'has_attachments', has_attachments,
+                        'is_unread', is_unread,
+                        'email_date', email_date
+                    ) as metadata
+                FROM gmail_content
+                """)
+
+                # 2. Add all Notion tables (workspace-specific and legacy)
+                for table_name in notion_tables:
+                    # Get the table schema to determine available columns
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = {row[1]: row[2] for row in cursor.fetchall()}  # column_name: type
+
+                    # Build metadata JSON based on available columns
+                    metadata_fields = []
+                    common_property_columns = ['status', 'featured', 'priority', 'category', 'tags',
+                                              'author_name', 'date_value', 'epic_relation',
+                                              'story_points', 'labels', 'slug', 'publish_date']
+
+                    for prop_col in common_property_columns:
+                        if prop_col in columns:
+                            metadata_fields.append(f"'{prop_col}', {prop_col}")
+
+                    # Add any additional property columns not in the common list
+                    for col_name in columns:
+                        if col_name not in ['id', 'page_id', 'workspace', 'database_id', 'database_name',
+                                          'file_path', 'title', 'created_time', 'last_edited_time',
+                                          'synced_time', 'file_size', 'checksum'] + common_property_columns:
+                            metadata_fields.append(f"'{col_name}', {col_name}")
+
+                    metadata_json = f"json_object({', '.join(metadata_fields)})" if metadata_fields else "NULL"
+
+                    # Determine content_type (use table name without notion_ prefix)
+                    content_type = table_name.replace('notion_', 'notion_')
+
+                    # Build SELECT for this table
+                    select_stmt = f"""
+                SELECT
+                    page_id,
+                    workspace,
+                    database_id,
+                    database_name,
+                    '{content_type}' as content_type,
+                    file_path,
+                    title,
+                    created_time,
+                    last_edited_time,
+                    synced_time,
+                    file_size,
+                    checksum,
+                    {'status' if 'status' in columns else 'NULL'} as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    {'featured' if 'featured' in columns else 'NULL'} as featured,
+                    {'priority' if 'priority' in columns else 'NULL'} as priority,
+                    {'category' if 'category' in columns else 'NULL'} as category,
+                    NULL as email_date,
+                    {metadata_json} as metadata
+                FROM {table_name}
+                    """
+
+                    view_parts.append(select_stmt)
+
+                # 3. Generic content (fallback table)
+                view_parts.append("""
+                SELECT
+                    page_id,
+                    workspace,
+                    database_id,
+                    database_name,
+                    content_type,
+                    file_path,
+                    title,
+                    created_time,
+                    last_edited_time,
+                    synced_time,
+                    file_size,
+                    checksum,
+                    json_extract(metadata, '$.status') as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    CAST(json_extract(metadata, '$.featured') AS INTEGER) as featured,
+                    json_extract(metadata, '$.priority') as priority,
+                    json_extract(metadata, '$.category') as category,
+                    NULL as email_date,
+                    metadata
+                FROM generic_content
+                """)
+
+                # Combine all parts with UNION ALL
+                full_view_sql = "CREATE VIEW unified_content AS\n" + "\nUNION ALL\n".join(view_parts)
+
+                # Drop and recreate the view
+                cursor.execute("DROP VIEW IF EXISTS unified_content")
+                cursor.execute(full_view_sql)
+
+                conn.commit()
+                logger.info(f"✅ Rebuilt unified_content view with {len(view_parts)} sources")
+
+        except Exception as e:
+            logger.error(f"Failed to rebuild unified_content view: {e}")
+            raise
+
     def add_gmail_content(self, content_data: Dict[str, Any]) -> bool:
         """Add Gmail content with optimized schema."""
         try:
@@ -2283,6 +2269,12 @@ class HybridContentRegistry:
                 if not success:
                     logger.error(f"Failed to apply schema changes to {table_name}")
                     return False
+
+                # Rebuild unified view to include new table or columns
+                try:
+                    self.rebuild_unified_content_view()
+                except Exception as view_error:
+                    logger.warning(f"Failed to rebuild unified view after schema sync: {view_error}")
 
             logger.info(f"Schema synchronized for {database_name} ({table_name})")
             return True

@@ -1793,7 +1793,6 @@ def chat_run(args):
     # Parse -vs queries with their per-query -tk/-th parameters from sys.argv
     vs_queries_structured = []
     if hasattr(args, 'vector_search') and args.vector_search:
-        import sys
         vs_queries_structured = parse_vs_queries_with_params(sys.argv)
 
         # Backward compatibility: extract simple query list

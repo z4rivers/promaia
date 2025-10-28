@@ -1095,7 +1095,9 @@ def load_database_pages_with_filters(
             cursor = conn.cursor()
             
             # Determine which date property to use from config, default to last_edited_time
-            date_filter_prop = database_config.date_filters.get("property", "last_edited_time")
+            # Defensive: ensure date_filters is not None (should always be {} if missing)
+            date_filters = database_config.date_filters if database_config.date_filters is not None else {}
+            date_filter_prop = date_filters.get("property", "last_edited_time")
             
             # Basic sanitization to prevent SQL injection from config values
             allowed_props = ["created_time", "last_edited_time", "synced_time"]
