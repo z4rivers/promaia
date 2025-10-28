@@ -1694,9 +1694,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             'comparison_filters': {},
                             'complex_filter': complex_filter
                         }
-                        
+
                         parsed_sources_init.append(discord_parsed_source)
-                        debug_print(f"Manually parsed Discord filter: {database}, days: {days}, filters: {property_filters}, complex: {complex_filter}")
+                        debug_print(f"🎮 Manually parsed Discord filter: {database}, days: {days}, filters: {property_filters}, complex: {complex_filter}")
+                        print_text(f"🎮 Discord filter created: {database}, property_filters={property_filters}, complex_filter={bool(complex_filter)}", style="dim cyan")
                         
             except Exception as e:
                 print_text(f"Warning: Error parsing Discord filters: {e}", style="bold yellow")
@@ -1737,6 +1738,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Don't use days constraint if complex filter already has date conditions
                     days_to_use = None if has_date_filter_in_complex else source_conf.get('days')
 
+                    # DEBUG: Log Discord source loading details
+                    if db_config.source_type == 'discord':
+                        debug_print(f"🎮 Loading Discord source: {db_name}")
+                        debug_print(f"  Days: {days_to_use}")
+                        debug_print(f"  Property filters: {source_conf.get('property_filters', {})}")
+                        debug_print(f"  Complex filter: {source_conf.get('complex_filter')}")
+
                     pages = load_database_pages_with_filters(
                         db_config,
                         days=days_to_use,
@@ -1746,7 +1754,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     )
                     # Use qualified name to avoid collisions between workspaces
                     unique_key = db_config.get_qualified_name()
-                    
+
+                    # DEBUG: Log Discord results
+                    if db_config.source_type == 'discord':
+                        debug_print(f"🎮 Discord load result: {len(pages)} pages from {unique_key}")
+
                     # Store pages (no need for deduplication since we now load database only once
                     # with OR filter for all channels)
                     if unique_key in new_multi_source_data:
