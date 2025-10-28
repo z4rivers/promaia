@@ -1224,8 +1224,9 @@ def apply_custom_property_filters(pages: List[Dict[str, Any]], complex_filter: O
             if isinstance(metadata, str):
                 metadata_dict = json.loads(metadata) if metadata else {}
             else:
-                metadata_dict = metadata
-            
+                # Defensive: metadata can be None from database
+                metadata_dict = metadata if metadata is not None else {}
+
             properties = metadata_dict.get('properties', {})
             
             # Check if page matches the complex filter
@@ -1264,8 +1265,9 @@ def apply_simple_property_filters(pages: List[Dict[str, Any]], property_filters:
             if isinstance(metadata, str):
                 metadata_dict = json.loads(metadata) if metadata else {}
             else:
-                metadata_dict = metadata
-            
+                # Defensive: metadata can be None from database
+                metadata_dict = metadata if metadata is not None else {}
+
             # Get Notion-style nested properties
             properties = metadata_dict.get('properties', {})
             
