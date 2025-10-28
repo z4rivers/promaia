@@ -35,5 +35,5 @@ Respond with ONLY valid JSON in this exact format:
     "is_spam": true/false,
     "addressed_to_user": true/false/"ambiguous",
     "requires_response": true/false,
-    "reasoning": "Brief explanation of your classification"
+    "reasoning": "Keyword summary only, no prepositions, max 100 chars (e.g. 'test report, addressed to Fionn, informational only')"
 }}
