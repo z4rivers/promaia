@@ -14,50 +14,73 @@ Artifacts are numbered pieces of generated content that appear inline in your ch
 
 ## How Artifacts Work
 
-### Automatic Detection
+### AI-Driven Detection
 
-Artifacts are created automatically when you ask to create something:
+Artifacts are created **dynamically by the AI** when it determines content should be separated from commentary. The AI has been trained to recognize when you're asking for deliverable content (emails, documents, code, etc.) versus explanations or discussions.
 
 ```bash
 maia chat
 > write a blog post about unified architectures
 
-# AI creates Artifact #1 with the blog post
+# AI recognizes this as a content creation request
+# and wraps the blog post in <artifact> tags
+
+Artifact #1
+─────────────────────────────────────────────────────────────────
+# Unified Architectures
+
+In modern software...
+─────────────────────────────────────────────────────────────────
 
 > make it shorter
 
 # AI updates Artifact #1 with a shorter version
 ```
 
-### Trigger Keywords
+### How the AI Decides
 
-Artifacts are triggered by phrases like:
-- **Actions**: write, create, draft, compose, generate
-- **Content types**: email, blog, article, document, post, letter, essay, story, code, function, class
-
-**Examples:**
-- "write an email to Sarah"
-- "create a blog post about AI"
-- "draft a proposal for the client"
-- "generate a Python function"
-
-### AI Artifact Tags
-
-The AI can also explicitly mark content as an artifact using tags:
+The AI uses `<artifact>` tags to mark content that should be treated as an artifact:
 
 ```
-Here's your blog post:
+I'll help you draft that email.
 
 <artifact>
-# Unified Architectures
+Subject: Meeting Follow-up
 
-In modern software...
+Hi Sarah,
+
+Thanks for taking the time to meet today...
+
+Best,
+Koii
 </artifact>
 
-I've made it concise and focused on the key points.
+This keeps the tone professional while being concise.
 ```
 
 Everything between `<artifact>` tags becomes an artifact, with commentary displayed separately.
+
+**The AI will use artifacts when:**
+- You request deliverable content (emails, documents, presentations, code)
+- The content is substantial and reusable
+- The content is ready to use as-is
+- The content would benefit from being separated from explanatory text
+
+**The AI will NOT use artifacts when:**
+- You're asking questions or requesting explanations
+- The response is conversational or advisory
+- The content is small/illustrative rather than deliverable
+- Your request is unclear (the AI will clarify first)
+
+### Manual Override
+
+You can explicitly request artifact mode by including "as an artifact" in your message:
+
+```bash
+> explain the fibonacci algorithm as an artifact
+
+# AI will wrap the explanation in artifact tags
+```
 
 ## Artifact Commands
 
@@ -288,22 +311,25 @@ def fibonacci(n):
 ## Artifacts vs. Regular Responses
 
 **Artifacts are created when:**
-- You ask to "write," "create," or "draft" something
-- You specify a content type (email, blog, document, code)
-- The AI uses `<artifact>` tags
+- The AI recognizes you're requesting deliverable content
+- The AI wraps content in `<artifact>` tags
+- You explicitly request "as an artifact"
 
 **Regular responses when:**
 - You ask questions
-- You request explanations
+- You request explanations or analysis
 - You have a conversation
-- Content is explanatory, not deliverable
+- The AI determines content is explanatory rather than deliverable
+
+The AI dynamically decides based on context - no hardcoded keyword matching.
 
 ## Tips
 
-1. **Be specific** - "write a professional email" triggers artifacts, "how do I write emails?" doesn't
+1. **Trust the AI** - The AI will automatically use artifacts when appropriate based on your request
 2. **Use update phrases** - "make it shorter" updates the artifact, "write another one" creates new
 3. **List artifacts** - Use `/artifacts` to see what you've created in the session
 4. **Copy freely** - Artifacts are designed to copy perfectly without cleanup
+5. **Manual override** - Add "as an artifact" to force artifact mode if needed
 
 ## Integration with Maia Mail
 

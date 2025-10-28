@@ -2809,7 +2809,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             parser.add_argument("--browse", "-b", action="append", nargs="*", dest="browse")
             # NOTE: This MUST match the other -sql/-vs parsers (top-level CLI and normal edit mode)
             parser.add_argument("--sql-query", "-sql", action="append", nargs="+", dest="sql_query")
-            parser.add_argument("--sql-query", "-nl", action="append", nargs="+", dest="sql_query", help=argparse.SUPPRESS)  # Deprecated alias
+            parser.add_argument("-nl", action="append", nargs="+", dest="sql_query", help=argparse.SUPPRESS)  # Deprecated alias
             parser.add_argument("--vector-search", "-vs", action="append", nargs="+", dest="vector_search")
             parser.add_argument("--top-k", "-tk", type=int, help="Maximum number of results from vector search")
             parser.add_argument("--threshold", "-th", type=float, help="Minimum similarity threshold for vector search")

@@ -23,46 +23,31 @@ class ArtifactManager:
     def should_create_artifact(self, user_input: str, ai_response: str) -> bool:
         """
         Determine if response should be rendered as artifact.
-        
-        Hybrid approach:
-        1. Check for explicit keywords in user input
-        2. Check for artifact tags in AI response
-        
+
+        AI-driven approach: Trust the AI's judgment via <artifact> tags.
+        The AI is instructed in the system prompt about when to use artifacts.
+
         Args:
             user_input: User's message
             ai_response: AI's response text
-            
+
         Returns:
             True if response should be an artifact
         """
-        # Explicit keywords in user input
-        keywords = ['write a', 'write an', 'create a', 'draft a', 'compose', 'generate']
-        content_types = ['email', 'blog', 'article', 'document', 'post', 'letter', 
-                        'essay', 'story', 'script', 'code', 'function', 'class',
-                        'summary', 'report', 'analysis', 'outline', 'plan', 'list',
-                        'guide', 'tutorial', 'proposal', 'spec', 'contract']
-        
-        user_lower = user_input.lower()
-
-        # Check for AI artifact tags FIRST (respect AI's decision)
+        # Check for AI artifact tags (primary method)
         # Use regex to handle both simple and attributed artifact tags
         artifact_pattern = r'<artifact(?:\s+[^>]*)?>(.+?)</artifact>'
         if re.search(artifact_pattern, ai_response, re.DOTALL):
-            logger.debug("Artifact triggered by AI tags")
+            logger.debug("Artifact detected: AI used <artifact> tags")
             return True
 
-        # Check for explicit "as an artifact" or "as artifact"
+        # Check for explicit user override: "as an artifact" or "as artifact"
+        user_lower = user_input.lower()
         if 'as an artifact' in user_lower or 'as artifact' in user_lower:
-            logger.debug("Artifact triggered by explicit 'as artifact' phrase")
+            logger.debug("Artifact detected: User explicitly requested 'as artifact'")
             return True
 
-        # Check for keyword + content type combinations (fallback)
-        for keyword in keywords:
-            for content_type in content_types:
-                if keyword in user_lower and content_type in user_lower:
-                    logger.debug(f"Artifact triggered by keywords: '{keyword}' + '{content_type}'")
-                    return True
-
+        # No artifact detected - trust the AI's judgment
         return False
     
     def should_update_artifact(self, user_input: str) -> bool:
@@ -101,7 +86,7 @@ class ArtifactManager:
             ai_response: AI's full response
 
         Returns:
-            Tuple of (artifact_content, remaining_response)
+            Tuple of (artifact_content, commentary)
         """
         # Use regex to match artifact tags with or without attributes
         # Pattern matches: <artifact [anything]> ... </artifact>
@@ -123,7 +108,12 @@ class ArtifactManager:
 
             return artifact, commentary
         else:
-            # No artifact tags found - entire response is the artifact
+            # No artifact tags found
+            # This should only happen if user explicitly requested "as artifact"
+            # but AI didn't use tags (which means AI likely didn't think it should be an artifact)
+            logger.warning("extract_artifact_content() called but no <artifact> tags found. "
+                         "User may have explicitly requested artifact mode. "
+                         "Treating entire response as artifact.")
             return ai_response, ""
     
     def create_artifact(self, content: str, artifact_type: str = "text") -> int:
