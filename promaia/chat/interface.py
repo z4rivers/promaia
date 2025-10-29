@@ -318,11 +318,12 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
+    print_text("  /temp - Adjust creativity (0.0=focused, 2.0=creative)", style="dim")
     print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
     print_text("")
 
@@ -341,7 +342,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /m", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m", style="dim")
     print_text("")
 
 
@@ -4442,7 +4443,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
     # Start Interactive Chat Loop
     messages = initial_messages.copy() if initial_messages else []
-    
+
+    # Temperature setting for creativity control (0.0 = focused, 2.0 = very creative)
+    current_temperature = 0.7  # Default temperature
+
     # Process initial messages for artifacts (e.g., draft mode with existing draft)
     if initial_messages and context_state.get('artifact_manager'):
         artifact_manager = context_state['artifact_manager']
@@ -4555,13 +4559,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if current_api == "anthropic" and anthropic_client:
                 if current_message_images:
                     formatted_messages = _format_anthropic_with_images(messages, current_message_images)
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages)
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages, temperature=current_temperature)
                 else:
                     clean_messages = []
                     for msg in messages:
                         clean_msg = {"role": msg["role"], "content": msg["content"]}
                         clean_messages.append(clean_msg)
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages)
+                    response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages, temperature=current_temperature)
 
                 if response and response.content:
                     response_text = response.content[0].text
@@ -4606,7 +4610,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     model="gpt-4o",
                     messages=formatted_messages,
                     max_tokens=4096,
-                    temperature=0.7
+                    temperature=current_temperature
                 )
                 if response.choices:
                     response_text = response.choices[0].message.content
@@ -4649,7 +4653,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         response = current_gemini_model.generate_content(
                             contents=gemini_messages,
                             generation_config={
-                                "temperature": 0.7,
+                                "temperature": current_temperature,
                             }
                         )
                     else:
@@ -4720,7 +4724,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             model=model_name,
                             messages=formatted_messages,
                             max_tokens=4096,
-                            temperature=0.7
+                            temperature=current_temperature
                         )
                         if response.choices:
                             response_text = response.choices[0].message.content
@@ -5228,6 +5232,27 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Show updated model info
                     print_text(f"Now using: {get_current_model_name()}", style="bold cyan")
                 continue
+            elif user_input.strip().lower().startswith('/temp'):
+                # Adjust temperature (creativity)
+                input_parts = user_input.strip().split(' ', 1)
+                if len(input_parts) > 1:
+                    try:
+                        new_temp = float(input_parts[1])
+                        if 0.0 <= new_temp <= 2.0:
+                            current_temperature = new_temp
+                            creativity_label = "very focused" if new_temp < 0.3 else "focused" if new_temp < 0.6 else "balanced" if new_temp < 1.0 else "creative" if new_temp < 1.5 else "very creative"
+                            print_text(f"🌡️  Temperature set to {current_temperature} ({creativity_label})", style="bold cyan")
+                        else:
+                            print_text("Temperature must be between 0.0 and 2.0", style="bold red")
+                    except ValueError:
+                        print_text("Invalid temperature value. Use: /temp 0.9", style="bold red")
+                else:
+                    print_text(f"Current temperature: {current_temperature}", style="cyan")
+                    print_text("Usage: /temp <0.0-2.0>", style="dim")
+                    print_text("  0.0-0.5: Very focused, deterministic", style="dim")
+                    print_text("  0.6-0.9: Balanced (default: 0.7)", style="dim")
+                    print_text("  1.0-2.0: Creative, diverse outputs", style="dim")
+                continue
             elif user_input.strip().lower().startswith('/save'):
                 # Save current conversation to history
                 if not messages:
@@ -5581,14 +5606,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if current_message_images:
                         # Handle images with Anthropic
                         formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages)
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages, temperature=current_temperature)
                     else:
                         # Regular text-only message - clean messages to remove extra fields
                         clean_messages = []
                         for msg in messages_for_api:
                             clean_msg = {"role": msg["role"], "content": msg["content"]}
                             clean_messages.append(clean_msg)
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages)
+                        response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages, temperature=current_temperature)
                     if response and response.content:
                         response_text = response.content[0].text
 
@@ -5638,7 +5663,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         model="gpt-4o",
                         messages=formatted_messages,
                         max_tokens=4096,
-                        temperature=0.7
+                        temperature=current_temperature
                     )
                     if response.choices:
                         response_text = response.choices[0].message.content
@@ -5684,7 +5709,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             response = current_gemini_model.generate_content(
                                 contents=gemini_messages,
                                 generation_config={
-                                    "temperature": 0.7,
+                                    "temperature": current_temperature,
                                 }
                             )
                         else:
@@ -5791,7 +5816,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 model=model_name,
                                 messages=formatted_messages,
                                 max_tokens=4096,
-                                temperature=0.7
+                                temperature=current_temperature
                             )
                             if response.choices:
                                 response_text = response.choices[0].message.content
