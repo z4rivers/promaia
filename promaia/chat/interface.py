@@ -447,25 +447,30 @@ def _parse_image_paths_and_message(input_text: str) -> tuple[list[str], str]:
 def _is_likely_image_path(text: str) -> bool:
     """
     Check if a string looks like an image file path.
-    
+
     Args:
         text: String to check
-        
+
     Returns:
         True if it looks like an image path
     """
     # Common image extensions
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.svg'}
-    
+
+    # Remove escaped spaces to check the actual path structure
+    # Escaped spaces (\ ) should be treated as part of the filename, not word boundaries
+    text_unescaped = text.replace('\\ ', '_SPACE_')
+
     # Check if it has an image extension
     path = Path(text.lower())
     if path.suffix in image_extensions:
         return True
-    
+
     # Check if it looks like a path (contains / or \ and doesn't look like a sentence)
     if ('/' in text or '\\' in text) and not text.endswith('.'):
         # Must be a single word/path, not a sentence
-        if len(text.split()) != 1:
+        # Use the unescaped version for word counting to handle escaped spaces properly
+        if len(text_unescaped.split()) != 1:
             return False
         
         # Additional validation to avoid false positives like "VAT/EORI"
@@ -5186,15 +5191,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # Encode all images
                     current_images = []
                     successful_paths = []
-                    
+
                     for image_path in image_paths:
                         try:
-                            encoded_image = encode_image_from_path(image_path)
+                            # Unescape spaces in path (shell-style escaped spaces: \ )
+                            actual_path = image_path.replace('\\ ', ' ')
+                            encoded_image = encode_image_from_path(actual_path)
                             current_images.append(encoded_image)
-                            successful_paths.append(image_path)
-                            print_text(f"📸 Image loaded: {image_path}", style="bold green")
+                            successful_paths.append(actual_path)
+                            print_text(f"📸 Image loaded: {actual_path}", style="bold green")
                         except Exception as img_error:
-                            print_text(f"❌ Failed to load image: {image_path} - {img_error}", style="bold red")
+                            actual_path = image_path.replace('\\ ', ' ')
+                            print_text(f"❌ Failed to load image: {actual_path} - {img_error}", style="bold red")
                     
                     if not current_images:
                         print_text("No images were successfully loaded.", style="bold red")
@@ -5505,13 +5513,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         for image_path in detected_paths:
                             try:
-                                if os.path.exists(image_path):
-                                    encoded_image = encode_image_from_path(image_path)
+                                # Unescape spaces in path (shell-style escaped spaces: \ )
+                                actual_path = image_path.replace('\\ ', ' ')
+
+                                if os.path.exists(actual_path):
+                                    encoded_image = encode_image_from_path(actual_path)
                                     successful_images.append(encoded_image)
+                                    print_text(f"📸 Image loaded: {actual_path}", style="bold green")
                                 else:
-                                    print_text(f"📸 Image path not found: {image_path}", style="dim yellow")
+                                    print_text(f"📸 Image path not found: {actual_path}", style="dim yellow")
                             except Exception as img_error:
-                                print_text(f"❌ Failed to load detected image: {image_path} - {img_error}", style="bold red")
+                                print_text(f"❌ Failed to load detected image: {actual_path if 'actual_path' in locals() else image_path} - {img_error}", style="bold red")
 
                         if successful_images:
                             current_images = successful_images
