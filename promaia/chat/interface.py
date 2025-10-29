@@ -4496,7 +4496,6 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Log the draft context for debugging
         if draft_id and mode:
             try:
-                import os
                 from datetime import datetime
                 from promaia.chat.modes import DraftMode
 
