@@ -940,10 +940,22 @@ class HybridContentRegistry:
         """Add content using the appropriate table based on content type."""
         database_name = content_data.get('database_name', '')
         workspace = content_data.get('workspace', '')
-        
+
+        # Check data_source to determine routing
+        # Discord and other non-Notion sources should use generic_content
+        # Check both top-level and nested metadata for data_source
+        data_source = content_data.get('data_source', '')
+        if not data_source and 'metadata' in content_data:
+            # For content coming from unified_storage, data_source is nested in metadata
+            metadata = content_data.get('metadata', {})
+            data_source = metadata.get('data_source', '')
+
         # Route to appropriate table based on content type
         if database_name == 'gmail' or 'gmail' in database_name:
             sql_success = self.add_gmail_content(content_data)
+        elif data_source == 'discord':
+            # Discord messages always go to generic_content for proper metadata support
+            sql_success = self.add_generic_content(content_data)
         elif database_name and workspace:
             # Route ALL Notion databases to workspace-specific tables
             # This ensures every database gets proper schema with property columns
@@ -952,11 +964,11 @@ class HybridContentRegistry:
         else:
             # Fallback to generic table only if missing database_name or workspace
             sql_success = self.add_generic_content(content_data)
-        
+
         # If SQL insertion succeeded, also embed to ChromaDB (if enabled)
         if sql_success:
             self._embed_to_vector_db(content_data)
-        
+
         return sql_success
     
     def _embed_to_vector_db(self, content_data: Dict[str, Any]) -> bool:
