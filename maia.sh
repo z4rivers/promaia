@@ -35,5 +35,9 @@ fi
 # Show brief ready status
 echo -e "\033[32m🐙 Maia ready\033[0m"
 
-# Start a new shell to keep the environment active
-exec $SHELL 
+# If arguments were passed, run the CLI command; otherwise start a new shell
+if [ $# -gt 0 ]; then
+    python -m promaia "$@"
+else
+    exec $SHELL
+fi 
