@@ -462,6 +462,19 @@ def _is_likely_image_path(text: str) -> bool:
     # Escaped spaces (\ ) should be treated as part of the filename, not word boundaries
     text_unescaped = text.replace('\\ ', '_SPACE_')
 
+    # Early exit: Exclude URLs from image path detection
+    # URLs should not be treated as local file paths
+    if text.startswith(('http://', 'https://', 'ftp://', 'ftps://', 'www.')):
+        return False
+
+    # Exclude any string with protocol indicators (e.g., custom protocols)
+    if '://' in text:
+        return False
+
+    # Exclude email addresses
+    if '@' in text and '/' not in text.split('@')[0]:
+        return False
+
     # Check if it has an image extension
     path = Path(text.lower())
     if path.suffix in image_extensions:
@@ -927,7 +940,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if workspace:
             query_parts.extend(["-ws", workspace])
         if sql_query_prompt:
-            query_parts.extend(["-nl", sql_query_prompt])
+            query_parts.extend(["-sql", sql_query_prompt])
         if mcp_servers:
             for server in mcp_servers:
                 query_parts.extend(["-mcp", server])
@@ -1146,9 +1159,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     query_parts.extend(["-vs", vs_query])
         elif context_state['sql_query_prompt']:
             nl_prompt = context_state['sql_query_prompt']
-            # Don't add quotes - the -nl argument parser handles multiple words with nargs="*"
+            # Don't add quotes - the -sql argument parser handles multiple words with nargs="*"
             # Adding quotes is redundant and makes commands harder to read and copy
-            query_parts.extend(["-nl", nl_prompt])
+            query_parts.extend(["-sql", nl_prompt])
         if context_state['mcp_servers']:
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
@@ -1198,7 +1211,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         # Old format: just a string
                         query_parts.extend(["-vs", vs_query])
             elif sql_query_prompt:
-                query_parts.extend(["-nl", sql_query_prompt])
+                query_parts.extend(["-sql", sql_query_prompt])
             if mcp_servers:
                 for server in mcp_servers:
                     query_parts.extend(["-mcp", server])
@@ -1465,11 +1478,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         if user_provided_workspace_only and not current_sources and not mode:
             debug_print(f"Opening workspace browser for '{actual_workspace}'.")
             print_text(f"🔍 Launching unified browser for '{actual_workspace}'...", style="bold cyan")
-            
+
             # Launch the workspace browser
-            from promaia.cli.workspace_browser import launch_workspace_browser
-            selected_sources = launch_workspace_browser(actual_workspace)
-            
+            # Use launch_unified_browser to support pre-selecting sources from history
+            from promaia.cli.workspace_browser import launch_unified_browser
+
+            # Check if we have saved browse_selections from history
+            saved_selections = context_state.get('browse_selections')
+            if saved_selections:
+                debug_print(f"Restoring {len(saved_selections)} browse selections from history: {saved_selections}")
+
+            selected_sources = launch_unified_browser(
+                workspace=actual_workspace,
+                current_sources=saved_selections if saved_selections else None
+            )
+
             if selected_sources:
                 # Process browser selections to handle Discord channels correctly
                 processed_sources, processed_filters = process_browser_selections(selected_sources)
@@ -2056,8 +2079,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # This is vector search mode - use -vs flag
                     current_args.extend(['-vs', context_state['sql_query_prompt']])
                 else:
-                    # This is regular natural language mode - use -nl flag
-                    current_args.extend(['-nl', context_state['sql_query_prompt']])
+                    # This is regular natural language mode - use -sql flag
+                    current_args.extend(['-sql', context_state['sql_query_prompt']])
             else:
                 # Regular mode with sources and filters
                 if context_state['sources']:
@@ -2552,6 +2575,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         else:
                             print_text(f"🤖 Processing vector search query: '{vs_queries_structured[0]['query']}'", style="dim")
 
+                    # Show clarity message if both VS and browse modes are active
+                    has_browse_in_command = '-b' in user_input or '--browse' in user_input
+                    if has_browse_in_command:
+                        print_text("💡 Using both vector search and browse mode - results will be combined", style="dim cyan")
+
                     # Process queries
                     try:
                         from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
@@ -2628,18 +2656,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results", style="green")
                         vs_content = combined_vs_content
 
-                        # Update caches
+                        # Update caches - use separate VS fields to avoid confusion with NL fields
                         context_state['vector_search_per_query_cache'] = per_query_cache
-                        context_state['sql_query_content'] = vs_content
-                        context_state['cached_sql_query_prompt'] = combined_vs_prompt
+                        context_state['vector_search_content'] = vs_content
+                        context_state['cached_vector_search_prompt'] = combined_vs_prompt
 
                     except Exception as e:
                         print_text(f"Error processing vector search query: {e}", style="bold red")
                         import traceback
                         traceback.print_exc()
                         return False
-                    
-                    # Update context state for vector search mode (reuse natural_language fields)
+
+                    # Update context state for vector search mode (use separate VS prompt field)
                     context_state['sql_query_prompt'] = combined_vs_prompt
                     
                     # Update other fields from parsed args
@@ -2916,7 +2944,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             nl_was_removed = False
             nl_sources_to_remove = set()  # Initialize for use throughout function
             if not sql_query_parts and (context_state.get('sql_query_content') or context_state.get('sql_query_prompt')):
-                print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
+                # Only show NL removal message if we're actually removing NL content (not VS content)
+                # Check is_vector_search flag to distinguish between NL and VS modes
+                if not context_state.get('is_vector_search'):
+                    print_text("🔄 Natural language prompt removed - switching to regular browse mode", style="dim")
                 nl_was_removed = True
                 # Capture NL sources before any state changes
                 nl_sources_to_remove = set(context_state.get('sql_query_content', {}).keys() if context_state.get('sql_query_content') else [])
@@ -3139,6 +3170,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_text(f"🔄 Reusing cached vector search results (query unchanged)", style="cyan")
                         else:
                             print_text(f"🤖 Processing vector search query: '{vector_search_parts[0]}'", style="cyan")
+
+                    # Show clarity message if both VS and browse modes are active
+                    if browse_databases:
+                        print_text("💡 Using both vector search and browse mode - results will be combined", style="dim cyan")
 
                     try:
                         from promaia.ai.nl_processor_wrapper import process_vector_search_to_content
@@ -5199,10 +5234,23 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         try:
                             # Unescape spaces in path (shell-style escaped spaces: \ )
                             actual_path = image_path.replace('\\ ', ' ')
-                            encoded_image = encode_image_from_path(actual_path)
+
+                            # Use File API for Gemini if needed, otherwise base64
+                            if current_api == 'gemini':
+                                from promaia.utils.image_processing import process_image_for_gemini
+                                encoded_image = process_image_for_gemini(actual_path)
+                                # Show file size info for File API uploads
+                                if encoded_image.get('method') == 'file_api':
+                                    file_size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                                    print_text(f"📸 Image uploaded via File API: {actual_path} ({file_size_mb:.1f} MB)", style="bold green")
+                                else:
+                                    print_text(f"📸 Image loaded: {actual_path}", style="bold green")
+                            else:
+                                encoded_image = encode_image_from_path(actual_path)
+                                print_text(f"📸 Image loaded: {actual_path}", style="bold green")
+
                             current_images.append(encoded_image)
                             successful_paths.append(actual_path)
-                            print_text(f"📸 Image loaded: {actual_path}", style="bold green")
                         except Exception as img_error:
                             actual_path = image_path.replace('\\ ', ' ')
                             print_text(f"❌ Failed to load image: {actual_path} - {img_error}", style="bold red")
@@ -5504,13 +5552,41 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Reset current_images for each new message (fix bug where images from previous message persist)
             current_images = []
 
-            # Auto-detect image paths in regular messages (but skip if input starts with /)
-            # Commands starting with / should not be treated as image paths
-            if user_input.strip().startswith('/'):
-                cleaned_message = user_input.strip()
+            # Auto-detect image paths in regular messages
+            # Only skip detection for actual commands, not absolute file paths
+            # Commands are short words like /quit, /model, etc.
+            # File paths have more path separators like /var/folders/...
+            input_stripped = user_input.strip()
+
+            # Check if it's a command: starts with / and next part is a known command word
+            # File paths like /var/folders/... have more slashes, commands like /model don't
+            is_command = False
+            if input_stripped.startswith('/'):
+                # Quick check: if there's another / in the first 20 chars, it's definitely a path
+                first_chars = input_stripped[:20]
+                if first_chars.count('/') > 1:
+                    # Has multiple slashes like /var/folders/..., definitely a file path
+                    is_command = False
+                else:
+                    # Extract the first word after / (respecting escaped spaces)
+                    words = _split_respecting_escaped_spaces(input_stripped)
+                    if words:
+                        # Get the command part (everything after the first /)
+                        command_with_slash = words[0]
+                        command_part = command_with_slash[1:] if command_with_slash.startswith('/') else command_with_slash
+
+                        # Known command prefixes
+                        known_commands = {'quit', 'debug', 'push', 's', 'e', 'help', 'm', 'artifact',
+                                        'edit', 'image', 'model', 'temp', 'save', 'mcp'}
+                        # Check if it matches any known command
+                        if command_part.lower() in known_commands:
+                            is_command = True
+
+            if is_command:
+                cleaned_message = input_stripped
                 detected_paths = []
             else:
-                cleaned_message, detected_paths = _detect_image_paths_in_message(user_input.strip())
+                cleaned_message, detected_paths = _detect_image_paths_in_message(input_stripped)
 
             if detected_paths:
                 try:
@@ -5541,9 +5617,13 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 actual_path = image_path.replace('\\ ', ' ')
 
                                 if os.path.exists(actual_path):
-                                    encoded_image = encode_image_from_path(actual_path)
+                                    # Use File API for Gemini if needed, otherwise base64
+                                    if current_api == 'gemini':
+                                        from promaia.utils.image_processing import process_image_for_gemini
+                                        encoded_image = process_image_for_gemini(actual_path)
+                                    else:
+                                        encoded_image = encode_image_from_path(actual_path)
                                     successful_images.append(encoded_image)
-                                    print_text(f"📸 Image loaded: {actual_path}", style="bold green")
                                 else:
                                     print_text(f"📸 Image path not found: {actual_path}", style="dim yellow")
                             except Exception as img_error:
@@ -5552,6 +5632,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         if successful_images:
                             current_images = successful_images
                             user_input = cleaned_message  # Use cleaned message without image paths
+                            # Show single confirmation line
+                            img_word = "image" if len(successful_images) == 1 else "images"
+                            print_text(f"📸 {len(successful_images)} {img_word} loaded", style="bold green")
 
                 except Exception as e:
                     print_text(f"Error processing detected images: {e}", style="bold red")
@@ -6168,61 +6251,73 @@ def _format_openai_with_images(system_prompt, messages_for_api, current_message_
     return formatted_messages
 
 def _format_gemini_with_images(system_prompt, messages_for_api, current_message_images):
-    """Format Gemini content with image support."""
+    """Format Gemini content with image support (base64 and File API)."""
     from promaia.utils.image_processing import format_image_for_gemini
     import google.generativeai as genai
-    
+
     # Gemini uses a different approach - we need to create a model with system instruction
     # and then format the conversation with images
-    
+
     current_gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-pro",
         system_instruction=system_prompt
     )
-    
+
     # Build conversation history
     gemini_messages = []
     total_images = 0
-    
+    file_api_count = 0
+
     # Add previous messages (including their images)
     for msg in messages_for_api[:-1]:  # Exclude current message
         role = 'user' if msg['role'] == 'user' else 'model'
-        
+
         if msg.get("images"):
             # Message has images - include text and images
             msg_parts = []
-            
+
             # Add text if present
             if msg.get("content"):
                 msg_parts.append(msg["content"])
-            
+
             # Add all images from this message
             for img in msg["images"]:
-                msg_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
+                # Handle both base64 and File API formats
+                if img.get("method") == "file_api" and img.get("file_uri"):
+                    msg_parts.append(format_image_for_gemini(file_uri=img["file_uri"]))
+                    file_api_count += 1
+                else:
+                    msg_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
                 total_images += 1
-            
+
             gemini_messages.append({'role': role, 'parts': msg_parts})
         else:
             # Text-only message
             gemini_messages.append({'role': role, 'parts': [msg['content']]})
-    
+
     # Add current user message with images
     current_parts = []
-    
+
     # Add text if present
     if messages_for_api:
         last_msg = messages_for_api[-1]
         if last_msg.get("content"):
             current_parts.append(last_msg["content"])
-    
+
     # Add current message images
     for img in current_message_images:
-        current_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
+        # Handle both base64 and File API formats
+        if img.get("method") == "file_api" and img.get("file_uri"):
+            current_parts.append(format_image_for_gemini(file_uri=img["file_uri"]))
+            file_api_count += 1
+        else:
+            current_parts.append(format_image_for_gemini(img["data"], img["media_type"]))
         total_images += 1
-    
+
     gemini_messages.append({'role': 'user', 'parts': current_parts})
-    
-    debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {total_images} total images ({len(current_message_images)} current)")
+
+    method_info = f" ({file_api_count} via File API)" if file_api_count > 0 else " (all base64)"
+    debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {total_images} total images{method_info} ({len(current_message_images)} current)")
     return current_gemini_model, gemini_messages
 
 def _format_llama_with_images(system_prompt, messages_for_api, current_message_images):
