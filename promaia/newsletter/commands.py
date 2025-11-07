@@ -245,31 +245,41 @@ async def update_page_newsletter_status(page_id: str, status: str):
 async def update_page_last_synced(page_id: str):
     """
     Update the Newsletter Last Synced property of a Notion page with the current datetime.
-    
+    If the property doesn't exist, this function will silently skip the update.
+
     Args:
         page_id: The ID of the Notion page
     """
-    # Get the Notion client
-    notion_client = ensure_default_client()
-    
-    # Use current time for sync timestamp
-    now = datetime.now(timezone.utc).isoformat()
-    
-    # Update as rich_text property
-    await notion_client.pages.update(
-        page_id=page_id,
-        properties={
-            "Newsletter Last Synced": {
-                "rich_text": [
-                    {
-                        "text": {
-                            "content": now
+    try:
+        # Get the Notion client
+        notion_client = ensure_default_client()
+
+        # Use current time for sync timestamp
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Update as rich_text property
+        await notion_client.pages.update(
+            page_id=page_id,
+            properties={
+                "Newsletter Last Synced": {
+                    "rich_text": [
+                        {
+                            "text": {
+                                "content": now
+                            }
                         }
-                    }
-                ]
+                    ]
+                }
             }
-        }
         )
+    except Exception as e:
+        # If the property doesn't exist, just skip the update
+        # This is optional metadata and shouldn't block the newsletter send
+        if "not a property that exists" in str(e):
+            pass  # Silently skip if property doesn't exist
+        else:
+            # Log other errors but don't fail
+            print_text(f"   ⚠️ Could not update last synced time: {str(e)}", style="yellow")
 
 def get_cover_image_url(page: Dict[str, Any]) -> Optional[str]:
     """

@@ -6,6 +6,9 @@ import re
 import os
 from typing import Optional, Dict, Any, List
 
+# Resend unsubscribe URL placeholder (will be replaced by Resend when sending)
+RESEND_UNSUBSCRIBE_PLACEHOLDER = "{{{RESEND_UNSUBSCRIBE_URL}}}"
+
 def escape_html(text: Optional[str]) -> str:
     """
     Escape HTML special characters.
@@ -180,8 +183,8 @@ def create_simple_newsletter_html(
     header_image_html = ""
     if header_image_url:
         header_image_html = f'''
-        <div style="margin: 0 0 20px 0;">
-            <img src="{header_image_url}" alt="Header Image" style="width: 100%; max-width: 600px; height: 400px; object-fit: cover; display: block; border-radius: 8px;" />
+        <div style="position: relative; width: 100%; padding-bottom: 66.67%; margin: 0 0 20px 0; overflow: hidden; border-radius: 8px;">
+            <img src="{header_image_url}" alt="Header Image" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block;" />
         </div>
         '''
     
@@ -223,6 +226,10 @@ def create_simple_newsletter_html(
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 14px; color: #888;">
             <p style="margin: 0;">Forwarded this email? <a href="https://www.koiibenvenutto.com/" style="color: #007acc; text-decoration: none;">Subscribe here</a></p>
+        </div>
+
+        <div style="margin-top: 20px; font-size: 12px; color: #888;">
+            <a href="{RESEND_UNSUBSCRIBE_PLACEHOLDER}" style="color: #888; text-decoration: underline;">Unsubscribe</a>
         </div>
     </div>
 </body>
