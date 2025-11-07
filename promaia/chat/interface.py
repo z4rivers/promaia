@@ -151,6 +151,43 @@ def has_artifact_tags(text: str) -> bool:
     artifact_pattern = r'<artifact(?:\s+[^>]*)?>(.+?)</artifact>'
     return bool(re.search(artifact_pattern, text, re.DOTALL))
 
+def has_email_draft_tags(text: str) -> bool:
+    """
+    Check if text contains email_draft tags.
+
+    Args:
+        text: Text to check
+
+    Returns:
+        True if email_draft tags are present
+    """
+    email_draft_pattern = r'<email_draft>(.+?)</email_draft>'
+    return bool(re.search(email_draft_pattern, text, re.DOTALL))
+
+def extract_email_draft_data(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract email draft data from response text.
+
+    Args:
+        text: Text containing <email_draft>...</email_draft> tags
+
+    Returns:
+        Dictionary with email draft data, or None if parsing fails
+    """
+    email_draft_pattern = r'<email_draft>(.+?)</email_draft>'
+    match = re.search(email_draft_pattern, text, re.DOTALL)
+
+    if not match:
+        return None
+
+    try:
+        draft_json = match.group(1).strip()
+        draft_data = json.loads(draft_json)
+        return draft_data
+    except json.JSONDecodeError as e:
+        debug_print(f"Failed to parse email draft JSON: {e}")
+        return None
+
 # Local Llama client initialization (after debug_print is defined)
 def initialize_llama_client():
     """Initialize local Llama client if available."""
@@ -4614,6 +4651,22 @@ You have access to email sending functionality. When the user mentions sending e
    - You: "Great! Should I include a message with the attachment, or just send the file?"
    - [Continue until all info gathered, then create the draft]
 
+6. **Creating the Draft**:
+   Once you have all required information (recipient, subject, message), output:
+   ```
+   <email_draft>
+   {
+     "recipient": "email@example.com",
+     "subject": "Email subject",
+     "message_body": "Email message content",
+     "thread_id": "optional_thread_id",
+     "message_id": "optional_message_id",
+     "attachments": ["file1.pdf", "file2.doc"]
+   }
+   </email_draft>
+   ```
+   The system will automatically create the draft and launch the email interface.
+
 Be helpful and conversational while gathering the necessary information.
 """
                 current_system_prompt = system_prompt + email_instructions
@@ -5763,6 +5816,22 @@ You have access to email sending functionality. When the user mentions sending e
    - You: "Great! Should I include a message with the attachment, or just send the file?"
    - [Continue until all info gathered, then create the draft]
 
+6. **Creating the Draft**:
+   Once you have all required information (recipient, subject, message), output:
+   ```
+   <email_draft>
+   {
+     "recipient": "email@example.com",
+     "subject": "Email subject",
+     "message_body": "Email message content",
+     "thread_id": "optional_thread_id",
+     "message_id": "optional_message_id",
+     "attachments": ["file1.pdf", "file2.doc"]
+   }
+   </email_draft>
+   ```
+   The system will automatically create the draft and launch the email interface.
+
 Be helpful and conversational while gathering the necessary information.
 """
                     current_system_prompt = system_prompt + email_instructions
@@ -6089,6 +6158,55 @@ Be helpful and conversational while gathering the necessary information.
                             # Normal response (no artifact)
                             print_markdown(response_text)
 
+                        # Check for email draft creation if email send is enabled
+                        if context_state.get('enable_email_send', False) and has_email_draft_tags(response_text):
+                            print_text("\n📧 Creating email draft...", style="bold cyan")
+                            draft_data = extract_email_draft_data(response_text)
+
+                            if draft_data:
+                                try:
+                                    from promaia.mail.email_send_helpers import EmailSendHelper
+
+                                    helper = EmailSendHelper(workspace=context_state.get('workspace', 'default'))
+
+                                    # Create the draft
+                                    draft_id = helper.create_draft_from_info(
+                                        recipient=draft_data.get('recipient', ''),
+                                        subject=draft_data.get('subject', ''),
+                                        message_body=draft_data.get('message_body', ''),
+                                        thread_id=draft_data.get('thread_id'),
+                                        message_id=draft_data.get('message_id'),
+                                        attachments=draft_data.get('attachments', []),
+                                        context_info={'created_from_chat': True}
+                                    )
+
+                                    print_text(f"✅ Draft created successfully! (ID: {draft_id})", style="bold green")
+                                    print_text("📝 Opening draft in email interface...", style="cyan")
+
+                                    # Save current conversation before switching modes
+                                    if messages:
+                                        try:
+                                            from promaia.storage.chat_history import ChatHistoryManager
+                                            history_manager = ChatHistoryManager()
+                                            history_manager.save_thread(
+                                                messages=messages,
+                                                context=context_state,
+                                                thread_name=f"Email to {draft_data.get('recipient', 'recipient')}"
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Failed to save chat before launching draft: {e}")
+
+                                    # Launch draft chat interface
+                                    from promaia.mail.email_send_helpers import launch_draft_chat_for_email
+                                    launch_draft_chat_for_email(draft_id, context_state.get('workspace', 'default'))
+
+                                    # Exit current chat session after launching draft chat
+                                    return
+
+                                except Exception as e:
+                                    print_text(f"❌ Failed to create email draft: {e}", style="bold red")
+                                    logger.error(f"Email draft creation failed: {e}", exc_info=True)
+
                         # Save message with artifact tags if it was an artifact
                         # This ensures artifacts can be reconstructed on reload
                         if is_artifact and not has_artifact_tags(response_text):
@@ -6157,6 +6275,55 @@ Be helpful and conversational while gathering the necessary information.
                         else:
                             # Normal response (no artifact)
                             print_markdown(response_content)
+
+                        # Check for email draft creation if email send is enabled
+                        if context_state.get('enable_email_send', False) and has_email_draft_tags(response_content):
+                            print_text("\n📧 Creating email draft...", style="bold cyan")
+                            draft_data = extract_email_draft_data(response_content)
+
+                            if draft_data:
+                                try:
+                                    from promaia.mail.email_send_helpers import EmailSendHelper
+
+                                    helper = EmailSendHelper(workspace=context_state.get('workspace', 'default'))
+
+                                    # Create the draft
+                                    draft_id_email = helper.create_draft_from_info(
+                                        recipient=draft_data.get('recipient', ''),
+                                        subject=draft_data.get('subject', ''),
+                                        message_body=draft_data.get('message_body', ''),
+                                        thread_id=draft_data.get('thread_id'),
+                                        message_id=draft_data.get('message_id'),
+                                        attachments=draft_data.get('attachments', []),
+                                        context_info={'created_from_chat': True}
+                                    )
+
+                                    print_text(f"✅ Draft created successfully! (ID: {draft_id_email})", style="bold green")
+                                    print_text("📝 Opening draft in email interface...", style="cyan")
+
+                                    # Save current conversation before switching modes
+                                    if messages:
+                                        try:
+                                            from promaia.storage.chat_history import ChatHistoryManager
+                                            history_manager = ChatHistoryManager()
+                                            history_manager.save_thread(
+                                                messages=messages,
+                                                context=context_state,
+                                                thread_name=f"Email to {draft_data.get('recipient', 'recipient')}"
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Failed to save chat before launching draft: {e}")
+
+                                    # Launch draft chat interface
+                                    from promaia.mail.email_send_helpers import launch_draft_chat_for_email
+                                    launch_draft_chat_for_email(draft_id_email, context_state.get('workspace', 'default'))
+
+                                    # Exit current chat session after launching draft chat
+                                    return
+
+                                except Exception as e:
+                                    print_text(f"❌ Failed to create email draft: {e}", style="bold red")
+                                    logger.error(f"Email draft creation failed: {e}", exc_info=True)
 
                         # Save message with artifact tags if it was an artifact
                         # This ensures artifacts can be reconstructed on reload
