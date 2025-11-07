@@ -6167,7 +6167,9 @@ Be helpful and conversational while gathering the necessary information.
                                 try:
                                     from promaia.mail.email_send_helpers import EmailSendHelper
 
-                                    helper = EmailSendHelper(workspace=context_state.get('workspace', 'default'))
+                                    # Get workspace, defaulting to 'default' if None
+                                    workspace = context_state.get('workspace') or 'default'
+                                    helper = EmailSendHelper(workspace=workspace)
 
                                     # Create the draft
                                     draft_id = helper.create_draft_from_info(
@@ -6198,7 +6200,7 @@ Be helpful and conversational while gathering the necessary information.
 
                                     # Launch draft chat interface
                                     from promaia.mail.email_send_helpers import launch_draft_chat_for_email
-                                    launch_draft_chat_for_email(draft_id, context_state.get('workspace', 'default'))
+                                    launch_draft_chat_for_email(draft_id, workspace)
 
                                     # Exit current chat session after launching draft chat
                                     return
@@ -6285,7 +6287,9 @@ Be helpful and conversational while gathering the necessary information.
                                 try:
                                     from promaia.mail.email_send_helpers import EmailSendHelper
 
-                                    helper = EmailSendHelper(workspace=context_state.get('workspace', 'default'))
+                                    # Get workspace, defaulting to 'default' if None
+                                    workspace = context_state.get('workspace') or 'default'
+                                    helper = EmailSendHelper(workspace=workspace)
 
                                     # Create the draft
                                     draft_id_email = helper.create_draft_from_info(
@@ -6316,7 +6320,7 @@ Be helpful and conversational while gathering the necessary information.
 
                                     # Launch draft chat interface
                                     from promaia.mail.email_send_helpers import launch_draft_chat_for_email
-                                    launch_draft_chat_for_email(draft_id_email, context_state.get('workspace', 'default'))
+                                    launch_draft_chat_for_email(draft_id_email, workspace)
 
                                     # Exit current chat session after launching draft chat
                                     return
