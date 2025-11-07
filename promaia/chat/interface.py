@@ -4639,42 +4639,64 @@ You have access to email sending functionality. When the user mentions sending e
    - The user's contact information and email threads
    - Any files the user has attached or mentioned
 
-4. **Workflow**: Once you have all necessary information:
-   - Confirm the details with the user
-   - Let the user know you're creating a draft
-   - The system will handle the actual sending process
+4. **Workflow - MUST FOLLOW STRICTLY**:
+   a) Gather information through conversation
+   b) If ANY information is missing or unclear, ASK - don't guess or infer
+   c) Once you have confirmed ALL details, EXPLICITLY list them back to user
+   d) Wait for user confirmation (e.g., "yes", "looks good", "send it")
+   e) ONLY THEN output the draft JSON
 
-5. **Example Interaction**:
-   - User: "send this report.pdf to fionn"
-   - You: "I'll help you send report.pdf to Fionn. Which email thread should this be part of? Or would you like to start a new conversation?"
-   - User: "the thread about Q4 planning"
-   - You: "Great! Should I include a message with the attachment, or just send the file?"
-   - [Continue until all info gathered, then create the draft]
+5. **Required Information Checklist**:
+   - ✓ Recipient email address (must be valid email format)
+   - ✓ Subject line (if missing, ask what it should be)
+   - ✓ Message body (if user wants one)
+   - ✓ Attachment path (if user provided a file, use EXACT path they gave)
 
-6. **Creating the Draft**:
-   Once you have all required information (recipient, subject, message), output:
+6. **Example Interaction**:
+   User: "send this /path/to/report.pdf to fionn"
+   You: "I'll help send /path/to/report.pdf. I need a few details:
+   - What's Fionn's email address?
+   - What should the subject line be?
+   - Should I include a message or just the file?"
+
+   User: "fionn@example.com, subject 'Q4 Report', no message needed"
+   You: "Perfect! Let me confirm:
+   - To: fionn@example.com
+   - Subject: Q4 Report
+   - Attachment: /path/to/report.pdf
+   - No message body
+   Should I create this draft?"
+
+   User: "yes"
+   You: [NOW output the <email_draft> JSON]
+
+7. **Creating the Draft - CRITICAL RULES**:
+
+   **DO NOT output <email_draft> until user explicitly confirms!**
+
+   When ready, output:
    ```
    <email_draft>
    {
      "recipient": "email@example.com",
      "subject": "Email subject",
      "message_body": "Email message content",
-     "thread_id": "optional_thread_id",
-     "message_id": "optional_message_id",
-     "attachments": ["/full/path/to/file.pdf"]
+     "thread_id": null,
+     "message_id": null,
+     "attachments": ["/exact/path/from/user/message.pdf"]
    }
    </email_draft>
    ```
 
-   **IMPORTANT for attachments:**
-   - Use the EXACT file path from the user's message (e.g., "/Users/kb/Downloads/file.pdf")
-   - Do NOT use placeholders like "_latest_attachment_" or "file.pdf"
-   - If user provided an image path, use that full path in the attachments array
-   - If no attachment, use empty array: "attachments": []
+   **CRITICAL for attachments:**
+   - Look at the user's ORIGINAL message for the file path
+   - Copy it EXACTLY character-for-character
+   - Example: If user said "/Users/kb20250422/Downloads/IMG_7268.JPG", use EXACTLY that
+   - Do NOT change the path, username, filename, or extension
+   - Do NOT make up paths like "/Users/kb/Pictures/file.png"
+   - If you cannot find the exact path in the conversation, use empty array: "attachments": []
 
-   The system will automatically create the draft and launch the email interface.
-
-Be helpful and conversational while gathering the necessary information.
+Be helpful and conversational, but DO NOT guess or infer - always ask when information is missing.
 """
                 current_system_prompt = system_prompt + email_instructions
 
@@ -5811,42 +5833,64 @@ You have access to email sending functionality. When the user mentions sending e
    - The user's contact information and email threads
    - Any files the user has attached or mentioned
 
-4. **Workflow**: Once you have all necessary information:
-   - Confirm the details with the user
-   - Let the user know you're creating a draft
-   - The system will handle the actual sending process
+4. **Workflow - MUST FOLLOW STRICTLY**:
+   a) Gather information through conversation
+   b) If ANY information is missing or unclear, ASK - don't guess or infer
+   c) Once you have confirmed ALL details, EXPLICITLY list them back to user
+   d) Wait for user confirmation (e.g., "yes", "looks good", "send it")
+   e) ONLY THEN output the draft JSON
 
-5. **Example Interaction**:
-   - User: "send this report.pdf to fionn"
-   - You: "I'll help you send report.pdf to Fionn. Which email thread should this be part of? Or would you like to start a new conversation?"
-   - User: "the thread about Q4 planning"
-   - You: "Great! Should I include a message with the attachment, or just send the file?"
-   - [Continue until all info gathered, then create the draft]
+5. **Required Information Checklist**:
+   - ✓ Recipient email address (must be valid email format)
+   - ✓ Subject line (if missing, ask what it should be)
+   - ✓ Message body (if user wants one)
+   - ✓ Attachment path (if user provided a file, use EXACT path they gave)
 
-6. **Creating the Draft**:
-   Once you have all required information (recipient, subject, message), output:
+6. **Example Interaction**:
+   User: "send this /path/to/report.pdf to fionn"
+   You: "I'll help send /path/to/report.pdf. I need a few details:
+   - What's Fionn's email address?
+   - What should the subject line be?
+   - Should I include a message or just the file?"
+
+   User: "fionn@example.com, subject 'Q4 Report', no message needed"
+   You: "Perfect! Let me confirm:
+   - To: fionn@example.com
+   - Subject: Q4 Report
+   - Attachment: /path/to/report.pdf
+   - No message body
+   Should I create this draft?"
+
+   User: "yes"
+   You: [NOW output the <email_draft> JSON]
+
+7. **Creating the Draft - CRITICAL RULES**:
+
+   **DO NOT output <email_draft> until user explicitly confirms!**
+
+   When ready, output:
    ```
    <email_draft>
    {
      "recipient": "email@example.com",
      "subject": "Email subject",
      "message_body": "Email message content",
-     "thread_id": "optional_thread_id",
-     "message_id": "optional_message_id",
-     "attachments": ["/full/path/to/file.pdf"]
+     "thread_id": null,
+     "message_id": null,
+     "attachments": ["/exact/path/from/user/message.pdf"]
    }
    </email_draft>
    ```
 
-   **IMPORTANT for attachments:**
-   - Use the EXACT file path from the user's message (e.g., "/Users/kb/Downloads/file.pdf")
-   - Do NOT use placeholders like "_latest_attachment_" or "file.pdf"
-   - If user provided an image path, use that full path in the attachments array
-   - If no attachment, use empty array: "attachments": []
+   **CRITICAL for attachments:**
+   - Look at the user's ORIGINAL message for the file path
+   - Copy it EXACTLY character-for-character
+   - Example: If user said "/Users/kb20250422/Downloads/IMG_7268.JPG", use EXACTLY that
+   - Do NOT change the path, username, filename, or extension
+   - Do NOT make up paths like "/Users/kb/Pictures/file.png"
+   - If you cannot find the exact path in the conversation, use empty array: "attachments": []
 
-   The system will automatically create the draft and launch the email interface.
-
-Be helpful and conversational while gathering the necessary information.
+Be helpful and conversational, but DO NOT guess or infer - always ask when information is missing.
 """
                     current_system_prompt = system_prompt + email_instructions
 
@@ -6178,6 +6222,33 @@ Be helpful and conversational while gathering the necessary information.
                             draft_data = extract_email_draft_data(response_text)
 
                             if draft_data:
+                                # Validate attachment paths against actual files in conversation
+                                draft_attachments = draft_data.get('attachments', [])
+                                if draft_attachments:
+                                    # Find all file paths mentioned in user messages
+                                    mentioned_files = []
+                                    for msg in messages:
+                                        if msg.get('role') == 'user':
+                                            content = msg.get('content', '')
+                                            # Look for absolute paths
+                                            import re
+                                            file_pattern = r'(/[^\s]+\.[a-zA-Z]{2,4})'
+                                            mentioned_files.extend(re.findall(file_pattern, content))
+
+                                    # Check if draft attachments match mentioned files
+                                    invalid_attachments = []
+                                    for attachment in draft_attachments:
+                                        if attachment and attachment not in mentioned_files:
+                                            invalid_attachments.append(attachment)
+
+                                    if invalid_attachments:
+                                        print_text(f"⚠️  Warning: AI generated incorrect attachment paths:", style="bold yellow")
+                                        for path in invalid_attachments:
+                                            print_text(f"   - {path}", style="yellow")
+                                        print_text(f"   Expected one of: {', '.join(mentioned_files) if mentioned_files else 'none'}", style="yellow")
+                                        print_text("   Using empty attachments instead.", style="yellow")
+                                        draft_data['attachments'] = []
+
                                 try:
                                     from promaia.mail.email_send_helpers import EmailSendHelper
 
@@ -6305,6 +6376,33 @@ Be helpful and conversational while gathering the necessary information.
                             draft_data = extract_email_draft_data(response_content)
 
                             if draft_data:
+                                # Validate attachment paths against actual files in conversation
+                                draft_attachments = draft_data.get('attachments', [])
+                                if draft_attachments:
+                                    # Find all file paths mentioned in user messages
+                                    mentioned_files = []
+                                    for msg in messages:
+                                        if msg.get('role') == 'user':
+                                            content = msg.get('content', '')
+                                            # Look for absolute paths
+                                            import re
+                                            file_pattern = r'(/[^\s]+\.[a-zA-Z]{2,4})'
+                                            mentioned_files.extend(re.findall(file_pattern, content))
+
+                                    # Check if draft attachments match mentioned files
+                                    invalid_attachments = []
+                                    for attachment in draft_attachments:
+                                        if attachment and attachment not in mentioned_files:
+                                            invalid_attachments.append(attachment)
+
+                                    if invalid_attachments:
+                                        print_text(f"⚠️  Warning: AI generated incorrect attachment paths:", style="bold yellow")
+                                        for path in invalid_attachments:
+                                            print_text(f"   - {path}", style="yellow")
+                                        print_text(f"   Expected one of: {', '.join(mentioned_files) if mentioned_files else 'none'}", style="yellow")
+                                        print_text("   Using empty attachments instead.", style="yellow")
+                                        draft_data['attachments'] = []
+
                                 try:
                                     from promaia.mail.email_send_helpers import EmailSendHelper
 
