@@ -355,14 +355,14 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /email send", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
     print_text("  /temp - Adjust creativity (0.0=focused, 2.0=creative)", style="dim")
     print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
-    print_text("  /email send - Toggle email sending with attachments", style="dim")
+    print_text("  /mail - Toggle AI-assisted email sending", style="dim")
     print_text("")
 
 
@@ -380,7 +380,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /email send", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail", style="dim")
     print_text("")
 
 
@@ -5627,18 +5627,18 @@ Be helpful and conversational while gathering the necessary information.
                         print_text("🔍 Internet search disabled", style="bold yellow")
 
                 continue
-            elif user_input.strip().lower() == '/email send':
+            elif user_input.strip().lower() == '/mail':
                 # Toggle email sending functionality
                 current_email_send = context_state.get('enable_email_send', False)
                 context_state['enable_email_send'] = not current_email_send
 
                 if context_state['enable_email_send']:
-                    print_text("📧 Email sending enabled", style="bold green")
+                    print_text("📧 Mail mode enabled", style="bold green")
                     print_text("💡 You can now drop files and say things like:", style="cyan")
                     print_text("   'send this to fionn' or 'email this report to the team'", style="dim cyan")
                     print_text("   The AI will help gather missing information (recipient, thread, message)", style="dim cyan")
                 else:
-                    print_text("📧 Email sending disabled", style="bold yellow")
+                    print_text("📧 Mail mode disabled", style="bold yellow")
 
                 continue
 
