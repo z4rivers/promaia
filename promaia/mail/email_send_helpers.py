@@ -296,6 +296,7 @@ def launch_draft_chat_for_email(draft_id: str, workspace: str = "default"):
         from promaia.mail.draft_chat import DraftChatInterface
         from promaia.chat.modes import DraftMode
         from promaia.chat.interface import chat
+        from promaia.config.databases import get_database_manager
 
         # Load draft data
         draft_manager = DraftManager()
@@ -305,12 +306,30 @@ def launch_draft_chat_for_email(draft_id: str, workspace: str = "default"):
             logger.error(f"Draft {draft_id} not found")
             return False
 
+        # Get user email from workspace Gmail database
+        user_email = None
+        try:
+            db_manager = get_database_manager()
+            gmail_databases = [
+                db for db in db_manager.get_workspace_databases(workspace)
+                if db.source_type == "gmail"
+            ]
+            if gmail_databases:
+                user_email = gmail_databases[0].database_id
+        except Exception as e:
+            logger.debug(f"Could not get user email from workspace: {e}")
+
+        if not user_email:
+            logger.warning("Could not determine user email, using fallback")
+            user_email = "user@example.com"
+
         # Create draft mode
         mode = DraftMode(
+            workspace=workspace,
             draft_id=draft_id,
             draft_data=draft_data,
             draft_manager=draft_manager,
-            workspace=workspace
+            user_email=user_email
         )
 
         # Launch chat interface in draft mode

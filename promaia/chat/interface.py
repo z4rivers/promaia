@@ -6204,9 +6204,16 @@ Be helpful and conversational while gathering the necessary information.
                                         try:
                                             from promaia.storage.chat_history import ChatHistoryManager
                                             history_manager = ChatHistoryManager()
+
+                                            # Create a serializable copy of context_state (remove non-JSON objects)
+                                            serializable_context = {
+                                                k: v for k, v in context_state.items()
+                                                if k not in ['artifact_manager', 'mcp_client', 'mcp_executor', 'mode']
+                                            }
+
                                             history_manager.save_thread(
                                                 messages=messages,
-                                                context=context_state,
+                                                context=serializable_context,
                                                 thread_name=f"Email to {draft_data.get('recipient', 'recipient')}"
                                             )
                                         except Exception as e:
@@ -6324,9 +6331,16 @@ Be helpful and conversational while gathering the necessary information.
                                         try:
                                             from promaia.storage.chat_history import ChatHistoryManager
                                             history_manager = ChatHistoryManager()
+
+                                            # Create a serializable copy of context_state (remove non-JSON objects)
+                                            serializable_context = {
+                                                k: v for k, v in context_state.items()
+                                                if k not in ['artifact_manager', 'mcp_client', 'mcp_executor', 'mode']
+                                            }
+
                                             history_manager.save_thread(
                                                 messages=messages,
-                                                context=context_state,
+                                                context=serializable_context,
                                                 thread_name=f"Email to {draft_data.get('recipient', 'recipient')}"
                                             )
                                         except Exception as e:
