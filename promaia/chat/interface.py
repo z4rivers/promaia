@@ -318,13 +318,14 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /email send", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
     print_text("  /temp - Adjust creativity (0.0=focused, 2.0=creative)", style="dim")
     print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
+    print_text("  /email send - Toggle email sending with attachments", style="dim")
     print_text("")
 
 
@@ -342,7 +343,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /email send", style="dim")
     print_text("")
 
 
@@ -1058,6 +1059,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'mcp_tools_info': None,  # Store MCP tools information for prompt
         'original_browse_mode': bool(original_browse_command),  # Track if session started with browse mode
         'enable_search': False,  # Store search functionality flag (starts disabled)
+        'enable_email_send': False,  # Store email sending functionality flag (starts disabled)
         'original_query_format': original_browse_command,  # Store the original query format for display
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command,  # Flag for OR logic in NL processing
         'mode': mode,  # Store chat mode for specialized behavior
@@ -4576,18 +4578,58 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if messages and "images" in messages[-1]:
                 current_message_images = messages[-1].get("images", [])
 
+            # Add email sending instructions to system prompt if enabled
+            current_system_prompt = system_prompt
+            if context_state.get('enable_email_send', False):
+                email_instructions = """
+
+## EMAIL SENDING CAPABILITY
+
+You have access to email sending functionality. When the user mentions sending emails or attaching files to send:
+
+1. **Detect Intent**: Parse the message to determine if the user wants to send an email
+   - Look for phrases like "send this to", "email this", "send [file] to [person]"
+   - Check if files are attached to the message
+
+2. **Gather Information**: Through conversation, collect:
+   - **Recipient(s)**: Who should receive the email (name or email address)
+   - **Email Thread**: Which conversation thread (if replying)
+   - **Message**: What should the email say (if not already provided)
+   - **Attachments**: Files to include (if provided)
+
+3. **Context Available**: You can reference:
+   - Recent emails from the context loaded in this session
+   - The user's contact information and email threads
+   - Any files the user has attached or mentioned
+
+4. **Workflow**: Once you have all necessary information:
+   - Confirm the details with the user
+   - Let the user know you're creating a draft
+   - The system will handle the actual sending process
+
+5. **Example Interaction**:
+   - User: "send this report.pdf to fionn"
+   - You: "I'll help you send report.pdf to Fionn. Which email thread should this be part of? Or would you like to start a new conversation?"
+   - User: "the thread about Q4 planning"
+   - You: "Great! Should I include a message with the attachment, or just send the file?"
+   - [Continue until all info gathered, then create the draft]
+
+Be helpful and conversational while gathering the necessary information.
+"""
+                current_system_prompt = system_prompt + email_instructions
+
             # Call the appropriate API
             response_content = None
             if current_api == "anthropic" and anthropic_client:
                 if current_message_images:
                     formatted_messages = _format_anthropic_with_images(messages, current_message_images)
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages, temperature=current_temperature)
+                    response = call_anthropic_with_retry(anthropic_client, current_system_prompt, formatted_messages, temperature=current_temperature)
                 else:
                     clean_messages = []
                     for msg in messages:
                         clean_msg = {"role": msg["role"], "content": msg["content"]}
                         clean_messages.append(clean_msg)
-                    response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages, temperature=current_temperature)
+                    response = call_anthropic_with_retry(anthropic_client, current_system_prompt, clean_messages, temperature=current_temperature)
 
                 if response and response.content:
                     response_text = response.content[0].text
@@ -4624,9 +4666,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
             elif current_api == "openai" and openai_client:
                 if current_message_images:
-                    formatted_messages = _format_openai_with_images(system_prompt, messages, current_message_images)
+                    formatted_messages = _format_openai_with_images(current_system_prompt, messages, current_message_images)
                 else:
-                    formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                    formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages
 
                 response = openai_client.chat.completions.create(
                     model="gpt-4o",
@@ -4671,7 +4713,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 response_text_with_tools = None
                 try:
                     if current_message_images:
-                        current_gemini_model, gemini_messages = _format_gemini_with_images(system_prompt, messages, current_message_images)
+                        current_gemini_model, gemini_messages = _format_gemini_with_images(current_system_prompt, messages, current_message_images)
                         response = current_gemini_model.generate_content(
                             contents=gemini_messages,
                             generation_config={
@@ -4680,7 +4722,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         )
                     else:
                         # Format message for Gemini
-                        formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
+                        formatted_prompt = f"System: {current_system_prompt}\n\nConversation:\n"
                         for msg in messages:
                             formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
                         response = gemini_client.generate_content(formatted_prompt)
@@ -4735,9 +4777,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                 if llama_client:
                     if current_message_images:
-                        formatted_messages = _format_llama_with_images(system_prompt, messages, current_message_images)
+                        formatted_messages = _format_llama_with_images(current_system_prompt, messages, current_message_images)
                     else:
-                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+                        formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages
 
                     model_name = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
 
@@ -5532,6 +5574,20 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         print_text("🔍 Internet search disabled", style="bold yellow")
 
                 continue
+            elif user_input.strip().lower() == '/email send':
+                # Toggle email sending functionality
+                current_email_send = context_state.get('enable_email_send', False)
+                context_state['enable_email_send'] = not current_email_send
+
+                if context_state['enable_email_send']:
+                    print_text("📧 Email sending enabled", style="bold green")
+                    print_text("💡 You can now drop files and say things like:", style="cyan")
+                    print_text("   'send this to fionn' or 'email this report to the team'", style="dim cyan")
+                    print_text("   The AI will help gather missing information (recipient, thread, message)", style="dim cyan")
+                else:
+                    print_text("📧 Email sending disabled", style="bold yellow")
+
+                continue
 
             if not user_input.strip():
                 continue
@@ -5671,19 +5727,59 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 else:
                     messages_for_api = messages
 
+                # Add email sending instructions to system prompt if enabled
+                current_system_prompt = system_prompt
+                if context_state.get('enable_email_send', False):
+                    email_instructions = """
+
+## EMAIL SENDING CAPABILITY
+
+You have access to email sending functionality. When the user mentions sending emails or attaching files to send:
+
+1. **Detect Intent**: Parse the message to determine if the user wants to send an email
+   - Look for phrases like "send this to", "email this", "send [file] to [person]"
+   - Check if files are attached to the message
+
+2. **Gather Information**: Through conversation, collect:
+   - **Recipient(s)**: Who should receive the email (name or email address)
+   - **Email Thread**: Which conversation thread (if replying)
+   - **Message**: What should the email say (if not already provided)
+   - **Attachments**: Files to include (if provided)
+
+3. **Context Available**: You can reference:
+   - Recent emails from the context loaded in this session
+   - The user's contact information and email threads
+   - Any files the user has attached or mentioned
+
+4. **Workflow**: Once you have all necessary information:
+   - Confirm the details with the user
+   - Let the user know you're creating a draft
+   - The system will handle the actual sending process
+
+5. **Example Interaction**:
+   - User: "send this report.pdf to fionn"
+   - You: "I'll help you send report.pdf to Fionn. Which email thread should this be part of? Or would you like to start a new conversation?"
+   - User: "the thread about Q4 planning"
+   - You: "Great! Should I include a message with the attachment, or just send the file?"
+   - [Continue until all info gathered, then create the draft]
+
+Be helpful and conversational while gathering the necessary information.
+"""
+                    current_system_prompt = system_prompt + email_instructions
+
                 # Direct API calls (streaming removed for reliability)
                 if current_api == "anthropic" and anthropic_client:
                     if current_message_images:
                         # Handle images with Anthropic
                         formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, formatted_messages, temperature=current_temperature)
+                        response = call_anthropic_with_retry(anthropic_client, current_system_prompt, formatted_messages, temperature=current_temperature)
                     else:
                         # Regular text-only message - clean messages to remove extra fields
                         clean_messages = []
                         for msg in messages_for_api:
                             clean_msg = {"role": msg["role"], "content": msg["content"]}
                             clean_messages.append(clean_msg)
-                        response = call_anthropic_with_retry(anthropic_client, system_prompt, clean_messages, temperature=current_temperature)
+                        response = call_anthropic_with_retry(anthropic_client, current_system_prompt, clean_messages, temperature=current_temperature)
                     if response and response.content:
                         response_text = response.content[0].text
 
@@ -5724,10 +5820,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 elif current_api == "openai" and openai_client:
                     if current_message_images:
                         # Handle images with OpenAI
-                        formatted_messages = _format_openai_with_images(system_prompt, messages_for_api, current_message_images)
+                        formatted_messages = _format_openai_with_images(current_system_prompt, messages_for_api, current_message_images)
                     else:
                         # Regular text-only message
-                        formatted_messages = [{"role": "system", "content": system_prompt}] + messages_for_api
+                        formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages_for_api
                     
                     response = openai_client.chat.completions.create(
                         model="gpt-4o",
@@ -5775,7 +5871,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     try:
                         if current_message_images:
                             # Handle images with Gemini
-                            current_gemini_model, gemini_messages = _format_gemini_with_images(system_prompt, messages_for_api, current_message_images)
+                            current_gemini_model, gemini_messages = _format_gemini_with_images(current_system_prompt, messages_for_api, current_message_images)
                             response = current_gemini_model.generate_content(
                                 contents=gemini_messages,
                                 generation_config={
@@ -5784,7 +5880,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             )
                         else:
                             # Regular text-only message
-                            formatted_prompt = f"System: {system_prompt}\n\nConversation:\n"
+                            formatted_prompt = f"System: {current_system_prompt}\n\nConversation:\n"
                             for msg in messages_for_api:
                                 formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
                             response = gemini_client.generate_content(formatted_prompt)
