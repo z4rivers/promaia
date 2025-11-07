@@ -23,17 +23,22 @@ try:
 except ImportError:
     discord_available = False
 
+# Conversation connector (always available - no external dependencies)
+from .conversation_connector import ConversationConnector
+ConnectorRegistry.register("conversation", ConversationConnector)
+
 # Register available connectors
 ConnectorRegistry.register("notion", NotionConnector)
 
 __all__ = [
     'BaseConnector',
     'ConnectorRegistry',
-    'NotionConnector'
+    'NotionConnector',
+    'ConversationConnector'
 ]
 
 if gmail_available:
-    __all__.append('GmailConnector') 
+    __all__.append('GmailConnector')
 
 if discord_available:
     __all__.append('DiscordConnector') 

@@ -1033,11 +1033,21 @@ async def sync_database(source_spec: Dict[str, Any], args):
                 result.start_time = datetime.now()
                 result.end_time = datetime.now()
                 return result
+        elif db_config.source_type == 'conversation':
+            # Conversation connector doesn't need API key - it uses local chat history file
+            # Add history_file from config if available
+            if hasattr(db_config, 'auth') and isinstance(db_config.auth, dict):
+                connector_config['history_file'] = db_config.auth.get('history_file', '~/.maia_chat_history.json')
+            elif 'history_file' in connector_config:
+                # Already in connector_config from db_config.to_dict()
+                pass
+            else:
+                connector_config['history_file'] = '~/.maia_chat_history.json'
         else:
-            # This block handles non-Discord connectors by fetching the API key.
+            # This block handles non-Discord, non-conversation connectors by fetching the API key.
             from promaia.config.workspaces import get_workspace_api_key
             api_key = get_workspace_api_key(db_config.workspace)
-            
+
             if not api_key:
                 print(f"✗ {qualified_name}: No API key configured for workspace '{db_config.workspace}'")
                 # Return a synthetic result for API key errors
@@ -1048,7 +1058,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
                 result.start_time = datetime.now()
                 result.end_time = datetime.now()
                 return result
-            
+
             connector_config['api_key'] = api_key
             
         
@@ -1424,28 +1434,29 @@ async def handle_database_sync_with_browse(args):
 def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
     """
     Parse source specifications with support for property filtering.
-    
+
     Formats supported:
     - database_name
     - database_name:days (e.g., 'journal:7')
     - database_name:all (e.g., 'cms:all')
     - database_name.property=value (e.g., 'cms.Reference=true')
     - database_name:days.property=value (e.g., 'cms:30.KOii_chat=true')
-    
+    - database_name#channel:days (e.g., 'trass.tg#koii-work:7')
+
     Args:
         source_specs: List of source specification strings
-        
+
     Returns:
         List of parsed source configurations
     """
     parsed_sources = []
-    
+
     # Get database manager to check for existing databases
     db_manager = get_database_manager()
-    
+
     # Log timezone information for debugging
     log_timezone_info()
-    
+
     for spec in source_specs:
         try:
             # Initialize with defaults
@@ -1455,15 +1466,38 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
             property_filters = {}
             comparison_filters = {}
             complex_filter = None  # New: store complex filter expressions
-            
+
+            # Handle Discord channel format: database#channel:days
+            # This must be processed before splitting on ':' to extract the database name correctly
+            discord_channel_name = None
+            if '#' in spec:
+                # Split on '#' to separate database from channel
+                before_hash = spec.split('#', 1)[0]
+                after_hash = spec.split('#', 1)[1]
+
+                # Extract channel name (everything between # and : or end of string)
+                if ':' in after_hash:
+                    discord_channel_name = after_hash.split(':', 1)[0]
+                    # Reconstruct spec without the #channel part for normal parsing
+                    # e.g., 'trass.tg#koii-work:7' becomes 'trass.tg:7'
+                    spec = before_hash + ':' + after_hash.split(':', 1)[1]
+                else:
+                    discord_channel_name = after_hash
+                    # e.g., 'trass.tg#koii-work' becomes 'trass.tg'
+                    spec = before_hash
+
             # Logic to separate database name from days/filters
             spec_parts = spec.split(':', 1)
             db_spec_part = spec_parts[0]
-            
+
             db_config = db_manager.get_database_by_qualified_name(db_spec_part)
             if not db_config:
                 logger.warning(f"Database '{db_spec_part}' not found in configuration. Skipping.")
                 continue
+
+            # If we extracted a Discord channel name, add it as a property filter
+            if discord_channel_name:
+                property_filters['discord_channel_name'] = discord_channel_name
             
             database = db_config.get_qualified_name()
             

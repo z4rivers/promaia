@@ -49,10 +49,11 @@ class ChatThread:
 
 class ChatHistoryManager:
     """Manages chat history threads."""
-    
+
     def __init__(self, max_entries: int = 10):
         self.max_entries = max_entries
         self.history_file = os.path.expanduser("~/.maia_chat_history.json")
+        self._db_integration_enabled = True  # Flag to enable/disable database integration
     
     def _load_history(self) -> List[ChatThread]:
         """Load chat threads from file."""
@@ -94,9 +95,98 @@ class ChatHistoryManager:
                     if len(content) > 40:
                         return content[:37] + "..."
                     return content
-        
+
         # Fallback to timestamp
         return f"Chat - {datetime.now().strftime('%b %d, %H:%M')}"
+
+    def _save_to_database(self, thread: ChatThread) -> bool:
+        """
+        Save a conversation thread to the unified database with vector embeddings.
+        This integrates conversations with the full Maia search system.
+        """
+        if not self._db_integration_enabled:
+            return False
+
+        try:
+            from promaia.storage.unified_storage import UnifiedContentStorage
+            from promaia.markdown.converter import conversation_to_markdown
+            from promaia.config.databases import get_database_config
+
+            # Get the conversation database config
+            db_config = get_database_config('conversations')
+            if not db_config:
+                # Database not configured, skip silently
+                return False
+
+            # Convert thread to page-like structure for markdown conversion
+            page_data = {
+                'id': thread.id,
+                'properties': {
+                    'thread_id': thread.id,
+                    'thread_name': thread.name,
+                    'message_count': len(thread.messages),
+                    'created_at': thread.created_at,
+                    'last_accessed': thread.last_accessed,
+                    'context_type': 'sql_query' if thread.context.get('sql_query_prompt') else 'general',
+                    'sql_query_prompt': thread.context.get('sql_query_prompt', ''),
+                },
+                'messages': thread.messages,
+                'context': thread.context,
+                'created_time': thread.created_at,
+                'last_edited_time': thread.last_accessed,
+            }
+
+            # Convert to markdown
+            markdown_content = conversation_to_markdown(page_data)
+
+            # Prepare metadata
+            metadata = {
+                'page_id': thread.id,
+                'title': thread.name,
+                'source_id': thread.id,
+                'data_source': 'conversation',
+                'content_type': 'conversation',
+                'workspace': 'default',
+                'database_id': 'conversations',
+                'database_name': 'conversations',
+                'created_time': thread.created_at,
+                'last_edited_time': thread.last_accessed,
+                'synced_time': datetime.now().isoformat(),
+
+                # Conversation-specific properties
+                'thread_id': thread.id,
+                'message_count': len(thread.messages),
+                'context_type': page_data['properties']['context_type'],
+                'sql_query_prompt': thread.context.get('sql_query_prompt', ''),
+            }
+
+            # Save to unified storage (includes vector embeddings and SQL)
+            storage = UnifiedContentStorage()
+
+            # Use asyncio to run the async save_content method
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            file_path = loop.run_until_complete(
+                storage.save_content(
+                    content=markdown_content,
+                    metadata=metadata,
+                    db_config=db_config,
+                    force_update=True  # Always update to capture new messages
+                )
+            )
+
+            return file_path is not None
+
+        except Exception as e:
+            # Silently fail - don't break chat functionality if database integration fails
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to save conversation to database: {e}")
+            return False
     
     def save_thread(self, 
                    messages: List[Dict[str, str]], 
@@ -120,14 +210,18 @@ class ChatHistoryManager:
         )
         
         threads = self._load_history()
-        
+
         # Add new thread at the beginning (most recent)
         threads.insert(0, new_thread)
-        
+
         # Keep only max_entries
         threads = threads[:self.max_entries]
-        
+
         self._save_history(threads)
+
+        # Also save to database for search integration
+        self._save_to_database(new_thread)
+
         return thread_id
     
     def is_natural_language_thread(self, thread: ChatThread) -> bool:
@@ -183,8 +277,12 @@ class ChatHistoryManager:
                 # Update name if provided
                 if thread_name:
                     thread.name = thread_name
-                
+
                 self._save_history(threads)
+
+                # Also update in database
+                self._save_to_database(thread)
+
                 return True
         return False
     

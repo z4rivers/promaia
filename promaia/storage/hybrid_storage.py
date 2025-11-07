@@ -168,6 +168,36 @@ class HybridContentRegistry:
                 )
             """)
             
+            # Create conversation content table for chat history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_content (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    page_id TEXT UNIQUE NOT NULL,  -- Thread ID
+                    workspace TEXT NOT NULL,
+                    database_id TEXT NOT NULL,  -- Immutable database identifier
+                    file_path TEXT NOT NULL,
+
+                    -- Conversation-specific fields
+                    thread_id TEXT UNIQUE NOT NULL,
+                    thread_name TEXT,
+                    message_count INTEGER DEFAULT 0,
+                    context_type TEXT,  -- 'general', 'sql_query', 'search', etc.
+                    sql_query_prompt TEXT,  -- If natural language query
+
+                    -- Common timestamp fields
+                    created_time TEXT,
+                    last_edited_time TEXT,
+                    synced_time TEXT NOT NULL,
+
+                    -- File metadata
+                    file_size INTEGER,
+                    checksum TEXT,
+
+                    UNIQUE(page_id),
+                    UNIQUE(thread_id)
+                )
+            """)
+
             # Create generic content table for unknown/new content types
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS generic_content (
@@ -178,22 +208,22 @@ class HybridContentRegistry:
                     database_name TEXT NOT NULL,
                     content_type TEXT NOT NULL, -- 'awakenings', 'cpj', etc.
                     file_path TEXT NOT NULL,
-                    
+
                     -- Basic fields
                     title TEXT,
-                    
+
                     -- Common timestamp fields
                     created_time TEXT,
                     last_edited_time TEXT,
                     synced_time TEXT NOT NULL,
-                    
+
                     -- File metadata
                     file_size INTEGER,
                     checksum TEXT,
-                    
+
                     -- Flexible metadata for unknown properties
                     metadata TEXT, -- JSON string for properties that don't fit above
-                    
+
                     UNIQUE(page_id)
                 )
             """)
@@ -287,10 +317,17 @@ class HybridContentRegistry:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cms_category ON notion_cms (category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cms_featured ON notion_cms (featured)")
         
+        # Conversation indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_workspace ON conversation_content (workspace)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_thread_id ON conversation_content (thread_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_context_type ON conversation_content (context_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_created ON conversation_content (created_time)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_last_edited ON conversation_content (last_edited_time)")
+
         # Generic indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_generic_workspace ON generic_content (workspace, database_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_generic_type ON generic_content (content_type)")
-        
+
         # Chunks indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_page_id ON notion_page_chunks (page_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON notion_page_chunks (workspace, database_name)")
@@ -361,7 +398,41 @@ class HybridContentRegistry:
                 FROM gmail_content
                 """)
 
-                # 2. Add all Notion tables (workspace-specific and legacy)
+                # 2. Conversation content (always included)
+                view_parts.append("""
+                SELECT
+                    page_id,
+                    workspace,
+                    database_id,
+                    'conversations' as database_name,
+                    'conversation' as content_type,
+                    file_path,
+                    thread_name as title,
+                    created_time,
+                    last_edited_time,
+                    synced_time,
+                    file_size,
+                    checksum,
+                    NULL as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    NULL as featured,
+                    NULL as priority,
+                    NULL as category,
+                    NULL as email_date,
+                    json_object(
+                        'thread_id', thread_id,
+                        'thread_name', thread_name,
+                        'message_count', message_count,
+                        'context_type', context_type,
+                        'sql_query_prompt', sql_query_prompt
+                    ) as metadata
+                FROM conversation_content
+                """)
+
+                # 3. Add all Notion tables (workspace-specific and legacy)
                 for table_name in notion_tables:
                     # Get the table schema to determine available columns
                     cursor.execute(f"PRAGMA table_info({table_name})")
@@ -419,7 +490,7 @@ class HybridContentRegistry:
 
                     view_parts.append(select_stmt)
 
-                # 3. Generic content (fallback table)
+                # 4. Generic content (fallback table)
                 view_parts.append("""
                 SELECT
                     page_id,
@@ -514,7 +585,50 @@ class HybridContentRegistry:
         except Exception as e:
             logger.error(f"Error adding Gmail content: {e}")
             return False
-    
+
+    def add_conversation_content(self, content_data: Dict[str, Any]) -> bool:
+        """Add conversation content with optimized schema."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Extract conversation-specific fields from metadata
+                metadata = content_data.get('metadata', {})
+
+                # Ensure last_edited_time is initialized to created_time if missing
+                created_time = content_data.get('created_time')
+                last_edited_time = content_data.get('last_edited_time') or created_time
+
+                cursor.execute("""
+                    INSERT OR REPLACE INTO conversation_content (
+                        page_id, workspace, database_id, file_path,
+                        thread_id, thread_name, message_count, context_type, sql_query_prompt,
+                        created_time, last_edited_time, synced_time, file_size, checksum
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    content_data['page_id'],
+                    content_data['workspace'],
+                    content_data.get('database_id', 'conversations'),
+                    content_data['file_path'],
+                    metadata.get('thread_id', content_data['page_id']),
+                    content_data.get('title', 'Untitled Conversation'),
+                    metadata.get('message_count', 0),
+                    metadata.get('context_type', 'general'),
+                    metadata.get('sql_query_prompt', ''),
+                    created_time,
+                    last_edited_time,
+                    content_data['synced_time'],
+                    content_data.get('file_size'),
+                    content_data.get('checksum')
+                ))
+
+                conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"Error adding conversation content: {e}")
+            return False
+
     def get_existing_message_ids_for_thread(self, thread_id: str, workspace: str = None) -> set:
         """Get existing message IDs for a thread to avoid duplicates."""
         try:
@@ -953,6 +1067,9 @@ class HybridContentRegistry:
         # Route to appropriate table based on content type
         if database_name == 'gmail' or 'gmail' in database_name:
             sql_success = self.add_gmail_content(content_data)
+        elif data_source == 'conversation' or database_name == 'conversations':
+            # Conversation history goes to conversation_content table
+            sql_success = self.add_conversation_content(content_data)
         elif data_source == 'discord':
             # Discord messages always go to generic_content for proper metadata support
             sql_success = self.add_generic_content(content_data)

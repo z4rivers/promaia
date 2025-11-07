@@ -752,3 +752,110 @@ async def fetch_subpage_content(page_urls: List[str]) -> Dict[str, str]:
             print(f"Warning: Error processing subpage URL {url}: {e}")
     
     return subpage_data
+
+
+def conversation_to_markdown(thread_data: Dict[str, Any]) -> str:
+    """
+    Convert a conversation thread to markdown format.
+
+    Args:
+        thread_data: Dictionary containing thread information with:
+            - id: Thread ID
+            - properties: Dict with thread_name, message_count, created_at, etc.
+            - messages: List of message dicts with role and content
+            - context: Dict with context information
+
+    Returns:
+        Formatted markdown representation of the conversation
+    """
+    from datetime import datetime
+
+    properties = thread_data.get('properties', {})
+    messages = thread_data.get('messages', [])
+    context = thread_data.get('context', {})
+
+    # Extract metadata
+    thread_name = properties.get('thread_name', 'Untitled Conversation')
+    created_at = properties.get('created_at', '')
+    last_accessed = properties.get('last_accessed', '')
+    message_count = properties.get('message_count', len(messages))
+    context_type = properties.get('context_type', 'general')
+    sql_query_prompt = properties.get('sql_query_prompt', '')
+
+    # Start building markdown
+    markdown = f"# {thread_name}\n\n"
+
+    # Add metadata section
+    markdown += "## Metadata\n\n"
+    markdown += f"- **Thread ID**: {thread_data.get('id', 'unknown')}\n"
+    markdown += f"- **Message Count**: {message_count}\n"
+    markdown += f"- **Context Type**: {context_type}\n"
+
+    if created_at:
+        try:
+            dt = datetime.fromisoformat(created_at)
+            formatted_date = dt.strftime("%B %d, %Y at %I:%M %p")
+            markdown += f"- **Created**: {formatted_date}\n"
+        except:
+            markdown += f"- **Created**: {created_at}\n"
+
+    if last_accessed and last_accessed != created_at:
+        try:
+            dt = datetime.fromisoformat(last_accessed)
+            formatted_date = dt.strftime("%B %d, %Y at %I:%M %p")
+            markdown += f"- **Last Accessed**: {formatted_date}\n"
+        except:
+            markdown += f"- **Last Accessed**: {last_accessed}\n"
+
+    if sql_query_prompt:
+        markdown += f"- **SQL Query**: `{sql_query_prompt}`\n"
+
+    markdown += "\n"
+
+    # Add context information if available
+    if context and len(context) > 1:  # More than just empty dict
+        markdown += "## Context\n\n"
+        for key, value in context.items():
+            if key not in ['sql_query_prompt'] and value:  # Skip already shown items
+                markdown += f"- **{key.replace('_', ' ').title()}**: {value}\n"
+        markdown += "\n"
+
+    # Add conversation messages
+    markdown += "## Conversation\n\n"
+
+    if not messages:
+        markdown += "*No messages in this conversation.*\n\n"
+    else:
+        for i, message in enumerate(messages, 1):
+            role = message.get('role', 'unknown')
+            content = message.get('content', '')
+
+            # Format role nicely
+            if role == 'user':
+                role_emoji = "👤"
+                role_label = "User"
+            elif role == 'assistant':
+                role_emoji = "🤖"
+                role_label = "Assistant"
+            elif role == 'system':
+                role_emoji = "⚙️"
+                role_label = "System"
+            else:
+                role_emoji = "💬"
+                role_label = role.title()
+
+            # Add message header
+            markdown += f"### {role_emoji} {role_label}\n\n"
+
+            # Add message content
+            if content:
+                # Format code blocks if present
+                markdown += f"{content}\n\n"
+            else:
+                markdown += "*[Empty message]*\n\n"
+
+            # Add separator between messages (except for last one)
+            if i < len(messages):
+                markdown += "---\n\n"
+
+    return markdown
