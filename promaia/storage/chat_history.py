@@ -113,7 +113,7 @@ class ChatHistoryManager:
             from promaia.config.databases import get_database_config
 
             # Get the conversation database config
-            db_config = get_database_config('conversations')
+            db_config = get_database_config('convos')
             if not db_config:
                 # Database not configured, skip silently
                 return False
@@ -147,8 +147,8 @@ class ChatHistoryManager:
                 'data_source': 'conversation',
                 'content_type': 'conversation',
                 'workspace': 'default',
-                'database_id': 'conversations',
-                'database_name': 'conversations',
+                'database_id': 'convos',
+                'database_name': 'convos',
                 'created_time': thread.created_at,
                 'last_edited_time': thread.last_accessed,
                 'synced_time': datetime.now().isoformat(),

@@ -22,8 +22,8 @@ class ConversationConnector(BaseConnector):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
 
-        # Use database_id as an identifier, or default to 'conversations'
-        self.conversation_source = config.get("database_id", "conversations")
+        # Use database_id as an identifier, or default to 'convos'
+        self.conversation_source = config.get("database_id", "convos")
         self.workspace = config.get("workspace", "default")
 
         # Path to the chat history file
@@ -234,7 +234,7 @@ class ConversationConnector(BaseConnector):
 
         # Get database config
         db_config = {
-            'nickname': 'conversations',
+            'nickname': 'convos',
             'source_type': 'conversation',
             'database_id': self.conversation_source,
             'workspace': self.workspace,
@@ -267,7 +267,7 @@ class ConversationConnector(BaseConnector):
         """
         result = SyncResult()
         result.start_time = datetime.now()
-        result.database_name = getattr(db_config, 'nickname', 'conversations')
+        result.database_name = getattr(db_config, 'nickname', 'convos')
 
         try:
             # Ensure connection

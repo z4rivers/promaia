@@ -119,7 +119,8 @@ class SQLQueryStrategy(QueryStrategy):
         # Extract workspace and normalize database names from qualified names
         target_workspaces = set()
         target_dbs = []
-        
+        cross_workspace_dbs = []  # Databases with workspace_scope="all"
+
         for db_name in intent['databases']:
             if '.' in db_name:
                 workspace_part, db_nickname = db_name.rsplit('.', 1)
@@ -127,12 +128,29 @@ class SQLQueryStrategy(QueryStrategy):
                 target_dbs.append(db_nickname)
             else:
                 target_dbs.append(db_name)
-        
+
+        # Check for cross-workspace databases (workspace_scope="all")
+        try:
+            from promaia.config.databases import get_database_config
+            for db_name in target_dbs:
+                db_config = get_database_config(db_name)
+                if db_config and getattr(db_config, 'workspace_scope', 'single') == 'all':
+                    cross_workspace_dbs.append(db_name)
+        except Exception as e:
+            # If we can't load configs, continue without cross-workspace handling
+            if debug:
+                print_text(f"   Warning: Could not check workspace_scope: {e}", style="yellow")
+
         # Build workspace filter clause
         workspace_filter = ""
         if target_workspaces:
             workspace_list = ', '.join(f"'{w}'" for w in sorted(target_workspaces))
-            workspace_filter = f"\nWORKSPACE FILTER: Must filter WHERE u.workspace IN ({workspace_list})"
+            if cross_workspace_dbs:
+                # Include cross-workspace databases regardless of workspace filter
+                cross_workspace_list = ', '.join(f"'{db}'" for db in cross_workspace_dbs)
+                workspace_filter = f"\nWORKSPACE FILTER: Must filter WHERE (u.workspace IN ({workspace_list}) OR u.database_name IN ({cross_workspace_list}))"
+            else:
+                workspace_filter = f"\nWORKSPACE FILTER: Must filter WHERE u.workspace IN ({workspace_list})"
         
         prompt = f"""{workspace_context}
 
@@ -352,7 +370,8 @@ Return ONLY the JSON object:"""
             # (Same logic as SQLQueryStrategy for consistency)
             target_workspaces = set()
             target_dbs = []
-            
+            cross_workspace_dbs = []  # Databases with workspace_scope="all"
+
             for db_name in intent.get('databases', []):
                 if '.' in db_name:
                     # Qualified name: extract workspace and db nickname
@@ -362,17 +381,40 @@ Return ONLY the JSON object:"""
                 else:
                     # Simple name: just the database nickname
                     target_dbs.append(db_name)
-            
-            # Build ChromaDB filters using $and operator when multiple conditions exist
+
+            # Check for cross-workspace databases (workspace_scope="all")
+            try:
+                from promaia.config.databases import get_database_config
+                for db_name in target_dbs:
+                    db_config = get_database_config(db_name)
+                    if db_config and getattr(db_config, 'workspace_scope', 'single') == 'all':
+                        cross_workspace_dbs.append(db_name)
+            except Exception as e:
+                # If we can't load configs, continue without cross-workspace handling
+                if debug:
+                    print_text(f"   Warning: Could not check workspace_scope: {e}", style="yellow")
+
+            # Build ChromaDB filters using $and/$or operators for cross-workspace support
             # ChromaDB requires: {"$and": [condition1, condition2, ...]} for multiple filters
             filter_conditions = []
-            
-            # Add workspace filter if we extracted workspaces from qualified names
+
+            # Add workspace filter with cross-workspace database exception
             if target_workspaces:
-                if len(target_workspaces) == 1:
-                    filter_conditions.append({"workspace": list(target_workspaces)[0]})
+                if cross_workspace_dbs:
+                    # Use $or to include both workspace-specific AND cross-workspace content
+                    workspace_condition = {
+                        "$or": [
+                            {"workspace": {"$in": list(target_workspaces)} if len(target_workspaces) > 1 else list(target_workspaces)[0]},
+                            {"database_name": {"$in": cross_workspace_dbs} if len(cross_workspace_dbs) > 1 else cross_workspace_dbs[0]}
+                        ]
+                    }
+                    filter_conditions.append(workspace_condition)
                 else:
-                    filter_conditions.append({"workspace": {"$in": list(target_workspaces)}})
+                    # Standard workspace filtering
+                    if len(target_workspaces) == 1:
+                        filter_conditions.append({"workspace": list(target_workspaces)[0]})
+                    else:
+                        filter_conditions.append({"workspace": {"$in": list(target_workspaces)}})
             
             # Add database filter (using normalized nicknames)
             if target_dbs:

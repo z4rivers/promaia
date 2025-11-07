@@ -30,7 +30,11 @@ class DatabaseConfig:
         
         # Workspace assignment
         self.workspace = config_data.get("workspace", "koii")
-        
+
+        # Workspace scope: "single" (workspace-specific) or "all" (cross-workspace)
+        # "all" makes content accessible from any workspace query (immutable content)
+        self.workspace_scope = config_data.get("workspace_scope", "single")
+
         # Sync settings
         self.sync_enabled = config_data.get("sync_enabled", True)
         self.include_properties = config_data.get("include_properties", True)
@@ -84,6 +88,7 @@ class DatabaseConfig:
             "nickname": self.nickname,
             "description": self.description,
             "workspace": self.workspace,
+            "workspace_scope": self.workspace_scope,
             "sync_enabled": self.sync_enabled,
             "include_properties": self.include_properties,
             "sync_frequency": self.sync_frequency,

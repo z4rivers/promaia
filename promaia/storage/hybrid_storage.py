@@ -404,7 +404,7 @@ class HybridContentRegistry:
                     page_id,
                     workspace,
                     database_id,
-                    'conversations' as database_name,
+                    'convos' as database_name,
                     'conversation' as content_type,
                     file_path,
                     thread_name as title,
@@ -608,7 +608,7 @@ class HybridContentRegistry:
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
-                    content_data.get('database_id', 'conversations'),
+                    content_data.get('database_id', 'convos'),
                     content_data['file_path'],
                     metadata.get('thread_id', content_data['page_id']),
                     content_data.get('title', 'Untitled Conversation'),
@@ -1067,7 +1067,7 @@ class HybridContentRegistry:
         # Route to appropriate table based on content type
         if database_name == 'gmail' or 'gmail' in database_name:
             sql_success = self.add_gmail_content(content_data)
-        elif data_source == 'conversation' or database_name == 'conversations':
+        elif data_source == 'conversation' or database_name == 'convos':
             # Conversation history goes to conversation_content table
             sql_success = self.add_conversation_content(content_data)
         elif data_source == 'discord':

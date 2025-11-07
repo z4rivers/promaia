@@ -36,10 +36,27 @@ class HybridQueryInterface:
                 # --- Gmail Thread Logic ---
                 # This logic will now be primary and will handle all cases.
                 
-                # Default WHERE conditions and params
-                where_conditions = ["workspace = ?"]
+                # Check for cross-workspace databases (workspace_scope="all")
+                cross_workspace_sources = []
+                if sources:
+                    try:
+                        from promaia.config.databases import get_database_config
+                        for source in sources:
+                            db_config = get_database_config(source)
+                            if db_config and getattr(db_config, 'workspace_scope', 'single') == 'all':
+                                cross_workspace_sources.append(source)
+                    except Exception as e:
+                        logger.warning(f"Could not check workspace_scope: {e}")
+
+                # Default WHERE conditions and params with cross-workspace support
+                if cross_workspace_sources:
+                    # Include content from specified workspace OR cross-workspace databases
+                    cross_workspace_list = ', '.join(f"'{s}'" for s in cross_workspace_sources)
+                    where_conditions = [f"(workspace = ? OR database_name IN ({cross_workspace_list}))"]
+                else:
+                    where_conditions = ["workspace = ?"]
                 params = [workspace]
-                
+
                 # Add source filtering
                 if sources:
                     source_conditions = []
@@ -82,8 +99,12 @@ class HybridQueryInterface:
                 final_where_clauses = []
                 final_params = []
                 
-                # A) Clause for non-Gmail content
-                non_gmail_conditions = ["database_name != 'gmail'", "workspace = ?"]
+                # A) Clause for non-Gmail content (with cross-workspace support)
+                if cross_workspace_sources:
+                    cross_workspace_list = ', '.join(f"'{s}'" for s in cross_workspace_sources)
+                    non_gmail_conditions = ["database_name != 'gmail'", f"(workspace = ? OR database_name IN ({cross_workspace_list}))"]
+                else:
+                    non_gmail_conditions = ["database_name != 'gmail'", "workspace = ?"]
                 non_gmail_params = [workspace]
                 
                 if sources:
