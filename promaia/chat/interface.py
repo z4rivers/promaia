@@ -4661,10 +4661,17 @@ You have access to email sending functionality. When the user mentions sending e
      "message_body": "Email message content",
      "thread_id": "optional_thread_id",
      "message_id": "optional_message_id",
-     "attachments": ["file1.pdf", "file2.doc"]
+     "attachments": ["/full/path/to/file.pdf"]
    }
    </email_draft>
    ```
+
+   **IMPORTANT for attachments:**
+   - Use the EXACT file path from the user's message (e.g., "/Users/kb/Downloads/file.pdf")
+   - Do NOT use placeholders like "_latest_attachment_" or "file.pdf"
+   - If user provided an image path, use that full path in the attachments array
+   - If no attachment, use empty array: "attachments": []
+
    The system will automatically create the draft and launch the email interface.
 
 Be helpful and conversational while gathering the necessary information.
@@ -5826,10 +5833,17 @@ You have access to email sending functionality. When the user mentions sending e
      "message_body": "Email message content",
      "thread_id": "optional_thread_id",
      "message_id": "optional_message_id",
-     "attachments": ["file1.pdf", "file2.doc"]
+     "attachments": ["/full/path/to/file.pdf"]
    }
    </email_draft>
    ```
+
+   **IMPORTANT for attachments:**
+   - Use the EXACT file path from the user's message (e.g., "/Users/kb/Downloads/file.pdf")
+   - Do NOT use placeholders like "_latest_attachment_" or "file.pdf"
+   - If user provided an image path, use that full path in the attachments array
+   - If no attachment, use empty array: "attachments": []
+
    The system will automatically create the draft and launch the email interface.
 
 Be helpful and conversational while gathering the necessary information.
