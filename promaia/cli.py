@@ -2948,7 +2948,7 @@ def main():
         "--vector-search", "-vs",
         action="append",
         nargs="+",
-        help="Use semantic vector search to find similar content. Can be used multiple times for separate queries. Example: maia chat -vs 'international launch stories' -vs 'product planning discussions'"
+        help="Use semantic vector search to find similar content. Can be used multiple times for separate queries. IMPORTANT: Quote queries with special characters like parentheses. Examples: maia chat -vs \"story with (Shared) in title\" -tk 1 or maia chat -vs 'international launch stories' -vs 'product planning discussions'"
     )
     chat_parser.add_argument(
         "--top-k", "-tk",

@@ -24,8 +24,16 @@ SUPPORTED_FORMATS = {
     'image/gif': ['.gif']  # Non-animated only for most models
 }
 
-# Maximum image size (in bytes) - 20MB
+# Maximum image size (in bytes) - 20MB for inline base64
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
+
+# Threshold for using Gemini File API instead of base64 (20MB by default)
+# Can be overridden with GEMINI_FILE_API_THRESHOLD_MB environment variable
+_threshold_mb = int(os.getenv("GEMINI_FILE_API_THRESHOLD_MB", "20"))
+GEMINI_FILE_API_THRESHOLD = _threshold_mb * 1024 * 1024
+
+# Maximum image size for Gemini File API - 2GB
+GEMINI_FILE_API_MAX_SIZE = 2 * 1024 * 1024 * 1024
 
 # Maximum image dimensions
 MAX_IMAGE_DIMENSIONS = (4096, 4096)
@@ -203,14 +211,102 @@ def encode_image_from_bytes(image_data: bytes, filename: str = None, media_type:
     except Exception as e:
         raise IOError(f"Failed to process image data: {str(e)}")
 
+def process_image_for_gemini(image_path: str, max_size: Optional[Tuple[int, int]] = None) -> Dict[str, Any]:
+    """
+    Process an image for Gemini API, automatically choosing between base64 and File API.
+
+    For files <= 20MB: Uses base64 encoding (faster, no upload needed)
+    For files > 20MB: Uses File API (supports up to 2GB)
+
+    Args:
+        image_path: Path to the image file
+        max_size: Optional maximum dimensions (width, height)
+
+    Returns:
+        Dict with either:
+        - 'data', 'media_type', and 'method': 'base64' for inline images
+        - 'file_uri' and 'method': 'file_api' for uploaded files
+
+    Raises:
+        FileNotFoundError: If the image file doesn't exist
+        ValueError: If the image format is not supported or file is too large
+        IOError: If the image cannot be processed
+    """
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    # Check file size to determine method
+    file_size = os.path.getsize(image_path)
+
+    if file_size <= GEMINI_FILE_API_THRESHOLD:
+        # Use base64 encoding for smaller files
+        encoded = encode_image_from_path(image_path, max_size)
+        encoded['method'] = 'base64'
+        return encoded
+    else:
+        # Use File API for larger files
+        if file_size > GEMINI_FILE_API_MAX_SIZE:
+            raise ValueError(f"Image file too large: {file_size} bytes (max: {GEMINI_FILE_API_MAX_SIZE})")
+
+        file_uri = upload_image_to_gemini_file_api(image_path)
+        return {
+            'file_uri': file_uri,
+            'method': 'file_api',
+            'media_type': validate_image_format(image_path)
+        }
+
+def upload_image_to_gemini_file_api(image_path: str, display_name: str = None) -> str:
+    """
+    Upload an image to Gemini File API for large files (>20MB).
+
+    Args:
+        image_path: Path to the image file
+        display_name: Optional display name for the file
+
+    Returns:
+        The file URI that can be used in Gemini API calls
+
+    Raises:
+        ValueError: If the file is too large or format unsupported
+        RuntimeError: If upload fails
+    """
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        raise ImportError("google-generativeai package is required for File API. Install with: pip install google-generativeai")
+
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    # Check file size
+    file_size = os.path.getsize(image_path)
+    if file_size > GEMINI_FILE_API_MAX_SIZE:
+        raise ValueError(f"Image file too large for Gemini File API: {file_size} bytes (max: {GEMINI_FILE_API_MAX_SIZE})")
+
+    # Validate format
+    media_type = validate_image_format(image_path)
+
+    try:
+        # Upload file to Gemini File API
+        if display_name is None:
+            display_name = os.path.basename(image_path)
+
+        uploaded_file = genai.upload_file(path=image_path, display_name=display_name)
+
+        # Return the file URI
+        return uploaded_file.uri
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to upload image to Gemini File API: {str(e)}")
+
 def format_image_for_openai(base64_data: str, media_type: str) -> Dict[str, Any]:
     """
     Format image data for OpenAI GPT-4o Vision API.
-    
+
     Args:
         base64_data: Base64 encoded image data
         media_type: MIME type of the image
-        
+
     Returns:
         Formatted message content for OpenAI API
     """
@@ -242,21 +338,40 @@ def format_image_for_anthropic(base64_data: str, media_type: str) -> Dict[str, A
         }
     }
 
-def format_image_for_gemini(base64_data: str, media_type: str) -> Dict[str, str]:
+def format_image_for_gemini(base64_data: str = None, media_type: str = None, file_uri: str = None):
     """
     Format image data for Google Gemini API.
-    
+    Supports both base64 inline data and File API URIs.
+
     Args:
-        base64_data: Base64 encoded image data  
-        media_type: MIME type of the image
-        
+        base64_data: Base64 encoded image data (for inline images)
+        media_type: MIME type of the image (required with base64_data)
+        file_uri: File URI from Gemini File API (alternative to base64_data)
+
     Returns:
-        Formatted image data for Gemini API
+        Formatted image data for Gemini API - either a dict with mime_type/data
+        or a file reference object
+
+    Raises:
+        ValueError: If neither base64_data nor file_uri is provided
     """
-    return {
-        "mime_type": media_type,
-        "data": base64_data
-    }
+    if file_uri:
+        # Return File API reference
+        try:
+            import google.generativeai as genai
+            # Get file reference from URI
+            return genai.get_file(name=file_uri.split('/')[-1])
+        except Exception:
+            # If getting file fails, return raw URI string (Gemini accepts this too)
+            return {"file_uri": file_uri}
+    elif base64_data and media_type:
+        # Return inline base64 data
+        return {
+            "mime_type": media_type,
+            "data": base64_data
+        }
+    else:
+        raise ValueError("Either base64_data with media_type, or file_uri must be provided")
 
 def format_image_for_llama(base64_data: str, media_type: str) -> Dict[str, Any]:
     """
@@ -294,10 +409,10 @@ def is_vision_supported(model_type: str) -> bool:
 def get_model_image_limits(model_type: str) -> Dict[str, Any]:
     """
     Get image processing limits for a specific model.
-    
+
     Args:
         model_type: The model type
-        
+
     Returns:
         Dict with 'max_images', 'max_size', and 'supported_formats' keys
     """
@@ -308,14 +423,15 @@ def get_model_image_limits(model_type: str) -> Dict[str, Any]:
             'supported_formats': list(SUPPORTED_FORMATS.keys())
         },
         'anthropic': {
-            'max_images': 5,   # Per message  
+            'max_images': 5,   # Per message
             'max_size': MAX_IMAGE_SIZE,
             'supported_formats': ['image/jpeg', 'image/png', 'image/webp']
         },
         'gemini': {
             'max_images': 16,  # Per message
-            'max_size': MAX_IMAGE_SIZE, 
-            'supported_formats': list(SUPPORTED_FORMATS.keys())
+            'max_size': GEMINI_FILE_API_MAX_SIZE,  # 2GB via File API
+            'supported_formats': list(SUPPORTED_FORMATS.keys()),
+            'note': f'Uses base64 for images <={GEMINI_FILE_API_THRESHOLD/(1024*1024):.0f}MB, File API for larger images up to 2GB'
         },
         'llama': {
             'max_images': 1,   # Most vision models support 1 image
@@ -323,5 +439,5 @@ def get_model_image_limits(model_type: str) -> Dict[str, Any]:
             'supported_formats': ['image/jpeg', 'image/png']
         }
     }
-    
+
     return limits.get(model_type.lower(), limits['openai'])  # Default to OpenAI limits

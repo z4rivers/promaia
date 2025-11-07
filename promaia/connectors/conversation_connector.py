@@ -141,6 +141,12 @@ class ConversationConnector(BaseConnector):
             filtered_pages = []
             for page in pages:
                 date_field = date_filter.property_name
+                # Map created_time to created_at for conversations
+                if date_field == 'created_time':
+                    date_field = 'created_at'
+                elif date_field == 'last_edited_time':
+                    date_field = 'last_accessed'
+
                 if date_field in ['last_accessed', 'created_at']:
                     date_str = page['properties'].get(date_field, '')
                     if date_str:
@@ -156,6 +162,13 @@ class ConversationConnector(BaseConnector):
                             filtered_pages.append(page)
                         except:
                             continue
+                    else:
+                        # No date string - include the page if no date restrictions
+                        if not date_filter.start_date and not date_filter.end_date:
+                            filtered_pages.append(page)
+                else:
+                    # Unknown date field - include the page
+                    filtered_pages.append(page)
             pages = filtered_pages
 
         # Apply property filters
@@ -215,9 +228,9 @@ class ConversationConnector(BaseConnector):
                            excluded_properties: List[str] = None) -> SyncResult:
         """Sync conversation history to local storage (legacy method)."""
         # This is the old API - forward to sync_to_local_unified
-        from promaia.storage.unified_storage import UnifiedContentStorage
+        from promaia.storage.unified_storage import UnifiedStorage
 
-        storage = UnifiedContentStorage()
+        storage = UnifiedStorage()
 
         # Get database config
         db_config = {
@@ -303,15 +316,16 @@ class ConversationConnector(BaseConnector):
                     }
 
                     # Save to unified storage (includes vector embeddings)
-                    file_path = await storage.save_content(
-                        content=markdown_content,
-                        metadata=metadata,
-                        db_config=db_config,
-                        force_update=force_update
+                    saved_files = storage.save_content(
+                        page_id=thread_id,
+                        title=thread_name,
+                        content_data=metadata,
+                        database_config=db_config,
+                        markdown_content=markdown_content
                     )
 
-                    if file_path:
-                        result.add_success(file_path)
+                    if saved_files and 'markdown' in saved_files:
+                        result.add_success(saved_files['markdown'])
                         self.logger.debug(f"Synced conversation: {thread_name}")
                     else:
                         result.add_skip()

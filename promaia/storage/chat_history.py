@@ -108,7 +108,7 @@ class ChatHistoryManager:
             return False
 
         try:
-            from promaia.storage.unified_storage import UnifiedContentStorage
+            from promaia.storage.unified_storage import UnifiedStorage
             from promaia.markdown.converter import conversation_to_markdown
             from promaia.config.databases import get_database_config
 
@@ -161,26 +161,18 @@ class ChatHistoryManager:
             }
 
             # Save to unified storage (includes vector embeddings and SQL)
-            storage = UnifiedContentStorage()
+            storage = UnifiedStorage()
 
-            # Use asyncio to run the async save_content method
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            file_path = loop.run_until_complete(
-                storage.save_content(
-                    content=markdown_content,
-                    metadata=metadata,
-                    db_config=db_config,
-                    force_update=True  # Always update to capture new messages
-                )
+            # Save using the correct UnifiedStorage API
+            result = storage.save_content(
+                page_id=thread.id,
+                title=thread.name,
+                content_data=metadata,  # Pass metadata as content_data
+                database_config=db_config,
+                markdown_content=markdown_content
             )
 
-            return file_path is not None
+            return result and 'markdown' in result
 
         except Exception as e:
             # Silently fail - don't break chat functionality if database integration fails

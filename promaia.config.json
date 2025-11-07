@@ -464,7 +464,7 @@
       "default_days": "all",
       "default_include": true,
       "browser_include": true,
-      "last_sync_time": null,
+      "last_sync_time": "2025-11-07T21:23:39.120996+00:00",
       "filters": {},
       "property_filters": {},
       "date_filters": {},
@@ -475,8 +475,7 @@
       "property_mapping": {},
       "required_properties": [],
       "excluded_properties": [],
-      "auth": {},
-      "history_file": "~/.maia_chat_history.json"
+      "auth": {}
     }
   },
   "workspaces": {

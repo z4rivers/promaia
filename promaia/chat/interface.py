@@ -1371,7 +1371,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Add natural language data to combined results (whether cached or fresh)
             if natural_language_data:
                 debug_print(f"🔍 Adding NL data to combined_multi_source_data: {len(natural_language_data)} databases, {sum(len(pages) for pages in natural_language_data.values())} total pages")
-                combined_multi_source_data.update(natural_language_data)
+                # Merge NL content with existing content (don't use .update() as it replaces!)
+                for db_name, pages in natural_language_data.items():
+                    if db_name not in combined_multi_source_data:
+                        combined_multi_source_data[db_name] = []
+                    # Avoid duplicates by checking page IDs
+                    existing_ids = {p.get('id') for p in combined_multi_source_data[db_name] if isinstance(p, dict) and 'id' in p}
+                    for page in pages:
+                        if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                            combined_multi_source_data[db_name].append(page)
+                            if isinstance(page, dict) and 'id' in page:
+                                existing_ids.add(page['id'])
                 debug_print(f"🔍 After merge: combined_multi_source_data has {len(combined_multi_source_data)} databases")
             else:
                 debug_print(f"⚠️  natural_language_data is empty, skipping merge")
@@ -2336,35 +2346,45 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             logger.error(traceback.format_exc())
                             return False
 
-                # Check if natural language mode is being used
+                # Check if we have BOTH natural language and vector search queries
                 sql_query_args = getattr(parsed_args, 'sql_query', None)
-                
+                vector_search_args = getattr(parsed_args, 'vector_search', None)
+
+                # Extract top_k and threshold if provided
+                if hasattr(parsed_args, 'top_k') and parsed_args.top_k is not None:
+                    context_state['top_k'] = parsed_args.top_k
+                if hasattr(parsed_args, 'threshold') and parsed_args.threshold is not None:
+                    context_state['threshold'] = parsed_args.threshold
+
+                # Process SQL queries if present
+                sql_query_content = None
+                combined_nl_prompt = None
                 if sql_query_args is not None:
                     # Natural language mode - handle multiple -nl queries
                     # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
                     # Both edit mode and top-level query are two sides of one feature.
                     # With action="append" and nargs="+", we get a list of lists
                     nl_prompts = [' '.join(nl_args) for nl_args in sql_query_args if nl_args]
-                    
+
                     if not nl_prompts:
                         print_text("Error: Natural language prompt is empty.", style="bold red")
                         return False
-                    
+
                     # Create combined prompt for caching (without -nl prefixes for consistency with cli.py)
                     # This matches the format used in cli.py line 1458, 1641
                     combined_nl_prompt = " ".join(nl_prompts) if nl_prompts else ""
-                    
+
                     # Check if we already have cached results for this exact NL prompt
                     cached_nl_content = context_state.get('sql_query_content', {})
                     cached_nl_prompt = context_state.get('cached_sql_query_prompt', '')
-                    
+
                     # DEBUG: Log cache check in edit context
                     debug_print(f"🔍 Edit Context NL Cache Check:")
                     debug_print(f"  New prompt(s): {nl_prompts}")
                     debug_print(f"  Cached prompt: '{cached_nl_prompt}'")
                     debug_print(f"  Prompts match: {combined_nl_prompt == cached_nl_prompt}")
                     debug_print(f"  Has cached content: {bool(cached_nl_content)}")
-                    
+
                     if combined_nl_prompt == cached_nl_prompt and cached_nl_content:
                         print_text("🔄 Reusing cached natural language results (prompt unchanged)", style="dim")
                         sql_query_content = cached_nl_content
@@ -2379,21 +2399,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             debug_print(f"  → No cached prompt yet, will process and cache")
                         else:
                             debug_print(f"  → Cache miss, will re-process")
-                        
+
                         # Process multiple natural language queries
                         try:
                             from promaia.storage.unified_query import get_query_interface
-                            
+
                             if len(nl_prompts) > 1:
                                 print_text(f"🤖 Processing {len(nl_prompts)} separate natural language queries", style="dim")
                                 for i, prompt in enumerate(nl_prompts):
                                     print_text(f"   {i+1}. '{prompt}'", style="dim")
                             else:
                                 print_text(f"🤖 Processing natural language query: '{nl_prompts[0]}'", style="dim")
-                            
+
                             # Determine workspace to use
                             workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
-                            
+
                             # If no explicit workspace, try to infer from original sources
                             if not workspace and context_state.get('sources'):
                                 # Try to extract workspace from source names (e.g., "trass.gmail" -> "trass")
@@ -2402,129 +2422,78 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                         potential_workspace = source.split('.')[0]
                                         workspace = potential_workspace
                                         break
-                            
+
                             # Fall back to default workspace
                             if not workspace:
                                 from promaia.config.workspaces import get_workspace_manager
                                 workspace_manager = get_workspace_manager()
                                 workspace = workspace_manager.get_default_workspace()
-                            
+
                             if not workspace:
                                 print_text("Error: No workspace available for natural language query.", style="bold red")
                                 return False
-                            
+
                             # Process multiple natural language queries and combine results
                             query_interface = get_query_interface()
-                            
+
                             # For OR logic: Natural language searches ALL databases (not restricted to browser selections)
-                            # Browser selections will be loaded separately and combined with NL results  
+                            # Browser selections will be loaded separately and combined with NL results
                             database_names = None  # Search all databases for maximum content discovery
-                            
+
                             # Process each NL query separately and combine results
                             combined_nl_content = {}
                             total_results = 0
-                            
+
                             for i, nl_prompt in enumerate(nl_prompts):
                                 print_text(f"🔍 Processing query {i+1}/{len(nl_prompts)}: '{nl_prompt}'", style="cyan")
-                                
+
                                 # Always allow cross-workspace queries for natural language
                                 # Workspace is just a classifier/tag, not a mandatory constraint
                                 nl_content = query_interface.natural_language_query(nl_prompt, None, database_names)
-                                
+
                                 if nl_content:
                                     # Merge results from this query into combined content
                                     for db_name, entries in nl_content.items():
                                         if db_name not in combined_nl_content:
                                             combined_nl_content[db_name] = []
                                         combined_nl_content[db_name].extend(entries)
-                                    
+
                                     query_results = sum(len(entries) for entries in nl_content.values())
                                     total_results += query_results
                                     print_text(f"   ✅ Query {i+1} found {query_results} results", style="green")
                                 else:
                                     print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
-                            
+
                             if not combined_nl_content:
-                                return False
-                            
-                            print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
-                            sql_query_content = combined_nl_content
-                            
-                            # Cache both the results and combined prompt for future use
-                            context_state['sql_query_content'] = sql_query_content
-                            context_state['cached_sql_query_prompt'] = combined_nl_prompt
-                            
+                                # Only fail if we don't also have VS queries to try
+                                if not vector_search_args:
+                                    return False
+                                else:
+                                    print_text("⚠️  No SQL results found, continuing with vector search...", style="yellow")
+                            else:
+                                print_text(f"🎯 Combined {len(nl_prompts)} queries: {total_results} total results", style="green")
+                                sql_query_content = combined_nl_content
+
+                                # Cache both the results and combined prompt for future use
+                                context_state['sql_query_content'] = sql_query_content
+                                context_state['cached_sql_query_prompt'] = combined_nl_prompt
+
                         except Exception as e:
                             print_text(f"Error processing natural language query: {e}", style="bold red")
-                            return False
-                    
+                            # Only fail if we don't also have VS queries to try
+                            if not vector_search_args:
+                                return False
+                            else:
+                                print_text("⚠️  SQL query failed, continuing with vector search...", style="yellow")
+
                     # Update context state for natural language mode
                     # sql_query_content is already set above (either from cache or fresh query)
-                    context_state['sql_query_prompt'] = combined_nl_prompt
-                    
-                    # NOTE: Don't update cached_sql_query_prompt here!
-                    # Let reload_context() handle cache updates after processing new queries
-                    
-                    # Update sources and filters based on the edited command, not the old state
-                    new_sources = getattr(parsed_args, 'sources', []) or []
-                    new_filters = getattr(parsed_args, 'filters', []) or []
-                    new_workspace = getattr(parsed_args, 'workspace', None)
-                    new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
-                    
-                    # Check if browse flag is present in the command
-                    has_browse_flag = any('-b' in arg for arg in args_list)
-                    
-                    # Only update sources if not in browse mode, or if user provided explicit sources
-                    # This preserves browse selections when user adds NL query to browse command
-                    if has_browse_flag and not new_sources:
-                        # Keep existing sources from browse selections - don't overwrite with empty list
-                        debug_print("  → Preserving existing browse sources (NL query added to browse command)")
-                    else:
-                        # Update sources (either user removed browse flag or provided explicit sources)
-                        context_state['sources'] = new_sources
-                    
-                    context_state['filters'] = new_filters
-                    context_state['mcp_servers'] = new_mcp_servers
-                    if new_workspace:
-                        context_state['workspace'] = new_workspace
-                    
-                    # Only clear browse state if user is explicitly switching away from browse mode
-                    # Don't clear if they're just editing other aspects of the command
-                    if not has_browse_flag:
-                        # User removed browse flag - clear browse state but preserve other context
-                        context_state['original_browse_mode'] = False
-                        context_state['browse_selections'] = []
-                        # Don't clear original_query_format to preserve command display
-                    
-                    # Set the mixed browse+NL flag if we have both browse and NL
-                    has_browse_flag = any('-b' in arg for arg in args_list)
-                    has_browse_selections = bool(context_state.get('browse_selections'))
-                    if has_browse_flag and has_browse_selections:
-                        context_state['is_mixed_browse_nl_command'] = True
-                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+NL merge (edit_context)")
-                    
-                    # Update the original query format for natural language mode
-                    full_command = f"maia chat {user_input}"
-                    context_state['original_query_format'] = full_command
-                    
-                    # Reload with natural language content and updated sources
-                    # Pass flag to indicate this is after manual editing to avoid confusing cache messages
-                    if reload_context(skip_nl_cache_messages=True):
-                        print_text("Context updated successfully!", style="bold green")
-                        return True
-                    else:
-                        print_text("Failed to reload context with natural language content.", style="bold red")
-                        return False
-                
-                # Extract top_k and threshold if provided
-                if hasattr(parsed_args, 'top_k') and parsed_args.top_k is not None:
-                    context_state['top_k'] = parsed_args.top_k
-                if hasattr(parsed_args, 'threshold') and parsed_args.threshold is not None:
-                    context_state['threshold'] = parsed_args.threshold
+                    if sql_query_content:
+                        context_state['sql_query_prompt'] = combined_nl_prompt
 
                 # Check if vector search mode is being used
-                vector_search_args = getattr(parsed_args, 'vector_search', None)
-
+                vs_content = None
+                combined_vs_prompt = None
                 if vector_search_args is not None:
                     # Vector search mode - handle multiple -vs queries
                     # NOTE: This logic MUST match the top-level CLI implementation in promaia/cli.py
@@ -2574,6 +2543,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             print_text(f"🔄 Reusing cached vector search results (query unchanged)", style="dim")
                         else:
                             print_text(f"🤖 Processing vector search query: '{vs_queries_structured[0]['query']}'", style="dim")
+
+                    # Show clarity message if both VS and SQL queries are active
+                    if sql_query_args and vector_search_args:
+                        print_text("📊 Processing both natural language and vector search queries - results will be combined", style="bold cyan")
 
                     # Show clarity message if both VS and browse modes are active
                     has_browse_in_command = '-b' in user_input or '--browse' in user_input
@@ -2646,67 +2619,81 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                         print_text(f"   ⚠️  Query {i+1} found no results", style="yellow")
 
                         if not combined_vs_content:
-                            print_text("❌ No content found for any vector search queries", style="red")
-                            return False
-
-                        if len(vs_queries_structured) > 1:
-                            if new_queries_processed > 0 and len(cached_queries) > 0:
-                                print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
+                            # Only fail if we don't also have SQL results
+                            if not sql_query_content:
+                                print_text("❌ No content found for any vector search queries", style="red")
+                                return False
                             else:
-                                print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results", style="green")
-                        vs_content = combined_vs_content
+                                print_text("⚠️  No vector search results found, using SQL results only", style="yellow")
+                        else:
+                            if len(vs_queries_structured) > 1:
+                                if new_queries_processed > 0 and len(cached_queries) > 0:
+                                    print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results ({new_queries_processed} new, {len(cached_queries)} cached)", style="green")
+                                else:
+                                    print_text(f"🎯 Combined {len(vs_queries_structured)} queries: {total_results} total results", style="green")
+                            vs_content = combined_vs_content
 
-                        # Update caches - use separate VS fields to avoid confusion with NL fields
-                        context_state['vector_search_per_query_cache'] = per_query_cache
-                        context_state['vector_search_content'] = vs_content
-                        context_state['cached_vector_search_prompt'] = combined_vs_prompt
+                            # Update caches - use separate VS fields to avoid confusion with NL fields
+                            context_state['vector_search_per_query_cache'] = per_query_cache
+                            context_state['vector_search_content'] = vs_content
+                            context_state['cached_vector_search_prompt'] = combined_vs_prompt
 
                     except Exception as e:
                         print_text(f"Error processing vector search query: {e}", style="bold red")
                         import traceback
                         traceback.print_exc()
-                        return False
+                        # Only fail if we don't also have SQL results
+                        if not sql_query_content:
+                            return False
+                        else:
+                            print_text("⚠️  Vector search failed, using SQL results only", style="yellow")
 
-                    # Update context state for vector search mode (use separate VS prompt field)
-                    context_state['sql_query_prompt'] = combined_vs_prompt
-                    
+                # Now handle the combined case or individual cases
+                if sql_query_args or vector_search_args:
                     # Update other fields from parsed args
                     new_sources = getattr(parsed_args, 'sources', []) or []
                     new_filters = getattr(parsed_args, 'filters', []) or []
                     new_workspace = getattr(parsed_args, 'workspace', None)
                     new_mcp_servers = getattr(parsed_args, 'mcp_servers', []) or []
-                    
+
                     # Check if browse flag is present in the command
                     has_browse_flag = any('-b' in arg for arg in args_list)
-                    
-                    # Preserve browse selections when user adds VS query to browse command
+
+                    # Preserve browse selections when user adds queries to browse command
                     if has_browse_flag and not new_sources:
-                        debug_print("  → Preserving existing browse sources (VS query added to browse command)")
+                        debug_print("  → Preserving existing browse sources (query added to browse command)")
                     else:
                         context_state['sources'] = new_sources
-                    
+
                     context_state['filters'] = new_filters
                     context_state['mcp_servers'] = new_mcp_servers
                     if new_workspace:
                         context_state['workspace'] = new_workspace
-                    
-                    # Set mixed browse+VS flag if we have both
+
+                    # Update context state based on which queries we have
+                    if sql_query_args and combined_nl_prompt:
+                        context_state['sql_query_prompt'] = combined_nl_prompt
+                    elif vector_search_args and combined_vs_prompt:
+                        # Only set sql_query_prompt to VS prompt if there's no SQL prompt
+                        context_state['sql_query_prompt'] = combined_vs_prompt
+
+                    # Set mixed browse flag if we have browse
                     if has_browse_flag and context_state.get('browse_selections'):
                         context_state['is_mixed_browse_nl_command'] = True
-                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+VS merge (edit_context)")
-                    
+                        debug_print("🔍 Set is_mixed_browse_nl_command=True for browse+query merge (edit_context)")
+
                     # Update the original query format
                     full_command = f"maia chat {user_input}"
                     context_state['original_query_format'] = full_command
-                    
-                    # Reload with vector search content
+
+                    # Reload with the updated content
                     if reload_context(skip_nl_cache_messages=True):
                         print_text("Context updated successfully!", style="bold green")
                         return True
                     else:
-                        print_text("Failed to reload context with vector search content.", style="bold red")
+                        print_text("Failed to reload context with query content.", style="bold red")
                         return False
-                
+
                 else:
                     # Regular mode with sources and filters
                     new_sources = getattr(parsed_args, 'sources', []) or []
