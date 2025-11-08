@@ -296,19 +296,19 @@ class DraftMode(ChatMode):
         print()
         print_text(f"⚠️  Ready to send Draft #{latest_artifact_id}", style="bold yellow")
         print_text(f"Subject: {self.draft_data['inbound_subject']}", style="yellow")
-        print_text(f"\nType the first 5 characters of the subject to confirm: '{self.draft_data['safety_string']}'", style="yellow")
+        print_text(f"\nType the first 5 characters to confirm: '{self.draft_data['safety_string']}'", style="yellow")
         print_text(f"Or type 'cancel' (or press Enter) to abort", style="dim")
-        
+
         confirmation = input("\nConfirm: ").strip()
 
         if not confirmation or confirmation.lower() == 'cancel':
             print_text("\n↩️  Send cancelled\n", style="cyan")
             return False
 
-        # Strip trailing whitespace from safety string for comparison
+        # Get safety string (already lowercase from helper function)
         safety_string = self.draft_data['safety_string'].rstrip()
 
-        if confirmation != safety_string:
+        if confirmation.lower() != safety_string:
             print_text("\n❌ Confirmation failed\n", style="red")
             return False
         

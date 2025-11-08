@@ -110,7 +110,23 @@ class GmailConnector(BaseConnector):
         self.max_retry_attempts = config.get("max_retry_attempts", self.MAX_RETRY_ATTEMPTS)
         
         self.service = None
-        
+
+    def _get_raw_thread_id(self, thread_id: str) -> str:
+        """Strip internal 'thread_' prefix to get raw Gmail thread ID.
+
+        Gmail API expects raw hexadecimal thread IDs without any prefix.
+        Our internal storage adds 'thread_' prefix for page_id purposes.
+
+        Args:
+            thread_id: Thread ID (may be prefixed with 'thread_')
+
+        Returns:
+            Raw thread ID without prefix
+        """
+        if not thread_id:
+            return thread_id
+        return thread_id.replace('thread_', '', 1) if thread_id.startswith('thread_') else thread_id
+
     async def connect(self) -> bool:
         """Establish connection to Gmail API."""
         try:
@@ -1301,6 +1317,7 @@ Subject: {subject}
             "title": thread.get('subject', 'No Subject'),
             "from": thread.get('from', 'Unknown'),
             "to": thread.get('to', ''),
+            "cc": thread.get('cc', ''),
             "date": thread.get('date'),
             "labels": thread.get('labels', []),
             "has_attachments": thread.get('has_attachments', False),
@@ -1336,23 +1353,27 @@ Subject: {subject}
         subject = thread.get("subject", "No Subject")
         from_addr = thread.get("from", "Unknown")
         to_addr = thread.get("to", "")
+        cc_addr = thread.get("cc", "")
         date_str = thread.get("date", "")
         labels = thread.get("labels", [])
         message_count = thread.get("message_count", 1)
         has_attachments = thread.get("has_attachments", False)
-        
+
         # Note: Date prefix for filename is now handled by unified storage using the 'date' field
         # No need to manually add it here to avoid double prefixing
-        
+
+        # Build CC line if present
+        cc_line = f"**Cc:** {cc_addr}  \n" if cc_addr else ""
+
         # Create header
         header = f"""# Email Thread: {subject}
 
-**From:** {from_addr}  
-**To:** {to_addr}  
-**Date:** {date_str}  
-**Messages:** {message_count}  
-**Labels:** {', '.join(labels)}  
-**Has Attachments:** {'Yes' if has_attachments else 'No'}  
+**From:** {from_addr}
+**To:** {to_addr}
+{cc_line}**Date:** {date_str}
+**Messages:** {message_count}
+**Labels:** {', '.join(labels)}
+**Has Attachments:** {'Yes' if has_attachments else 'No'}
 
 ---
 
@@ -1374,14 +1395,15 @@ Subject: {subject}
         """Prepare individual message data for storage with thread context."""
         
         # Extract message headers
-        headers = {h['name'].lower(): h['value'] 
+        headers = {h['name'].lower(): h['value']
                   for h in message.get('payload', {}).get('headers', [])}
-        
+
         message_id = message.get('id')
         thread_id = thread.get('id')
         subject = headers.get('subject', 'No Subject')
         from_addr = headers.get('from', 'Unknown')
         to_addr = headers.get('to', '')
+        cc_addr = headers.get('cc', '')
         date_str = headers.get('date', '')
         
         # Parse date to ISO format for database consistency
@@ -1406,16 +1428,19 @@ Subject: {subject}
         
         # Determine if this is the latest message in the thread
         is_latest = message_index == (total_messages - 1)
-        
+
+        # Build CC line if present
+        cc_line = f"**Cc:** {cc_addr}  \n" if cc_addr else ""
+
         # Create markdown content for individual message
         markdown_content = f"""# Email Message: {subject}
 
-**From:** {from_addr}  
-**To:** {to_addr}  
-**Date:** {date_str}  
-**Thread:** {thread_id}  
-**Position:** {message_index + 1} of {total_messages}  
-**Is Latest:** {'Yes' if is_latest else 'No'}  
+**From:** {from_addr}
+**To:** {to_addr}
+{cc_line}**Date:** {date_str}
+**Thread:** {thread_id}
+**Position:** {message_index + 1} of {total_messages}
+**Is Latest:** {'Yes' if is_latest else 'No'}
 
 ---
 
@@ -1426,6 +1451,11 @@ Subject: {subject}
 """
         
         # Prepare metadata for storage
+        # Parse CC recipients (can be multiple addresses separated by commas)
+        cc_recipients = []
+        if cc_addr:
+            cc_recipients = [addr.strip() for addr in cc_addr.split(',') if addr.strip()]
+
         metadata = {
             "page_id": page_id,
             "title": f"{subject} (Message {message_index + 1})",
@@ -1438,6 +1468,7 @@ Subject: {subject}
             "sender_email": from_addr,
             "sender_name": from_addr.split('<')[0].strip() if '<' in from_addr else from_addr,
             "recipient_emails": [to_addr] if to_addr else [],
+            "cc_recipients": cc_recipients,
             "labels": thread.get('labels', []),
             "has_attachments": thread.get('has_attachments', False),
             "is_unread": thread.get('is_unread', False),
@@ -1514,7 +1545,8 @@ Subject: {subject}
             # Build the send request
             send_request = {'raw': raw_message}
             if thread_id:
-                send_request['threadId'] = thread_id
+                # Strip "thread_" prefix if present (Gmail API expects raw hex thread ID)
+                send_request['threadId'] = self._get_raw_thread_id(thread_id)
             
             # Send the email
             result = self.service.users().messages().send(

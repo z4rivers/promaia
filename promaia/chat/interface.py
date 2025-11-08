@@ -50,6 +50,37 @@ DEBUG_MODE = os.getenv("MAIA_DEBUG", "0") == "1"
 # Configuration file for API preferences
 API_PREFERENCE_FILE = os.path.join(os.path.expanduser("~"), ".maia_api_preference")
 
+
+def format_email_preview(body: str, attachments: list, max_body_length: int = 400) -> str:
+    """Format email preview showing body and attachments.
+
+    Args:
+        body: Email body text
+        attachments: List of attachment file paths
+        max_body_length: Maximum characters to show from body
+
+    Returns:
+        Formatted preview string
+    """
+    lines = []
+
+    # Show body preview
+    if body:
+        body_preview = body.strip()
+        if len(body_preview) > max_body_length:
+            body_preview = body_preview[:max_body_length] + "\n\n[... message continues ...]"
+        lines.append(body_preview)
+
+    # Show attachments
+    if attachments:
+        lines.append("\n---")
+        lines.append("📎 Attachments:")
+        for attachment in attachments:
+            lines.append(f"- {attachment}")
+
+    return "\n".join(lines)
+
+
 # --- API Client Initialization ---
 
 def get_api_preference():
@@ -4620,83 +4651,56 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if context_state.get('enable_email_send', False):
                 email_instructions = """
 
-## EMAIL SENDING CAPABILITY
+## EMAIL COMPOSITION MODE
 
-You have access to email sending functionality. When the user mentions sending emails or attaching files to send:
+You are in email composition mode. Gmail threads are loaded in your context - search them naturally to find the right thread and recipient.
 
-1. **Detect Intent**: Parse the message to determine if the user wants to send an email
-   - Look for phrases like "send this to", "email this", "send [file] to [person]"
-   - Check if files are attached to the message
+1. **Detect Intent**: User wants to send an email (phrases like "send this to", "email this", etc.)
 
-2. **Gather Information**: Through conversation, collect:
-   - **Recipient(s)**: Who should receive the email (name or email address)
-   - **Email Thread**: Which conversation thread (if replying)
-   - **Message**: What should the email say (if not already provided)
-   - **Attachments**: Files to include (if provided)
+2. **Find the Right Thread**: Search your loaded Gmail context for matching threads
+   - Use keywords from the user's message (person names, subject matter, dates, etc.)
+   - When you find a matching thread, extract: recipient email, subject line, thread_id, message_id
+   - Use the EXACT subject line from the thread (don't add "RE:" or modify it)
 
-3. **Context Available**: You can reference:
-   - Recent emails from the context loaded in this session
-   - The user's contact information and email threads
-   - Any files the user has attached or mentioned
+3. **Compose Email as Artifact**: Create an artifact with this format:
 
-4. **Workflow - MUST FOLLOW STRICTLY**:
-   a) Gather information through conversation
-   b) If ANY information is missing or unclear, ASK - don't guess or infer
-   c) Once you have confirmed ALL details, EXPLICITLY list them back to user
-   d) Wait for user confirmation (e.g., "yes", "looks good", "send it")
-   e) ONLY THEN output the draft JSON
-
-5. **Required Information Checklist**:
-   - ✓ Recipient email address (must be valid email format)
-   - ✓ Subject line (if missing, ask what it should be)
-   - ✓ Message body (if user wants one)
-   - ✓ Attachment path (if user provided a file, use EXACT path they gave)
-
-6. **Example Interaction**:
-   User: "send this /path/to/report.pdf to fionn"
-   You: "I'll help send /path/to/report.pdf. I need a few details:
-   - What's Fionn's email address?
-   - What should the subject line be?
-   - Should I include a message or just the file?"
-
-   User: "fionn@example.com, subject 'Q4 Report', no message needed"
-   You: "Perfect! Let me confirm:
-   - To: fionn@example.com
-   - Subject: Q4 Report
-   - Attachment: /path/to/report.pdf
-   - No message body
-   Should I create this draft?"
-
-   User: "yes"
-   You: [NOW output the <email_draft> JSON]
-
-7. **Creating the Draft - CRITICAL RULES**:
-
-   **DO NOT output <email_draft> until user explicitly confirms!**
-
-   When ready, output:
    ```
-   <email_draft>
-   {
-     "recipient": "email@example.com",
-     "subject": "Email subject",
-     "message_body": "Email message content",
-     "thread_id": null,
-     "message_id": null,
-     "attachments": ["/exact/path/from/user/message.pdf"]
-   }
-   </email_draft>
+   <artifact>
+   Subject: [exact subject from Gmail thread]
+   To: [recipient@example.com]
+
+   [Email body]
+
+   ---
+   📎 Attachments:
+   - /exact/path/file1.pdf
+   - /exact/path/file2.png
+
+   Thread: [thread_id from Gmail if replying]
+   Message-ID: [message_id from Gmail if replying]
+   </artifact>
    ```
 
-   **CRITICAL for attachments:**
-   - Look at the user's ORIGINAL message for the file path
-   - Copy it EXACTLY character-for-character
-   - Example: If user said "/Users/kb20250422/Downloads/IMG_7268.JPG", use EXACTLY that
-   - Do NOT change the path, username, filename, or extension
-   - Do NOT make up paths like "/Users/kb/Pictures/file.png"
-   - If you cannot find the exact path in the conversation, use empty array: "attachments": []
+   - List attachments on separate lines with "- " prefix
+   - Include Thread and Message-ID if replying to an existing thread
+   - Omit Thread and Message-ID if sending a new email
 
-Be helpful and conversational, but DO NOT guess or infer - always ask when information is missing.
+4. **Example**:
+   User: "send this doc to Fionn about UK import"
+   → Search Gmail for threads with "Fionn", "UK", "import"
+   → Find matching thread, extract subject/thread_id/message_id
+   → Create artifact with exact subject and IDs from Gmail
+   → User types /send when ready
+
+5. **Important**:
+   - Search Gmail context first to find the right thread
+   - Use EXACT subject line from Gmail (no "RE:" prefix)
+   - Include thread_id and message_id from Gmail if replying
+   - Use exact file paths from user's message for attachments
+   - User will type `/send` when ready (you don't send it)
+   - User can refine the email through conversation before sending
+
+The user will type `/send` to trigger the actual sending process.
 """
                 current_system_prompt = system_prompt + email_instructions
 
@@ -5656,18 +5660,396 @@ Be helpful and conversational, but DO NOT guess or infer - always ask when infor
                         print_text("🔍 Internet search disabled", style="bold yellow")
 
                 continue
-            elif user_input.strip().lower() == '/mail':
+            elif user_input.strip().lower().startswith('/mail'):
+                # Parse /mail command - can be "/mail" or "/mail workspace"
+                mail_parts = user_input.strip().split(maxsplit=1)
+                target_workspace = mail_parts[1] if len(mail_parts) > 1 else None
+
                 # Toggle email sending functionality
                 current_email_send = context_state.get('enable_email_send', False)
                 context_state['enable_email_send'] = not current_email_send
 
                 if context_state['enable_email_send']:
                     print_text("📧 Mail mode enabled", style="bold green")
-                    print_text("💡 You can now drop files and say things like:", style="cyan")
-                    print_text("   'send this to fionn' or 'email this report to the team'", style="dim cyan")
-                    print_text("   The AI will help gather missing information (recipient, thread, message)", style="dim cyan")
+                    print_text("🔍 Loading Gmail context...", style="cyan")
+
+                    # Automatically load Gmail sources from specified or all workspaces
+                    from promaia.config.databases import get_database_manager
+                    from promaia.config.workspaces import get_workspace_manager
+
+                    db_manager = get_database_manager()
+                    workspace_manager = get_workspace_manager()
+
+                    # Determine which workspaces to load from
+                    if target_workspace:
+                        # Load from specific workspace only
+                        workspaces_to_load = [target_workspace]
+                    else:
+                        # Load from all workspaces
+                        workspaces_to_load = workspace_manager.list_workspaces()
+
+                    # Find all Gmail databases from selected workspaces
+                    gmail_sources = []
+                    mail_from_accounts = []  # Track available sending accounts
+                    for ws in workspaces_to_load:
+                        gmail_dbs = [
+                            db for db in db_manager.get_workspace_databases(ws)
+                            if db.source_type == "gmail"
+                        ]
+                        for gmail_db in gmail_dbs:
+                            # Add with workspace prefix and 7 days of history
+                            # Use nickname for source name (e.g., "gmail"), database_id is the email address
+                            if ws == 'default':
+                                gmail_sources.append(f"{gmail_db.nickname}:7")
+                            else:
+                                gmail_sources.append(f"{ws}.{gmail_db.nickname}:7")
+
+                            # Track account info for "send from" selection
+                            mail_from_accounts.append({
+                                'workspace': ws,
+                                'email': gmail_db.database_id,  # This is the actual email address
+                                'display': f"{gmail_db.database_id} ({ws})" if ws != 'default' else gmail_db.database_id
+                            })
+
+                    # Store available accounts for /send to use
+                    context_state['mail_from_accounts'] = mail_from_accounts
+                    context_state['mail_target_workspace'] = target_workspace
+
+                    if gmail_sources:
+                        # Store original sources to restore later
+                        if 'original_sources_before_mail' not in context_state:
+                            context_state['original_sources_before_mail'] = context_state.get('sources')
+
+                        # Add Gmail sources to current sources (don't replace, add to)
+                        current_sources = context_state.get('sources') or []
+                        new_sources = list(set(current_sources + gmail_sources))  # Deduplicate
+                        context_state['sources'] = new_sources
+
+                        # Reload context with Gmail data
+                        if reload_context():
+                            # Show what was actually loaded
+                            workspace_msg = f" from '{target_workspace}'" if target_workspace else ""
+                            print_text(f"✅ Loaded Gmail context{workspace_msg}", style="green")
+                            print_text(f"Pages loaded: {total_pages_loaded}", style="dim")
+
+                            # Show breakdown by source if available
+                            source_breakdown = generate_source_breakdown(initial_multi_source_data)
+                            if source_breakdown:
+                                for source_name, count in source_breakdown.items():
+                                    print_text(f"{source_name}: {count}", style="dim")
+
+                            print_text(f"\nSending from {len(mail_from_accounts)} account(s):", style="cyan")
+                            for account in mail_from_accounts:
+                                print_text(f"   • {account['display']}", style="dim green")
+
+                            print_text("\n💡 You can now drop files and say things like:", style="cyan")
+                            print_text("   'send this to fionn' or 'email this report to the team'", style="dim cyan")
+                            print_text("   When ready, type /send to send the email", style="dim cyan")
+                        else:
+                            print_text("⚠️  Failed to load Gmail context, but mail mode is enabled", style="yellow")
+                            print_text("   The AI may not be able to find threads or addresses", style="dim yellow")
+                    else:
+                        print_text("⚠️  No Gmail accounts configured", style="yellow")
+                        print_text("   Mail mode enabled but AI won't have context", style="dim yellow")
                 else:
                     print_text("📧 Mail mode disabled", style="bold yellow")
+
+                    # Restore original sources if they exist
+                    if 'original_sources_before_mail' in context_state:
+                        context_state['sources'] = context_state['original_sources_before_mail']
+                        del context_state['original_sources_before_mail']
+                        if reload_context():
+                            print_text("✅ Context restored", style="green")
+
+                continue
+
+            elif user_input.strip().lower() == '/send':
+                # Handle email sending from mail mode
+                if not context_state.get('enable_email_send', False):
+                    print_text("❌ /send is only available in mail mode. Use /mail to enable it.", style="red")
+                    continue
+
+                # Check if we have email metadata from artifact
+                email_metadata = context_state.get('email_metadata')
+                if not email_metadata:
+                    print_text("❌ No email to send. Please compose an email with Subject and To lines first.", style="red")
+                    print_text("   The email artifact must include:", style="dim red")
+                    print_text("   Subject: [your subject]", style="dim red")
+                    print_text("   To: [recipient@example.com]", style="dim red")
+                    continue
+
+                # Get the latest artifact (email body)
+                if not artifact_manager or not artifact_manager.artifacts:
+                    print_text("❌ No email draft found", style="red")
+                    continue
+
+                artifact_id = email_metadata.get('artifact_id')
+                if not artifact_id or artifact_id not in artifact_manager.artifacts:
+                    # Fall back to latest artifact
+                    artifact_id = max(artifact_manager.artifacts.keys())
+
+                artifact_content = artifact_manager.artifacts[artifact_id]['content']
+
+                # Get email details from metadata
+                recipient = email_metadata.get('recipient', '')
+                subject = email_metadata.get('subject', '')
+                thread_id = email_metadata.get('thread_id')
+                message_id = email_metadata.get('message_id')
+                attachments = email_metadata.get('attachments', [])
+
+                # Validate required fields
+                if not recipient or not subject:
+                    print_text("❌ Email artifact is missing required fields:", style="red")
+                    if not subject:
+                        print_text("   - Missing 'Subject:' line", style="dim red")
+                    if not recipient:
+                        print_text("   - Missing 'To:' line", style="dim red")
+                    print_text("\n   Please ask the AI to include both Subject and To in the artifact.", style="yellow")
+                    continue
+
+                # Extract email body (everything except metadata lines)
+                import re
+                # Remove Subject, To, Cc, Attachments section, Thread, Message-ID lines to get pure body
+                email_body = re.sub(r'^Subject:.*$', '', artifact_content, flags=re.MULTILINE)
+                email_body = re.sub(r'^To:.*$', '', email_body, flags=re.MULTILINE)
+                email_body = re.sub(r'^Cc:.*$', '', email_body, flags=re.MULTILINE)
+                email_body = re.sub(r'^---\s*$', '', email_body, flags=re.MULTILINE)
+                # Remove old format: "Attachments: [file]"
+                email_body = re.sub(r'^Attachments:.*$', '', email_body, flags=re.MULTILINE)
+                # Remove new format: "📎 Attachments:" and all following "- /path" lines
+                email_body = re.sub(r'📎 Attachments:\s*\n(?:^-\s+.+$\n?)*', '', email_body, flags=re.MULTILINE)
+                email_body = re.sub(r'^Thread:.*$', '', email_body, flags=re.MULTILINE)
+                email_body = re.sub(r'^Message-ID:.*$', '', email_body, flags=re.MULTILINE)
+                email_body = email_body.strip()
+
+                # Empty body is OK if there are attachments
+                if not email_body and not attachments:
+                    print_text("❌ Email has no body and no attachments", style="red")
+                    continue
+
+                # Generate thread/message IDs if not provided (new email)
+                from datetime import datetime
+                if not thread_id:
+                    thread_id = f"new_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                else:
+                    print_text(f"📧 Replying to thread: {thread_id[:50]}...", style="cyan")
+
+                if not message_id:
+                    message_id = f"new_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+
+                # Get available sending accounts from mail mode
+                mail_from_accounts = context_state.get('mail_from_accounts', [])
+
+                if not mail_from_accounts:
+                    print_text("❌ No Gmail accounts loaded", style="red")
+                    print_text("   Use /mail or /mail <workspace> to load Gmail context first", style="dim red")
+                    continue
+
+                # Select which account to send from
+                if len(mail_from_accounts) == 1:
+                    # Only one account, use it automatically
+                    selected_account = mail_from_accounts[0]
+                    send_workspace = selected_account['workspace']
+                    user_email = selected_account['email']
+                    print_text(f"📧 Sending from: {selected_account['display']}", style="cyan")
+                else:
+                    # Multiple accounts - let user select
+                    print_text("\n📧 Select account to send from:", style="cyan")
+                    for i, account in enumerate(mail_from_accounts, 1):
+                        print_text(f"  {i}. {account['display']}", style="dim cyan")
+
+                    while True:
+                        try:
+                            choice = input("\nSelect account (1-{}) or 'cancel': ".format(len(mail_from_accounts))).strip()
+                            if choice.lower() == 'cancel' or not choice:
+                                print_text("\n↩️  Send cancelled\n", style="cyan")
+                                break
+
+                            choice_idx = int(choice) - 1
+                            if 0 <= choice_idx < len(mail_from_accounts):
+                                selected_account = mail_from_accounts[choice_idx]
+                                send_workspace = selected_account['workspace']
+                                user_email = selected_account['email']
+                                print_text(f"✅ Sending from: {selected_account['display']}", style="green")
+                                break
+                            else:
+                                print_text("Invalid choice, try again", style="red")
+                        except ValueError:
+                            print_text("Invalid input, try again", style="red")
+
+                    # If user cancelled, exit
+                    if choice.lower() == 'cancel' or not choice:
+                        continue
+
+                # Load thread context to get TO and CC recipients
+                from promaia.storage.unified_query import get_query_interface
+                import json
+
+                to_addr = ''
+                cc_addr = ''
+
+                # If replying to an existing thread, load the original recipients
+                if thread_id and not thread_id.startswith('new_'):
+                    query_interface = get_query_interface()
+
+                    # Query for messages in this thread
+                    import sqlite3
+                    conn = sqlite3.connect('data/hybrid_metadata.db')
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT sender_email, recipient_emails, cc_recipients
+                        FROM gmail_content
+                        WHERE thread_id = ?
+                        ORDER BY created_time DESC
+                        LIMIT 1
+                    """, (thread_id,))
+
+                    result = cursor.fetchone()
+                    if result:
+                        sender_email, recipient_emails_json, cc_recipients_json = result
+
+                        # Parse recipient emails
+                        if recipient_emails_json:
+                            try:
+                                recipient_list = json.loads(recipient_emails_json)
+                                to_addr = ', '.join(recipient_list)
+                            except:
+                                to_addr = recipient_emails_json
+
+                        # Parse CC recipients
+                        if cc_recipients_json:
+                            try:
+                                cc_list = json.loads(cc_recipients_json)
+                                cc_addr = ', '.join(cc_list)
+                            except:
+                                cc_addr = cc_recipients_json
+
+                    conn.close()
+
+                # Show recipient selector
+                from promaia.mail.recipient_selector import RecipientSelector
+                import asyncio
+
+                selector = RecipientSelector(
+                    from_addr=recipient,  # Person we're sending to
+                    to_addr=to_addr,
+                    cc_addr=cc_addr,
+                    thread_context='',
+                    user_email=user_email
+                )
+
+                print_text("\n📧 Select recipients for this email...", style="cyan")
+                confirmed, recipients = asyncio.run(selector.run())
+
+                if not confirmed:
+                    print_text("\n↩️  Send cancelled\n", style="cyan")
+                    continue
+
+                if not recipients:
+                    print_text("\n❌ No recipients selected\n", style="red")
+                    continue
+
+                print_text(f"\n✅ Sending to: {', '.join(recipients)}", style="green")
+
+                # Show email preview
+                print_text("\n" + "─" * 60, style="dim")
+                print_text("📧 Email Preview:", style="cyan bold")
+                print_text("─" * 60, style="dim")
+                preview = format_email_preview(email_body, attachments)
+                print_text(preview, style="white")
+                print_text("─" * 60 + "\n", style="dim")
+
+                # Format the email body
+                from promaia.mail.response_generator import ResponseGenerator
+                generator = ResponseGenerator()
+                email_body = generator._format_email_body(email_body)
+
+                # Safety confirmation
+                print()
+                print_text(f"⚠️  Ready to send email", style="bold yellow")
+                print_text(f"Subject: {subject}", style="yellow")
+
+                # Generate safety string from first recipient email
+                from promaia.mail.draft_manager import get_safety_string_from_recipient
+                # Use first recipient from the confirmed list
+                first_recipient = recipients[0] if recipients else recipient
+                safety_string = get_safety_string_from_recipient(first_recipient)
+
+                print_text(f"\nType the first 5 characters to confirm: '{safety_string}'", style="yellow")
+                print_text(f"Or type 'cancel' (or press Enter) to abort", style="dim")
+
+                confirmation = input("\nConfirm: ").strip()
+
+                if not confirmation or confirmation.lower() == 'cancel':
+                    print_text("\n↩️  Send cancelled\n", style="cyan")
+                    continue
+
+                if confirmation.lower() != safety_string:
+                    print_text("\n❌ Confirmation failed\n", style="red")
+                    continue
+
+                print_text("\n📤 Sending email...", style="cyan")
+
+                # Send email
+                from promaia.mail.gmail_sender import GmailSender
+                sender = GmailSender(send_workspace, user_email)
+
+                # Check if this is a new email or a reply
+                is_new_email = thread_id.startswith('new_')
+
+                if is_new_email:
+                    # New email - use send_email() without thread_id
+                    to_field = ', '.join(recipients)
+                    success = asyncio.run(sender.send_email(
+                        to=to_field,
+                        subject=subject,
+                        body_text=email_body
+                    ))
+                else:
+                    # Reply to existing thread - use send_reply()
+                    success = asyncio.run(sender.send_reply(
+                        thread_id=thread_id,
+                        message_id=message_id,
+                        subject=subject,
+                        body_text=email_body,
+                        recipients=recipients
+                    ))
+
+                if success:
+                    print_text("✅ Email sent!", style="green")
+
+                    # Save to learning system
+                    from promaia.mail.learning_system import EmailResponseLearningSystem
+                    from promaia.utils.timezone_utils import now_utc
+
+                    learning = EmailResponseLearningSystem(workspace=send_workspace)
+
+                    pattern = {
+                        "inbound": {
+                            "from": recipient,
+                            "subject": subject,
+                            "body_snippet": "",
+                        },
+                        "response": {
+                            "subject": subject,
+                            "body": email_body,
+                            "tone": "professional",
+                            "length": len(email_body.split())
+                        },
+                        "metadata": {
+                            "workspace": workspace,
+                            "ai_model": context_state.get('current_api', 'unknown'),
+                            "timestamp": now_utc().isoformat(),
+                            "sent_via_mail_mode": True
+                        }
+                    }
+                    learning.save_successful_response(pattern)
+
+                    # Clear email metadata after successful send
+                    context_state.pop('email_metadata', None)
+                    print()
+                else:
+                    print_text("❌ Failed to send\n", style="red")
 
                 continue
 
@@ -5814,83 +6196,56 @@ Be helpful and conversational, but DO NOT guess or infer - always ask when infor
                 if context_state.get('enable_email_send', False):
                     email_instructions = """
 
-## EMAIL SENDING CAPABILITY
+## EMAIL COMPOSITION MODE
 
-You have access to email sending functionality. When the user mentions sending emails or attaching files to send:
+You are in email composition mode. Gmail threads are loaded in your context - search them naturally to find the right thread and recipient.
 
-1. **Detect Intent**: Parse the message to determine if the user wants to send an email
-   - Look for phrases like "send this to", "email this", "send [file] to [person]"
-   - Check if files are attached to the message
+1. **Detect Intent**: User wants to send an email (phrases like "send this to", "email this", etc.)
 
-2. **Gather Information**: Through conversation, collect:
-   - **Recipient(s)**: Who should receive the email (name or email address)
-   - **Email Thread**: Which conversation thread (if replying)
-   - **Message**: What should the email say (if not already provided)
-   - **Attachments**: Files to include (if provided)
+2. **Find the Right Thread**: Search your loaded Gmail context for matching threads
+   - Use keywords from the user's message (person names, subject matter, dates, etc.)
+   - When you find a matching thread, extract: recipient email, subject line, thread_id, message_id
+   - Use the EXACT subject line from the thread (don't add "RE:" or modify it)
 
-3. **Context Available**: You can reference:
-   - Recent emails from the context loaded in this session
-   - The user's contact information and email threads
-   - Any files the user has attached or mentioned
+3. **Compose Email as Artifact**: Create an artifact with this format:
 
-4. **Workflow - MUST FOLLOW STRICTLY**:
-   a) Gather information through conversation
-   b) If ANY information is missing or unclear, ASK - don't guess or infer
-   c) Once you have confirmed ALL details, EXPLICITLY list them back to user
-   d) Wait for user confirmation (e.g., "yes", "looks good", "send it")
-   e) ONLY THEN output the draft JSON
-
-5. **Required Information Checklist**:
-   - ✓ Recipient email address (must be valid email format)
-   - ✓ Subject line (if missing, ask what it should be)
-   - ✓ Message body (if user wants one)
-   - ✓ Attachment path (if user provided a file, use EXACT path they gave)
-
-6. **Example Interaction**:
-   User: "send this /path/to/report.pdf to fionn"
-   You: "I'll help send /path/to/report.pdf. I need a few details:
-   - What's Fionn's email address?
-   - What should the subject line be?
-   - Should I include a message or just the file?"
-
-   User: "fionn@example.com, subject 'Q4 Report', no message needed"
-   You: "Perfect! Let me confirm:
-   - To: fionn@example.com
-   - Subject: Q4 Report
-   - Attachment: /path/to/report.pdf
-   - No message body
-   Should I create this draft?"
-
-   User: "yes"
-   You: [NOW output the <email_draft> JSON]
-
-7. **Creating the Draft - CRITICAL RULES**:
-
-   **DO NOT output <email_draft> until user explicitly confirms!**
-
-   When ready, output:
    ```
-   <email_draft>
-   {
-     "recipient": "email@example.com",
-     "subject": "Email subject",
-     "message_body": "Email message content",
-     "thread_id": null,
-     "message_id": null,
-     "attachments": ["/exact/path/from/user/message.pdf"]
-   }
-   </email_draft>
+   <artifact>
+   Subject: [exact subject from Gmail thread]
+   To: [recipient@example.com]
+
+   [Email body]
+
+   ---
+   📎 Attachments:
+   - /exact/path/file1.pdf
+   - /exact/path/file2.png
+
+   Thread: [thread_id from Gmail if replying]
+   Message-ID: [message_id from Gmail if replying]
+   </artifact>
    ```
 
-   **CRITICAL for attachments:**
-   - Look at the user's ORIGINAL message for the file path
-   - Copy it EXACTLY character-for-character
-   - Example: If user said "/Users/kb20250422/Downloads/IMG_7268.JPG", use EXACTLY that
-   - Do NOT change the path, username, filename, or extension
-   - Do NOT make up paths like "/Users/kb/Pictures/file.png"
-   - If you cannot find the exact path in the conversation, use empty array: "attachments": []
+   - List attachments on separate lines with "- " prefix
+   - Include Thread and Message-ID if replying to an existing thread
+   - Omit Thread and Message-ID if sending a new email
 
-Be helpful and conversational, but DO NOT guess or infer - always ask when information is missing.
+4. **Example**:
+   User: "send this doc to Fionn about UK import"
+   → Search Gmail for threads with "Fionn", "UK", "import"
+   → Find matching thread, extract subject/thread_id/message_id
+   → Create artifact with exact subject and IDs from Gmail
+   → User types /send when ready
+
+5. **Important**:
+   - Search Gmail context first to find the right thread
+   - Use EXACT subject line from Gmail (no "RE:" prefix)
+   - Include thread_id and message_id from Gmail if replying
+   - Use exact file paths from user's message for attachments
+   - User will type `/send` when ready (you don't send it)
+   - User can refine the email through conversation before sending
+
+The user will type `/send` to trigger the actual sending process.
 """
                     current_system_prompt = system_prompt + email_instructions
 
@@ -6205,6 +6560,50 @@ Be helpful and conversational, but DO NOT guess or infer - always ask when infor
                             artifact_id = artifact_manager.create_artifact(artifact_content)
                             is_artifact = True
 
+                            # Extract email metadata if in mail mode
+                            if context_state.get('enable_email_send', False):
+                                import re
+                                # Parse artifact for email fields - only extract if properly formatted
+                                # Look for Subject: at the start of a line (not in the middle of text)
+                                subject_match = re.search(r'^Subject:\s*(.+)$', artifact_content, re.MULTILINE)
+                                to_match = re.search(r'^To:\s*(.+)$', artifact_content, re.MULTILINE)
+                                thread_match = re.search(r'^Thread:\s*(.+)$', artifact_content, re.MULTILINE)
+                                message_id_match = re.search(r'^Message-ID:\s*(.+)$', artifact_content, re.MULTILINE)
+
+                                # Parse attachments - support both old [file] format and new bullet list format
+                                attachments = []
+                                # Try new format first: "📎 Attachments:" followed by "- /path" lines
+                                attachments_section = re.search(r'📎 Attachments:\s*\n((?:^-\s+.+$\n?)+)', artifact_content, re.MULTILINE)
+                                if attachments_section:
+                                    # Extract each "- /path" line
+                                    attachment_lines = re.findall(r'^-\s+(.+)$', attachments_section.group(1), re.MULTILINE)
+                                    attachments = [line.strip() for line in attachment_lines]
+                                else:
+                                    # Fall back to old format: "Attachments: [/path]"
+                                    old_format = re.search(r'^Attachments:\s*\[(.+?)\]', artifact_content, re.MULTILINE)
+                                    if old_format:
+                                        attachments = [old_format.group(1).strip()]
+
+                                # Only save metadata if we have both Subject and To
+                                if subject_match and to_match:
+                                    recipient_text = to_match.group(1).strip()
+                                    subject_text = subject_match.group(1).strip()
+
+                                    # Make sure we didn't accidentally parse something wrong
+                                    # Subject should not start with "To:" or contain email-like pattern at the start
+                                    if not subject_text.startswith('To:') and '@' not in subject_text[:20]:
+                                        context_state['email_metadata'] = {
+                                            'recipient': recipient_text,
+                                            'subject': subject_text,
+                                            'attachments': attachments,
+                                            'thread_id': thread_match.group(1).strip() if thread_match else None,
+                                            'message_id': message_id_match.group(1).strip() if message_id_match else None,
+                                            'artifact_id': artifact_id
+                                        }
+                                        debug_print(f"Extracted email metadata: {context_state['email_metadata']}")
+                                    else:
+                                        debug_print(f"Skipping malformed email metadata - subject looks wrong: {subject_text}")
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
@@ -6215,91 +6614,6 @@ Be helpful and conversational, but DO NOT guess or infer - always ask when infor
                         else:
                             # Normal response (no artifact)
                             print_markdown(response_text)
-
-                        # Check for email draft creation if email send is enabled
-                        if context_state.get('enable_email_send', False) and has_email_draft_tags(response_text):
-                            print_text("\n📧 Creating email draft...", style="bold cyan")
-                            draft_data = extract_email_draft_data(response_text)
-
-                            if draft_data:
-                                # Validate attachment paths against actual files in conversation
-                                draft_attachments = draft_data.get('attachments', [])
-                                if draft_attachments:
-                                    # Find all file paths mentioned in user messages
-                                    mentioned_files = []
-                                    for msg in messages:
-                                        if msg.get('role') == 'user':
-                                            content = msg.get('content', '')
-                                            # Look for absolute paths
-                                            import re
-                                            file_pattern = r'(/[^\s]+\.[a-zA-Z]{2,4})'
-                                            mentioned_files.extend(re.findall(file_pattern, content))
-
-                                    # Check if draft attachments match mentioned files
-                                    invalid_attachments = []
-                                    for attachment in draft_attachments:
-                                        if attachment and attachment not in mentioned_files:
-                                            invalid_attachments.append(attachment)
-
-                                    if invalid_attachments:
-                                        print_text(f"⚠️  Warning: AI generated incorrect attachment paths:", style="bold yellow")
-                                        for path in invalid_attachments:
-                                            print_text(f"   - {path}", style="yellow")
-                                        print_text(f"   Expected one of: {', '.join(mentioned_files) if mentioned_files else 'none'}", style="yellow")
-                                        print_text("   Using empty attachments instead.", style="yellow")
-                                        draft_data['attachments'] = []
-
-                                try:
-                                    from promaia.mail.email_send_helpers import EmailSendHelper
-
-                                    # Get workspace, defaulting to 'default' if None
-                                    workspace = context_state.get('workspace') or 'default'
-                                    helper = EmailSendHelper(workspace=workspace)
-
-                                    # Create the draft
-                                    draft_id = helper.create_draft_from_info(
-                                        recipient=draft_data.get('recipient', ''),
-                                        subject=draft_data.get('subject', ''),
-                                        message_body=draft_data.get('message_body', ''),
-                                        thread_id=draft_data.get('thread_id'),
-                                        message_id=draft_data.get('message_id'),
-                                        attachments=draft_data.get('attachments', []),
-                                        context_info={'created_from_chat': True}
-                                    )
-
-                                    print_text(f"✅ Draft created successfully! (ID: {draft_id})", style="bold green")
-                                    print_text("📝 Opening draft in email interface...", style="cyan")
-
-                                    # Save current conversation before switching modes
-                                    if messages:
-                                        try:
-                                            from promaia.storage.chat_history import ChatHistoryManager
-                                            history_manager = ChatHistoryManager()
-
-                                            # Create a serializable copy of context_state (remove non-JSON objects)
-                                            serializable_context = {
-                                                k: v for k, v in context_state.items()
-                                                if k not in ['artifact_manager', 'mcp_client', 'mcp_executor', 'mode']
-                                            }
-
-                                            history_manager.save_thread(
-                                                messages=messages,
-                                                context=serializable_context,
-                                                thread_name=f"Email to {draft_data.get('recipient', 'recipient')}"
-                                            )
-                                        except Exception as e:
-                                            logger.error(f"Failed to save chat before launching draft: {e}")
-
-                                    # Launch draft chat interface
-                                    from promaia.mail.email_send_helpers import launch_draft_chat_for_email
-                                    launch_draft_chat_for_email(draft_id, workspace)
-
-                                    # Exit current chat session after launching draft chat
-                                    return
-
-                                except Exception as e:
-                                    print_text(f"❌ Failed to create email draft: {e}", style="bold red")
-                                    logger.error(f"Email draft creation failed: {e}", exc_info=True)
 
                         # Save message with artifact tags if it was an artifact
                         # This ensures artifacts can be reconstructed on reload

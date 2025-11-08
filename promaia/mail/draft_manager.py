@@ -14,6 +14,40 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def get_safety_string_from_recipient(recipient: str) -> str:
+    """Extract safety confirmation string from recipient email.
+
+    Returns first 5 characters of email address, or everything before @,
+    whichever comes first.
+
+    Examples:
+        "fionnng@mgmproduction.com.hk" -> "fionn"
+        "joe@example.com" -> "joe"
+        "hello@test.com" -> "hello"
+    """
+    if not recipient:
+        return ""
+
+    # Extract just the email if it's in "Name <email>" format
+    if '<' in recipient and '>' in recipient:
+        recipient = recipient.split('<')[1].split('>')[0]
+
+    recipient = recipient.strip()
+
+    # Find @ position
+    at_pos = recipient.find('@')
+
+    if at_pos == -1:
+        # No @ found, just take first 5 chars
+        return recipient[:5].lower()
+
+    # Take first 5 chars or everything before @, whichever is shorter
+    local_part = recipient[:at_pos]
+    safety_string = local_part[:5] if len(local_part) > 5 else local_part
+
+    return safety_string.lower()
+
+
 class DraftManager:
     """SQLite operations for email drafts."""
     
@@ -221,10 +255,10 @@ class DraftManager:
             draft_id of the saved draft
         """
         draft_id = draft.get('draft_id') or str(uuid.uuid4())
-        
-        # Generate safety string (first 5 chars of subject, strip trailing whitespace)
-        subject = draft.get('inbound_subject', '')
-        safety_string = (subject[:5] if len(subject) >= 5 else subject).rstrip()
+
+        # Generate safety string from recipient email
+        recipient = draft.get('inbound_from', '')  # The person we're replying to
+        safety_string = get_safety_string_from_recipient(recipient)
         
         # Initialize draft history with first version
         initial_history = {1: draft.get('draft_body', '')}
