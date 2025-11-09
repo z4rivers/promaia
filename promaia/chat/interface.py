@@ -6317,9 +6317,6 @@ The user will type `/send` to trigger the actual sending process.
                                     # Reload context with Gmail data
                                     if reload_context():
                                         print_text(f"✅ Gmail context loaded ({len(gmail_sources)} sources)", style="green")
-
-                                        # Update system prompt with new context
-                                        system_prompt = build_system_prompt(context_state, filters, mode)
                                     else:
                                         print_text("⚠️  Failed to reload context with Gmail data", style="yellow")
                                 else:
