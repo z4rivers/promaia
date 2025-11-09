@@ -4948,6 +4948,17 @@ The user will type `/send` to trigger the actual sending process.
                         artifact_id = artifact_manager.create_artifact(artifact_content)
                         is_artifact = True
 
+                        # Sync artifact metadata with draft DB if in draft mode
+                        if draft_id and mode:
+                            from promaia.chat.modes import DraftMode
+                            from promaia.mail.artifact_helpers import extract_email_metadata_from_artifact, update_draft_with_artifact_metadata
+                            if isinstance(mode, DraftMode):
+                                _, metadata = extract_email_metadata_from_artifact(artifact_manager, artifact_id)
+                                if metadata:
+                                    update_draft_with_artifact_metadata(mode.draft_manager, draft_id, metadata)
+                                    # Reload draft_data to reflect updates
+                                    mode.draft_data = mode.draft_manager.get_draft(draft_id)
+
                         # Display commentary if present
                         if commentary:
                             print_markdown(commentary)
@@ -5216,7 +5227,27 @@ The user will type `/send` to trigger the actual sending process.
 
                     # Get current artifact content
                     artifact = context_state['artifact_manager'].get_artifact(artifact_num)
-                    current_content = artifact['content']
+                    artifact_data = artifact.get('data')
+                    is_email_artifact = artifact_data and artifact_data.get('type') == 'email'
+
+                    # For email artifacts, show rendered format (easier to edit)
+                    # For other artifacts, show raw content
+                    if is_email_artifact:
+                        # Build editable format: Subject:/To:/Cc: headers + body
+                        lines = []
+                        if 'subject' in artifact_data and artifact_data['subject']:
+                            lines.append(f"Subject: {artifact_data['subject']}")
+                        if 'to' in artifact_data and artifact_data['to']:
+                            lines.append(f"To: {artifact_data['to']}")
+                        if 'cc' in artifact_data and artifact_data['cc']:
+                            lines.append(f"Cc: {artifact_data['cc']}")
+                        if lines:  # Add separator between headers and body
+                            lines.append('')
+                        if 'body' in artifact_data:
+                            lines.append(artifact_data['body'])
+                        current_content = '\n'.join(lines)
+                    else:
+                        current_content = artifact['content']
 
                     # Show header
                     print()
@@ -5263,8 +5294,67 @@ The user will type `/send` to trigger the actual sending process.
 
                         # If user didn't cancel (ESC/Ctrl+C returns None)
                         if edited_content is not None:
+                            # For email artifacts, parse headers and reconstruct JSON
+                            if is_email_artifact:
+                                import json as json_module
+                                import re as re_module
+
+                                # Parse edited content for headers
+                                lines = edited_content.split('\n')
+                                parsed_metadata = {}
+                                body_start = 0
+
+                                for i, line in enumerate(lines):
+                                    stripped = line.strip()
+                                    if not stripped:
+                                        body_start = i + 1
+                                        break
+                                    elif stripped.lower().startswith('subject:'):
+                                        parsed_metadata['subject'] = stripped[8:].strip()
+                                    elif stripped.lower().startswith('to:'):
+                                        parsed_metadata['to'] = stripped[3:].strip()
+                                    elif stripped.lower().startswith('cc:'):
+                                        parsed_metadata['cc'] = stripped[3:].strip()
+                                    else:
+                                        # Not a header line, body starts here
+                                        body_start = i
+                                        break
+
+                                # Extract body (everything after headers)
+                                body_lines = lines[body_start:]
+                                # Strip leading empty lines
+                                while body_lines and not body_lines[0].strip():
+                                    body_lines.pop(0)
+                                parsed_body = '\n'.join(body_lines)
+
+                                # Reconstruct JSON
+                                email_json = {
+                                    "type": "email",
+                                    "body": parsed_body
+                                }
+                                if 'subject' in parsed_metadata:
+                                    email_json['subject'] = parsed_metadata['subject']
+                                if 'to' in parsed_metadata:
+                                    email_json['to'] = parsed_metadata['to']
+                                if 'cc' in parsed_metadata:
+                                    email_json['cc'] = parsed_metadata['cc']
+
+                                # Serialize to JSON string
+                                edited_content = json_module.dumps(email_json, indent=2)
+
                             # Update the artifact
                             context_state['artifact_manager'].update_artifact(artifact_num, edited_content)
+
+                            # Sync metadata with draft DB if in draft mode
+                            if draft_id and mode:
+                                from promaia.chat.modes import DraftMode
+                                from promaia.mail.artifact_helpers import extract_email_metadata_from_artifact, update_draft_with_artifact_metadata
+                                if isinstance(mode, DraftMode):
+                                    _, metadata = extract_email_metadata_from_artifact(context_state['artifact_manager'], artifact_num)
+                                    if metadata:
+                                        update_draft_with_artifact_metadata(mode.draft_manager, draft_id, metadata)
+                                        # Reload draft_data to reflect updates
+                                        mode.draft_data = mode.draft_manager.get_draft(draft_id)
 
                             # Add to message history as an update
                             messages.append({
@@ -6547,6 +6637,17 @@ The user will type `/send` to trigger the actual sending process.
                             artifact_manager.update_artifact(artifact_manager.last_artifact_id, artifact_content)
                             is_artifact = True
 
+                            # Sync artifact metadata with draft DB if in draft mode
+                            if draft_id and mode:
+                                from promaia.chat.modes import DraftMode
+                                from promaia.mail.artifact_helpers import extract_email_metadata_from_artifact, update_draft_with_artifact_metadata
+                                if isinstance(mode, DraftMode):
+                                    _, metadata = extract_email_metadata_from_artifact(artifact_manager, artifact_manager.last_artifact_id)
+                                    if metadata:
+                                        update_draft_with_artifact_metadata(mode.draft_manager, draft_id, metadata)
+                                        # Reload draft_data to reflect updates
+                                        mode.draft_data = mode.draft_manager.get_draft(draft_id)
+
                             # Display commentary if present
                             if commentary:
                                 print_markdown(commentary)
@@ -6559,6 +6660,17 @@ The user will type `/send` to trigger the actual sending process.
                             artifact_content, commentary = artifact_manager.extract_artifact_content(response_text)
                             artifact_id = artifact_manager.create_artifact(artifact_content)
                             is_artifact = True
+
+                            # Sync artifact metadata with draft DB if in draft mode
+                            if draft_id and mode:
+                                from promaia.chat.modes import DraftMode
+                                from promaia.mail.artifact_helpers import extract_email_metadata_from_artifact, update_draft_with_artifact_metadata
+                                if isinstance(mode, DraftMode):
+                                    _, metadata = extract_email_metadata_from_artifact(artifact_manager, artifact_id)
+                                    if metadata:
+                                        update_draft_with_artifact_metadata(mode.draft_manager, draft_id, metadata)
+                                        # Reload draft_data to reflect updates
+                                        mode.draft_data = mode.draft_manager.get_draft(draft_id)
 
                             # Extract email metadata if in mail mode
                             if context_state.get('enable_email_send', False):

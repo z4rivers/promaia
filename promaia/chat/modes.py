@@ -261,11 +261,19 @@ class DraftMode(ChatMode):
         if not artifact_manager or not artifact_manager.artifacts:
             print_text("❌ No draft to send", style="red")
             return False
-        
+
         latest_artifact_id = max(artifact_manager.artifacts.keys())
-        draft_to_send = artifact_manager.artifacts[latest_artifact_id]['content']
-        
+
+        # Extract email body from artifact (handles both JSON and plain text)
+        from promaia.mail.artifact_helpers import get_email_body_from_artifact
+        draft_to_send = get_email_body_from_artifact(artifact_manager, latest_artifact_id)
+
+        if not draft_to_send:
+            print_text("❌ Could not extract email body from artifact", style="red")
+            return False
+
         # Show recipient selector
+        # Use inbound_to/inbound_cc from draft_data (updated by artifact sync)
         selector = RecipientSelector(
             from_addr=self.draft_data.get('inbound_from', ''),
             to_addr=self.draft_data.get('inbound_to', ''),
