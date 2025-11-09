@@ -6271,51 +6271,62 @@ The user will type `/send` to trigger the actual sending process.
                         if not has_gmail:
                             print_text(f"\n📧 Email intent detected - loading Gmail context...", style="cyan")
 
-                            # Load Gmail sources (same as /mail command)
-                            from promaia.config.databases import get_database_manager
-                            gmail_sources = []
-
+                            # Load Gmail sources (replicate /mail command logic exactly)
                             try:
+                                from promaia.config.databases import get_database_manager
+                                from promaia.config.workspaces import get_workspace_manager
+
                                 db_manager = get_database_manager()
-                                for ws in [workspace] if workspace else db_manager.get_all_workspaces():
-                                    gmail_databases = [
+                                workspace_manager = get_workspace_manager()
+
+                                # Determine which workspaces to load from
+                                workspaces_to_load = [workspace] if workspace else workspace_manager.list_workspaces()
+
+                                # Find all Gmail databases from selected workspaces
+                                gmail_sources = []
+                                mail_from_accounts = []
+
+                                for ws in workspaces_to_load:
+                                    gmail_dbs = [
                                         db for db in db_manager.get_workspace_databases(ws)
                                         if db.source_type == "gmail"
                                     ]
-                                    for gmail_db in gmail_databases:
-                                        gmail_sources.append(f"{ws}.{gmail_db.nickname}:7")
+                                    for gmail_db in gmail_dbs:
+                                        # Add with workspace prefix and 7 days of history
+                                        if ws == 'default':
+                                            gmail_sources.append(f"{gmail_db.nickname}:7")
+                                        else:
+                                            gmail_sources.append(f"{ws}.{gmail_db.nickname}:7")
+
+                                        # Track account info for /send
+                                        mail_from_accounts.append({
+                                            'workspace': ws,
+                                            'email': gmail_db.database_id,
+                                            'display': f"{gmail_db.database_id} ({ws})" if ws != 'default' else gmail_db.database_id
+                                        })
 
                                 if gmail_sources:
-                                    # Add Gmail sources and reload context
-                                    current_sources = context_state.get('sources', [])
-                                    context_state['sources'] = current_sources + gmail_sources
-
-                                    # Reload context with Gmail included
-                                    reload_context(
-                                        context_state=context_state,
-                                        sources=context_state['sources'],
-                                        filters=filters,
-                                        workspace=workspace,
-                                        resolved_workspace=resolved_workspace
-                                    )
-
-                                    # Update system prompt
-                                    system_prompt = build_system_prompt(context_state, filters, mode)
-
                                     # Store available accounts
-                                    workspaces_to_check = [workspace] if workspace else db_manager.get_all_workspaces()
-                                    context_state['mail_from_accounts'] = [
-                                        db.database_id
-                                        for ws in workspaces_to_check
-                                        for db in db_manager.get_workspace_databases(ws)
-                                        if db.source_type == "gmail"
-                                    ]
+                                    context_state['mail_from_accounts'] = mail_from_accounts
 
-                                    print_text(f"✅ Gmail context loaded ({len(gmail_sources)} accounts)", style="green")
+                                    # Add Gmail sources to current sources (don't replace)
+                                    current_sources = context_state.get('sources') or []
+                                    new_sources = list(set(current_sources + gmail_sources))  # Deduplicate
+                                    context_state['sources'] = new_sources
+
+                                    # Reload context with Gmail data
+                                    if reload_context():
+                                        print_text(f"✅ Gmail context loaded ({len(gmail_sources)} sources)", style="green")
+
+                                        # Update system prompt with new context
+                                        system_prompt = build_system_prompt(context_state, filters, mode)
+                                    else:
+                                        print_text("⚠️  Failed to reload context with Gmail data", style="yellow")
                                 else:
                                     print_text("⚠️  No Gmail accounts configured", style="yellow")
+
                             except Exception as e:
-                                logger.error(f"Failed to auto-load Gmail context: {e}")
+                                logger.error(f"Failed to auto-load Gmail context: {e}", exc_info=True)
                                 print_text(f"⚠️  Could not load Gmail context: {e}", style="yellow")
 
                         # Enable email send mode
