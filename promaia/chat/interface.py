@@ -5859,61 +5859,52 @@ The user will type `/send` to trigger the actual sending process.
                     print_text("❌ /send is only available in mail mode. Use /mail to enable it.", style="red")
                     continue
 
-                # Check if we have email metadata from artifact
-                email_metadata = context_state.get('email_metadata')
-                if not email_metadata:
-                    print_text("❌ No email to send. Please compose an email with Subject and To lines first.", style="red")
-                    print_text("   The email artifact must include:", style="dim red")
-                    print_text("   Subject: [your subject]", style="dim red")
-                    print_text("   To: [recipient@example.com]", style="dim red")
-                    continue
-
-                # Get the latest artifact (email body)
+                # Get the latest artifact (email draft)
                 if not artifact_manager or not artifact_manager.artifacts:
                     print_text("❌ No email draft found", style="red")
                     continue
 
-                artifact_id = email_metadata.get('artifact_id')
-                if not artifact_id or artifact_id not in artifact_manager.artifacts:
-                    # Fall back to latest artifact
-                    artifact_id = max(artifact_manager.artifacts.keys())
+                # Use latest artifact
+                artifact_id = max(artifact_manager.artifacts.keys())
+                artifact = artifact_manager.get_artifact(artifact_id)
 
-                artifact_content = artifact_manager.artifacts[artifact_id]['content']
+                # Extract email metadata from JSON artifact
+                from promaia.mail.artifact_helpers import extract_email_metadata_from_artifact, get_email_body_from_artifact
 
-                # Get email details from metadata
-                recipient = email_metadata.get('recipient', '')
-                subject = email_metadata.get('subject', '')
-                thread_id = email_metadata.get('thread_id')
-                message_id = email_metadata.get('message_id')
-                attachments = email_metadata.get('attachments', [])
+                email_body, metadata = extract_email_metadata_from_artifact(artifact_manager, artifact_id)
+
+                if not email_body:
+                    print_text("❌ Could not extract email body from artifact", style="red")
+                    continue
+
+                # Get email details from metadata (JSON) or fall back to old format
+                recipient = metadata.get('to', '')
+                subject = metadata.get('subject', '')
+                cc_recipients = metadata.get('cc', '')
+
+                # For old-style artifacts, try to extract from context
+                if not recipient and not subject:
+                    email_metadata = context_state.get('email_metadata')
+                    if email_metadata:
+                        recipient = email_metadata.get('recipient', '')
+                        subject = email_metadata.get('subject', '')
+
+                thread_id = None
+                message_id = None
+                attachments = []
 
                 # Validate required fields
                 if not recipient or not subject:
                     print_text("❌ Email artifact is missing required fields:", style="red")
                     if not subject:
-                        print_text("   - Missing 'Subject:' line", style="dim red")
+                        print_text("   - Missing 'Subject' field", style="dim red")
                     if not recipient:
-                        print_text("   - Missing 'To:' line", style="dim red")
-                    print_text("\n   Please ask the AI to include both Subject and To in the artifact.", style="yellow")
+                        print_text("   - Missing 'To' field", style="dim red")
+                    print_text("\n   Please ask the AI to include both Subject and To in the email.", style="yellow")
                     continue
 
-                # Extract email body (everything except metadata lines)
-                import re
-                # Remove Subject, To, Cc, Attachments section, Thread, Message-ID lines to get pure body
-                email_body = re.sub(r'^Subject:.*$', '', artifact_content, flags=re.MULTILINE)
-                email_body = re.sub(r'^To:.*$', '', email_body, flags=re.MULTILINE)
-                email_body = re.sub(r'^Cc:.*$', '', email_body, flags=re.MULTILINE)
-                email_body = re.sub(r'^---\s*$', '', email_body, flags=re.MULTILINE)
-                # Remove old format: "Attachments: [file]"
-                email_body = re.sub(r'^Attachments:.*$', '', email_body, flags=re.MULTILINE)
-                # Remove new format: "📎 Attachments:" and all following "- /path" lines
-                email_body = re.sub(r'📎 Attachments:\s*\n(?:^-\s+.+$\n?)*', '', email_body, flags=re.MULTILINE)
-                email_body = re.sub(r'^Thread:.*$', '', email_body, flags=re.MULTILINE)
-                email_body = re.sub(r'^Message-ID:.*$', '', email_body, flags=re.MULTILINE)
-                email_body = email_body.strip()
-
-                # Empty body is OK if there are attachments
-                if not email_body and not attachments:
+                # Validate email body
+                if not email_body.strip() and not attachments:
                     print_text("❌ Email has no body and no attachments", style="red")
                     continue
 
@@ -6019,6 +6010,10 @@ The user will type `/send` to trigger the actual sending process.
                 # Show recipient selector
                 from promaia.mail.recipient_selector import RecipientSelector
                 import asyncio
+
+                # Use Cc from JSON artifact if available, otherwise from thread
+                if cc_recipients:
+                    cc_addr = cc_recipients
 
                 selector = RecipientSelector(
                     from_addr=recipient,  # Person we're sending to
@@ -6255,6 +6250,77 @@ The user will type `/send` to trigger the actual sending process.
                     logger.error(f"Failed to auto-save messages after user input: {e}", exc_info=True)
             elif draft_id:
                 logger.warning(f"⚠️  Draft mode detected but mode object is None - cannot auto-save")
+
+            # Automatic email intent detection
+            if not draft_id and not context_state.get('enable_email_send', False):
+                try:
+                    from promaia.mail.intent_detector import EmailIntentDetector
+
+                    detector = EmailIntentDetector()
+                    intent = detector.detect_intent(user_input, messages[:-1])  # Pass conversation without current message
+
+                    # If high-confidence email intent detected, auto-enable email mode
+                    if intent.has_intent and intent.confidence >= 0.7:
+                        logger.info(f"📧 Email intent detected: {intent.intent_type} (confidence: {intent.confidence:.2f})")
+                        logger.info(f"   Reasoning: {intent.reasoning}")
+
+                        # Auto-load Gmail context if not already loaded
+                        if not any('gmail' in str(s).lower() for s in context_state.get('sources', [])):
+                            print_text(f"\n📧 Email intent detected - loading Gmail context...", style="cyan")
+
+                            # Load Gmail sources (same as /mail command)
+                            from promaia.config.databases import get_database_manager
+                            gmail_sources = []
+
+                            try:
+                                db_manager = get_database_manager()
+                                for ws in [workspace] if workspace else db_manager.get_all_workspaces():
+                                    gmail_databases = [
+                                        db for db in db_manager.get_workspace_databases(ws)
+                                        if db.source_type == "gmail"
+                                    ]
+                                    for gmail_db in gmail_databases:
+                                        gmail_sources.append(f"{ws}.{gmail_db.nickname}:7")
+
+                                if gmail_sources:
+                                    # Add Gmail sources and reload context
+                                    current_sources = context_state.get('sources', [])
+                                    context_state['sources'] = current_sources + gmail_sources
+
+                                    # Reload context with Gmail included
+                                    reload_context(
+                                        context_state=context_state,
+                                        sources=context_state['sources'],
+                                        filters=filters,
+                                        workspace=workspace,
+                                        resolved_workspace=resolved_workspace
+                                    )
+
+                                    # Update system prompt
+                                    system_prompt = build_system_prompt(context_state, filters, mode)
+
+                                    # Store available accounts
+                                    context_state['mail_from_accounts'] = [
+                                        db_id for ws in [workspace] if workspace else db_manager.get_all_workspaces()
+                                        for db in db_manager.get_workspace_databases(ws)
+                                        if db.source_type == "gmail"
+                                        for db_id in [db.database_id]
+                                    ]
+
+                                    print_text(f"✅ Gmail context loaded ({len(gmail_sources)} accounts)", style="green")
+                                else:
+                                    print_text("⚠️  No Gmail accounts configured", style="yellow")
+                            except Exception as e:
+                                logger.error(f"Failed to auto-load Gmail context: {e}")
+                                print_text(f"⚠️  Could not load Gmail context: {e}", style="yellow")
+
+                        # Enable email send mode
+                        context_state['enable_email_send'] = True
+                        logger.info("✅ Email mode auto-enabled")
+
+                except Exception as e:
+                    logger.error(f"Error in email intent detection: {e}", exc_info=True)
+                    # Continue with regular chat if intent detection fails
 
             # Call the appropriate API
             response_content = None
@@ -6723,6 +6789,14 @@ The user will type `/send` to trigger the actual sending process.
 
                             # Display artifact
                             print(artifact_manager.render_artifact(artifact_id))
+
+                            # Show send prompt for email artifacts
+                            if context_state.get('enable_email_send', False):
+                                artifact = artifact_manager.get_artifact(artifact_id)
+                                if artifact and artifact.get('type') == 'email':
+                                    print()
+                                    print_text("💡 Ready to send? Type /send to review and send this email", style="cyan")
+                                    print()
                         else:
                             # Normal response (no artifact)
                             print_markdown(response_text)
