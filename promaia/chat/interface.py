@@ -6357,6 +6357,37 @@ The user will type `/send` to trigger the actual sending process.
                             except Exception as e:
                                 logger.error(f"Failed to auto-load Gmail context: {e}", exc_info=True)
                                 print_text(f"⚠️  Could not load Gmail context: {e}", style="yellow")
+                        else:
+                            # Gmail already loaded (e.g., from browse), just setup accounts
+                            if not context_state.get('mail_from_accounts'):
+                                try:
+                                    from promaia.config.databases import get_database_manager
+                                    from promaia.config.workspaces import get_workspace_manager
+
+                                    db_manager = get_database_manager()
+                                    workspace_manager = get_workspace_manager()
+
+                                    # Determine which workspaces to check
+                                    workspaces_to_check = [workspace] if workspace else workspace_manager.list_workspaces()
+
+                                    # Find all Gmail databases
+                                    mail_from_accounts = []
+                                    for ws in workspaces_to_check:
+                                        gmail_dbs = [
+                                            db for db in db_manager.get_workspace_databases(ws)
+                                            if db.source_type == "gmail"
+                                        ]
+                                        for gmail_db in gmail_dbs:
+                                            mail_from_accounts.append({
+                                                'workspace': ws,
+                                                'email': gmail_db.database_id,
+                                                'display': f"{gmail_db.database_id} ({ws})" if ws != 'default' else gmail_db.database_id
+                                            })
+
+                                    context_state['mail_from_accounts'] = mail_from_accounts
+                                    logger.info(f"📧 Setup {len(mail_from_accounts)} mail accounts for sending")
+                                except Exception as e:
+                                    logger.error(f"Failed to setup mail accounts: {e}", exc_info=True)
 
                         # Enable email send mode
                         context_state['enable_email_send'] = True
