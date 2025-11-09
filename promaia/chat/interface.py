@@ -6362,60 +6362,39 @@ The user will type `/send` to trigger the actual sending process.
                 # Add email sending instructions to system prompt if enabled
                 current_system_prompt = system_prompt
                 if context_state.get('enable_email_send', False):
-                    email_instructions = """
+                    # Load maia_mail_prompt.md for JSON artifact format instructions
+                    import os
+                    mail_prompt_path = os.path.join(os.path.dirname(__file__), '..', '..', 'prompts', 'maia_mail_prompt.md')
+
+                    try:
+                        with open(mail_prompt_path, 'r') as f:
+                            mail_prompt_content = f.read()
+
+                        # Add date/time context
+                        from promaia.utils.timezone_utils import now_local
+                        today = now_local().strftime('%Y-%m-%d')
+                        current_time = now_local().strftime('%H:%M')
+
+                        mail_prompt_content = mail_prompt_content.format(
+                            today_date=today,
+                            current_time=current_time
+                        )
+
+                        email_instructions = f"""
 
 ## EMAIL COMPOSITION MODE
 
-You are in email composition mode. Gmail threads are loaded in your context - search them naturally to find the right thread and recipient.
+{mail_prompt_content}
 
-1. **Detect Intent**: User wants to send an email (phrases like "send this to", "email this", etc.)
+Gmail threads are loaded in your context. Search them to find recipients and threads.
 
-2. **Find the Right Thread**: Search your loaded Gmail context for matching threads
-   - Use keywords from the user's message (person names, subject matter, dates, etc.)
-   - When you find a matching thread, extract: recipient email, subject line, thread_id, message_id
-   - Use the EXACT subject line from the thread (don't add "RE:" or modify it)
-
-3. **Compose Email as Artifact**: Create an artifact with this format:
-
-   ```
-   <artifact>
-   Subject: [exact subject from Gmail thread]
-   To: [recipient@example.com]
-
-   [Email body]
-
-   ---
-   📎 Attachments:
-   - /exact/path/file1.pdf
-   - /exact/path/file2.png
-
-   Thread: [thread_id from Gmail if replying]
-   Message-ID: [message_id from Gmail if replying]
-   </artifact>
-   ```
-
-   - List attachments on separate lines with "- " prefix
-   - Include Thread and Message-ID if replying to an existing thread
-   - Omit Thread and Message-ID if sending a new email
-
-4. **Example**:
-   User: "send this doc to Fionn about UK import"
-   → Search Gmail for threads with "Fionn", "UK", "import"
-   → Find matching thread, extract subject/thread_id/message_id
-   → Create artifact with exact subject and IDs from Gmail
-   → User types /send when ready
-
-5. **Important**:
-   - Search Gmail context first to find the right thread
-   - Use EXACT subject line from Gmail (no "RE:" prefix)
-   - Include thread_id and message_id from Gmail if replying
-   - Use exact file paths from user's message for attachments
-   - User will type `/send` when ready (you don't send it)
-   - User can refine the email through conversation before sending
-
-The user will type `/send` to trigger the actual sending process.
+The user will type `/send` when ready to send the email.
 """
-                    current_system_prompt = system_prompt + email_instructions
+                        current_system_prompt = system_prompt + email_instructions
+                    except Exception as e:
+                        logger.error(f"Failed to load maia_mail_prompt.md: {e}")
+                        # Fallback: just add basic instructions
+                        current_system_prompt = system_prompt + "\n\n## EMAIL MODE\nCompose emails as JSON artifacts. User will type /send to send."
 
                 # Direct API calls (streaming removed for reliability)
                 if current_api == "anthropic" and anthropic_client:
