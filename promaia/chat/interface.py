@@ -5908,12 +5908,44 @@ The user will type `/send` to trigger the actual sending process.
                     print_text("❌ Email has no body and no attachments", style="red")
                     continue
 
+                # Show email preview
+                print()
+                print_text("═" * 65, style="cyan")
+                print_text("📧 EMAIL PREVIEW", style="bold cyan")
+                print_text("═" * 65, style="cyan")
+                print()
+                print_text(f"Subject: {subject}", style="bold")
+                print_text(f"To: {recipient}", style="dim")
+                if cc_recipients:
+                    print_text(f"Cc: {cc_recipients}", style="dim")
+                print()
+                print_text("─" * 65, style="dim")
+
+                # Show body preview (truncate if very long)
+                body_preview = email_body
+                if len(email_body) > 500:
+                    body_preview = email_body[:500] + "\n\n... [truncated]"
+
+                print_text(body_preview, style="white")
+                print()
+                print_text("─" * 65, style="dim")
+
+                if attachments:
+                    print()
+                    print_text(f"📎 Attachments: {len(attachments)}", style="dim")
+                    for att in attachments[:3]:  # Show first 3
+                        print_text(f"  - {att}", style="dim")
+                    if len(attachments) > 3:
+                        print_text(f"  ... and {len(attachments) - 3} more", style="dim")
+
+                print()
+                print_text("═" * 65, style="cyan")
+                print()
+
                 # Generate thread/message IDs if not provided (new email)
                 from datetime import datetime
                 if not thread_id:
                     thread_id = f"new_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                else:
-                    print_text(f"📧 Replying to thread: {thread_id[:50]}...", style="cyan")
 
                 if not message_id:
                     message_id = f"new_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
