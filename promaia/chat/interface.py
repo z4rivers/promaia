@@ -6265,7 +6265,10 @@ The user will type `/send` to trigger the actual sending process.
                         logger.info(f"   Reasoning: {intent.reasoning}")
 
                         # Auto-load Gmail context if not already loaded
-                        if not any('gmail' in str(s).lower() for s in context_state.get('sources', [])):
+                        current_sources = context_state.get('sources') or []
+                        has_gmail = any('gmail' in str(s).lower() for s in current_sources)
+
+                        if not has_gmail:
                             print_text(f"\n📧 Email intent detected - loading Gmail context...", style="cyan")
 
                             # Load Gmail sources (same as /mail command)
