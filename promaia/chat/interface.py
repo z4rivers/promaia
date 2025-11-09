@@ -6370,15 +6370,13 @@ The user will type `/send` to trigger the actual sending process.
                         with open(mail_prompt_path, 'r') as f:
                             mail_prompt_content = f.read()
 
-                        # Add date/time context
+                        # Add date/time context using replace to avoid issues with JSON {} in examples
                         from promaia.utils.timezone_utils import now_local
                         today = now_local().strftime('%Y-%m-%d')
                         current_time = now_local().strftime('%H:%M')
 
-                        mail_prompt_content = mail_prompt_content.format(
-                            today_date=today,
-                            current_time=current_time
-                        )
+                        mail_prompt_content = mail_prompt_content.replace('{today_date}', today)
+                        mail_prompt_content = mail_prompt_content.replace('{current_time}', current_time)
 
                         email_instructions = f"""
 
