@@ -6300,11 +6300,12 @@ The user will type `/send` to trigger the actual sending process.
                                     system_prompt = build_system_prompt(context_state, filters, mode)
 
                                     # Store available accounts
+                                    workspaces_to_check = [workspace] if workspace else db_manager.get_all_workspaces()
                                     context_state['mail_from_accounts'] = [
-                                        db_id for ws in [workspace] if workspace else db_manager.get_all_workspaces()
+                                        db.database_id
+                                        for ws in workspaces_to_check
                                         for db in db_manager.get_workspace_databases(ws)
                                         if db.source_type == "gmail"
-                                        for db_id in [db.database_id]
                                     ]
 
                                     print_text(f"✅ Gmail context loaded ({len(gmail_sources)} accounts)", style="green")
