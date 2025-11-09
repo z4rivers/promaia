@@ -49,6 +49,12 @@ def extract_email_metadata_from_artifact(artifact_manager, artifact_id: int) -> 
     if 'cc' in artifact_data and artifact_data['cc']:
         metadata['cc'] = artifact_data['cc']
 
+    if 'thread_id' in artifact_data and artifact_data['thread_id']:
+        metadata['thread_id'] = artifact_data['thread_id']
+
+    if 'message_id' in artifact_data and artifact_data['message_id']:
+        metadata['message_id'] = artifact_data['message_id']
+
     logger.info(f"📧 Extracted metadata from artifact #{artifact_id}: {list(metadata.keys())}")
     return body, metadata
 

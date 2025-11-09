@@ -5881,6 +5881,8 @@ The user will type `/send` to trigger the actual sending process.
                 recipient = metadata.get('to', '')
                 subject = metadata.get('subject', '')
                 cc_recipients = metadata.get('cc', '')
+                thread_id = metadata.get('thread_id')
+                message_id = metadata.get('message_id')
 
                 # For old-style artifacts, try to extract from context
                 if not recipient and not subject:
@@ -5889,8 +5891,6 @@ The user will type `/send` to trigger the actual sending process.
                         recipient = email_metadata.get('recipient', '')
                         subject = email_metadata.get('subject', '')
 
-                thread_id = None
-                message_id = None
                 attachments = []
 
                 # Validate required fields
