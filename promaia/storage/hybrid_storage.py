@@ -21,6 +21,8 @@ class HybridContentRegistry:
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         self.db_path = db_path
         self.init_database()
+        self._migrate_add_cc_recipients()
+        self._migrate_add_attachments()
     
     def init_database(self):
         """Initialize the hybrid database with separate tables for each content type."""
@@ -44,6 +46,7 @@ class HybridContentRegistry:
                     sender_email TEXT,
                     sender_name TEXT,
                     recipient_emails TEXT, -- JSON array
+                    cc_recipients TEXT, -- JSON array of CC recipients
                     gmail_labels TEXT, -- JSON array
                     thread_id TEXT NOT NULL,  -- Links messages in same conversation
                     message_id TEXT UNIQUE NOT NULL,  -- Gmail's unique message identifier
@@ -286,7 +289,51 @@ class HybridContentRegistry:
 
         # Build unified view dynamically to include all workspace tables
         self.rebuild_unified_content_view()
-    
+
+    def _migrate_add_cc_recipients(self):
+        """Migration: Add cc_recipients column to gmail_content table if it doesn't exist."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if cc_recipients column exists
+                cursor.execute("PRAGMA table_info(gmail_content)")
+                columns = {row[1] for row in cursor.fetchall()}
+
+                if 'cc_recipients' not in columns:
+                    logger.info("Migrating gmail_content table: Adding cc_recipients column")
+                    cursor.execute("ALTER TABLE gmail_content ADD COLUMN cc_recipients TEXT")
+                    conn.commit()
+                    logger.info("Migration complete: cc_recipients column added")
+                else:
+                    logger.debug("Migration skipped: cc_recipients column already exists")
+
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            # Don't raise - allow system to continue even if migration fails
+
+    def _migrate_add_attachments(self):
+        """Migration: Add attachments column to gmail_content table if it doesn't exist."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if attachments column exists
+                cursor.execute("PRAGMA table_info(gmail_content)")
+                columns = {row[1] for row in cursor.fetchall()}
+
+                if 'attachments' not in columns:
+                    logger.info("Migrating gmail_content table: Adding attachments column")
+                    cursor.execute("ALTER TABLE gmail_content ADD COLUMN attachments TEXT")
+                    conn.commit()
+                    logger.info("Migration complete: attachments column added")
+                else:
+                    logger.debug("Migration skipped: attachments column already exists")
+
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            # Don't raise - allow system to continue even if migration fails
+
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
         # Gmail indexes for message-level storage
@@ -390,6 +437,7 @@ class HybridContentRegistry:
                         'sender_email', sender_email,
                         'sender_name', sender_name,
                         'recipient_emails', recipient_emails,
+                        'cc_recipients', cc_recipients,
                         'labels', gmail_labels,
                         'has_attachments', has_attachments,
                         'is_unread', is_unread,
@@ -548,11 +596,11 @@ class HybridContentRegistry:
                 cursor.execute("""
                     INSERT OR REPLACE INTO gmail_content (
                         page_id, workspace, database_id, file_path, subject, sender_email, sender_name,
-                        recipient_emails, gmail_labels, thread_id, message_id, 
-                        has_attachments, is_unread, body_snippet, message_content,
+                        recipient_emails, cc_recipients, gmail_labels, thread_id, message_id,
+                        has_attachments, attachments, is_unread, body_snippet, message_content,
                         thread_position, is_latest_in_thread, email_date,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -562,10 +610,12 @@ class HybridContentRegistry:
                     metadata.get('sender_email'),
                     metadata.get('sender_name'),
                     json.dumps(metadata.get('recipient_emails', [])),
+                    json.dumps(metadata.get('cc_recipients', [])),
                     json.dumps(metadata.get('labels', [])),
                     metadata.get('thread_id'),
                     metadata.get('message_id'),
                     metadata.get('has_attachments', False),
+                    json.dumps(metadata.get('attachments', [])),
                     metadata.get('is_unread', False),
                     metadata.get('body_snippet'),
                     metadata.get('message_content', ''),

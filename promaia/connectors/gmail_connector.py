@@ -301,12 +301,20 @@ class GmailConnector(BaseConnector):
             
             # Extract labels from latest message
             labels = latest_message.get('labelIds', [])
-            
-            # Check for attachments across all messages in thread
-            has_attachments = any(
-                self._message_has_attachments(msg) for msg in messages
-            )
-            
+
+            # Extract attachment metadata from all messages in thread
+            all_attachments = []
+            for msg in messages:
+                msg_attachments = self._extract_attachment_metadata(msg)
+                if msg_attachments:
+                    # Add message_id to each attachment for reference
+                    for attachment in msg_attachments:
+                        attachment['message_id'] = msg['id']
+                    all_attachments.extend(msg_attachments)
+
+            # Keep has_attachments boolean for backwards compatibility
+            has_attachments = len(all_attachments) > 0
+
             # Check if thread has unread messages
             is_unread = 'UNREAD' in labels
             
@@ -339,6 +347,7 @@ class GmailConnector(BaseConnector):
                 "date_obj": date_obj,
                 "labels": labels,
                 "has_attachments": has_attachments,
+                "attachments": all_attachments,
                 "is_unread": is_unread,
                 "message_count": len(messages),
                 "conversation_body": conversation_body,
@@ -884,7 +893,7 @@ Subject: {subject}
     def _message_has_attachments(self, message: Dict[str, Any]) -> bool:
         """Check if a message has attachments."""
         payload = message.get('payload', {})
-        
+
         # Check parts for attachments
         if 'parts' in payload:
             for part in payload['parts']:
@@ -895,7 +904,53 @@ Subject: {subject}
                     if self._message_has_attachments(part):
                         return True
         return False
-    
+
+    def _extract_attachment_metadata(self, message: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract detailed attachment metadata from a message.
+
+        Args:
+            message: Gmail message dict with payload
+
+        Returns:
+            List of attachment metadata dicts with keys:
+                - filename: Name of the attachment file
+                - mime_type: MIME type (e.g., 'application/pdf')
+                - size_bytes: Size in bytes
+                - attachment_id: Gmail's attachment ID for downloading
+                - part_id: Part identifier in the message structure
+        """
+        attachments = []
+
+        def extract_from_part(part: Dict[str, Any], part_id: str = ""):
+            """Recursively extract attachments from message parts."""
+            filename = part.get('filename', '')
+
+            # If this part has a filename, it's an attachment
+            if filename:
+                body = part.get('body', {})
+                attachment_info = {
+                    'filename': filename,
+                    'mime_type': part.get('mimeType', 'application/octet-stream'),
+                    'size_bytes': body.get('size', 0),
+                    'attachment_id': body.get('attachmentId', ''),
+                    'part_id': part.get('partId', part_id)
+                }
+                attachments.append(attachment_info)
+
+            # Recursively check nested parts
+            if 'parts' in part:
+                for idx, nested_part in enumerate(part['parts']):
+                    nested_part_id = f"{part_id}.{idx}" if part_id else str(idx)
+                    extract_from_part(nested_part, nested_part_id)
+
+        # Start extraction from message payload
+        payload = message.get('payload', {})
+        if 'parts' in payload:
+            for idx, part in enumerate(payload['parts']):
+                extract_from_part(part, str(idx))
+
+        return attachments
+
     def _build_gmail_query(self, 
                           filters: Optional[List[QueryFilter]] = None,
                           date_filter: Optional[DateRangeFilter] = None) -> str:
@@ -1381,12 +1436,29 @@ Subject: {subject}
         
         # Add conversation body
         conversation = thread.get("conversation_body", "")
-        
-        # Add attachment note if applicable
+
+        # Add attachment details if applicable
         attachment_note = ""
-        if has_attachments:
-            attachment_note = "\n\n---\n**Note:** This email thread contains attachments. Attachment details are stored in the JSON data but files are not downloaded.\n"
-        
+        attachments = thread.get("attachments", [])
+        if attachments:
+            attachment_note = "\n\n---\n## Attachments\n\n"
+            for attachment in attachments:
+                filename = attachment.get('filename', 'Unknown')
+                size_bytes = attachment.get('size_bytes', 0)
+                mime_type = attachment.get('mime_type', 'unknown')
+
+                # Format size nicely
+                if size_bytes < 1024:
+                    size_str = f"{size_bytes} B"
+                elif size_bytes < 1024 * 1024:
+                    size_str = f"{size_bytes / 1024:.1f} KB"
+                else:
+                    size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+
+                attachment_note += f"- **{filename}** ({size_str}, {mime_type})\n"
+
+            attachment_note += "\n*Note: Attachment files are not downloaded, only metadata is stored.*\n"
+
         return header + conversation + attachment_note 
     
     def _prepare_message_for_storage(self, message: Dict[str, Any], thread: Dict[str, Any], 

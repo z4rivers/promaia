@@ -125,6 +125,9 @@ os.environ["API_TYPE"] = current_api
 # Create key bindings for intuitive chat input
 from prompt_toolkit.filters import Condition
 
+# Store partially typed input when Ctrl+E is pressed for edit mode
+pending_input_text = None
+
 bindings = KeyBindings()
 
 @bindings.add('enter')
@@ -136,6 +139,15 @@ def _(event):
 def _(event):
     """Ctrl+J adds a new line. On many terminals, Shift+Enter sends Ctrl+J."""
     event.current_buffer.insert_text('\n')
+
+@bindings.add('c-e')
+def _(event):
+    """Ctrl+E triggers edit mode, preserving any partially typed input."""
+    global pending_input_text
+    # Save current buffer text to restore after edit mode
+    pending_input_text = event.app.current_buffer.text
+    # Exit with /e command to trigger edit mode
+    event.app.exit(result='/e')
 
 session = PromptSession(
     history=FileHistory('.chat_history'),
@@ -514,9 +526,107 @@ def _parse_image_paths_and_message(input_text: str) -> tuple[list[str], str]:
     message_text = ' '.join(message_parts)
     return image_paths, message_text
 
+def _is_likely_file_path(text: str) -> tuple[bool, str]:
+    """
+    Check if a string looks like a file path and determine its type.
+
+    Args:
+        text: String to check
+
+    Returns:
+        Tuple of (is_file_path, file_type) where file_type is 'image', 'document', or ''
+    """
+    # Common file extensions by category
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.svg'}
+    document_extensions = {'.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.xls', '.xlsx'}
+
+    # Remove escaped spaces to check the actual path structure
+    # Escaped spaces (\ ) should be treated as part of the filename, not word boundaries
+    text_unescaped = text.replace('\\ ', '_SPACE_')
+
+    # Early exit: Exclude URLs from file path detection
+    # URLs should not be treated as local file paths
+    if text.startswith(('http://', 'https://', 'ftp://', 'ftps://', 'www.')):
+        return (False, '')
+
+    # Exclude any string with protocol indicators (e.g., custom protocols)
+    if '://' in text:
+        return (False, '')
+
+    # Exclude email addresses
+    if '@' in text and '/' not in text.split('@')[0]:
+        return (False, '')
+
+    # Check if it has a known file extension
+    path = Path(text.lower())
+    if path.suffix in image_extensions:
+        return (True, 'image')
+    if path.suffix in document_extensions:
+        return (True, 'document')
+
+    # Check if it looks like a path (contains / or \ and doesn't look like a sentence)
+    if ('/' in text or '\\' in text) and not text.endswith('.'):
+        # Must be a single word/path, not a sentence
+        # Use the unescaped version for word counting to handle escaped spaces properly
+        if len(text_unescaped.split()) != 1:
+            return (False, '')
+
+        # Additional validation to avoid false positives like "VAT/EORI"
+
+        # 1. Check if it starts with path indicators (relative/absolute paths)
+        if text.startswith(('./', '../', '~/', '/', '\\')):
+            # Check extension if it has one
+            if path.suffix in image_extensions:
+                return (True, 'image')
+            if path.suffix in document_extensions:
+                return (True, 'document')
+            # Generic file path
+            return (True, 'unknown')
+
+        # 2. Check if it has multiple path components (not just "word/word")
+        path_parts = [p for p in text.replace('\\', '/').split('/') if p]
+        if len(path_parts) >= 3:  # At least something like "dir/subdir/file"
+            # Check extension
+            if path.suffix in image_extensions:
+                return (True, 'image')
+            if path.suffix in document_extensions:
+                return (True, 'document')
+            return (True, 'unknown')
+
+        # 3. Check if any component has a file extension
+        for part in path_parts:
+            if '.' in part and not part.startswith('.'):
+                # Has an extension, could be a file path
+                part_path = Path(part.lower())
+                if part_path.suffix in image_extensions:
+                    return (True, 'image')
+                if part_path.suffix in document_extensions:
+                    return (True, 'document')
+                return (True, 'unknown')
+
+        # 4. Avoid acronym patterns (e.g., "VAT/EORI" - uppercase words with slash)
+        if all(part.isupper() or part.isdigit() for part in path_parts if part):
+            return (False, '')
+
+        # 5. Check if it's a common path pattern with current directory
+        if len(path_parts) == 2:
+            # Could be "dir/file" - check if second part looks like a filename
+            last_part = path_parts[-1]
+            if '.' in last_part or any(char.isdigit() for char in last_part):
+                # Check extension
+                if path.suffix in image_extensions:
+                    return (True, 'image')
+                if path.suffix in document_extensions:
+                    return (True, 'document')
+                return (True, 'unknown')
+
+    return (False, '')
+
 def _is_likely_image_path(text: str) -> bool:
     """
     Check if a string looks like an image file path.
+
+    Backward compatibility wrapper for _is_likely_file_path.
 
     Args:
         text: String to check
@@ -524,90 +634,76 @@ def _is_likely_image_path(text: str) -> bool:
     Returns:
         True if it looks like an image path
     """
-    # Common image extensions
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.svg'}
+    is_file, file_type = _is_likely_file_path(text)
+    return is_file and file_type == 'image'
 
-    # Remove escaped spaces to check the actual path structure
-    # Escaped spaces (\ ) should be treated as part of the filename, not word boundaries
-    text_unescaped = text.replace('\\ ', '_SPACE_')
+def _is_likely_document_path(text: str) -> bool:
+    """
+    Check if a string looks like a document file path (PDF, DOCX, etc.).
 
-    # Early exit: Exclude URLs from image path detection
-    # URLs should not be treated as local file paths
-    if text.startswith(('http://', 'https://', 'ftp://', 'ftps://', 'www.')):
-        return False
+    Args:
+        text: String to check
 
-    # Exclude any string with protocol indicators (e.g., custom protocols)
-    if '://' in text:
-        return False
+    Returns:
+        True if it looks like a document path
+    """
+    is_file, file_type = _is_likely_file_path(text)
+    return is_file and file_type == 'document'
 
-    # Exclude email addresses
-    if '@' in text and '/' not in text.split('@')[0]:
-        return False
+# Preserve old function name for compatibility - now checks all file types
+def _is_likely_any_file_path(text: str) -> bool:
+    """
+    Check if a string looks like any supported file path (image or document).
 
-    # Check if it has an image extension
-    path = Path(text.lower())
-    if path.suffix in image_extensions:
-        return True
+    Args:
+        text: String to check
 
-    # Check if it looks like a path (contains / or \ and doesn't look like a sentence)
-    if ('/' in text or '\\' in text) and not text.endswith('.'):
-        # Must be a single word/path, not a sentence
-        # Use the unescaped version for word counting to handle escaped spaces properly
-        if len(text_unescaped.split()) != 1:
-            return False
-        
-        # Additional validation to avoid false positives like "VAT/EORI"
-        
-        # 1. Check if it starts with path indicators (relative/absolute paths)
-        if text.startswith(('./', '../', '~/', '/', '\\')):
-            return True
-        
-        # 2. Check if it has multiple path components (not just "word/word")
-        path_parts = [p for p in text.replace('\\', '/').split('/') if p]
-        if len(path_parts) >= 3:  # At least something like "dir/subdir/file"
-            return True
-        
-        # 3. Check if any component has a file extension (even non-image)
-        for part in path_parts:
-            if '.' in part and not part.startswith('.'):
-                # Has an extension, could be a file path
-                return True
-        
-        # 4. Avoid acronym patterns (e.g., "VAT/EORI" - uppercase words with slash)
-        if all(part.isupper() or part.isdigit() for part in path_parts if part):
-            return False
-        
-        # 5. Check if it's a common path pattern with current directory
-        if len(path_parts) == 2:
-            # Could be "dir/file" - check if second part looks like a filename
-            last_part = path_parts[-1]
-            if '.' in last_part or any(char.isdigit() for char in last_part):
-                return True
-    
-    return False
+    Returns:
+        True if it looks like a supported file path
+    """
+    is_file, file_type = _is_likely_file_path(text)
+    return is_file and file_type in ('image', 'document')
+
+def _detect_file_paths_in_message(user_input: str) -> tuple[str, list[tuple[str, str]]]:
+    """
+    Detect file paths (images and documents) in a regular message.
+
+    Args:
+        user_input: The full user message
+
+    Returns:
+        Tuple of (cleaned_message, file_paths) where file_paths is list of (path, type) tuples
+    """
+    # Use smart splitting that respects escaped spaces
+    words = _split_respecting_escaped_spaces(user_input)
+    file_paths = []
+    remaining_words = []
+
+    for word in words:
+        is_file, file_type = _is_likely_file_path(word)
+        if is_file and file_type in ('image', 'document'):
+            file_paths.append((word, file_type))
+        else:
+            remaining_words.append(word)
+
+    cleaned_message = ' '.join(remaining_words)
+    return cleaned_message, file_paths
 
 def _detect_image_paths_in_message(user_input: str) -> tuple[str, list[str]]:
     """
     Detect image paths in a regular message without /image prefix.
-    
+
+    Backward compatibility wrapper for _detect_file_paths_in_message.
+
     Args:
         user_input: The full user message
-        
+
     Returns:
         Tuple of (cleaned_message, image_paths)
     """
-    # Use smart splitting that respects escaped spaces
-    words = _split_respecting_escaped_spaces(user_input)
-    image_paths = []
-    remaining_words = []
-    
-    for word in words:
-        if _is_likely_image_path(word):
-            image_paths.append(word)
-        else:
-            remaining_words.append(word)
-    
-    cleaned_message = ' '.join(remaining_words)
+    cleaned_message, file_paths = _detect_file_paths_in_message(user_input)
+    # Filter only images
+    image_paths = [path for path, file_type in file_paths if file_type == 'image']
     return cleaned_message, image_paths
 
 def safe_split_command(user_input):
@@ -4996,7 +5092,13 @@ The user will type `/send` to trigger the actual sending process.
 
     while True:
         try:
-            user_input = session.prompt("You: ", style=style)
+            global pending_input_text
+            # Check if there's pending input text from Ctrl+E (edit mode)
+            if pending_input_text:
+                user_input = session.prompt("You: ", style=style, default=pending_input_text)
+                pending_input_text = None  # Clear after using
+            else:
+                user_input = session.prompt("You: ", style=style)
 
             if user_input.strip().lower() in ['/quit', '/exit', '/q']:
                 # Save chat messages if in draft mode
@@ -5854,11 +5956,7 @@ The user will type `/send` to trigger the actual sending process.
                 continue
 
             elif user_input.strip().lower() == '/send':
-                # Handle email sending from mail mode
-                if not context_state.get('enable_email_send', False):
-                    print_text("❌ /send is only available in mail mode. Use /mail to enable it.", style="red")
-                    continue
-
+                # Handle email sending - check for valid email artifact first
                 # Get the latest artifact (email draft)
                 if not artifact_manager or not artifact_manager.artifacts:
                     print_text("❌ No email draft found", style="red")
@@ -5902,6 +6000,12 @@ The user will type `/send` to trigger the actual sending process.
                         print_text("   - Missing 'To' field", style="dim red")
                     print_text("\n   Please ask the AI to include both Subject and To in the email.", style="yellow")
                     continue
+
+                # If we have a valid email artifact but mail mode isn't enabled, auto-enable it
+                if not context_state.get('enable_email_send', False):
+                    context_state['enable_email_send'] = True
+                    logger.info("📧 Auto-enabled email send mode due to valid email artifact")
+                    print_text("📧 Email send mode enabled", style="cyan")
 
                 # Validate email body
                 if not email_body.strip() and not attachments:
@@ -6208,60 +6312,92 @@ The user will type `/send` to trigger the actual sending process.
 
             if is_command:
                 cleaned_message = input_stripped
-                detected_paths = []
+                detected_files = []
             else:
-                cleaned_message, detected_paths = _detect_image_paths_in_message(input_stripped)
+                cleaned_message, detected_files = _detect_file_paths_in_message(input_stripped)
 
-            if detected_paths:
+            if detected_files:
                 try:
                     from promaia.utils.image_processing import (
-                        encode_image_from_path, is_vision_supported, get_model_image_limits
+                        encode_image_from_path, is_vision_supported, get_model_image_limits,
+                        process_document_for_gemini
                     )
 
-                    # Check if current model supports vision
-                    if not is_vision_supported(current_api):
-                        print_text(f"📸 Detected {len(detected_paths)} image path(s) but {current_api} doesn't support images.", style="bold yellow")
-                        print_text("Try switching to a vision-capable model with '/model' or use text-only.", style="dim")
-                    else:
-                        # Get model limits
-                        model_limits = get_model_image_limits(current_api)
-                        max_images = model_limits['max_images']
+                    # Separate images from documents
+                    image_files = [(path, ftype) for path, ftype in detected_files if ftype == 'image']
+                    document_files = [(path, ftype) for path, ftype in detected_files if ftype == 'document']
 
-                        # Limit images to model capacity
-                        if len(detected_paths) > max_images:
-                            print_text(f"📸 Detected {len(detected_paths)} images, but {current_api.title()} supports max {max_images}. Processing first {max_images}.", style="bold yellow")
-                            detected_paths = detected_paths[:max_images]
+                    # Process images
+                    if image_files:
+                        # Check if current model supports vision
+                        if not is_vision_supported(current_api):
+                            print_text(f"📸 Detected {len(image_files)} image path(s) but {current_api} doesn't support images.", style="bold yellow")
+                            print_text("Try switching to a vision-capable model with '/model' or use text-only.", style="dim")
+                        else:
+                            # Get model limits
+                            model_limits = get_model_image_limits(current_api)
+                            max_images = model_limits['max_images']
 
-                        # Try to encode detected images
-                        successful_images = []
+                            # Limit images to model capacity
+                            if len(image_files) > max_images:
+                                print_text(f"📸 Detected {len(image_files)} images, but {current_api.title()} supports max {max_images}. Processing first {max_images}.", style="bold yellow")
+                                image_files = image_files[:max_images]
 
-                        for image_path in detected_paths:
-                            try:
-                                # Unescape spaces in path (shell-style escaped spaces: \ )
-                                actual_path = image_path.replace('\\ ', ' ')
+                            # Try to encode detected images
+                            successful_images = []
 
-                                if os.path.exists(actual_path):
-                                    # Use File API for Gemini if needed, otherwise base64
-                                    if current_api == 'gemini':
-                                        from promaia.utils.image_processing import process_image_for_gemini
-                                        encoded_image = process_image_for_gemini(actual_path)
+                            for image_path, _ in image_files:
+                                try:
+                                    # Unescape spaces in path (shell-style escaped spaces: \ )
+                                    actual_path = image_path.replace('\\ ', ' ')
+
+                                    if os.path.exists(actual_path):
+                                        # Use File API for Gemini if needed, otherwise base64
+                                        if current_api == 'gemini':
+                                            from promaia.utils.image_processing import process_image_for_gemini
+                                            encoded_image = process_image_for_gemini(actual_path)
+                                        else:
+                                            encoded_image = encode_image_from_path(actual_path)
+                                        successful_images.append(encoded_image)
                                     else:
-                                        encoded_image = encode_image_from_path(actual_path)
-                                    successful_images.append(encoded_image)
-                                else:
-                                    print_text(f"📸 Image path not found: {actual_path}", style="dim yellow")
-                            except Exception as img_error:
-                                print_text(f"❌ Failed to load detected image: {actual_path if 'actual_path' in locals() else image_path} - {img_error}", style="bold red")
+                                        print_text(f"📸 Image path not found: {actual_path}", style="dim yellow")
+                                except Exception as img_error:
+                                    print_text(f"❌ Failed to load detected image: {actual_path if 'actual_path' in locals() else image_path} - {img_error}", style="bold red")
 
-                        if successful_images:
-                            current_images = successful_images
-                            user_input = cleaned_message  # Use cleaned message without image paths
-                            # Show single confirmation line
-                            img_word = "image" if len(successful_images) == 1 else "images"
-                            print_text(f"📸 {len(successful_images)} {img_word} loaded", style="bold green")
+                            if successful_images:
+                                current_images = successful_images
+                                user_input = cleaned_message  # Use cleaned message without file paths
+                                # Show single confirmation line
+                                img_word = "image" if len(successful_images) == 1 else "images"
+                                print_text(f"📸 {len(successful_images)} {img_word} loaded", style="bold green")
+
+                    # Process documents (currently only for Gemini)
+                    if document_files:
+                        if current_api == 'gemini':
+                            for doc_path, _ in document_files:
+                                try:
+                                    # Unescape spaces in path
+                                    actual_path = doc_path.replace('\\ ', ' ')
+
+                                    if os.path.exists(actual_path):
+                                        # Upload document to Gemini File API
+                                        doc_data = process_document_for_gemini(actual_path)
+                                        current_images.append(doc_data)
+                                        print_text(f"📄 Document loaded: {doc_data['display_name']}", style="bold green")
+                                    else:
+                                        print_text(f"📄 Document path not found: {actual_path}", style="dim yellow")
+                                except Exception as doc_error:
+                                    print_text(f"❌ Failed to load document: {actual_path if 'actual_path' in locals() else doc_path} - {doc_error}", style="bold red")
+
+                            # Update user input to remove file paths
+                            if document_files and not image_files:
+                                user_input = cleaned_message
+                        else:
+                            print_text(f"📄 Detected {len(document_files)} document(s) but {current_api} doesn't support documents yet.", style="bold yellow")
+                            print_text("Document support is currently available with Gemini. Switch with '/model gemini'.", style="dim")
 
                 except Exception as e:
-                    print_text(f"Error processing detected images: {e}", style="bold red")
+                    print_text(f"Error processing detected files: {e}", style="bold red")
                     # Continue with original message
                     pass
             
@@ -6426,7 +6562,6 @@ The user will type `/send` to trigger the actual sending process.
                 current_system_prompt = system_prompt
                 if context_state.get('enable_email_send', False):
                     # Load maia_mail_prompt.md for JSON artifact format instructions
-                    import os
                     mail_prompt_path = os.path.join(os.path.dirname(__file__), '..', '..', 'prompts', 'maia_mail_prompt.md')
 
                     try:
