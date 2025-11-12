@@ -2607,8 +2607,8 @@ async def handle_register_markdown_files(args):
                     import re  # Import at the beginning to avoid scope issues
                     filename = os.path.basename(md_file)
                     
-                    # Extract page ID from filename - supports Notion UUIDs, Gmail threads, and Discord messages
-                    page_id_match = re.search(r'(?:msg_|thread_)?([a-f0-9-]{16,}|[a-f0-9]{32})', filename, re.IGNORECASE)
+                    # Extract page ID from filename - supports Notion UUIDs, Gmail threads, Discord messages, and conversation threads
+                    page_id_match = re.search(r'(thread_\d{8}_\d{6}|msg_[a-f0-9-]{16,}|[a-f0-9-]{16,}|[a-f0-9]{32})', filename, re.IGNORECASE)
                     if not page_id_match:
                         # Fallback for Notion pages with format: Title last-part-of-uuid.md
                         page_id_match = re.search(r'([a-f0-9]{32})\.md$', filename)
