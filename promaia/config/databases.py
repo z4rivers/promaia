@@ -440,6 +440,13 @@ class DatabaseManager:
             if config.workspace == workspace
         ]
 
+    def get_workspace_agnostic_databases(self) -> List[DatabaseConfig]:
+        """Get all databases with workspace_scope='all' (accessible from any workspace)."""
+        return [
+            config for config in self.databases.values()
+            if config.workspace_scope == "all"
+        ]
+
 # Global database manager instance
 _db_manager = None
 

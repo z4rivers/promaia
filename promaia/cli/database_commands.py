@@ -1623,14 +1623,9 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
                              logger.warning(f"Invalid property filter format '{filter_part}' in spec '{spec}'")
 
             # If days were not specified in the spec string, use the default from the config
-            # UNLESS filters are present, in which case ignore days constraint entirely
+            # Property filters should work TOGETHER with date constraints
             if not days_was_specified:
-                # Check if any filters are present
-                has_filters = (property_filters or comparison_filters or complex_filter)
-                if has_filters:
-                    days = None  # Ignore days constraint when filters are present
-                else:
-                    days = db_config.default_days
+                days = db_config.default_days
 
             parsed_source = {
                 'name': database,
@@ -1645,10 +1640,10 @@ def parse_source_specs(source_specs: List[str]) -> List[Dict[str, Any]]:
             parsed_sources.append(parsed_source)
             
             if complex_filter:
-                days_desc = "all (filters override)" if days is None and (property_filters or comparison_filters or complex_filter) else days
+                days_desc = "all" if days is None else days
                 logger.info(f"Parsed source: {database}, days: {days_desc}, complex_filter: {complex_filter}")
             else:
-                days_desc = "all (filters override)" if days is None and (property_filters or comparison_filters) else days
+                days_desc = "all" if days is None else days
                 logger.info(f"Parsed source: {database}, days: {days_desc}, filters: {property_filters}, comparison_filters: {comparison_filters}")
             
         except Exception as e:

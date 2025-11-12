@@ -83,17 +83,21 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
             for ws_name in workspace_names:
                 ws_databases = db_manager.get_workspace_databases(ws_name)
                 workspace_databases.extend(ws_databases)
-                
+
             workspace_display = ', '.join(workspace_names)
         else:
             # Single workspace case (existing logic)
             if workspace is None:
                 console.print(f"❌ No workspace specified", style="red")
                 return []
-                
+
             workspace_databases = db_manager.get_workspace_databases(workspace)
             workspace_display = workspace
-            
+
+        # Add workspace-agnostic databases (e.g., convos with workspace_scope="all")
+        agnostic_databases = db_manager.get_workspace_agnostic_databases()
+        workspace_databases.extend(agnostic_databases)
+
         if not workspace_databases:
             console.print(f"❌ No databases found in workspace(s) '{workspace_display}'", style="red")
             return []
