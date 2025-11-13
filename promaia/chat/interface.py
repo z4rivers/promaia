@@ -4790,8 +4790,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text("🔄 Generating AI response with updated context...", style="bold cyan")
                     print()
 
+                    # For regeneration, disable query tools so AI uses loaded data instead of querying again
+                    system_prompt_for_regen = build_system_prompt_with_mode(
+                        initial_multi_source_data,
+                        mcp_tools_info,
+                        mode_system_prompt,
+                        mode,
+                        include_query_tools=False,  # Disable query tools for answer generation
+                        workspace=context_state.get('workspace')
+                    )
+
                     # Call the regenerate callback to get new AI response
-                    new_response = regenerate_callback(system_prompt)
+                    new_response = regenerate_callback(system_prompt_for_regen)
 
                     if new_response:
                         response_text = new_response
