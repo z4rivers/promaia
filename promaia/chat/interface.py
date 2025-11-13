@@ -4649,24 +4649,21 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             return ('approved', parameters)
         elif response == 'm':
             # Allow user to modify the query
-            from prompt_toolkit import PromptSession
-            from prompt_toolkit.styles import Style as PromptStyle
+            print_text("Modify query (current query shown above, type new query or press Enter to cancel):", style="bold cyan")
 
-            session = PromptSession()
-            prompt_style = PromptStyle.from_dict({'prompt': 'ansicyan bold'})
+            try:
+                new_query = input("Query: ").strip()
 
-            print_text("Modify query (press Enter to keep current):", style="bold cyan")
-
-            new_query = session.prompt(
-                "Query: ",
-                default=query_text,
-                style=prompt_style
-            )
-
-            if new_query and new_query != query_text:
-                parameters['query'] = new_query
-
-            return ('modified', parameters)
+                if new_query and new_query != query_text:
+                    parameters['query'] = new_query
+                    return ('modified', parameters)
+                else:
+                    # User pressed Enter without changes or entered same query
+                    print_text("Query unchanged, proceeding with original.", style="dim")
+                    return ('approved', parameters)
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return ('declined', None)
         else:
             return ('declined', None)
 
@@ -4699,11 +4696,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Execute the query tools with permission requests
             results = await query_executor.execute_query_tool_calls(tool_calls, request_query_permission)
 
-            # Check if any queries succeeded
+            # Check if any queries succeeded AND loaded pages
             needs_reload = False
+            pages_added = 0
             for result in results:
                 if result.get('success'):
-                    needs_reload = True
                     # Merge loaded content into initial_multi_source_data
                     loaded_content = result.get('loaded_content', {})
                     for db_name, pages in loaded_content.items():
@@ -4718,6 +4715,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
                                 initial_multi_source_data[db_name].append(page)
                                 existing_ids.add(page.get('id'))
+                                pages_added += 1
+
+            # Only reload if we actually added pages
+            if pages_added > 0:
+                needs_reload = True
 
             # Format the results
             results_text = query_executor.format_query_results(results)
@@ -6892,9 +6894,10 @@ The user will type `/send` when ready to send the email.
                     def regenerate_anthropic_response(updated_system_prompt):
                         """Regenerate Anthropic response with updated context."""
                         try:
-                            # Safety check for None messages_for_api
-                            if not messages_for_api:
+                            # Safety check for None or empty messages_for_api
+                            if not messages_for_api or len(messages_for_api) == 0:
                                 logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                print_text("⚠️  Cannot regenerate response with empty message history", style="yellow")
                                 return None
 
                             if current_message_images:
@@ -6903,9 +6906,16 @@ The user will type `/send` when ready to send the email.
                             else:
                                 clean_messages = []
                                 for msg in messages_for_api:
-                                    if msg and isinstance(msg, dict):
+                                    if msg and isinstance(msg, dict) and msg.get("content"):
                                         clean_msg = {"role": msg.get("role", "user"), "content": msg.get("content", "")}
                                         clean_messages.append(clean_msg)
+
+                                # Check if we have any valid messages after filtering
+                                if not clean_messages:
+                                    logger.warning("No valid messages after cleaning, cannot regenerate")
+                                    print_text("⚠️  Cannot regenerate response with invalid message history", style="yellow")
+                                    return None
+
                                 regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, clean_messages, temperature=current_temperature)
 
                             if regen_response and regen_response.content:
@@ -6913,6 +6923,7 @@ The user will type `/send` when ready to send the email.
                             return None
                         except Exception as e:
                             logger.error(f"Error regenerating Anthropic response: {e}")
+                            print_text(f"⚠️  Error regenerating response: {e}", style="yellow")
                             return None
 
                     if current_message_images:
