@@ -131,6 +131,7 @@ def create_system_prompt(
     multi_source_data: Dict[str, List[Dict[str, Any]]],
     mcp_tools_info: Optional[str] = None,
     include_query_tools: bool = True,
+    workspace: Optional[str] = None,
 ) -> str:
     """
     Create a system prompt that includes content from multiple data sources.
@@ -139,6 +140,7 @@ def create_system_prompt(
         multi_source_data: Dict mapping database names to lists of page data
         mcp_tools_info: Optional formatted MCP tools information
         include_query_tools: Whether to include built-in query tools (default: True)
+        workspace: Current workspace for database preview (default: None)
     """
     today = datetime.datetime.now()
     today_str = today.strftime("%Y-%m-%d")
@@ -168,6 +170,13 @@ def create_system_prompt(
     if include_query_tools:
         base_prompt += "\n\n" + format_query_tools_for_prompt()
 
+        # Add database preview (the "map on the wall") showing what data sources exist
+        # Exclude databases already in loaded context to avoid duplication
+        loaded_databases = list(multi_source_data.keys())
+        db_preview = generate_database_preview(workspace=workspace, exclude_databases=loaded_databases)
+        if db_preview:
+            base_prompt += "\n\n" + db_preview
+
     # Append context data
     base_prompt += format_context_data(multi_source_data, mcp_tools_info)
 
@@ -177,6 +186,188 @@ def create_system_prompt(
 def _is_discord_database(database_name: str) -> bool:
     """Check if a database is a Discord source based on its name or content."""
     return 'discord' in database_name.lower() or database_name.lower().endswith('.ds')
+
+
+def generate_database_preview(workspace: Optional[str] = None, exclude_databases: Optional[List[str]] = None) -> str:
+    """
+    Generate a preview/map of available databases with sample content.
+
+    Similar to what the SQL query AI sees, this gives the chat AI a "heads up display"
+    showing what data sources exist and what they contain.
+
+    Args:
+        workspace: Optional workspace to filter databases (None for all)
+        exclude_databases: List of database names already in loaded context (to avoid duplication)
+
+    Returns:
+        Formatted database preview string with samples
+    """
+    import sqlite3
+    import json
+    from datetime import datetime
+
+    db_path = "data/hybrid_metadata.db"
+
+    if exclude_databases is None:
+        exclude_databases = []
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Get list of all databases in workspace
+        if workspace:
+            cursor.execute("""
+                SELECT DISTINCT database_name, workspace
+                FROM unified_content
+                WHERE workspace = ?
+                ORDER BY database_name
+            """, (workspace,))
+        else:
+            cursor.execute("""
+                SELECT DISTINCT database_name, workspace
+                FROM unified_content
+                ORDER BY workspace, database_name
+            """)
+
+        databases = cursor.fetchall()
+
+        if not databases:
+            return ""
+
+        preview = "## Available Data Sources"
+        if workspace:
+            preview += f" (Workspace: {workspace})"
+        preview += "\n\n"
+
+        for db_name, db_workspace in databases:
+            # Skip if already in loaded context
+            if db_name in exclude_databases:
+                continue
+
+            # Get count
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM unified_content
+                WHERE database_name = ? AND workspace = ?
+            """, (db_name, db_workspace))
+            count = cursor.fetchone()[0]
+
+            # Get date range
+            cursor.execute("""
+                SELECT MIN(created_time), MAX(created_time)
+                FROM unified_content
+                WHERE database_name = ? AND workspace = ?
+                AND created_time IS NOT NULL
+            """, (db_name, db_workspace))
+            date_range = cursor.fetchone()
+            date_min = date_range[0] if date_range[0] else "unknown"
+            date_max = date_range[1] if date_range[1] else "unknown"
+
+            # Format dates
+            if date_min != "unknown":
+                try:
+                    date_min = datetime.fromisoformat(date_min.replace('Z', '+00:00')).strftime("%Y-%m-%d")
+                except:
+                    date_min = "unknown"
+            if date_max != "unknown":
+                try:
+                    date_max = datetime.fromisoformat(date_max.replace('Z', '+00:00')).strftime("%Y-%m-%d")
+                except:
+                    date_max = "unknown"
+
+            # Get 3 most recent samples
+            cursor.execute("""
+                SELECT page_id, title, created_time, metadata
+                FROM unified_content
+                WHERE database_name = ? AND workspace = ?
+                ORDER BY created_time DESC
+                LIMIT 3
+            """, (db_name, db_workspace))
+            samples = cursor.fetchall()
+
+            # Determine emoji based on database type
+            if 'gmail' in db_name.lower():
+                emoji = "📧"
+            elif 'discord' in db_name.lower() or db_name.endswith('.ds'):
+                emoji = "💬"
+            elif 'journal' in db_name.lower():
+                emoji = "📓"
+            elif 'stories' in db_name.lower() or 'cms' in db_name.lower():
+                emoji = "📝"
+            else:
+                emoji = "📁"
+
+            # Build database section
+            preview += f"{emoji} **{db_name}** ({count:,} entries"
+            if date_min != "unknown" and date_max != "unknown":
+                preview += f" | {date_min} to {date_max}"
+            preview += ")\n"
+
+            # Add sample entries
+            if samples:
+                preview += "\n  Recent examples:\n"
+                for i, (page_id, title, created, metadata_str) in enumerate(samples, 1):
+                    # Truncate title
+                    title_display = title[:80] + "..." if title and len(title) > 80 else (title or "Untitled")
+
+                    # Format date
+                    date_display = "unknown"
+                    if created:
+                        try:
+                            date_display = datetime.fromisoformat(created.replace('Z', '+00:00')).strftime("%b %d, %Y")
+                        except:
+                            pass
+
+                    preview += f"  {i}. \"{title_display}\" ({date_display})\n"
+
+                    # Parse metadata for key properties
+                    if metadata_str:
+                        try:
+                            metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+                            properties = metadata.get('properties', {})
+
+                            # Show top 3 interesting properties
+                            prop_display = []
+                            interesting_props = ['status', 'sender', 'author', 'tags', 'epic', 'channel', 'mood']
+
+                            for prop_name in interesting_props:
+                                if prop_name in properties:
+                                    prop_value = properties[prop_name]
+                                    # Handle different property value formats
+                                    if isinstance(prop_value, dict):
+                                        # Notion property format
+                                        if 'select' in prop_value and prop_value['select']:
+                                            prop_display.append(f"{prop_name}: {prop_value['select']['name']}")
+                                        elif 'multi_select' in prop_value and prop_value['multi_select']:
+                                            tags = [t['name'] for t in prop_value['multi_select'][:2]]
+                                            prop_display.append(f"{prop_name}: {', '.join(tags)}")
+                                    elif isinstance(prop_value, str) and prop_value:
+                                        prop_display.append(f"{prop_name}: {prop_value}")
+
+                                if len(prop_display) >= 3:
+                                    break
+
+                            if prop_display:
+                                preview += f"     {' | '.join(prop_display)}\n"
+
+                        except:
+                            pass  # Skip metadata parsing errors
+
+                preview += "\n"
+            else:
+                preview += "  (No recent entries)\n\n"
+
+        conn.close()
+
+        if not preview.strip().endswith("## Available Data Sources"):
+            return preview
+        else:
+            return ""  # No databases found
+
+    except Exception as e:
+        logger.error(f"Error generating database preview: {e}")
+        return ""
 
 
 def format_query_tools_for_prompt() -> str:
@@ -201,6 +392,7 @@ You have access to built-in tools that allow you to query and load additional co
 
 **Parameters**:
 - `query`* (string): Natural language description of what you're looking for
+- `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why you formulated the query this way
 - `workspace` (string): Optional workspace name to search in (defaults to current workspace)
 - `max_results` (integer): Optional maximum number of results to return (default: 50)
 
@@ -210,6 +402,7 @@ You have access to built-in tools that allow you to query and load additional co
   <tool_name>query_sql</tool_name>
   <parameters>
     <query>find emails from Federico about product launch</query>
+    <reasoning>User asked "What did Federico say about the product launch?" My current context doesn't contain any emails from Federico. I'm querying the gmail database because Federico communicates via email. I'm searching for messages where Federico is the sender AND the content mentions "product launch" or "launch". I expect to find 5-15 recent emails with his feedback, concerns, and updates about the launch timeline and strategy.</reasoning>
     <workspace>default</workspace>
     <max_results>20</max_results>
   </parameters>
@@ -223,6 +416,7 @@ You have access to built-in tools that allow you to query and load additional co
 
 **Parameters**:
 - `query`* (string): Text to search for semantically similar content
+- `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why semantic search is appropriate for this query
 - `workspace` (string): Optional workspace name to search in (defaults to current workspace)
 - `top_k` (integer): Maximum number of results to return (default: 20)
 - `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.75)
@@ -233,6 +427,7 @@ You have access to built-in tools that allow you to query and load additional co
   <tool_name>query_vector</tool_name>
   <parameters>
     <query>international expansion strategy</query>
+    <reasoning>User asked about our plans for international markets. My context has some stories but nothing specifically about international expansion. I'm using semantic search because the relevant content might use different terminology like "global growth", "overseas markets", "foreign markets", etc. I expect to find 10-20 documents from stories, journal entries, or emails discussing market expansion, geographic strategy, and localization plans.</reasoning>
     <top_k>15</top_k>
     <min_similarity>0.8</min_similarity>
   </parameters>
@@ -246,6 +441,7 @@ You have access to built-in tools that allow you to query and load additional co
 
 **Parameters**:
 - `source`* (string): Database specification in format "database_name:days" (e.g., "gmail:7", "journal:30")
+- `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this specific database (what information is it expected to contain), (2) Why you chose this time range, (3) What you expect to find
 - `workspace` (string): Optional workspace name (defaults to current workspace)
 - `filters` (object): Optional property filters to apply
 
@@ -255,26 +451,34 @@ You have access to built-in tools that allow you to query and load additional co
   <tool_name>query_source</tool_name>
   <parameters>
     <source>gmail:7</source>
+    <reasoning>User asked "Any important emails this week?" My context doesn't have recent email data. I'm loading the last 7 days of gmail because the user specifically said "this week" and emails are the communication channel where important updates come through. I expect to find 20-50 recent emails including project updates, meeting invitations, and urgent requests that need the user's attention.</reasoning>
   </parameters>
 </tool_call>
 ```
 
 ### Important Notes About Query Tools
 
-1. **Permission Required**: When you use a query tool, the user will be asked to approve the query before it executes. They can approve (y), modify (m), or decline (n).
+1. **Reasoning is REQUIRED**: Every query tool call MUST include a `reasoning` parameter that explains:
+   - WHY you need this information (what's missing from your current context)
+   - WHAT you expect to find
+   - HOW/WHY you formulated the query this way
 
-2. **Context Updates**: After a query executes, the results are merged into your context. You'll receive a summary of what was loaded.
+   The reasoning will be shown to the user during approval, so be specific and clear.
 
-3. **Iterative Querying**: You can make multiple query tool calls if you need to refine or expand context. However, be judicious - each query requires user approval and uses tokens.
+2. **Permission Required**: When you use a query tool, the user will be asked to approve the query before it executes. They can approve (y), modify (m), or decline (n). Your reasoning helps them make this decision.
 
-4. **Deduplication**: If a query returns content already in context, it will be deduplicated automatically. You won't see duplicate entries.
+3. **Context Updates**: After a query executes, the results are merged into your context. You'll receive a summary of what was loaded.
 
-5. **When to Query**:
+4. **Iterative Querying**: You can make multiple query tool calls if you need to refine or expand context. However, be judicious - each query requires user approval and uses tokens.
+
+5. **Deduplication**: If a query returns content already in context, it will be deduplicated automatically. You won't see duplicate entries.
+
+6. **When to Query**:
    - User asks about something not in your current context
    - User's question would benefit from more recent or more specific information
    - You notice you're missing key information to give a complete answer
 
-6. **When NOT to Query**:
+7. **When NOT to Query**:
    - The answer is already in your context
    - The question doesn't require database content (general knowledge questions)
    - You're unsure what to query for (ask the user to clarify first)
@@ -300,10 +504,11 @@ AI: I need to search for emails from Federico about the product launch.
   <tool_name>query_sql</tool_name>
   <parameters>
     <query>emails from Federico about product launch</query>
+    <reasoning>User asked what Federico said about the product launch. My current context doesn't contain any emails from Federico. I'm querying the gmail database because that's where Federico's communications would be stored. I'm searching for messages where Federico is the sender and the content mentions "product launch" or "launch". I expect to find several emails with his feedback, questions, or updates about the launch.</reasoning>
   </parameters>
 </tool_call>
 
-[User approves, context is loaded]
+[User sees reasoning, approves, context is loaded]
 
 AI: Based on the emails I found, Federico mentioned...
 ```

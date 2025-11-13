@@ -202,6 +202,7 @@ class QueryToolExecutor:
                     'id': query_id,
                     'type': tool_name,
                     'query': parameters.get('query', parameters.get('source', '')),
+                    'reasoning': parameters.get('reasoning', ''),
                     'params': parameters,
                     'timestamp': datetime.now().isoformat()
                 })

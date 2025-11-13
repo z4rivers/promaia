@@ -904,7 +904,7 @@ def process_browser_selections(selected_sources):
     return processed_sources, processed_filters
 
 
-def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None, mode=None, include_query_tools=True):
+def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None, mode=None, include_query_tools=True, workspace=None):
     """
     Build system prompt, respecting mode-specific prompts while including context.
 
@@ -914,6 +914,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
         mode_system_prompt: Optional mode-specific base prompt
         mode: Optional ChatMode instance to check if it handles its own context
         include_query_tools: Whether to include built-in query tools (default: True)
+        workspace: Current workspace for database preview (default: None)
 
     Returns:
         Complete system prompt with context
@@ -930,7 +931,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
             return mode_system_prompt + format_context_data(multi_source_data, mcp_tools_info)
     else:
         # Standard prompt with context
-        return create_system_prompt(multi_source_data, mcp_tools_info, include_query_tools)
+        return create_system_prompt(multi_source_data, mcp_tools_info, include_query_tools, workspace)
 
 
 def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, sql_query_content=None, sql_query_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None, auto_respond_to_initial=False, top_k=None, threshold=None, vector_search_queries=None, initial_vs_per_query_cache=None):
@@ -2033,7 +2034,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         
         # Generate new system prompt
         mcp_tools_info = context_state.get('mcp_tools_info')
-        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
         context_state['system_prompt'] = system_prompt
         
         # Save context log when MCP servers are connected (for transparency)
@@ -2928,7 +2929,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             
                             # Update the system prompt with the remaining data
                             mcp_tools_info = context_state.get('mcp_tools_info')
-                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode)
+                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                             context_state['system_prompt'] = system_prompt
                             
                             debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -3809,7 +3810,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
-                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode)
+                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                         context_state['system_prompt'] = system_prompt
 
                         debug_print(f"After query removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -4597,17 +4598,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt
 
         query_text = parameters.get('query', parameters.get('source', 'unknown'))
+        reasoning = parameters.get('reasoning', '')
 
         print()
         print_text(f"🔍 Query Tool Request: {tool_name}", style="bold cyan")
         print_text(f"   Query: \"{query_text}\"", style="white")
-
-        # Show additional parameters if present
-        for key, value in parameters.items():
-            if key not in ['query', 'source']:
-                print_text(f"   {key}: {value}", style="dim")
-
         print()
+
+        # Show reasoning prominently
+        if reasoning:
+            print_text("   💭 AI Reasoning:", style="bold yellow")
+            # Wrap reasoning text for better readability
+            import textwrap
+            wrapped_reasoning = textwrap.fill(reasoning, width=70, initial_indent='      ', subsequent_indent='      ')
+            print_text(wrapped_reasoning, style="white")
+            print()
+        else:
+            print_text("   ⚠️  Warning: No reasoning provided by AI", style="bold red")
+            print()
+
+        # Show other parameters if present
+        other_params = {k: v for k, v in parameters.items() if k not in ['query', 'source', 'reasoning']}
+        if other_params:
+            print_text("   Additional parameters:", style="dim")
+            for key, value in other_params.items():
+                print_text(f"      {key}: {value}", style="dim")
+            print()
+
         print_text("Approve this query? [y]es / [m]odify / [n]o: ", style="bold yellow", end="")
 
         # Get single keypress
@@ -4746,7 +4763,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                 # Regenerate system prompt
                 mcp_tools_info = context_state.get('mcp_tools_info')
-                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                 context_state['system_prompt'] = system_prompt
 
                 # Display updated context
@@ -5431,14 +5448,30 @@ The user will type `/send` to trigger the actual sending process.
                     print_text("No AI-generated queries in this session.", style="dim")
                 else:
                     print_text("\n🔎 AI-Generated Queries:", style="bold cyan")
+                    print()
                     for i, query_info in enumerate(ai_queries, 1):
                         query_type = query_info.get('type', 'unknown')
                         query_text = query_info.get('query', '')
+                        reasoning = query_info.get('reasoning', '')
                         timestamp = query_info.get('timestamp', '')
+
                         print_text(f"  {i}. [{query_type}] \"{query_text}\"", style="white")
+
+                        if reasoning:
+                            # Truncate reasoning if too long
+                            import textwrap
+                            if len(reasoning) > 150:
+                                reasoning_display = reasoning[:150] + "..."
+                            else:
+                                reasoning_display = reasoning
+                            wrapped = textwrap.fill(reasoning_display, width=70, initial_indent='     💭 ', subsequent_indent='        ')
+                            print_text(wrapped, style="dim")
+
                         if timestamp:
                             print_text(f"     Created: {timestamp}", style="dim")
-                    print_text("\nUse '/remove-query N' to remove a query", style="dim")
+                        print()
+
+                    print_text("Use '/remove-query N' to remove a query", style="dim")
                     print()
                 continue
 
@@ -5947,7 +5980,7 @@ The user will type `/send` to trigger the actual sending process.
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                 context_state['system_prompt'] = system_prompt
 
                                 # Save context log when MCP servers are connected (for transparency)
@@ -5988,7 +6021,7 @@ The user will type `/send` to trigger the actual sending process.
                                     context_state['mcp_tools_info'] = mcp_tools_info
 
                                     # Regenerate system prompt with new tools
-                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                     context_state['system_prompt'] = system_prompt
 
                                     # Save context log when MCP servers are connected (for transparency)
@@ -6040,7 +6073,7 @@ The user will type `/send` to trigger the actual sending process.
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                 context_state['system_prompt'] = system_prompt
 
                                 print_text("🔍 Internet search disabled and MCP servers reconnected", style="bold yellow")
@@ -6059,7 +6092,7 @@ The user will type `/send` to trigger the actual sending process.
                             context_state['mcp_tools_info'] = mcp_tools_info
 
                             # Regenerate system prompt with new tools
-                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                             context_state['system_prompt'] = system_prompt
 
                             print_text("🔍 Internet search disabled - web search tools removed", style="bold yellow")
