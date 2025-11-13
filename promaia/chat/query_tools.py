@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from promaia.ai.nl_processor_wrapper import process_natural_language_to_content, process_vector_search_to_content
 from promaia.storage.files import load_database_pages_with_filters
-from promaia.utils.config_utils import get_database_config
+from promaia.config.databases import get_database_config
 
 logger = logging.getLogger(__name__)
 
