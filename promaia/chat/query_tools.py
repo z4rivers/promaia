@@ -288,8 +288,8 @@ class QueryToolExecutor:
             loaded_content = process_vector_search_to_content(
                 vs_prompt=query,
                 workspace=workspace,
-                top_k=top_k,
-                threshold=min_similarity,
+                n_results=top_k,
+                min_similarity=min_similarity,
                 verbose=False
             )
 
