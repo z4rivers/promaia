@@ -4625,7 +4625,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text(f"      {key}: {value}", style="dim")
             print()
 
-        print_text("Approve this query? [y]es / [m]odify / [n]o: ", style="bold yellow", end="")
+        # Use regular print since print_text doesn't support end parameter
+        from rich.console import Console
+        console = Console()
+        console.print("Approve this query? [y]es / [m]odify / [n]o: ", style="bold yellow", end="")
 
         # Get single keypress
         import sys
