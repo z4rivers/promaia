@@ -433,7 +433,7 @@ You have access to built-in tools that allow you to query and load additional co
 - `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why semantic search is appropriate for this query
 - `workspace` (string): Optional workspace name to search in (defaults to current workspace)
 - `top_k` (integer): Maximum number of results to return (default: 20)
-- `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.5). **For fuzzy title searches like "I think it's in X", use 0.45-0.5**
+- `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.2). **For fuzzy title searches like "I think it's in X", use 0.2 to cast a very wide net**
 
 **Examples**:
 ```
@@ -441,9 +441,9 @@ You have access to built-in tools that allow you to query and load additional co
   <tool_name>query_vector</tool_name>
   <parameters>
     <query>technical assets promo code dashboard</query>
-    <reasoning>User said "I think it's in the technical assets trass story" - the phrase "I think" indicates uncertainty about the exact title. Using semantic search with lower threshold (0.45) to find stories with similar titles like "Technical Assets", "Tech Assets", "Technical Resources", even if wording differs significantly. I expect to find 1-3 stories with URLs, dashboards, or technical documentation links.</reasoning>
+    <reasoning>User said "I think it's in the technical assets trass story" - the phrase "I think" indicates uncertainty about the exact title. Using semantic search with very low threshold (0.2) to cast a wide net and find stories with similar titles like "Technical Assets", "Tech Assets", "Technical Resources", even if wording differs significantly. I expect to find 1-5 stories with URLs, dashboards, or technical documentation links.</reasoning>
     <top_k>10</top_k>
-    <min_similarity>0.45</min_similarity>
+    <min_similarity>0.2</min_similarity>
   </parameters>
 </tool_call>
 ```

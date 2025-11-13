@@ -281,8 +281,8 @@ class QueryToolExecutor:
 
         workspace = parameters.get('workspace', self.context_state.get('workspace'))
         top_k = parameters.get('top_k', self.context_state.get('top_k', 20))
-        # Lower default threshold for semantic search (0.5) since it's meant to be fuzzy
-        min_similarity = parameters.get('min_similarity', self.context_state.get('threshold', 0.5))
+        # Very low default threshold (0.2) for semantic search to cast a wide net for fuzzy searches
+        min_similarity = parameters.get('min_similarity', self.context_state.get('threshold', 0.2))
 
         try:
             # Process vector search query
