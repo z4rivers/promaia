@@ -4626,9 +4626,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             print()
 
         # Use regular print since print_text doesn't support end parameter
+        # Escape square brackets to prevent Rich markup interpretation
         from rich.console import Console
         console = Console()
-        console.print("Approve this query? [y]es / [m]odify / [n]o: ", style="bold yellow", end="")
+        console.print("Approve this query? \\[y]es / \\[m]odify / \\[n]o: ", style="bold yellow", end="")
 
         # Get single keypress
         import sys
@@ -4722,8 +4723,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Format the results
             results_text = query_executor.format_query_results(results)
 
-            # Add results to the response
-            updated_response = response_text + "\n" + results_text
+            # Remove the tool call tags from the response to prevent re-detection
+            import re
+            cleaned_response = re.sub(r'<tool_call>.*?</tool_call>', '', response_text, flags=re.DOTALL)
+
+            # Add results to the cleaned response
+            updated_response = cleaned_response + "\n" + results_text
 
             return updated_response, needs_reload
 
