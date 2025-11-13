@@ -1217,7 +1217,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'mode': mode,  # Store chat mode for specialized behavior
         'mode_config': mode_config or {},  # Store mode configuration
         'top_k': top_k if top_k is not None else 60,  # Maximum vector search results
-        'threshold': threshold if threshold is not None else 0.75,  # Minimum similarity threshold
+        'threshold': threshold if threshold is not None else 0.2,  # Minimum similarity threshold
         'ai_queries': [],  # Track AI-generated queries: [{'id': str, 'type': str, 'query': str, 'params': dict, 'timestamp': str}]
         'query_iteration_count': 0,  # Track iterations per user message for loop control
     }
