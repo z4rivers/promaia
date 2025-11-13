@@ -280,7 +280,8 @@ class QueryToolExecutor:
             }
 
         workspace = parameters.get('workspace', self.context_state.get('workspace'))
-        top_k = parameters.get('top_k', self.context_state.get('top_k', 20))
+        # Large default top_k (60) for semantic search to cast a very wide net for fuzzy searches
+        top_k = parameters.get('top_k', self.context_state.get('top_k', 60))
         # Very low default threshold (0.2) for semantic search to cast a wide net for fuzzy searches
         min_similarity = parameters.get('min_similarity', self.context_state.get('threshold', 0.2))
 
@@ -393,12 +394,18 @@ class QueryToolExecutor:
                 continue
 
             if result.get('success'):
-                tool_call = result.get('tool_call', {})
-                tool_name = tool_call.get('tool_name', 'unknown')
+                # Get database names and workspace
+                databases = result.get('databases', [])
+                workspace = result.get('workspace', 'unknown')
 
-                formatted += f"{i}. ✅ {tool_name}: "
-                formatted += f"Loaded {result.get('total_pages', 0)} pages "
-                formatted += f"from {', '.join(result.get('databases', []))}\n"
+                # Format database display with workspace prefix
+                if databases:
+                    db_display = ', '.join([f"{workspace}.{db}" for db in databases])
+                else:
+                    db_display = 'unknown'
+
+                formatted += f"{i}. ✅ {db_display}: "
+                formatted += f"Loaded {result.get('total_pages', 0)} pages\n"
 
                 if 'query' in result:
                     formatted += f"   Query: \"{result['query']}\"\n"

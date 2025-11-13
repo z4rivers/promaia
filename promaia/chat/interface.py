@@ -4728,6 +4728,10 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             import re
             cleaned_response = re.sub(r'<tool_call>.*?</tool_call>', '', response_text, flags=re.DOTALL)
 
+            # If cleaned response is empty (AI response was ONLY tool calls), add a prompt for context
+            if not cleaned_response.strip():
+                cleaned_response = "[Context loaded. Analyzing data to answer your question...]\n\n"
+
             # Add results to the cleaned response
             updated_response = cleaned_response + "\n" + results_text
 
@@ -4809,6 +4813,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         continue
                     else:
                         # Regeneration failed, stop iteration
+                        logger.error("⚠️ Regenerate callback returned None - stopping iteration")
+                        print_text("⚠️ Failed to generate response with loaded context. The AI may have encountered an error.", style="bold yellow")
                         needs_more_queries = False
                 elif iteration_count >= max_iterations:
                     print_text(f"⚠️  Max query iterations ({max_iterations}) reached", style="bold yellow")

@@ -240,6 +240,22 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
             preview += f" (Workspace: {workspace})"
         preview += "\n\n"
 
+        # Add workspace overview to help AI understand workspace structure
+        if not workspace:  # Only show overview when not filtering by workspace
+            # Group databases by workspace
+            workspace_map = {}
+            for db_name, db_workspace in databases:
+                if db_name not in exclude_databases:
+                    if db_workspace not in workspace_map:
+                        workspace_map[db_workspace] = []
+                    workspace_map[db_workspace].append(db_name)
+
+            if workspace_map:
+                preview += "📁 **Workspace Overview**:\n"
+                for ws_name, db_list in sorted(workspace_map.items()):
+                    preview += f"   • **{ws_name}**: {', '.join(db_list)} ({len(db_list)} database{'s' if len(db_list) != 1 else ''})\n"
+                preview += "\n**IMPORTANT**: When querying, always specify the workspace (e.g., 'trass.stories') or use the workspace parameter.\n\n"
+
         for db_name, db_workspace in databases:
             # Skip if already in loaded context
             if db_name in exclude_databases:
@@ -298,8 +314,8 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
             else:
                 emoji = "📁"
 
-            # Build database section
-            preview += f"{emoji} **{db_name}** ({count:,} entries"
+            # Build database section with workspace prefix
+            preview += f"{emoji} **{db_workspace}.{db_name}** ({count:,} entries | workspace: {db_workspace}"
             if date_min != "unknown" and date_max != "unknown":
                 preview += f" | {date_min} to {date_max}"
             preview += ")\n"
@@ -390,6 +406,12 @@ You have access to built-in tools that allow you to query and load additional co
 - Searching by fuzzy/uncertain name or title → Use **query_vector**
 - Need specific property filters (sender, date, exact terms) → Use **query_sql**
 - Know exact database + time range needed → Use **query_source**
+
+**⚠️ Workspace Awareness**:
+- ALWAYS specify the workspace when querying (e.g., workspace="trass" parameter OR "trass gmail" in query text)
+- Check the "Workspace Overview" in the data sources section to see which databases belong to which workspaces
+- If user mentions "trass", search trass.* databases, NOT default.* or koii.* databases
+- Example: User asks about "trass stories" → Use workspace="trass" or include "trass stories" in query text
 
 #### 1. query_sql
 **Description**: Query databases using natural language. The system will convert your query to SQL and retrieve relevant content.
