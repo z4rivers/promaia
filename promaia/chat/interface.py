@@ -4737,11 +4737,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             error_text = f"\n❌ Error executing query tools: {e}"
             return response_text + error_text, False
 
-    async def execute_all_tools_with_iteration(response_text: str, max_iterations: int = 5) -> str:
+    async def execute_all_tools_with_iteration(response_text: str, regenerate_callback=None, max_iterations: int = 5) -> str:
         """Execute MCP tools and query tools, with iterative query loop support.
 
         Args:
             response_text: The AI's response text
+            regenerate_callback: Optional function to regenerate AI response after context changes
             max_iterations: Maximum number of query iterations allowed
 
         Returns:
@@ -4783,12 +4784,22 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     print_text(f"   {line}", style="white")
                 print()
 
-                # Check if AI wants to make more queries (if we haven't hit max)
-                if iteration_count < max_iterations:
-                    # The AI might have added more queries in its response
-                    # We'll continue the loop to check
-                    continue
-                else:
+                # Regenerate AI response with updated context if callback provided
+                if regenerate_callback and iteration_count < max_iterations:
+                    print_text("🔄 Generating AI response with updated context...", style="bold cyan")
+                    print()
+
+                    # Call the regenerate callback to get new AI response
+                    new_response = regenerate_callback(system_prompt)
+
+                    if new_response:
+                        response_text = new_response
+                        # Continue loop to check if new response has more queries
+                        continue
+                    else:
+                        # Regeneration failed, stop iteration
+                        needs_more_queries = False
+                elif iteration_count >= max_iterations:
                     print_text(f"⚠️  Max query iterations ({max_iterations}) reached", style="bold yellow")
                     needs_more_queries = False
             else:
@@ -5148,6 +5159,30 @@ The user will type `/send` to trigger the actual sending process.
                     initialize_llama_client()
 
                 if llama_client:
+                    # Define regenerate callback for query tool iterations
+                    def regenerate_llama_response_auto(updated_system_prompt):
+                        """Regenerate Llama response with updated context (auto-respond mode)."""
+                        try:
+                            if current_message_images:
+                                formatted_messages = _format_llama_with_images(updated_system_prompt, messages, current_message_images)
+                            else:
+                                formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages
+
+                            model_name = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
+                            regen_response = llama_client.chat.completions.create(
+                                model=model_name,
+                                messages=formatted_messages,
+                                max_tokens=4096,
+                                temperature=current_temperature
+                            )
+
+                            if regen_response.choices:
+                                return regen_response.choices[0].message.content
+                            return None
+                        except Exception as e:
+                            logger.error(f"Error regenerating Llama response: {e}")
+                            return None
+
                     if current_message_images:
                         formatted_messages = _format_llama_with_images(current_system_prompt, messages, current_message_images)
                     else:
@@ -5167,7 +5202,7 @@ The user will type `/send` to trigger the actual sending process.
 
                             # Execute MCP and query tools if present
                             import asyncio
-                            response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
+                            response_text = asyncio.run(execute_all_tools_with_iteration(response_text, regenerate_callback=regenerate_llama_response_auto))
 
                             response_content = {
                                 'text': response_text,
@@ -6850,6 +6885,27 @@ The user will type `/send` when ready to send the email.
 
                 # Direct API calls (streaming removed for reliability)
                 if current_api == "anthropic" and anthropic_client:
+                    # Define regenerate callback for query tool iterations
+                    def regenerate_anthropic_response(updated_system_prompt):
+                        """Regenerate Anthropic response with updated context."""
+                        try:
+                            if current_message_images:
+                                formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
+                                regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, formatted_messages, temperature=current_temperature)
+                            else:
+                                clean_messages = []
+                                for msg in messages_for_api:
+                                    clean_msg = {"role": msg["role"], "content": msg["content"]}
+                                    clean_messages.append(clean_msg)
+                                regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, clean_messages, temperature=current_temperature)
+
+                            if regen_response and regen_response.content:
+                                return regen_response.content[0].text
+                            return None
+                        except Exception as e:
+                            logger.error(f"Error regenerating Anthropic response: {e}")
+                            return None
+
                     if current_message_images:
                         # Handle images with Anthropic
                         formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
@@ -6866,7 +6922,7 @@ The user will type `/send` when ready to send the email.
 
                         # Execute MCP and query tools if present
                         import asyncio
-                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
+                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text, regenerate_callback=regenerate_anthropic_response))
 
                         # Extract token usage for Anthropic
                         if hasattr(response, 'usage'):
@@ -6899,13 +6955,36 @@ The user will type `/send` when ready to send the email.
                                 'tokens': None
                             }
                 elif current_api == "openai" and openai_client:
+                    # Define regenerate callback for query tool iterations
+                    def regenerate_openai_response(updated_system_prompt):
+                        """Regenerate OpenAI response with updated context."""
+                        try:
+                            if current_message_images:
+                                formatted_messages = _format_openai_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                            else:
+                                formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages_for_api
+
+                            regen_response = openai_client.chat.completions.create(
+                                model="gpt-4o",
+                                messages=formatted_messages,
+                                max_tokens=4096,
+                                temperature=current_temperature
+                            )
+
+                            if regen_response.choices:
+                                return regen_response.choices[0].message.content
+                            return None
+                        except Exception as e:
+                            logger.error(f"Error regenerating OpenAI response: {e}")
+                            return None
+
                     if current_message_images:
                         # Handle images with OpenAI
                         formatted_messages = _format_openai_with_images(current_system_prompt, messages_for_api, current_message_images)
                     else:
                         # Regular text-only message
                         formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages_for_api
-                    
+
                     response = openai_client.chat.completions.create(
                         model="gpt-4o",
                         messages=formatted_messages,
@@ -6917,7 +6996,7 @@ The user will type `/send` when ready to send the email.
 
                         # Execute MCP and query tools if present
                         import asyncio
-                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
+                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text, regenerate_callback=regenerate_openai_response))
 
                         # Extract token usage for OpenAI
                         if hasattr(response, 'usage') and response.usage:
@@ -6948,6 +7027,29 @@ The user will type `/send` when ready to send the email.
                                 'tokens': None
                             }
                 elif current_api == "gemini" and gemini_client:
+                    # Define regenerate callback for query tool iterations
+                    def regenerate_gemini_response(updated_system_prompt):
+                        """Regenerate Gemini response with updated context."""
+                        try:
+                            if current_message_images:
+                                current_gemini_model, gemini_messages = _format_gemini_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                                regen_response = current_gemini_model.generate_content(
+                                    contents=gemini_messages,
+                                    generation_config={"temperature": current_temperature}
+                                )
+                            else:
+                                formatted_prompt = f"System: {updated_system_prompt}\n\nConversation:\n"
+                                for msg in messages_for_api:
+                                    formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
+                                regen_response = gemini_client.generate_content(formatted_prompt)
+
+                            if regen_response.text:
+                                return regen_response.text
+                            return None
+                        except Exception as e:
+                            logger.error(f"Error regenerating Gemini response: {e}")
+                            return None
+
                     response_text_with_tools = None
                     try:
                         if current_message_images:
@@ -6970,7 +7072,7 @@ The user will type `/send` when ready to send the email.
 
                             # Execute MCP and query tools if present
                             import asyncio
-                            response_text_with_tools = asyncio.run(execute_all_tools_with_iteration(response_text))
+                            response_text_with_tools = asyncio.run(execute_all_tools_with_iteration(response_text, regenerate_callback=regenerate_gemini_response))
                         else:
                             response_text_with_tools = f"I encountered an error: No response text generated. Please try again."
                     except Exception as e:
@@ -7048,8 +7150,32 @@ The user will type `/send` when ready to send the email.
                         from promaia.utils.config import load_environment
                         load_environment()
                         initialize_llama_client()
-                    
+
                     if llama_client:
+                        # Define regenerate callback for query tool iterations
+                        def regenerate_llama_response(updated_system_prompt):
+                            """Regenerate Llama response with updated context."""
+                            try:
+                                if current_message_images:
+                                    formatted_messages = _format_llama_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                                else:
+                                    formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages_for_api
+
+                                model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
+                                regen_response = llama_client.chat.completions.create(
+                                    model=model_name,
+                                    messages=formatted_messages,
+                                    max_tokens=4096,
+                                    temperature=current_temperature
+                                )
+
+                                if regen_response.choices:
+                                    return regen_response.choices[0].message.content
+                                return None
+                            except Exception as e:
+                                logger.error(f"Error regenerating Llama response: {e}")
+                                return None
+
                         if current_message_images:
                             # Handle images with Llama
                             formatted_messages = _format_llama_with_images(system_prompt, messages_for_api, current_message_images)
@@ -7057,7 +7183,7 @@ The user will type `/send` when ready to send the email.
                             # Regular text-only message
                             formatted_messages = [{"role": "system", "content": system_prompt}] + messages_for_api
                         model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
-                        
+
                         try:
                             response = llama_client.chat.completions.create(
                                 model=model_name,
@@ -7070,7 +7196,7 @@ The user will type `/send` when ready to send the email.
 
                                 # Execute MCP and query tools if present
                                 import asyncio
-                                response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
+                                response_text = asyncio.run(execute_all_tools_with_iteration(response_text, regenerate_callback=regenerate_llama_response))
 
                                 # Extract token usage for local Llama if available
                                 if hasattr(response, 'usage') and response.usage:
