@@ -398,7 +398,7 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail /queries", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
@@ -406,6 +406,8 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
     print_text("  /temp - Adjust creativity (0.0=focused, 2.0=creative)", style="dim")
     print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
     print_text("  /mail - Toggle AI-assisted email sending", style="dim")
+    print_text("  /queries - List AI-generated queries in this session", style="dim")
+    print_text("  /remove-query N - Remove query #N from context", style="dim")
     print_text("")
 
 
@@ -423,7 +425,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail /queries", style="dim")
     print_text("")
 
 
@@ -863,47 +865,31 @@ def process_browser_selections(selected_sources):
     processed_sources = []
     processed_filters = []
     discord_db_groups = {}
-    
-    # Group Discord channels by database (not by database+days)
+
+    # Group Discord channels by database AND days combination
     for source in selected_sources:
         if '#' in source:
             db_channel, days_part = source.rsplit(':', 1)
             db_name, channel_name = db_channel.split('#', 1)
-            
-            # Group by database only, track max days and all channels
-            if db_name not in discord_db_groups:
-                discord_db_groups[db_name] = {'max_days': 0, 'channels': [], 'has_all': False}
-            
-            # Track maximum days (or 'all' which takes precedence)
-            if days_part == 'all':
-                discord_db_groups[db_name]['has_all'] = True  # 'all' overrides any specific days
-            else:
-                try:
-                    current_days = int(days_part)
-                    if not discord_db_groups[db_name]['has_all']:  # Only track max if no 'all' seen yet
-                        discord_db_groups[db_name]['max_days'] = max(discord_db_groups[db_name]['max_days'], current_days)
-                except ValueError:
-                    pass  # Invalid days format, skip
-            
-            discord_db_groups[db_name]['channels'].append(channel_name)
+
+            # Group by (database, days) tuple so each unique day value creates separate source
+            group_key = (db_name, days_part)
+
+            if group_key not in discord_db_groups:
+                discord_db_groups[group_key] = []
+
+            discord_db_groups[group_key].append(channel_name)
         else:
             processed_sources.append(source)
-    
-    # Create single source per database with max days and OR filter for all channels
-    for db_name, group_info in discord_db_groups.items():
-        has_all = group_info['has_all']
-        max_days = group_info['max_days']
-        channels = group_info['channels']
-        
-        # Build source spec with max days (or 'all' if any channel had 'all')
-        if has_all:
-            db_spec = f"{db_name}:all"
-        else:
-            db_spec = f"{db_name}:{max_days}"
-        
+
+    # Create separate source per database:days combination with channel filter
+    for (db_name, days_part), channels in discord_db_groups.items():
+        # Build source spec with specific days value
+        db_spec = f"{db_name}:{days_part}"
+
         processed_sources.append(db_spec)
-        
-        # Build filter with OR logic for all channels
+
+        # Build filter with OR logic for all channels in this day group
         if len(channels) == 1:
             # Single channel - use period separator
             filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
@@ -914,11 +900,11 @@ def process_browser_selections(selected_sources):
             combined_filter = " or ".join(channel_conditions)
             filter_spec = f"{db_spec}:({combined_filter})"
             processed_filters.append(filter_spec)
-            
+
     return processed_sources, processed_filters
 
 
-def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None, mode=None):
+def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system_prompt=None, mode=None, include_query_tools=True):
     """
     Build system prompt, respecting mode-specific prompts while including context.
 
@@ -927,6 +913,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
         mcp_tools_info: MCP tools info string
         mode_system_prompt: Optional mode-specific base prompt
         mode: Optional ChatMode instance to check if it handles its own context
+        include_query_tools: Whether to include built-in query tools (default: True)
 
     Returns:
         Complete system prompt with context
@@ -943,7 +930,7 @@ def build_system_prompt_with_mode(multi_source_data, mcp_tools_info, mode_system
             return mode_system_prompt + format_context_data(multi_source_data, mcp_tools_info)
     else:
         # Standard prompt with context
-        return create_system_prompt(multi_source_data, mcp_tools_info)
+        return create_system_prompt(multi_source_data, mcp_tools_info, include_query_tools)
 
 
 def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, non_interactive=False, initial_messages=None, current_thread_id=None, sql_query_content=None, sql_query_prompt=None, original_browse_command=None, browse_selections=None, browse_databases=None, mcp_servers=None, is_vector_search=False, initial_nl_prompt=None, initial_nl_content=None, initial_vs_prompt=None, initial_vs_content=None, mode=None, mode_config=None, draft_id=None, auto_respond_to_initial=False, top_k=None, threshold=None, vector_search_queries=None, initial_vs_per_query_cache=None):
@@ -1230,6 +1217,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'mode_config': mode_config or {},  # Store mode configuration
         'top_k': top_k if top_k is not None else 20,  # Maximum vector search results
         'threshold': threshold if threshold is not None else 0.75,  # Minimum similarity threshold
+        'ai_queries': [],  # Track AI-generated queries: [{'id': str, 'type': str, 'query': str, 'params': dict, 'timestamp': str}]
+        'query_iteration_count': 0,  # Track iterations per user message for loop control
     }
     
     # Mode-specific setup
@@ -4036,49 +4025,33 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     processed_sources = []
                     processed_filters = []
                     discord_db_groups = {}
-                    
-                    # Group Discord channels by database (not by database+days)
+
+                    # Group Discord channels by database AND days combination
                     for source in selected_sources:
                         if '#' in source:
                             # Discord channel: trass.tg#customer-support:7
                             db_channel, days_part = source.rsplit(':', 1)
                             db_name, channel_name = db_channel.split('#', 1)
-                            
-                            # Group by database only, track max days and all channels
-                            if db_name not in discord_db_groups:
-                                discord_db_groups[db_name] = {'max_days': 0, 'channels': [], 'has_all': False}
-                            
-                            # Track maximum days (or 'all' which takes precedence)
-                            if days_part == 'all':
-                                discord_db_groups[db_name]['has_all'] = True
-                            else:
-                                try:
-                                    current_days = int(days_part)
-                                    if not discord_db_groups[db_name]['has_all']:
-                                        discord_db_groups[db_name]['max_days'] = max(discord_db_groups[db_name]['max_days'], current_days)
-                                except ValueError:
-                                    pass
-                            
-                            discord_db_groups[db_name]['channels'].append(channel_name)
+
+                            # Group by (database, days) tuple so each unique day value creates separate source
+                            group_key = (db_name, days_part)
+
+                            if group_key not in discord_db_groups:
+                                discord_db_groups[group_key] = []
+
+                            discord_db_groups[group_key].append(channel_name)
                         else:
                             # Regular database source
                             processed_sources.append(source)
-                    
-                    # Create single source per database with max days and OR filter for all channels
-                    for db_name, group_info in discord_db_groups.items():
-                        has_all = group_info['has_all']
-                        max_days = group_info['max_days']
-                        channels = group_info['channels']
-                        
-                        # Build source spec with max days (or 'all' if any channel had 'all')
-                        if has_all:
-                            db_spec = f"{db_name}:all"
-                        else:
-                            db_spec = f"{db_name}:{max_days}"
-                        
+
+                    # Create separate source per database:days combination with channel filter
+                    for (db_name, days_part), channels in discord_db_groups.items():
+                        # Build source spec with specific days value
+                        db_spec = f"{db_name}:{days_part}"
+
                         processed_sources.append(db_spec)
-                        
-                        # Build filter with OR logic for all channels
+
+                        # Build filter with OR logic for all channels in this day group
                         if len(channels) == 1:
                             # Single channel - use period separator
                             filter_spec = f"{db_spec}.discord_channel_name={channels[0]}"
@@ -4578,37 +4551,229 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     async def execute_mcp_tools_in_response(response_text: str) -> str:
         """Execute any MCP tools found in the AI response and return updated response."""
         mcp_executor = context_state.get('mcp_executor')
-        
+
         if not mcp_executor:
             return response_text
-        
+
         # Check if there are tool calls in the response
         if not mcp_executor.has_tool_calls(response_text):
             return response_text
-        
+
         try:
             # Parse tool calls from the response
             tool_calls = mcp_executor.parse_tool_calls(response_text)
-            
+
             if not tool_calls:
                 return response_text
-            
+
             print_text(f"🔧 Executing {len(tool_calls)} tool call(s)...", style="bold cyan")
-            
+
             # Execute the tools
             results = await mcp_executor.execute_tool_calls(tool_calls)
-            
+
             # Format the results
             results_text = mcp_executor.format_tool_results(results, show_raw=DEBUG_MODE)
-            
+
             # Add results to the response
             updated_response = response_text + "\n" + results_text
-            
+
             return updated_response
-            
+
         except Exception as e:
             error_text = f"\n❌ Error executing MCP tools: {e}"
             return response_text + error_text
+
+    # Query Tool Execution Functions
+    async def request_query_permission(tool_name: str, parameters: Dict[str, Any]) -> tuple:
+        """Request user permission to execute a query tool.
+
+        Args:
+            tool_name: Name of the query tool
+            parameters: Query parameters
+
+        Returns:
+            Tuple of (status, parameters) where status is 'approved', 'declined', or 'modified'
+        """
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt
+
+        query_text = parameters.get('query', parameters.get('source', 'unknown'))
+
+        print()
+        print_text(f"🔍 Query Tool Request: {tool_name}", style="bold cyan")
+        print_text(f"   Query: \"{query_text}\"", style="white")
+
+        # Show additional parameters if present
+        for key, value in parameters.items():
+            if key not in ['query', 'source']:
+                print_text(f"   {key}: {value}", style="dim")
+
+        print()
+        print_text("Approve this query? [y]es / [m]odify / [n]o: ", style="bold yellow", end="")
+
+        # Get single keypress
+        import sys
+        import tty
+        import termios
+
+        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            tty.setcbreak(sys.stdin.fileno())
+            response = sys.stdin.read(1).lower()
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+        print(response)  # Echo the response
+        print()
+
+        if response == 'y':
+            return ('approved', parameters)
+        elif response == 'm':
+            # Allow user to modify the query
+            from prompt_toolkit import PromptSession
+            from prompt_toolkit.styles import Style as PromptStyle
+
+            session = PromptSession()
+            prompt_style = PromptStyle.from_dict({'prompt': 'ansicyan bold'})
+
+            print_text("Modify query (press Enter to keep current):", style="bold cyan")
+
+            new_query = session.prompt(
+                "Query: ",
+                default=query_text,
+                style=prompt_style
+            )
+
+            if new_query and new_query != query_text:
+                parameters['query'] = new_query
+
+            return ('modified', parameters)
+        else:
+            return ('declined', None)
+
+    async def execute_query_tools_in_response(response_text: str) -> tuple:
+        """Execute any query tools found in the AI response.
+
+        Returns:
+            Tuple of (updated_response_text, needs_context_reload)
+        """
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt
+
+        from promaia.chat.query_tools import QueryToolExecutor
+
+        # Create query tool executor
+        query_executor = QueryToolExecutor(context_state)
+
+        # Check if there are query tool calls in the response
+        if not query_executor.has_query_tool_calls(response_text):
+            return response_text, False
+
+        try:
+            # Parse query tool calls from the response
+            tool_calls = query_executor.parse_query_tool_calls(response_text)
+
+            if not tool_calls:
+                return response_text, False
+
+            print_text(f"🔎 Found {len(tool_calls)} query tool call(s)", style="bold cyan")
+
+            # Execute the query tools with permission requests
+            results = await query_executor.execute_query_tool_calls(tool_calls, request_query_permission)
+
+            # Check if any queries succeeded
+            needs_reload = False
+            for result in results:
+                if result.get('success'):
+                    needs_reload = True
+                    # Merge loaded content into initial_multi_source_data
+                    loaded_content = result.get('loaded_content', {})
+                    for db_name, pages in loaded_content.items():
+                        if db_name not in initial_multi_source_data:
+                            initial_multi_source_data[db_name] = []
+
+                        # Deduplicate by page_id
+                        existing_ids = {p.get('id') for p in initial_multi_source_data[db_name]
+                                       if isinstance(p, dict) and 'id' in p}
+
+                        for page in pages:
+                            if not isinstance(page, dict) or 'id' not in page or page['id'] not in existing_ids:
+                                initial_multi_source_data[db_name].append(page)
+                                existing_ids.add(page.get('id'))
+
+            # Format the results
+            results_text = query_executor.format_query_results(results)
+
+            # Add results to the response
+            updated_response = response_text + "\n" + results_text
+
+            return updated_response, needs_reload
+
+        except Exception as e:
+            logger.error(f"Error executing query tools: {e}")
+            error_text = f"\n❌ Error executing query tools: {e}"
+            return response_text + error_text, False
+
+    async def execute_all_tools_with_iteration(response_text: str, max_iterations: int = 5) -> str:
+        """Execute MCP tools and query tools, with iterative query loop support.
+
+        Args:
+            response_text: The AI's response text
+            max_iterations: Maximum number of query iterations allowed
+
+        Returns:
+            Updated response text with tool results
+        """
+        nonlocal initial_multi_source_data, total_pages_loaded, system_prompt
+
+        # First, execute MCP tools
+        response_text = await execute_mcp_tools_in_response(response_text)
+
+        # Then, execute query tools with iteration support
+        iteration_count = 0
+        needs_more_queries = True
+
+        while needs_more_queries and iteration_count < max_iterations:
+            # Execute query tools
+            response_text, needs_reload = await execute_query_tools_in_response(response_text)
+
+            if needs_reload:
+                iteration_count += 1
+                context_state['query_iteration_count'] = iteration_count
+
+                # Reload context with new data
+                total_pages_loaded = sum(len(pages) for pages in initial_multi_source_data.values())
+                context_state['initial_multi_source_data'] = initial_multi_source_data
+                context_state['total_pages_loaded'] = total_pages_loaded
+
+                # Regenerate system prompt
+                mcp_tools_info = context_state.get('mcp_tools_info')
+                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode)
+                context_state['system_prompt'] = system_prompt
+
+                # Display updated context
+                print()
+                print_text(f"📊 Context Updated (Iteration {iteration_count}):", style="bold green")
+                print_text(f"   Total pages: {total_pages_loaded}", style="white")
+                source_breakdown = generate_source_breakdown(initial_multi_source_data)
+                for line in source_breakdown:
+                    print_text(f"   {line}", style="white")
+                print()
+
+                # Check if AI wants to make more queries (if we haven't hit max)
+                if iteration_count < max_iterations:
+                    # The AI might have added more queries in its response
+                    # We'll continue the loop to check
+                    continue
+                else:
+                    print_text(f"⚠️  Max query iterations ({max_iterations}) reached", style="bold yellow")
+                    needs_more_queries = False
+            else:
+                # No more queries needed
+                needs_more_queries = False
+
+        # Reset iteration count for next user message
+        context_state['query_iteration_count'] = 0
+
+        return response_text
 
     # Display Welcome Message
     print()
@@ -4816,9 +4981,9 @@ The user will type `/send` to trigger the actual sending process.
                 if response and response.content:
                     response_text = response.content[0].text
 
-                    # Execute MCP tools if present
+                    # Execute MCP and query tools if present
                     import asyncio
-                    response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                    response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                     # Extract token usage
                     if hasattr(response, 'usage'):
@@ -4861,9 +5026,9 @@ The user will type `/send` to trigger the actual sending process.
                 if response.choices:
                     response_text = response.choices[0].message.content
 
-                    # Execute MCP tools if present
+                    # Execute MCP and query tools if present
                     import asyncio
-                    response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                    response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                     # Extract token usage
                     if hasattr(response, 'usage') and response.usage:
@@ -4912,9 +5077,9 @@ The user will type `/send` to trigger the actual sending process.
                     if response.text:
                         response_text = response.text
 
-                        # Execute MCP tools if present
+                        # Execute MCP and query tools if present
                         import asyncio
-                        response_text_with_tools = asyncio.run(execute_mcp_tools_in_response(response_text))
+                        response_text_with_tools = asyncio.run(execute_all_tools_with_iteration(response_text))
                     else:
                         response_text_with_tools = f"I encountered an error: No response text generated. Please try again."
                 except Exception as e:
@@ -5259,6 +5424,56 @@ The user will type `/send` to trigger the actual sending process.
                     print_text(f"Error editing context: {e}", style="bold red")
                     debug_print(f"Context edit error: {e}")
                 continue
+            elif user_input.strip().lower() == '/queries':
+                # List all AI-generated queries
+                ai_queries = context_state.get('ai_queries', [])
+                if not ai_queries:
+                    print_text("No AI-generated queries in this session.", style="dim")
+                else:
+                    print_text("\n🔎 AI-Generated Queries:", style="bold cyan")
+                    for i, query_info in enumerate(ai_queries, 1):
+                        query_type = query_info.get('type', 'unknown')
+                        query_text = query_info.get('query', '')
+                        timestamp = query_info.get('timestamp', '')
+                        print_text(f"  {i}. [{query_type}] \"{query_text}\"", style="white")
+                        if timestamp:
+                            print_text(f"     Created: {timestamp}", style="dim")
+                    print_text("\nUse '/remove-query N' to remove a query", style="dim")
+                    print()
+                continue
+
+            elif user_input.strip().lower().startswith('/remove-query '):
+                # Remove a specific AI query
+                try:
+                    query_num = int(user_input.strip().split()[1])
+                    ai_queries = context_state.get('ai_queries', [])
+
+                    if 1 <= query_num <= len(ai_queries):
+                        removed_query = ai_queries.pop(query_num - 1)
+                        print_text(f"✓ Removed query: \"{removed_query.get('query', 'unknown')}\"", style="bold green")
+
+                        # Reload context without this query
+                        print_text("Reloading context...", style="dim")
+                        reload_result = reload_context()
+
+                        if reload_result:
+                            print()
+                            print_welcome_message(
+                                query_command=context_state['query_command'],
+                                total_pages=total_pages_loaded,
+                                model_name=get_current_model_name(),
+                                source_breakdown=generate_source_breakdown(initial_multi_source_data)
+                            )
+                            # Save context log for query removal
+                            save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "query_removal")
+                        else:
+                            print_text("Failed to reload context after query removal.", style="bold red")
+                    else:
+                        print_text(f"Query #{query_num} not found. Use '/queries' to see all queries.", style="red")
+                except (ValueError, IndexError):
+                    print_text("Usage: /remove-query N (where N is the query number)", style="red")
+                continue
+
             elif user_input.strip().lower() == '/help':
                 print_help_message(query_command=query_command, total_pages=total_pages_loaded, model_name=get_current_model_name(), source_breakdown=generate_source_breakdown(initial_multi_source_data))
                 continue
