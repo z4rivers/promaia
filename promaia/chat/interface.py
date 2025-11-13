@@ -5157,9 +5157,9 @@ The user will type `/send` to trigger the actual sending process.
                         if response.choices:
                             response_text = response.choices[0].message.content
 
-                            # Execute MCP tools if present
+                            # Execute MCP and query tools if present
                             import asyncio
-                            response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                            response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                             response_content = {
                                 'text': response_text,
@@ -6856,9 +6856,9 @@ The user will type `/send` when ready to send the email.
                     if response and response.content:
                         response_text = response.content[0].text
 
-                        # Execute MCP tools if present
+                        # Execute MCP and query tools if present
                         import asyncio
-                        response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                         # Extract token usage for Anthropic
                         if hasattr(response, 'usage'):
@@ -6907,9 +6907,9 @@ The user will type `/send` when ready to send the email.
                     if response.choices:
                         response_text = response.choices[0].message.content
 
-                        # Execute MCP tools if present
+                        # Execute MCP and query tools if present
                         import asyncio
-                        response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                        response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                         # Extract token usage for OpenAI
                         if hasattr(response, 'usage') and response.usage:
@@ -6960,9 +6960,9 @@ The user will type `/send` when ready to send the email.
                         if response.text:
                             response_text = response.text
 
-                            # Execute MCP tools if present
+                            # Execute MCP and query tools if present
                             import asyncio
-                            response_text_with_tools = asyncio.run(execute_mcp_tools_in_response(response_text))
+                            response_text_with_tools = asyncio.run(execute_all_tools_with_iteration(response_text))
                         else:
                             response_text_with_tools = f"I encountered an error: No response text generated. Please try again."
                     except Exception as e:
@@ -7060,9 +7060,9 @@ The user will type `/send` when ready to send the email.
                             if response.choices:
                                 response_text = response.choices[0].message.content
 
-                                # Execute MCP tools if present
+                                # Execute MCP and query tools if present
                                 import asyncio
-                                response_text = asyncio.run(execute_mcp_tools_in_response(response_text))
+                                response_text = asyncio.run(execute_all_tools_with_iteration(response_text))
 
                                 # Extract token usage for local Llama if available
                                 if hasattr(response, 'usage') and response.usage:

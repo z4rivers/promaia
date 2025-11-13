@@ -388,12 +388,12 @@ You have access to built-in tools that allow you to query and load additional co
 #### 1. query_sql
 **Description**: Query databases using natural language. The system will convert your query to SQL and retrieve relevant content.
 
-**When to use**: When you need to find specific information based on content, properties, or dates (e.g., "find emails from Federico about the product launch", "journal entries from last month about meetings")
+**When to use**: When you need to find specific information based on content, properties, or dates (e.g., "trass gmail from federico about launch", "default journal with term meetings last month")
 
 **Parameters**:
-- `query`* (string): Natural language description of what you're looking for
+- `query`* (string): Natural language description of the SQL query itself, specifying workspace, database, search terms, and time filters. Format: "{workspace} {database} from/with/about {search_terms} {time_filter}". Examples: "trass gmail from federico about launch last 30 days", "default stories with status done from last week", "trass journal with term meeting last month"
 - `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why you formulated the query this way
-- `workspace` (string): Optional workspace name to search in (defaults to current workspace)
+- `workspace` (string): Optional workspace name to search in (defaults to current workspace if not in query)
 - `max_results` (integer): Optional maximum number of results to return (default: 50)
 
 **Example**:
@@ -401,9 +401,8 @@ You have access to built-in tools that allow you to query and load additional co
 <tool_call>
   <tool_name>query_sql</tool_name>
   <parameters>
-    <query>find emails from Federico about product launch</query>
-    <reasoning>User asked "What did Federico say about the product launch?" My current context doesn't contain any emails from Federico. I'm querying the gmail database because Federico communicates via email. I'm searching for messages where Federico is the sender AND the content mentions "product launch" or "launch". I expect to find 5-15 recent emails with his feedback, concerns, and updates about the launch timeline and strategy.</reasoning>
-    <workspace>default</workspace>
+    <query>trass gmail from federico about launch last 30 days</query>
+    <reasoning>User asked "What did Federico say about the product launch?" My current context doesn't contain any emails from Federico. I'm querying the gmail database because Federico communicates via email. I'm searching for messages where Federico is the sender AND the content mentions "product launch" or "launch" from the last 30 days. I expect to find 5-15 recent emails with his feedback, concerns, and updates about the launch timeline and strategy.</reasoning>
     <max_results>20</max_results>
   </parameters>
 </tool_call>
