@@ -432,8 +432,12 @@ You have access to built-in tools that allow you to query and load additional co
 - `query`* (string): Text to search for semantically similar content
 - `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why semantic search is appropriate for this query
 - `workspace` (string): Optional workspace name to search in (defaults to current workspace)
-- `top_k` (integer): Maximum number of results to return (default: 20)
-- `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.2). **For fuzzy title searches like "I think it's in X", use 0.2 to cast a very wide net**
+- `top_k` (integer): Maximum number of results to return (default: 60, range: 50-300). **Choose strategically based on search type**:
+  - **Fuzzy/uncertain searches** (user says "I think", "might be"): Use 100-300 to cast a very wide net
+  - **Broad topic searches** (themes, concepts across content): Use 60-100
+  - **Targeted searches** (specific known items): Use 50-80
+  - **Refinement queries** (narrowing previous results): Use 30-50
+- `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.2). **For fuzzy title searches like "I think it's in X", use 0.15-0.2 to cast a very wide net. For targeted searches, use 0.4-0.6 for higher precision**
 
 **Examples**:
 ```
@@ -441,8 +445,8 @@ You have access to built-in tools that allow you to query and load additional co
   <tool_name>query_vector</tool_name>
   <parameters>
     <query>technical assets promo code dashboard</query>
-    <reasoning>User said "I think it's in the technical assets trass story" - the phrase "I think" indicates uncertainty about the exact title. Using semantic search with very low threshold (0.2) to cast a wide net and find stories with similar titles like "Technical Assets", "Tech Assets", "Technical Resources", even if wording differs significantly. I expect to find 1-5 stories with URLs, dashboards, or technical documentation links.</reasoning>
-    <top_k>10</top_k>
+    <reasoning>User said "I think it's in the technical assets trass story" - the phrase "I think" indicates uncertainty about the exact title. Using semantic search with very low threshold (0.2) and large top_k (60) to cast a very wide net and find stories with similar titles like "Technical Assets", "Tech Assets", "Technical Resources", even if wording differs significantly. I expect to find the story containing dashboard links among the results.</reasoning>
+    <top_k>60</top_k>
     <min_similarity>0.2</min_similarity>
   </parameters>
 </tool_call>
@@ -494,7 +498,13 @@ You have access to built-in tools that allow you to query and load additional co
 
 3. **Context Updates**: After a query executes, the results are merged into your context. You'll receive a summary of what was loaded.
 
-4. **Iterative Querying**: You can make multiple query tool calls if you need to refine or expand context. However, be judicious - each query requires user approval and uses tokens.
+4. **Iterative Querying**: You can make multiple query tool calls if you need to refine or expand context. **Use a multi-strategy approach**:
+   - **First attempt**: Try your most likely strategy (usually query_vector for fuzzy searches, query_sql for specific filters)
+   - **If 0 results**: Increase top_k to 200-300, lower min_similarity to 0.15, or try a different query tool type
+   - **If irrelevant results**: Rephrase query with different terms, try query_sql with exact terms, or search different databases
+   - **If partial info**: Make follow-up queries to fill specific gaps, try broader time ranges
+   - **Try 3-4 different strategies** before concluding the information doesn't exist
+   - Each query requires user approval and uses tokens, but persistence is important when the data likely exists
 
 5. **Deduplication**: If a query returns content already in context, it will be deduplicated automatically. You won't see duplicate entries.
 
@@ -516,7 +526,12 @@ The recommended pattern for using query tools is:
 2. **Decide**: If not, determine what specific information you need
 3. **Query**: Use the appropriate query tool to request that information
 4. **Wait**: Wait for the tool result and updated context
-5. **Reassess**: Check if you now have enough information, or if you need to query again
+5. **Reassess**: Evaluate your situation with these criteria:
+   - **Do I have sufficient information to answer completely?** → If yes, proceed to Answer
+   - **Are there more places/strategies left to try?** → If yes and results were 0/irrelevant, try different strategy
+   - **Is this data likely to exist in the system?** → If yes and I haven't tried 3+ strategies, keep searching
+   - **Have I tried 3-4 different approaches?** → If yes and still insufficient, explain what's missing and why not found
+   - **Is the user's question unclear or ambiguous?** → Ask for clarification rather than guessing
 6. **Answer**: Once you have sufficient context, provide your answer
 
 **Example conversation flow**:
@@ -537,6 +552,35 @@ AI: I need to search for emails from Federico about the product launch.
 
 AI: Based on the emails I found, Federico mentioned...
 ```
+
+### Search Strategy Decision Tree
+
+When a query doesn't return sufficient results, use this decision tree to determine your next strategy:
+
+**Scenario 1: 0 results returned**
+- ✅ **Try**: Increase top_k to 200-300, lower min_similarity to 0.15
+- ✅ **Try**: Rephrase query with synonyms or broader terms
+- ✅ **Try**: Switch from query_vector to query_sql with exact terms user provided
+- ✅ **Try**: query_source to load entire database for recent time period
+- ❌ **If still 0 after 3 strategies**: Explain to user that data doesn't appear to exist in system
+
+**Scenario 2: Results returned but seem irrelevant**
+- ✅ **Try**: Different phrasing focusing on key terms
+- ✅ **Try**: query_sql with exact property filters
+- ✅ **Try**: Different database (e.g., from "stories" to "journal" or "gmail")
+- ❌ **If still irrelevant after 3 strategies**: Explain what you found and why it doesn't match
+
+**Scenario 3: Partial information found**
+- ✅ **Try**: Follow-up query targeting specific gaps (e.g., if found item but missing details)
+- ✅ **Try**: Broader time range (e.g., from "last 7 days" to "last 30 days")
+- ✅ **Try**: Related databases that might have complementary info
+- ✅ **Continue**: Until you have complete answer or exhausted strategies
+
+**Scenario 4: Sufficient information found**
+- ❌ **Don't query again** - proceed directly to answering the user's question
+- ✅ **Present**: Clear, complete answer based on the context you loaded
+
+**Remember**: The system allows up to 8 query iterations. Use them wisely, but don't give up after just 1 attempt if the data likely exists. Try 3-4 different strategies before concluding the information isn't available.
 """
 
     return tools_section

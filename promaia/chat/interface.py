@@ -1216,7 +1216,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'is_mixed_browse_nl_command': is_mixed_browse_nl_command,  # Flag for OR logic in NL processing
         'mode': mode,  # Store chat mode for specialized behavior
         'mode_config': mode_config or {},  # Store mode configuration
-        'top_k': top_k if top_k is not None else 20,  # Maximum vector search results
+        'top_k': top_k if top_k is not None else 60,  # Maximum vector search results
         'threshold': threshold if threshold is not None else 0.75,  # Minimum similarity threshold
         'ai_queries': [],  # Track AI-generated queries: [{'id': str, 'type': str, 'query': str, 'params': dict, 'timestamp': str}]
         'query_iteration_count': 0,  # Track iterations per user message for loop control
@@ -4738,7 +4738,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             error_text = f"\n❌ Error executing query tools: {e}"
             return response_text + error_text, False
 
-    async def execute_all_tools_with_iteration(response_text: str, regenerate_callback=None, max_iterations: int = 5) -> str:
+    async def execute_all_tools_with_iteration(response_text: str, regenerate_callback=None, max_iterations: int = 8) -> str:
         """Execute MCP tools and query tools, with iterative query loop support.
 
         Args:
