@@ -4636,7 +4636,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Escape square brackets to prevent Rich markup interpretation
         from rich.console import Console
         console = Console()
-        console.print("Approve this query? \\[y]es / \\[m]odify / \\[n]o: ", style="bold yellow", end="")
+        console.print("Approve this query? \\[Enter] / \\[m]odify / \\[n]o: ", style="bold yellow", end="")
 
         # Get single keypress
         import sys
@@ -4650,10 +4650,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
-        print(response)  # Echo the response
+        print(response if response not in ['\n', '\r'] else '')  # Echo the response
         print()
 
-        if response == 'y':
+        # Enter key (newline or carriage return) or 'y' approves
+        if response in ['\n', '\r', 'y']:
             return ('approved', parameters)
         elif response == 'm':
             # Allow user to modify the query
