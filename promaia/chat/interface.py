@@ -4780,13 +4780,17 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                 context_state['system_prompt'] = system_prompt
 
-                # Display updated context
+                # Display updated context in welcome message format
                 print()
                 print_text(f"📊 Context Updated (Iteration {iteration_count}):", style="bold green")
-                print_text(f"   Total pages: {total_pages_loaded}", style="white")
+                print_text(f"Pages loaded: {total_pages_loaded}", style="white")
+
                 source_breakdown = generate_source_breakdown(initial_multi_source_data)
-                for line in source_breakdown:
-                    print_text(f"   {line}", style="white")
+                if source_breakdown:
+                    for source_name, page_count in source_breakdown.items():
+                        print_text(f"{source_name}: {page_count}", style="white")
+
+                print_text(f"Model: {get_current_model_name()}", style="white")
                 print()
 
                 # Regenerate AI response with updated context if callback provided
