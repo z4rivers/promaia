@@ -385,10 +385,20 @@ You have access to built-in tools that allow you to query and load additional co
 
 ### Available Query Tools
 
+**Quick Selection Guide**:
+- User says "I think", "something like", "might be" → Use **query_vector**
+- Searching by fuzzy/uncertain name or title → Use **query_vector**
+- Need specific property filters (sender, date, exact terms) → Use **query_sql**
+- Know exact database + time range needed → Use **query_source**
+
 #### 1. query_sql
 **Description**: Query databases using natural language. The system will convert your query to SQL and retrieve relevant content.
 
-**When to use**: When you need to find specific information based on content, properties, or dates (e.g., "trass gmail from federico about launch", "default journal with term meetings last month")
+**When to use**:
+- Filtering by specific properties (sender name, date ranges, database fields)
+- Multiple structured filters (from X about Y in last Z days)
+- Exact text terms the user explicitly mentioned
+- **NOT for fuzzy/uncertain names or titles** - use query_vector instead if user says "I think", "something like", or you're unsure of exact wording
 
 **Parameters**:
 - `query`* (string): Natural language description of the SQL query itself, specifying workspace, database, search terms, and time filters. Format: "{workspace} {database} from/with/about {search_terms} {time_filter}". Examples: "trass gmail from federico about launch last 30 days", "default stories with status done from last week", "trass journal with term meeting last month"
@@ -411,7 +421,12 @@ You have access to built-in tools that allow you to query and load additional co
 #### 2. query_vector
 **Description**: Search databases using semantic similarity. Finds content that is conceptually similar to your search text.
 
-**When to use**: When you need to find information based on meaning rather than exact terms (e.g., finding discussions about a topic even if different words were used)
+**When to use**:
+- **Uncertain or fuzzy names/titles** (user says "I think", "something like", "might be called")
+- Finding content by semantic meaning rather than exact keywords
+- When different wording might be used for the same concept
+- Searching for themes, topics, or concepts across content
+- **PREFER this over query_sql when names/titles are approximate**
 
 **Parameters**:
 - `query`* (string): Text to search for semantically similar content
@@ -420,15 +435,25 @@ You have access to built-in tools that allow you to query and load additional co
 - `top_k` (integer): Maximum number of results to return (default: 20)
 - `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.75)
 
-**Example**:
+**Examples**:
+```
+<tool_call>
+  <tool_name>query_vector</tool_name>
+  <parameters>
+    <query>technical assets promo code dashboard</query>
+    <reasoning>User said "I think it's in the technical assets trass story" - the phrase "I think" indicates uncertainty about the exact title. Using semantic search will find stories with similar titles like "Technical Assets", "Tech Assets", "Technical Resources", etc., even if not exact matches. I expect to find 1-3 stories with URLs, dashboards, or technical documentation links.</reasoning>
+    <top_k>10</top_k>
+  </parameters>
+</tool_call>
+```
+
 ```
 <tool_call>
   <tool_name>query_vector</tool_name>
   <parameters>
     <query>international expansion strategy</query>
-    <reasoning>User asked about our plans for international markets. My context has some stories but nothing specifically about international expansion. I'm using semantic search because the relevant content might use different terminology like "global growth", "overseas markets", "foreign markets", etc. I expect to find 10-20 documents from stories, journal entries, or emails discussing market expansion, geographic strategy, and localization plans.</reasoning>
+    <reasoning>User asked about our plans for international markets. I'm using semantic search because the relevant content might use different terminology like "global growth", "overseas markets", "foreign markets", etc. I expect to find 10-20 documents discussing market expansion and geographic strategy.</reasoning>
     <top_k>15</top_k>
-    <min_similarity>0.8</min_similarity>
   </parameters>
 </tool_call>
 ```
