@@ -5162,6 +5162,10 @@ The user will type `/send` to trigger the actual sending process.
                     def regenerate_llama_response_auto(updated_system_prompt):
                         """Regenerate Llama response with updated context (auto-respond mode)."""
                         try:
+                            if not messages:
+                                logger.warning("messages is None or empty, cannot regenerate")
+                                return None
+
                             if current_message_images:
                                 formatted_messages = _format_llama_with_images(updated_system_prompt, messages, current_message_images)
                             else:
@@ -6888,14 +6892,20 @@ The user will type `/send` when ready to send the email.
                     def regenerate_anthropic_response(updated_system_prompt):
                         """Regenerate Anthropic response with updated context."""
                         try:
+                            # Safety check for None messages_for_api
+                            if not messages_for_api:
+                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                return None
+
                             if current_message_images:
                                 formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
                                 regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, formatted_messages, temperature=current_temperature)
                             else:
                                 clean_messages = []
                                 for msg in messages_for_api:
-                                    clean_msg = {"role": msg["role"], "content": msg["content"]}
-                                    clean_messages.append(clean_msg)
+                                    if msg and isinstance(msg, dict):
+                                        clean_msg = {"role": msg.get("role", "user"), "content": msg.get("content", "")}
+                                        clean_messages.append(clean_msg)
                                 regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, clean_messages, temperature=current_temperature)
 
                             if regen_response and regen_response.content:
@@ -6958,6 +6968,10 @@ The user will type `/send` when ready to send the email.
                     def regenerate_openai_response(updated_system_prompt):
                         """Regenerate OpenAI response with updated context."""
                         try:
+                            if not messages_for_api:
+                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                return None
+
                             if current_message_images:
                                 formatted_messages = _format_openai_with_images(updated_system_prompt, messages_for_api, current_message_images)
                             else:
@@ -7030,6 +7044,10 @@ The user will type `/send` when ready to send the email.
                     def regenerate_gemini_response(updated_system_prompt):
                         """Regenerate Gemini response with updated context."""
                         try:
+                            if not messages_for_api:
+                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                return None
+
                             if current_message_images:
                                 current_gemini_model, gemini_messages = _format_gemini_with_images(updated_system_prompt, messages_for_api, current_message_images)
                                 regen_response = current_gemini_model.generate_content(
@@ -7039,7 +7057,8 @@ The user will type `/send` when ready to send the email.
                             else:
                                 formatted_prompt = f"System: {updated_system_prompt}\n\nConversation:\n"
                                 for msg in messages_for_api:
-                                    formatted_prompt += f"{msg['role'].title()}: {msg['content']}\n"
+                                    if msg and isinstance(msg, dict):
+                                        formatted_prompt += f"{msg.get('role', 'user').title()}: {msg.get('content', '')}\n"
                                 regen_response = gemini_client.generate_content(formatted_prompt)
 
                             if regen_response.text:
@@ -7155,6 +7174,10 @@ The user will type `/send` when ready to send the email.
                         def regenerate_llama_response(updated_system_prompt):
                             """Regenerate Llama response with updated context."""
                             try:
+                                if not messages_for_api:
+                                    logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                    return None
+
                                 if current_message_images:
                                     formatted_messages = _format_llama_with_images(updated_system_prompt, messages_for_api, current_message_images)
                                 else:
