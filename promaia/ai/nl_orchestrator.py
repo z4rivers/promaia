@@ -322,36 +322,15 @@ class AgenticNLQueryProcessor:
         return query_text, n_results, min_similarity
 
     def _get_input_with_prefill(self, prompt: str, prefill: str) -> str:
-        """Get user input with pre-filled text for editing."""
-        try:
-            from prompt_toolkit import prompt as pt_prompt
-            
-            # Use prompt_toolkit for reliable pre-filling
-            user_input = pt_prompt(prompt, default=prefill)
-            return user_input.strip()
-        
-        except ImportError:
-            # Fallback to readline if prompt_toolkit not available
-            try:
-                import readline
-                
-                # Set up readline to pre-fill the input buffer
-                def startup_hook():
-                    readline.insert_text(prefill)
-                    readline.redisplay()
-                
-                readline.set_startup_hook(startup_hook)
-                try:
-                    user_input = input(prompt)
-                finally:
-                    readline.set_startup_hook()  # Clear the hook
-                
-                return user_input.strip()
-            
-            except ImportError:
-                # No readline available (Windows), show the original and get fresh input
-                print_text(f"   Original: {prefill}", style="dim")
-                return input(prompt).strip()
+        """Get user input with pre-filled text for editing.
+
+        Note: Simplified to avoid asyncio conflicts with prompt_toolkit.
+        Shows original query and asks for new input instead of pre-filling.
+        """
+        # Show the original query
+        print_text(f"   Original: {prefill}", style="dim")
+        # Get new input
+        return input(prompt).strip()
     
     def process_query(
         self,
