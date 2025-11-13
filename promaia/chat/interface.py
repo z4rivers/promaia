@@ -4608,9 +4608,16 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         # Show reasoning prominently
         if reasoning:
             print_text("   💭 AI Reasoning:", style="bold yellow")
-            # Wrap reasoning text for better readability
+            # Wrap reasoning text for better readability - never break words mid-word
             import textwrap
-            wrapped_reasoning = textwrap.fill(reasoning, width=70, initial_indent='      ', subsequent_indent='      ')
+            wrapped_reasoning = textwrap.fill(
+                reasoning,
+                width=76,
+                initial_indent='      ',
+                subsequent_indent='      ',
+                break_long_words=False,
+                break_on_hyphens=False
+            )
             print_text(wrapped_reasoning, style="white")
             print()
         else:
