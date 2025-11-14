@@ -523,7 +523,7 @@ Return ONLY the JSON object:"""
 
             # Use passed parameters, fall back to config defaults
             n_results = n_results if n_results is not None else vector_config.get('default_n_results', 20)
-            min_similarity = min_similarity if min_similarity is not None else vector_config.get('default_similarity_threshold', 0.75)
+            min_similarity = min_similarity if min_similarity is not None else vector_config.get('default_similarity_threshold', 0.2)
 
             if verbose:
                 print_text(f"\nSearch Configuration:", style="white")
