@@ -402,9 +402,9 @@ You have access to built-in tools that allow you to query and load additional co
 ### Available Query Tools
 
 **Quick Selection Guide**:
+- Filtering by properties (status, priority, assignee, dates) → Use **query_vector**
 - User says "I think", "something like", "might be" → Use **query_vector**
-- Searching by fuzzy/uncertain name or title → Use **query_vector**
-- Need specific property filters (sender, date, exact terms) → Use **query_sql**
+- Searching for exact text/keywords in content → Use **query_sql**
 - Know exact database + time range needed → Use **query_source**
 
 **⚠️ Workspace Awareness**:
@@ -413,17 +413,41 @@ You have access to built-in tools that allow you to query and load additional co
 - If user mentions "trass", search trass.* databases, NOT default.* or koii.* databases
 - Example: User asks about "trass stories" → Use workspace="trass" or include "trass stories" in query text
 
+**🔍 Property vs Content Search - CRITICAL DISTINCTION**:
+
+**Database Properties** (use query_vector):
+- Status (in-progress, done, blocked, etc.)
+- Priority (P0, P1, P2, P3)
+- Assignee (who owns it)
+- Tags, labels, categories
+- Dates (created, updated, due date)
+- Sender, recipient (for emails)
+- Channel (for Discord/Telegram)
+
+**Text Content** (use query_sql):
+- Words/phrases in email body
+- Text in journal entries
+- Story descriptions and comments
+- Any text you want to search for with exact keywords
+
+**Rule of Thumb**: If you're asking "show me items WHERE [property] = [value]", use **query_vector**. If you're asking "show me items that MENTION [keyword]", use **query_sql**.
+
 #### 1. query_sql
-**Description**: Query databases using natural language. The system will convert your query to SQL and retrieve relevant content.
+**Description**: Search for **EXACT TEXT/KEYWORDS** in content using natural language that converts to SQL. This searches the actual text content, NOT database properties.
 
 **When to use**:
-- Filtering by specific properties (sender name, date ranges, database fields)
-- Multiple structured filters (from X about Y in last Z days)
-- Exact text terms the user explicitly mentioned
-- **NOT for fuzzy/uncertain names or titles** - use query_vector instead if user says "I think", "something like", or you're unsure of exact wording
+- Searching for exact text/keywords that appear IN THE CONTENT (email body, journal text, story description)
+- Finding messages FROM a specific person (sender name appears in content)
+- Finding text ABOUT a topic (keywords in the content itself)
+- **NOT for Notion properties** (status, priority, assignee, dates) - use query_vector for those
+
+**When NOT to use**:
+- Filtering by database properties like status, priority, tags, assignee → Use **query_vector** instead
+- Fuzzy/uncertain searches → Use **query_vector** instead
+- Example: "stories with status in-progress" → This is a PROPERTY filter, use query_vector NOT query_sql
 
 **Parameters**:
-- `query`* (string): Natural language description of the SQL query itself, specifying workspace, database, search terms, and time filters. Format: "{workspace} {database} from/with/about {search_terms} {time_filter}". Examples: "trass gmail from federico about launch last 30 days", "default stories with status done from last week", "trass journal with term meeting last month"
+- `query`* (string): Natural language description specifying workspace, database, and search terms that appear in content. Format: "{workspace} {database} from/about {text_keywords} {time_filter}". Examples: "trass gmail from federico about launch last 30 days", "trass journal mentioning meeting last month"
 - `reasoning`* (string): **REQUIRED** - Explain: (1) Why you need this information (what's missing from current context), (2) What you expect to find, (3) Why you formulated the query this way
 - `workspace` (string): Optional workspace name to search in (defaults to current workspace if not in query)
 - `max_results` (integer): Optional maximum number of results to return (default: 50)
@@ -441,14 +465,20 @@ You have access to built-in tools that allow you to query and load additional co
 ```
 
 #### 2. query_vector
-**Description**: Search databases using semantic similarity. Finds content that is conceptually similar to your search text.
+**Description**: Search databases using semantic similarity AND filter by database properties. This is the MOST VERSATILE tool - it handles both semantic search and property filtering.
 
 **When to use**:
+- **Filtering by database properties** (status, priority, assignee, tags, dates) - THIS IS THE KEY USE CASE
 - **Uncertain or fuzzy names/titles** (user says "I think", "something like", "might be called")
 - Finding content by semantic meaning rather than exact keywords
 - When different wording might be used for the same concept
 - Searching for themes, topics, or concepts across content
-- **PREFER this over query_sql when names/titles are approximate**
+
+**Examples of property filtering (USE QUERY_VECTOR FOR THESE)**:
+- "stories with status in-progress" → query_vector can filter by status property
+- "P3 priority tasks updated last week" → query_vector handles both priority filter and date filter
+- "blocked stories" → query_vector filters by status property
+- "emails from federico" → query_vector can filter by sender property
 
 **Parameters**:
 - `query`* (string): Text to search for semantically similar content
@@ -462,6 +492,21 @@ You have access to built-in tools that allow you to query and load additional co
 - `min_similarity` (float): Minimum similarity threshold 0.0-1.0 (default: 0.2). **For fuzzy title searches like "I think it's in X", use 0.15-0.2 to cast a very wide net. For targeted searches, use 0.4-0.6 for higher precision**
 
 **Examples**:
+
+**Example 1: Property Filtering (MOST COMMON USE CASE)**
+```
+<tool_call>
+  <tool_name>query_vector</tool_name>
+  <parameters>
+    <query>trass stories status in-progress blocked priority P3 P2</query>
+    <reasoning>User asked what's most important for trass right now. I need to find high-priority stories that are actively being worked on or blocked. Using query_vector because I'm filtering by DATABASE PROPERTIES: status (in-progress, blocked) and priority (P3, P2). The vector system can filter by these structured properties. I expect to find 10-30 active high-priority stories representing current focus areas.</reasoning>
+    <workspace>trass</workspace>
+    <top_k>50</top_k>
+  </parameters>
+</tool_call>
+```
+
+**Example 2: Fuzzy Title Search**
 ```
 <tool_call>
   <tool_name>query_vector</tool_name>
@@ -474,6 +519,7 @@ You have access to built-in tools that allow you to query and load additional co
 </tool_call>
 ```
 
+**Example 3: Semantic Search**
 ```
 <tool_call>
   <tool_name>query_vector</tool_name>
