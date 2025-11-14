@@ -2959,8 +2959,8 @@ def main():
     chat_parser.add_argument(
         "--threshold", "-th",
         type=float,
-        default=0.75,
-        help="Minimum similarity threshold for vector search results, 0-1 scale (default: 0.75)"
+        default=0.2,
+        help="Minimum similarity threshold for vector search results, 0-1 scale (default: 0.2)"
     )
     chat_parser.add_argument(
         "--mcp", "-mcp",
