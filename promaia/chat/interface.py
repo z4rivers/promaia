@@ -1499,7 +1499,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             workspace=None,  # Allow cross-workspace searches
                             verbose=True,  # Show detailed processing steps
                             n_results=context_state.get('top_k', 20),
-                            min_similarity=context_state.get('threshold', 0.75)
+                            min_similarity=context_state.get('threshold', 0.2)
                         )
                     else:
                         # Always allow cross-workspace queries for natural language
@@ -4585,15 +4585,18 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             return response_text + error_text
 
     # Query Tool Execution Functions
-    async def request_query_permission(tool_name: str, parameters: Dict[str, Any]) -> tuple:
-        """Request user permission to execute a query tool.
+    async def request_query_permission(tool_name: str, parameters: Dict[str, Any], execution_result: Optional[Dict[str, Any]] = None) -> tuple:
+        """Request user permission to load query results into context.
 
         Args:
             tool_name: Name of the query tool
             parameters: Query parameters
+            execution_result: Query execution results (shown during approval)
 
         Returns:
-            Tuple of (status, parameters) where status is 'approved', 'declined', or 'modified'
+            Tuple of (status, data) where:
+            - status: 'approved', 'declined', 'skipped', or 'modified'
+            - data: execution_result (approved), None (declined/skipped), or modified_parameters (modified)
         """
         nonlocal initial_multi_source_data, total_pages_loaded, system_prompt
 
@@ -4601,33 +4604,79 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         reasoning = parameters.get('reasoning', '')
 
         print()
-        print_text(f"🔍 Query Tool Request: {tool_name}", style="bold cyan")
+        print_text(f"🔍 Query Tool: {tool_name}", style="bold cyan")
         print_text(f"   Query: \"{query_text}\"", style="white")
         print()
 
-        # Show reasoning prominently
+        # Show reasoning
         if reasoning:
             print_text("   💭 AI Reasoning:", style="bold yellow")
-            # Show reasoning without indentation to avoid wrapping issues
             print_text(reasoning, style="white")
-            print()
-        else:
-            print_text("   ⚠️  Warning: No reasoning provided by AI", style="bold red")
             print()
 
         # Show other parameters if present
         other_params = {k: v for k, v in parameters.items() if k not in ['query', 'source', 'reasoning']}
         if other_params:
-            print_text("   Additional parameters:", style="dim")
+            print_text("   Parameters:", style="dim")
             for key, value in other_params.items():
                 print_text(f"      {key}: {value}", style="dim")
             print()
 
-        # Use regular print since print_text doesn't support end parameter
-        # Escape square brackets to prevent Rich markup interpretation
+        # Show execution results
+        if execution_result:
+            if execution_result.get('success'):
+                total = execution_result.get('total_pages', 0)
+                dbs = execution_result.get('databases', [])
+                workspace = execution_result.get('workspace', 'unknown')
+
+                print_text("   📊 Execution Results:", style="bold green")
+                print_text(f"      Found {total} pages", style="white")
+                if dbs:
+                    db_display = ', '.join([f'{workspace}.{db}' for db in dbs])
+                    print_text(f"      Databases: {db_display}", style="dim")
+
+                # Show sample results
+                if total > 0 and total <= 10:
+                    # For small result sets, show all titles
+                    loaded_content = execution_result.get('loaded_content', {})
+                    print_text("\n      Preview:", style="dim")
+                    for db_name, pages in loaded_content.items():
+                        for page in pages:
+                            title = page.get('title', 'Untitled')[:60]
+                            print_text(f"         • {title}", style="dim")
+                elif total > 10:
+                    # For large result sets, show first 5
+                    loaded_content = execution_result.get('loaded_content', {})
+                    print_text("\n      Preview (first 5):", style="dim")
+                    count = 0
+                    for db_name, pages in loaded_content.items():
+                        for page in pages:
+                            if count >= 5:
+                                break
+                            title = page.get('title', 'Untitled')[:60]
+                            print_text(f"         • {title}", style="dim")
+                            count += 1
+                        if count >= 5:
+                            break
+                    print_text(f"         ... and {total - 5} more", style="dim")
+                print()
+            else:
+                # Query failed
+                error = execution_result.get('error', 'Unknown error')
+                print_text("   ❌ Query Execution Failed:", style="bold red")
+                print_text(f"      {error}", style="red")
+                print()
+
+        # Request approval
         from rich.console import Console
         console = Console()
-        console.print("Approve this query? \\[Enter] / \\[m]odify / \\[n]o: ", style="bold yellow", end="")
+
+        if execution_result and not execution_result.get('success'):
+            # Query failed - only offer to decline or modify
+            console.print("Query failed. \\[n]o / \\[m]odify: ", style="bold yellow", end="")
+        else:
+            console.print("Load into context? \\[Enter] / \\[m]odify / \\[n]o / \\[s]kip: ",
+                         style="bold yellow", end="")
 
         # Get single keypress
         import sys
@@ -4641,30 +4690,37 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
-        print(response if response not in ['\n', '\r'] else '')  # Echo the response
+        print(response if response not in ['\n', '\r'] else '')
         print()
 
-        # Enter key (newline or carriage return) or 'y' approves
+        # Handle response
         if response in ['\n', '\r', 'y']:
-            return ('approved', parameters)
+            # Approve - return the execution result
+            return ('approved', execution_result if execution_result else parameters)
+
+        elif response == 's':
+            # Skip this query, continue to next
+            print_text("⏭️  Skipped", style="yellow")
+            return ('skipped', None)
+
         elif response == 'm':
-            # Allow user to modify the query
-            print_text("Modify query (current query shown above, type new query or press Enter to cancel):", style="bold cyan")
-
+            # Modify query
+            print_text("Modify query:", style="bold cyan")
             try:
-                new_query = input("Query: ").strip()
-
+                new_query = input("New query (or Enter to cancel): ").strip()
                 if new_query and new_query != query_text:
                     parameters['query'] = new_query
+                    print_text("✏️  Query modified", style="green")
                     return ('modified', parameters)
                 else:
-                    # User pressed Enter without changes or entered same query
-                    print_text("Query unchanged, proceeding with original.", style="dim")
-                    return ('approved', parameters)
+                    print_text("No changes, skipping this query", style="dim")
+                    return ('skipped', None)
             except (KeyboardInterrupt, EOFError):
                 print()
-                return ('declined', None)
-        else:
+                return ('skipped', None)
+
+        else:  # 'n' or any other key
+            print_text("🚫 Declined", style="red")
             return ('declined', None)
 
     async def execute_query_tools_in_response(response_text: str) -> tuple:

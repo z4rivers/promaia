@@ -134,23 +134,159 @@ class QueryToolExecutor:
         return tool_calls
 
     async def execute_query_tool_calls(self, tool_calls: List[Dict[str, Any]], request_permission_callback) -> List[Dict[str, Any]]:
-        """Execute a list of query tool calls with user permission.
+        """Execute query tools with parallel execution and serial approval.
+
+        Flow:
+        1. Execute ALL queries in parallel (async)
+        2. Wait for all to complete
+        3. Request approval for each ONE AT A TIME (showing results)
+        4. Only load approved results into context
 
         Args:
             tool_calls: List of parsed query tool calls
             request_permission_callback: Async function to request user permission
-                                        Should return ('approved', query) or ('declined', None) or ('modified', new_query)
+                                        Should return ('approved', result), ('declined', None),
+                                        ('skipped', None), or ('modified', new_params)
 
         Returns:
-            List of execution results with loaded content
+            List of execution results with loaded content (only approved queries)
         """
-        results = []
+        import asyncio
+        from promaia.utils.display import print_text
 
-        for tool_call in tool_calls:
-            result = await self.execute_single_query_tool(tool_call, request_permission_callback)
-            results.append(result)
+        # PHASE 1: Parallel execution (no user interaction)
+        if len(tool_calls) > 1:
+            print_text(f"⚡ Executing {len(tool_calls)} queries in parallel...", style="cyan")
 
-        return results
+        execution_tasks = [
+            self._execute_query_only(tool_call)
+            for tool_call in tool_calls
+        ]
+
+        # Wait for ALL queries to complete
+        execution_results = await asyncio.gather(*execution_tasks, return_exceptions=True)
+
+        # Convert exceptions to error results
+        for i, result in enumerate(execution_results):
+            if isinstance(result, Exception):
+                execution_results[i] = {
+                    'success': False,
+                    'error': str(result),
+                    'tool_call': tool_calls[i]
+                }
+
+        if len(tool_calls) > 1:
+            print_text(f"✅ All queries completed\n", style="green")
+
+        # PHASE 2: Serial approval with results preview
+        final_results = []
+
+        for tool_call, exec_result in zip(tool_calls, execution_results):
+            # Request permission with execution results visible
+            approval_result = await request_permission_callback(
+                tool_name=tool_call['tool_name'],
+                parameters=tool_call['parameters'],
+                execution_result=exec_result
+            )
+
+            if approval_result[0] == 'approved':
+                # Add query to context state
+                query_id = str(uuid.uuid4())
+                self.context_state['ai_queries'].append({
+                    'id': query_id,
+                    'type': tool_call['tool_name'],
+                    'query': tool_call['parameters'].get('query', tool_call['parameters'].get('source', '')),
+                    'reasoning': tool_call['parameters'].get('reasoning', ''),
+                    'params': tool_call['parameters'],
+                    'timestamp': datetime.now().isoformat()
+                })
+                exec_result['query_id'] = query_id
+                final_results.append(exec_result)
+
+            elif approval_result[0] == 'skipped':
+                # User skipped this query, continue to next
+                final_results.append({
+                    'success': False,
+                    'skipped': True,
+                    'tool_call': tool_call
+                })
+
+            elif approval_result[0] == 'modified':
+                # User wants to modify and re-run
+                modified_params = approval_result[1]
+                print_text("\n🔄 Re-executing with modified parameters...", style="yellow")
+
+                # Re-execute with modified parameters
+                modified_tool_call = {
+                    'tool_name': tool_call['tool_name'],
+                    'parameters': modified_params
+                }
+                rerun_result = await self._execute_query_only(modified_tool_call)
+
+                # Add to context if successful
+                if rerun_result.get('success'):
+                    query_id = str(uuid.uuid4())
+                    self.context_state['ai_queries'].append({
+                        'id': query_id,
+                        'type': tool_call['tool_name'],
+                        'query': modified_params.get('query', modified_params.get('source', '')),
+                        'reasoning': modified_params.get('reasoning', ''),
+                        'params': modified_params,
+                        'timestamp': datetime.now().isoformat(),
+                        'modified': True
+                    })
+                    rerun_result['query_id'] = query_id
+                    final_results.append(rerun_result)
+                else:
+                    final_results.append(rerun_result)
+
+            else:  # declined
+                final_results.append({
+                    'success': False,
+                    'declined': True,
+                    'tool_call': tool_call
+                })
+
+        return final_results
+
+    async def _execute_query_only(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute query without permission check - for parallel execution.
+
+        This method executes the query and returns the result WITHOUT requesting
+        user permission or adding to context state. Used for parallel execution
+        where approval happens after all queries complete.
+
+        Args:
+            tool_call: Tool call dictionary with tool_name and parameters
+
+        Returns:
+            Execution result with success/error state and loaded content
+        """
+        tool_name = tool_call['tool_name']
+        parameters = tool_call['parameters']
+
+        try:
+            # Execute the appropriate query tool directly
+            if tool_name == 'query_sql':
+                return await self._execute_query_sql(parameters)
+            elif tool_name == 'query_vector':
+                return await self._execute_query_vector(parameters)
+            elif tool_name == 'query_source':
+                return await self._execute_query_source(parameters)
+            else:
+                return {
+                    'success': False,
+                    'error': f"Unknown query tool: {tool_name}",
+                    'tool_call': tool_call
+                }
+
+        except Exception as e:
+            logger.error(f"Error executing query tool {tool_name}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'tool_call': tool_call
+            }
 
     async def execute_single_query_tool(self, tool_call: Dict[str, Any], request_permission_callback) -> Dict[str, Any]:
         """Execute a single query tool call.
@@ -390,7 +526,11 @@ class QueryToolExecutor:
 
         for i, result in enumerate(results, 1):
             if result.get('declined'):
-                formatted += f"{i}. Query declined by user\n"
+                formatted += f"{i}. 🚫 Query declined by user\n"
+                continue
+
+            if result.get('skipped'):
+                formatted += f"{i}. ⏭️  Query skipped by user\n"
                 continue
 
             if result.get('success'):

@@ -399,6 +399,54 @@ def format_query_tools_for_prompt() -> str:
 
 You have access to built-in tools that allow you to query and load additional context from the user's databases. Use these tools when you need more information to answer the user's question effectively.
 
+**CRITICAL - Tool Format Distinction**:
+- **MCP Tools** (external servers) use: `<tool_code>server.tool(param="value")</tool_code>`
+- **Built-in Query Tools** (query_sql, query_vector, query_source) use XML format: `<tool_call><tool_name>...</tool_name><parameters>...</parameters></tool_call>`
+
+DO NOT confuse these two formats! Built-in query tools MUST use the `<tool_call>` XML format shown below.
+
+**Making Multiple Queries in One Response**:
+You can include MULTIPLE `<tool_call>` blocks in a SINGLE response when:
+- You need information from different databases or time periods
+- You want to try multiple search strategies simultaneously (casting a wide net)
+- You're uncertain which query type will work best
+
+**Benefits of multiple queries**:
+- Faster: All queries execute in parallel instead of separate iterations
+- More efficient: User approves all at once instead of multiple interruptions
+- Better results: Can combine complementary search strategies
+
+Example - Multiple queries in one response:
+```
+I'll search for Eddie's emails using multiple strategies:
+
+<tool_call>
+  <tool_name>query_sql</tool_name>
+  <parameters>
+    <query>trass gmail from eddie last 7 days</query>
+    <reasoning>Searching for exact sender name "eddie" in email metadata...</reasoning>
+  </parameters>
+</tool_call>
+
+<tool_call>
+  <tool_name>query_vector</tool_name>
+  <parameters>
+    <query>eddie email communication messages</query>
+    <reasoning>Semantic search in case name is spelled differently (Eddie vs Edward) or in content...</reasoning>
+    <top_k>100</top_k>
+    <min_similarity>0.15</min_similarity>
+  </parameters>
+</tool_call>
+
+<tool_call>
+  <tool_name>query_source</tool_name>
+  <parameters>
+    <source>gmail:14</source>
+    <reasoning>Loading recent emails to scan through if specific searches fail...</reasoning>
+  </parameters>
+</tool_call>
+```
+
 ### Available Query Tools
 
 **Quick Selection Guide**:
@@ -562,17 +610,16 @@ You have access to built-in tools that allow you to query and load additional co
 
    The reasoning will be shown to the user during approval, so be specific and clear.
 
-2. **Permission Required**: When you use a query tool, the user will be asked to approve the query before it executes. They can approve (y), modify (m), or decline (n). Your reasoning helps them make this decision.
+2. **Permission Required**: When you use query tools, they execute in parallel first, then the user reviews results and decides whether to load each into context. They can approve (Enter), skip (s), modify (m), or decline (n) each query individually. Your reasoning helps them make this decision.
 
-3. **Context Updates**: After a query executes, the results are merged into your context. You'll receive a summary of what was loaded.
+3. **Context Updates**: After queries execute and are approved, the results are merged into your context. You'll receive a summary of what was loaded.
 
-4. **Iterative Querying**: You can make multiple query tool calls if you need to refine or expand context. **Use a multi-strategy approach**:
-   - **First attempt**: Try your most likely strategy (usually query_vector for fuzzy searches, query_sql for specific filters)
-   - **If 0 results**: Increase top_k to 200-300, lower min_similarity to 0.15, or try a different query tool type
-   - **If irrelevant results**: Rephrase query with different terms, try query_sql with exact terms, or search different databases
-   - **If partial info**: Make follow-up queries to fill specific gaps, try broader time ranges
-   - **Try 3-4 different strategies** before concluding the information doesn't exist
-   - Each query requires user approval and uses tokens, but persistence is important when the data likely exists
+4. **Iterative Querying**: You can make multiple query tool calls **in a SINGLE response OR across multiple iterations**. **Use a multi-strategy approach**:
+   - **Preferred**: Include 2-3 query tool calls in your INITIAL response when you want to cast a wide net (they execute in parallel)
+   - **Alternative**: Start with one query, see results, then make follow-up queries if needed (iterative approach)
+   - **When uncertain**: Use multiple query types simultaneously (query_sql + query_vector + query_source) to maximize chance of finding data
+   - **If 0 results from all queries**: Try different keywords, broader time ranges, or different databases in next iteration
+   - Each query requires user approval and uses tokens, but casting a wide net initially is more efficient than sequential attempts
 
 5. **Deduplication**: If a query returns content already in context, it will be deduplicated automatically. You won't see duplicate entries.
 
