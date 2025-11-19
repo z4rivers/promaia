@@ -4632,7 +4632,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 print_text("   📊 Execution Results:", style="bold green")
                 print_text(f"      Found {total} pages", style="white")
                 if dbs:
-                    db_display = ', '.join([f'{workspace}.{db}' for db in dbs])
+                    # Only add workspace prefix if database name isn't already qualified
+                    db_display = ', '.join([
+                        db if '.' in db else f'{workspace}.{db}'
+                        for db in dbs
+                    ])
                     print_text(f"      Databases: {db_display}", style="dim")
 
                 # Show sample results

@@ -1,6 +1,7 @@
 """
 Utility functions for parsing command-line query arguments.
 """
+import json
 
 
 def parse_vs_queries_with_params(argv):
@@ -63,8 +64,17 @@ def parse_vs_queries_with_params(argv):
 
         # Find -tk and -th for this query (between this -vs and next -vs)
         next_vs_idx = vs_indices[idx_pos + 1] if idx_pos + 1 < len(vs_indices) else len(argv)
-        top_k = 20  # default
-        threshold = 0.75  # default
+
+        # Load defaults from config
+        try:
+            with open('promaia.config.json', 'r') as f:
+                config = json.load(f)
+                top_k = config.get('vector_search', {}).get('default_n_results', 20)
+                threshold = config.get('vector_search', {}).get('default_similarity_threshold', 0.2)
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            # Fallback to reasonable defaults if config unavailable
+            top_k = 50
+            threshold = 0.2
 
         # Look for -tk/-th in the range after this query's text
         for j in range(i, next_vs_idx):

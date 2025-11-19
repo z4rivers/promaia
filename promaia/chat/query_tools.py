@@ -538,9 +538,12 @@ class QueryToolExecutor:
                 databases = result.get('databases', [])
                 workspace = result.get('workspace', 'unknown')
 
-                # Format database display with workspace prefix
+                # Format database display with workspace prefix (only if not already qualified)
                 if databases:
-                    db_display = ', '.join([f"{workspace}.{db}" for db in databases])
+                    db_display = ', '.join([
+                        db if '.' in db else f"{workspace}.{db}"
+                        for db in databases
+                    ])
                 else:
                     db_display = 'unknown'
 
