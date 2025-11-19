@@ -1220,6 +1220,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         'threshold': threshold if threshold is not None else 0.2,  # Minimum similarity threshold
         'ai_queries': [],  # Track AI-generated queries: [{'id': str, 'type': str, 'query': str, 'params': dict, 'timestamp': str}]
         'query_iteration_count': 0,  # Track iterations per user message for loop control
+        'loaded_image_paths': [],  # Track successfully loaded image file paths for email attachments
     }
     
     # Mode-specific setup
@@ -6641,6 +6642,9 @@ The user will type `/send` to trigger the actual sending process.
             # Reset current_images for each new message (fix bug where images from previous message persist)
             current_images = []
 
+            # Reset loaded image paths for this message
+            context_state['loaded_image_paths'] = []
+
             # Auto-detect image paths in regular messages
             # Only skip detection for actual commands, not absolute file paths
             # Commands are short words like /quit, /model, etc.
@@ -6706,6 +6710,7 @@ The user will type `/send` to trigger the actual sending process.
 
                             # Try to encode detected images
                             successful_images = []
+                            successful_image_paths = []
 
                             for image_path, _ in image_files:
                                 try:
@@ -6720,6 +6725,7 @@ The user will type `/send` to trigger the actual sending process.
                                         else:
                                             encoded_image = encode_image_from_path(actual_path)
                                         successful_images.append(encoded_image)
+                                        successful_image_paths.append(actual_path)
                                     else:
                                         print_text(f"📸 Image path not found: {actual_path}", style="dim yellow")
                                 except Exception as img_error:
@@ -6727,6 +6733,7 @@ The user will type `/send` to trigger the actual sending process.
 
                             if successful_images:
                                 current_images = successful_images
+                                context_state['loaded_image_paths'] = successful_image_paths
                                 user_input = cleaned_message  # Use cleaned message without file paths
                                 # Show single confirmation line
                                 img_word = "image" if len(successful_images) == 1 else "images"
@@ -7543,32 +7550,42 @@ The user will type `/send` when ready to send the email.
                             draft_data = extract_email_draft_data(response_content)
 
                             if draft_data:
-                                # Validate attachment paths against actual files in conversation
-                                draft_attachments = draft_data.get('attachments', [])
-                                if draft_attachments:
-                                    # Find all file paths mentioned in user messages
-                                    mentioned_files = []
-                                    for msg in messages:
-                                        if msg.get('role') == 'user':
-                                            content = msg.get('content', '')
-                                            # Look for absolute paths
-                                            import re
-                                            file_pattern = r'(/[^\s]+\.[a-zA-Z]{2,4})'
-                                            mentioned_files.extend(re.findall(file_pattern, content))
+                                # Use loaded image paths as attachments if available
+                                # This ensures images that were processed by the AI are also attached to the email
+                                loaded_images = context_state.get('loaded_image_paths', [])
+                                if loaded_images:
+                                    # Combine AI-suggested attachments with loaded images
+                                    ai_attachments = draft_data.get('attachments', [])
+                                    all_attachments = list(set(loaded_images + ai_attachments))  # Deduplicate
+                                    draft_data['attachments'] = all_attachments
+                                    debug_print(f"📎 Adding {len(loaded_images)} loaded image(s) as attachments")
+                                else:
+                                    # Fallback: Validate attachment paths against actual files in conversation
+                                    draft_attachments = draft_data.get('attachments', [])
+                                    if draft_attachments:
+                                        # Find all file paths mentioned in user messages
+                                        mentioned_files = []
+                                        for msg in messages:
+                                            if msg.get('role') == 'user':
+                                                content = msg.get('content', '')
+                                                # Look for absolute paths
+                                                import re
+                                                file_pattern = r'(/[^\s]+\.[a-zA-Z]{2,4})'
+                                                mentioned_files.extend(re.findall(file_pattern, content))
 
-                                    # Check if draft attachments match mentioned files
-                                    invalid_attachments = []
-                                    for attachment in draft_attachments:
-                                        if attachment and attachment not in mentioned_files:
-                                            invalid_attachments.append(attachment)
+                                        # Check if draft attachments match mentioned files
+                                        invalid_attachments = []
+                                        for attachment in draft_attachments:
+                                            if attachment and attachment not in mentioned_files:
+                                                invalid_attachments.append(attachment)
 
-                                    if invalid_attachments:
-                                        print_text(f"⚠️  Warning: AI generated incorrect attachment paths:", style="bold yellow")
-                                        for path in invalid_attachments:
-                                            print_text(f"   - {path}", style="yellow")
-                                        print_text(f"   Expected one of: {', '.join(mentioned_files) if mentioned_files else 'none'}", style="yellow")
-                                        print_text("   Using empty attachments instead.", style="yellow")
-                                        draft_data['attachments'] = []
+                                        if invalid_attachments:
+                                            print_text(f"⚠️  Warning: AI generated incorrect attachment paths:", style="bold yellow")
+                                            for path in invalid_attachments:
+                                                print_text(f"   - {path}", style="yellow")
+                                            print_text(f"   Expected one of: {', '.join(mentioned_files) if mentioned_files else 'none'}", style="yellow")
+                                            print_text("   Using empty attachments instead.", style="yellow")
+                                            draft_data['attachments'] = []
 
                                 try:
                                     from promaia.mail.email_send_helpers import EmailSendHelper

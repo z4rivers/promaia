@@ -48,11 +48,12 @@ class GmailSender:
         subject: str,
         body_text: str,
         body_html: Optional[str] = None,
-        recipients: Optional[list] = None
+        recipients: Optional[list] = None,
+        attachments: Optional[list] = None
     ) -> bool:
         """
         Send a reply to an existing thread.
-        
+
         Args:
             thread_id: Gmail thread ID
             message_id: Original message ID being replied to
@@ -60,25 +61,27 @@ class GmailSender:
             body_text: Plain text body
             body_html: HTML body (optional)
             recipients: List of recipient email addresses (defaults to reply-all if not provided)
-            
+            attachments: List of file paths to attach (optional)
+
         Returns:
             True if sent successfully, False otherwise
         """
         try:
             connector = await self._get_connector()
-            
+
             # If recipients are specified, use send_email with threading
             if recipients:
                 # Join multiple recipients with comma
                 to_field = ', '.join(recipients)
-                
+
                 success = await connector.send_email(
                     to=to_field,
                     subject=subject,
                     body_text=body_text,
                     body_html=body_html,
                     thread_id=thread_id,
-                    in_reply_to=message_id
+                    in_reply_to=message_id,
+                    attachments=attachments
                 )
             else:
                 # Use default reply behavior (if connector has send_reply)
@@ -118,28 +121,31 @@ class GmailSender:
         to: str,
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None
+        body_html: Optional[str] = None,
+        attachments: Optional[list] = None
     ) -> bool:
         """
         Send a new email (not a reply).
-        
+
         Args:
             to: Recipient email address
             subject: Email subject
             body_text: Plain text body
             body_html: HTML body (optional)
-            
+            attachments: List of file paths to attach (optional)
+
         Returns:
             True if sent successfully, False otherwise
         """
         try:
             connector = await self._get_connector()
-            
+
             success = await connector.send_email(
                 to=to,
                 subject=subject,
                 body_text=body_text,
-                body_html=body_html
+                body_html=body_html,
+                attachments=attachments
             )
             
             if success:

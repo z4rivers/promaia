@@ -1564,11 +1564,12 @@ Subject: {subject}
         body_html: Optional[str] = None,
         thread_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
-        references: Optional[str] = None
+        references: Optional[str] = None,
+        attachments: Optional[List[str]] = None
     ) -> bool:
         """
         Send an email via Gmail API.
-        
+
         Args:
             to: Recipient email address
             subject: Email subject
@@ -1577,23 +1578,34 @@ Subject: {subject}
             thread_id: Gmail thread ID (for replies)
             in_reply_to: Message ID being replied to
             references: Full references chain for threading
-            
+            attachments: List of file paths to attach (optional)
+
         Returns:
             True if sent successfully, False otherwise
         """
         try:
-            # Create the email message with format=flowed to prevent hard wrapping
-            # Use email.policy.default which doesn't add hard line breaks
-            message = MIMEText(body_text, _charset='utf-8')
-            
-            # Prevent MIMEText from adding line breaks by using a custom policy
-            # The default email generator wraps at 78 chars - we need to disable this
-            message.set_param('format', 'flowed')
-            
+            # Create message container (multipart if we have attachments)
+            if attachments:
+                from email.mime.base import MIMEBase
+                from email.mime.image import MIMEImage
+                from email import encoders
+                import mimetypes
+
+                message = MIMEMultipart()
+                message.attach(MIMEText(body_text, 'plain', _charset='utf-8'))
+            else:
+                # Create the email message with format=flowed to prevent hard wrapping
+                # Use email.policy.default which doesn't add hard line breaks
+                message = MIMEText(body_text, _charset='utf-8')
+
+                # Prevent MIMEText from adding line breaks by using a custom policy
+                # The default email generator wraps at 78 chars - we need to disable this
+                message.set_param('format', 'flowed')
+                message['Content-Type'] = 'text/plain; charset=utf-8; format=flowed'
+
             message['to'] = to
             message['subject'] = subject
-            message['Content-Type'] = 'text/plain; charset=utf-8; format=flowed'
-            
+
             # Add threading headers for replies
             if in_reply_to:
                 message['In-Reply-To'] = in_reply_to
@@ -1602,6 +1614,43 @@ Subject: {subject}
             elif in_reply_to:
                 # If no references provided but we have in-reply-to, use that as references
                 message['References'] = in_reply_to
+
+            # Add attachments if provided
+            if attachments:
+                for file_path in attachments:
+                    try:
+                        if not os.path.exists(file_path):
+                            self.logger.warning(f"Attachment not found: {file_path}")
+                            continue
+
+                        # Guess MIME type
+                        mime_type, _ = mimetypes.guess_type(file_path)
+                        if mime_type is None:
+                            mime_type = 'application/octet-stream'
+
+                        main_type, sub_type = mime_type.split('/', 1)
+
+                        # Read file content
+                        with open(file_path, 'rb') as f:
+                            file_data = f.read()
+
+                        # Create appropriate MIME object based on type
+                        if main_type == 'image':
+                            attachment = MIMEImage(file_data, _subtype=sub_type)
+                        else:
+                            attachment = MIMEBase(main_type, sub_type)
+                            attachment.set_payload(file_data)
+                            encoders.encode_base64(attachment)
+
+                        # Add header with filename
+                        filename = os.path.basename(file_path)
+                        attachment.add_header('Content-Disposition', 'attachment', filename=filename)
+                        message.attach(attachment)
+
+                        self.logger.info(f"📎 Attached: {filename}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to attach {file_path}: {e}")
+                        # Continue with other attachments
             
             # Encode the message using policy that prevents line wrapping
             from email import generator
@@ -1659,16 +1708,47 @@ Subject: {subject}
         """
         try:
             # Get the original message to extract recipient info and references
-            original = await self._retry_with_backoff(
-                lambda: self.service.users().messages().get(
-                    userId='me',
-                    id=message_id,
-                    format='full'
-                ).execute()
-            )
-            
+            # If message_id doesn't exist, fall back to latest message in thread
+            try:
+                original = await self._retry_with_backoff(
+                    lambda: self.service.users().messages().get(
+                        userId='me',
+                        id=message_id,
+                        format='full'
+                    ).execute()
+                )
+            except HttpError as e:
+                if e.resp.status == 404:
+                    # Message not found - likely thread mismatch
+                    # Get the latest message in the thread instead
+                    self.logger.warning(f"Message {message_id} not found. Fetching latest message from thread {thread_id}")
+
+                    # Get raw thread ID (strip prefix if present)
+                    raw_thread_id = self._get_raw_thread_id(thread_id)
+
+                    # Get thread data to find latest message
+                    thread_data = await self._retry_with_backoff(
+                        lambda: self.service.users().threads().get(
+                            userId='me',
+                            id=raw_thread_id,
+                            format='full'
+                        ).execute()
+                    )
+
+                    messages = thread_data.get('messages', [])
+                    if not messages:
+                        self.logger.error(f"Thread {thread_id} has no messages")
+                        return False
+
+                    # Use the latest message
+                    original = messages[-1]
+                    message_id = original['id']
+                    self.logger.info(f"Using latest message {message_id} from thread {thread_id}")
+                else:
+                    raise
+
             # Extract headers from original message
-            headers = {h['name'].lower(): h['value'] 
+            headers = {h['name'].lower(): h['value']
                       for h in original.get('payload', {}).get('headers', [])}
             
             # Determine reply-to address
