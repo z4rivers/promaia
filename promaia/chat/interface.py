@@ -1322,12 +1322,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             for server in context_state['mcp_servers']:
                 query_parts.extend(["-mcp", server])
 
-        # Include global vector search parameters only if we don't have per-query parameters
-        if not has_structured_queries:
-            if context_state.get('top_k') != 20:
-                query_parts.extend(["--top-k", str(context_state['top_k'])])
-            if context_state.get('threshold') != 0.75:
-                query_parts.extend(["--threshold", str(context_state['threshold'])])
+        # Note: Don't include top_k/threshold in display unless explicitly set by user
+        # These are config defaults and shouldn't clutter the command display
 
         # Update query_command but preserve original_query_format if it exists
         built_command = " ".join(query_parts)
