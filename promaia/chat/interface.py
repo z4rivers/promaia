@@ -4608,19 +4608,8 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         print_text(f"   Query: \"{query_text}\"", style="white")
         print()
 
-        # Show reasoning
-        if reasoning:
-            print_text("   💭 AI Reasoning:", style="bold yellow")
-            print_text(reasoning, style="white")
-            print()
-
-        # Show other parameters if present
-        other_params = {k: v for k, v in parameters.items() if k not in ['query', 'source', 'reasoning']}
-        if other_params:
-            print_text("   Parameters:", style="dim")
-            for key, value in other_params.items():
-                print_text(f"      {key}: {value}", style="dim")
-            print()
+        # Note: Reasoning and parameters are already shown before execution in query_tools.py
+        # So we don't duplicate them here - just show execution results
 
         # Show execution results
         if execution_result:

@@ -233,29 +233,35 @@ class AgenticNLQueryProcessor:
         workspace: Optional[str] = None,
         max_retries: int = 2,
         n_results: Optional[int] = None,
-        min_similarity: Optional[float] = None
+        min_similarity: Optional[float] = None,
+        skip_confirmation: bool = False
     ) -> Dict[str, Any]:
         """
         Process NL query with support for user modification.
-        
+
         If user chooses to modify the query (presses 'm'), prompts for
         a new query and re-runs with same schema context.
-        
+
         Args:
             user_query: The natural language query from the user
             workspace: Optional workspace filter
             max_retries: Maximum number of retry attempts if validation fails
-        
+            skip_confirmation: Skip user confirmation prompts (for parallel query execution)
+
         Returns:
             Dictionary with results, SQL, intent, and learning info
         """
         while True:
-            result = self.process_query(user_query, workspace, max_retries, n_results, min_similarity)
-            
+            result = self.process_query(user_query, workspace, max_retries, n_results, min_similarity, skip_confirmation=skip_confirmation)
+
+            # If skip_confirmation is True, don't prompt user - just return result
+            if skip_confirmation:
+                return result
+
             # If user wants to quit, return immediately (exit to terminal)
             if result.get('action') == 'quit':
                 return result
-            
+
             # If user wants to modify, ask for new query and loop
             elif result.get('action') == 'modify':
                 print_text("\n✏️  Modify your query (edit and press Enter, or Ctrl+C to cancel):", style="bold cyan")
@@ -338,23 +344,26 @@ class AgenticNLQueryProcessor:
         workspace: Optional[str] = None,
         max_retries: int = 2,
         n_results: Optional[int] = None,
-        min_similarity: Optional[float] = None
+        min_similarity: Optional[float] = None,
+        skip_confirmation: bool = False
     ) -> Dict[str, Any]:
         """
         Process a natural language query with agentic features.
-        
+
         Args:
             user_query: The natural language query from the user
             workspace: Optional workspace filter
             max_retries: Maximum number of retry attempts if validation fails
-        
+            skip_confirmation: Skip user confirmation prompts (for parallel query execution)
+
         Returns:
             Dictionary with results, SQL, intent, and learning info
         """
-        if self.verbose:
-            print_text(f"\n🤖 Processing query: '{user_query}'", style="cyan")
-        else:
-            print_text("🤖 Processing natural language query...", style="cyan")
+        if not skip_confirmation:  # Only show processing message in standalone mode
+            if self.verbose:
+                print_text(f"\n🤖 Processing query: '{user_query}'", style="cyan")
+            else:
+                print_text("🤖 Processing natural language query...", style="cyan")
         
         # Step 1: Explore schema dynamically
         if self.verbose:
@@ -545,15 +554,16 @@ Please adjust the query to fix this issue.
         log_file = self.context_logger.save_draft_context(query_info)
         summary_file = self.context_logger.save_summary(query_info)
         
-        # Step 7: Show summary (verbose or compact mode)
-        if self.verbose:
-            # Show sample results
-            print_text(format_result_summary_for_user(summary, intent), style="white")
-            # Don't show log file paths in verbose mode - they're saved silently
-        else:
-            # Compact summary for non-verbose mode
-            print_text("✅ Query processed successfully\n", style="green")
-            self._display_compact_summary(summary, intent)
+        # Step 7: Show summary (verbose or compact mode) - skip if skip_confirmation
+        if not skip_confirmation:
+            if self.verbose:
+                # Show sample results
+                print_text(format_result_summary_for_user(summary, intent), style="white")
+                # Don't show log file paths in verbose mode - they're saved silently
+            else:
+                # Compact summary for non-verbose mode
+                print_text("✅ Query processed successfully\n", style="green")
+                self._display_compact_summary(summary, intent)
         
         # Step 8: Group results by database with minimal metadata
         # Return only page_id and content_type for the adapter to load content
@@ -586,9 +596,12 @@ Please adjust the query to fix this issue.
             total_pages = sum(len(pages) for pages in grouped_results.values())
             print_text(f"📋 Prepared {total_pages} page references for adapter to load", style="dim")
         
-        # Ask user if query was successful
-        user_action = self._ask_user_confirmation(summary)
-        
+        # Ask user if query was successful (skip if skip_confirmation)
+        if skip_confirmation:
+            user_action = ''  # Auto-accept when called from query tools
+        else:
+            user_action = self._ask_user_confirmation(summary)
+
         if user_action == 'save':
             # Save to learning index (only if strategy supports it)
             if self.strategy.should_save_pattern():

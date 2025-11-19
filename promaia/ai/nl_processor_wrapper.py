@@ -26,31 +26,38 @@ def get_nl_processor(verbose: bool = False, query_mode: str = "sql") -> AgenticN
 
 
 def process_natural_language_to_content(
-    nl_prompt: str, 
-    workspace: str = None, 
+    nl_prompt: str,
+    workspace: str = None,
     database_names: List[str] = None,
-    verbose: bool = False
+    verbose: bool = False,
+    skip_confirmation: bool = False
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process natural language queries using the new agentic system.
-    
+
     This is the main integration point that replaces the old LangGraph system.
     It provides a backward-compatible interface for the CLI and Chat.
-    
+
     Args:
         nl_prompt: The natural language query
         workspace: Optional workspace filter
         database_names: Optional list of databases to search
         verbose: Show detailed processing steps
-    
+        skip_confirmation: Skip user confirmation prompts (for parallel query execution)
+
     Returns:
         Dict mapping database_name -> list of content entries
     """
     try:
         processor = get_nl_processor(verbose=verbose)
-        
+
         # Process the query with the agentic system (includes modification support)
-        result = processor.process_query_with_modification(nl_prompt, workspace=workspace, max_retries=2)
+        result = processor.process_query_with_modification(
+            nl_prompt,
+            workspace=workspace,
+            max_retries=2,
+            skip_confirmation=skip_confirmation
+        )
         
         # Check if user chose to quit (exit to terminal)
         if result.get("action") == "quit":
@@ -104,20 +111,20 @@ def process_vector_search_to_content(
     database_names: List[str] = None,
     verbose: bool = False,
     n_results: int = 20,
-    min_similarity: float = 0.75
+    min_similarity: float = 0.2
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process vector search queries using semantic similarity.
-    
+
     This uses the same agentic system as NL queries but in vector mode.
-    
+
     Args:
         vs_prompt: The vector search query
         workspace: Optional workspace filter
         database_names: Optional list of databases to search
         verbose: Show detailed processing steps
         n_results: Maximum number of results to return (default: 20)
-        min_similarity: Minimum similarity threshold 0-1 (default: 0.75)
+        min_similarity: Minimum similarity threshold 0-1 (default: 0.2)
     
     Returns:
         Dict mapping database_name -> list of content entries

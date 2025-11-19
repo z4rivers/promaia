@@ -133,14 +133,59 @@ class QueryToolExecutor:
 
         return tool_calls
 
+    def _display_query_before_execution(self, index: int, tool_call: Dict[str, Any]) -> None:
+        """Display query details before execution.
+
+        Shows query type, query text, reasoning, and tool-specific details.
+        """
+        from promaia.utils.display import print_text
+
+        tool_name = tool_call['tool_name']
+        params = tool_call['parameters']
+
+        # Map tool names to CLI flags
+        flag_map = {
+            'query_sql': '-sql',
+            'query_vector': '-vs',
+            'query_source': '-s'
+        }
+
+        print()
+        print_text(f"Query {index}: {tool_name} ({flag_map.get(tool_name, '')})", style="bold cyan")
+        print_text(f'  "{params.get("query", params.get("source", ""))}"', style="white")
+
+        # Show reasoning
+        if params.get('reasoning'):
+            print_text(f"  💭 Reasoning: {params['reasoning']}", style="dim")
+
+        # Show tool-specific details
+        if tool_name == 'query_sql':
+            # For SQL queries, show that SQL will be generated
+            print_text(f"  📝 Will generate SQL query for natural language search", style="dim")
+
+        elif tool_name == 'query_vector':
+            # Show vector search parameters
+            top_k = params.get('top_k', 50)
+            min_sim = params.get('min_similarity', 0.2)
+            print_text(f"  🔍 Parameters: top_k={top_k}, min_similarity={min_sim}", style="dim")
+
+        elif tool_name == 'query_source':
+            # Show source specification
+            source = params.get('source', '')
+            filters = params.get('filters', {})
+            print_text(f"  📁 Source: {source}", style="dim")
+            if filters:
+                print_text(f"  🔧 Filters: {filters}", style="dim")
+
     async def execute_query_tool_calls(self, tool_calls: List[Dict[str, Any]], request_permission_callback) -> List[Dict[str, Any]]:
         """Execute query tools with parallel execution and serial approval.
 
         Flow:
-        1. Execute ALL queries in parallel (async)
-        2. Wait for all to complete
-        3. Request approval for each ONE AT A TIME (showing results)
-        4. Only load approved results into context
+        1. Show all query details BEFORE execution
+        2. Execute ALL queries in parallel (async)
+        3. Wait for all to complete
+        4. Request approval for each ONE AT A TIME (showing results)
+        5. Only load approved results into context
 
         Args:
             tool_calls: List of parsed query tool calls
@@ -154,9 +199,17 @@ class QueryToolExecutor:
         import asyncio
         from promaia.utils.display import print_text
 
+        # PHASE 0: Show all query details BEFORE execution
+        for i, tool_call in enumerate(tool_calls, 1):
+            self._display_query_before_execution(i, tool_call)
+
+        print()  # Blank line before execution message
+
         # PHASE 1: Parallel execution (no user interaction)
         if len(tool_calls) > 1:
             print_text(f"⚡ Executing {len(tool_calls)} queries in parallel...", style="cyan")
+        else:
+            print_text(f"⚡ Executing query...", style="cyan")
 
         execution_tasks = [
             self._execute_query_only(tool_call)
@@ -378,7 +431,8 @@ class QueryToolExecutor:
             loaded_content = process_natural_language_to_content(
                 nl_prompt=query,
                 workspace=workspace,
-                verbose=False
+                verbose=False,
+                skip_confirmation=True  # Skip prompts during parallel execution
             )
 
             # Count total pages
