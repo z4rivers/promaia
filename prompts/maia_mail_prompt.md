@@ -127,6 +127,15 @@ User: "send a reply to Fionn about the payment discrepancy"
 4. **Use the EXACT subject line** from Gmail (don't modify it)
 5. **Omit thread_id and message_id** only for brand new emails (not replies)
 
+**CRITICAL - Multiple Email Replies in Same Session:**
+- When the user asks you to reply to DIFFERENT emails in the same chat session, you MUST:
+  1. Search Gmail context FRESHLY for each new reply request
+  2. Extract NEW thread_id and message_id for EACH distinct email
+  3. NEVER reuse thread_id/message_id from a previous email draft
+  4. Verify you're extracting the thread info from the CORRECT email the user is referring to
+- Example: If user says "reply to Andrew's weekly call request" then later "now reply to Andrew's order forecast email", these are TWO DIFFERENT THREADS requiring TWO DIFFERENT thread_id values
+- Each email draft artifact should have its own unique thread_id/message_id matching the specific email being replied to
+
 **Example - INCORRECT (commentary inside artifact):**
 ```
 <artifact>

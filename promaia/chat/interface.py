@@ -6344,6 +6344,31 @@ The user will type `/send` to trigger the actual sending process.
                 thread_id = metadata.get('thread_id')
                 message_id = metadata.get('message_id')
 
+                # Log threading information for debugging
+                if thread_id or message_id:
+                    logger.info(f"📧 Email threading info - thread_id: {thread_id}, message_id: {message_id}")
+                else:
+                    logger.info("📧 New email (no thread_id/message_id)")
+
+                # Safeguard: Check if thread_id matches the last sent email (potential reuse bug)
+                last_sent = context_state.get('last_sent_thread')
+                if last_sent and thread_id and thread_id == last_sent.get('thread_id'):
+                    # Same thread as last email - this might be intentional (multiple replies to same thread)
+                    # or it might be a bug (AI reusing stale thread_id)
+                    # We'll warn if the subjects are different
+                    if subject != last_sent.get('subject'):
+                        print_text("⚠️  WARNING: This email appears to use the same thread as your previous email,", style="bold yellow")
+                        print_text(f"   but has a different subject line:", style="yellow")
+                        print_text(f"   Previous: {last_sent.get('subject')}", style="dim yellow")
+                        print_text(f"   Current:  {subject}", style="dim yellow")
+                        print_text("   This might attach your reply to the wrong email thread.", style="yellow")
+                        print_text("   Type 'cancel' to abort or 'continue' to send anyway: ", style="yellow", end='')
+
+                        confirmation = input().strip().lower()
+                        if confirmation != 'continue':
+                            print_text("❌ Send cancelled\n", style="red")
+                            continue
+
                 # For old-style artifacts, try to extract from context
                 if not recipient and not subject:
                     email_metadata = context_state.get('email_metadata')
@@ -6628,8 +6653,16 @@ The user will type `/send` to trigger the actual sending process.
                     }
                     learning.save_successful_response(pattern)
 
-                    # Clear email metadata after successful send
+                    # Clear email metadata and context after successful send to prevent thread ID pollution
                     context_state.pop('email_metadata', None)
+                    # Store last sent thread info for validation of next email
+                    context_state['last_sent_thread'] = {
+                        'thread_id': thread_id,
+                        'message_id': message_id,
+                        'subject': subject,
+                        'timestamp': now_utc().isoformat()
+                    }
+                    logger.info(f"📧 Email sent and context cleared. Thread: {thread_id}")
                     print()
                 else:
                     print_text("❌ Failed to send\n", style="red")
