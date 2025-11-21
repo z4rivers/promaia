@@ -4,6 +4,7 @@ Notion database connector implementation.
 import os
 import asyncio
 import json
+import sqlite3
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,7 +12,7 @@ from pathlib import Path
 from .base import BaseConnector, QueryFilter, DateRangeFilter, SyncResult
 from promaia.notion.client import notion_client
 from promaia.notion.pages import (
-    get_database_properties, query_database, get_block_content, 
+    get_database_properties, query_database, get_block_content,
     get_page_title, get_pages_by_date
 )
 from promaia.markdown.converter import page_to_markdown
@@ -97,6 +98,184 @@ class NotionConnector(BaseConnector):
         except Exception as e:
             self.logger.error(f"Failed to get database schema: {e}")
             return {}
+
+    async def sync_property_metadata(self, db_path: str = "data/hybrid_metadata.db"):
+        """
+        Sync property and option metadata from Notion to local database.
+
+        Extracts property IDs, option IDs, and relation metadata from Notion's schema
+        and stores them in the local database for ID-based resolution.
+
+        Args:
+            db_path: Path to the hybrid metadata database
+        """
+        try:
+            # Get full database response (not just properties)
+            database = await self.client.databases.retrieve(database_id=self.database_id)
+            properties = database.get("properties", {})
+            database_name = self.config.get('name', 'unknown')
+
+            current_time = datetime.now(timezone.utc).isoformat()
+
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+
+                for prop_name, prop_config in properties.items():
+                    property_id = prop_config.get("id")
+                    property_type = prop_config.get("type")
+
+                    if not property_id:
+                        self.logger.warning(f"Property {prop_name} has no ID, skipping")
+                        continue
+
+                    # Update or insert property info in notion_property_schema
+                    # Try to find existing property by ID first, then by name
+                    cursor.execute("""
+                        SELECT id FROM notion_property_schema
+                        WHERE database_id = ? AND (property_id = ? OR property_name = ?)
+                    """, (self.database_id, property_id, prop_name))
+
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        # Update existing property (set property_id if it was missing)
+                        cursor.execute("""
+                            UPDATE notion_property_schema
+                            SET property_name = ?,
+                                property_id = ?,
+                                notion_type = ?,
+                                last_seen = ?,
+                                is_active = TRUE
+                            WHERE database_id = ? AND (property_id = ? OR property_name = ?)
+                        """, (prop_name, property_id, property_type, current_time,
+                              self.database_id, property_id, prop_name))
+                        self.logger.debug(f"Updated property: {prop_name} ({property_id})")
+                    else:
+                        # Property doesn't exist yet - this shouldn't happen in normal operation
+                        # since properties are created during sync, but we'll log it
+                        self.logger.warning(f"Property {prop_name} ({property_id}) not in schema table - may need database sync")
+
+                    # Handle select/multi-select/status options
+                    if property_type in ('select', 'multi_select', 'status'):
+                        options = prop_config.get(property_type, {}).get("options", [])
+
+                        for option in options:
+                            option_id = option.get("id")
+                            option_name = option.get("name")
+                            option_color = option.get("color")
+
+                            if not option_id:
+                                self.logger.warning(f"Option {option_name} has no ID, skipping")
+                                continue
+
+                            # Check if option exists
+                            cursor.execute("""
+                                SELECT id FROM notion_select_options
+                                WHERE database_id = ? AND property_id = ? AND option_id = ?
+                            """, (self.database_id, property_id, option_id))
+
+                            existing_option = cursor.fetchone()
+
+                            if existing_option:
+                                # Update existing option
+                                cursor.execute("""
+                                    UPDATE notion_select_options
+                                    SET option_name = ?,
+                                        option_color = ?,
+                                        property_name = ?,
+                                        last_seen = ?,
+                                        is_active = TRUE
+                                    WHERE database_id = ? AND property_id = ? AND option_id = ?
+                                """, (option_name, option_color, prop_name, current_time,
+                                      self.database_id, property_id, option_id))
+
+                                self.logger.debug(f"Updated option: {prop_name}.{option_name} ({option_id})")
+                            else:
+                                # Insert new option
+                                cursor.execute("""
+                                    INSERT INTO notion_select_options
+                                    (database_id, property_id, property_name, option_id, option_name,
+                                     option_color, property_type, first_seen, last_seen, is_active)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+                                """, (self.database_id, property_id, prop_name, option_id, option_name,
+                                      option_color, property_type, current_time, current_time))
+
+                                self.logger.info(f"Added new option: {prop_name}.{option_name} ({option_id})")
+
+                    # Handle relation properties
+                    elif property_type == 'relation':
+                        relation_config = prop_config.get('relation', {})
+                        target_database_id = relation_config.get('database_id')
+                        relation_type = relation_config.get('type')  # 'single_property' or 'dual_property'
+                        synced_property_id = relation_config.get('synced_property_id')
+                        synced_property_name = relation_config.get('synced_property_name')
+
+                        if target_database_id:
+                            # Check if relation exists
+                            cursor.execute("""
+                                SELECT id FROM notion_relations
+                                WHERE database_id = ? AND property_id = ?
+                            """, (self.database_id, property_id))
+
+                            existing_relation = cursor.fetchone()
+
+                            if existing_relation:
+                                # Update existing relation
+                                cursor.execute("""
+                                    UPDATE notion_relations
+                                    SET property_name = ?,
+                                        target_database_id = ?,
+                                        relation_type = ?,
+                                        synced_property_id = ?,
+                                        synced_property_name = ?,
+                                        last_seen = ?,
+                                        is_active = TRUE
+                                    WHERE database_id = ? AND property_id = ?
+                                """, (prop_name, target_database_id, relation_type,
+                                      synced_property_id, synced_property_name, current_time,
+                                      self.database_id, property_id))
+
+                                self.logger.debug(f"Updated relation: {prop_name} -> {target_database_id}")
+                            else:
+                                # Insert new relation
+                                cursor.execute("""
+                                    INSERT INTO notion_relations
+                                    (database_id, property_id, property_name, target_database_id,
+                                     relation_type, synced_property_id, synced_property_name,
+                                     first_seen, last_seen, is_active)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+                                """, (self.database_id, property_id, prop_name, target_database_id,
+                                      relation_type, synced_property_id, synced_property_name,
+                                      current_time, current_time))
+
+                                self.logger.info(f"Added new relation: {prop_name} -> {target_database_id}")
+
+                # Mark properties/options not seen as inactive
+                cursor.execute("""
+                    UPDATE notion_property_schema
+                    SET is_active = FALSE
+                    WHERE database_id = ? AND last_seen < ?
+                """, (self.database_id, current_time))
+
+                cursor.execute("""
+                    UPDATE notion_select_options
+                    SET is_active = FALSE
+                    WHERE database_id = ? AND last_seen < ?
+                """, (self.database_id, current_time))
+
+                cursor.execute("""
+                    UPDATE notion_relations
+                    SET is_active = FALSE
+                    WHERE database_id = ? AND last_seen < ?
+                """, (self.database_id, current_time))
+
+                conn.commit()
+
+            self.logger.info(f"Successfully synced property metadata for database {database_name}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to sync property metadata: {e}", exc_info=True)
+            raise
     
     async def query_pages(self, 
                          filters: Optional[List[QueryFilter]] = None,

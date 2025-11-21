@@ -23,6 +23,9 @@ class HybridContentRegistry:
         self.init_database()
         self._migrate_add_cc_recipients()
         self._migrate_add_attachments()
+        self._migrate_add_property_ids()
+        self._migrate_add_select_options_table()
+        self._migrate_add_relations_table()
     
     def init_database(self):
         """Initialize the hybrid database with separate tables for each content type."""
@@ -329,6 +332,135 @@ class HybridContentRegistry:
                     logger.info("Migration complete: attachments column added")
                 else:
                     logger.debug("Migration skipped: attachments column already exists")
+
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            # Don't raise - allow system to continue even if migration fails
+
+    def _migrate_add_property_ids(self):
+        """Migration: Add property_id column to notion_property_schema table."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if property_id column exists
+                cursor.execute("PRAGMA table_info(notion_property_schema)")
+                columns = {row[1] for row in cursor.fetchall()}
+
+                if 'property_id' not in columns:
+                    logger.info("Migrating notion_property_schema table: Adding property_id column")
+                    cursor.execute("ALTER TABLE notion_property_schema ADD COLUMN property_id TEXT")
+                    conn.commit()
+                    logger.info("Migration complete: property_id column added")
+                else:
+                    logger.debug("Migration skipped: property_id column already exists")
+
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            # Don't raise - allow system to continue even if migration fails
+
+    def _migrate_add_select_options_table(self):
+        """Migration: Create notion_select_options table for tracking select/multi-select/status options."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if table exists
+                cursor.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='notion_select_options'
+                """)
+                table_exists = cursor.fetchone() is not None
+
+                if not table_exists:
+                    logger.info("Creating notion_select_options table")
+                    cursor.execute("""
+                        CREATE TABLE notion_select_options (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            database_id TEXT NOT NULL,
+                            property_id TEXT NOT NULL,
+                            property_name TEXT NOT NULL,
+                            option_id TEXT NOT NULL,
+                            option_name TEXT NOT NULL,
+                            option_color TEXT,
+                            property_type TEXT NOT NULL,
+                            first_seen TEXT NOT NULL,
+                            last_seen TEXT NOT NULL,
+                            is_active BOOLEAN DEFAULT TRUE,
+                            UNIQUE(database_id, property_id, option_id)
+                        )
+                    """)
+
+                    # Create indexes
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_select_options_db
+                        ON notion_select_options (database_id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_select_options_property
+                        ON notion_select_options (database_id, property_id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_select_options_option
+                        ON notion_select_options (database_id, property_id, option_id)
+                    """)
+
+                    conn.commit()
+                    logger.info("Migration complete: notion_select_options table created")
+                else:
+                    logger.debug("Migration skipped: notion_select_options table already exists")
+
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            # Don't raise - allow system to continue even if migration fails
+
+    def _migrate_add_relations_table(self):
+        """Migration: Create notion_relations table for tracking relation properties."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if table exists
+                cursor.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='notion_relations'
+                """)
+                table_exists = cursor.fetchone() is not None
+
+                if not table_exists:
+                    logger.info("Creating notion_relations table")
+                    cursor.execute("""
+                        CREATE TABLE notion_relations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            database_id TEXT NOT NULL,
+                            property_id TEXT NOT NULL,
+                            property_name TEXT NOT NULL,
+                            target_database_id TEXT NOT NULL,
+                            target_database_name TEXT,
+                            relation_type TEXT,
+                            synced_property_id TEXT,
+                            synced_property_name TEXT,
+                            first_seen TEXT NOT NULL,
+                            last_seen TEXT NOT NULL,
+                            is_active BOOLEAN DEFAULT TRUE,
+                            UNIQUE(database_id, property_id)
+                        )
+                    """)
+
+                    # Create indexes
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_relations_db
+                        ON notion_relations (database_id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_relations_target
+                        ON notion_relations (target_database_id)
+                    """)
+
+                    conn.commit()
+                    logger.info("Migration complete: notion_relations table created")
+                else:
+                    logger.debug("Migration skipped: notion_relations table already exists")
 
         except Exception as e:
             logger.error(f"Migration failed: {e}")

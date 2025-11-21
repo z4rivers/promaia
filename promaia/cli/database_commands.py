@@ -1935,25 +1935,47 @@ def parse_filter_string(filter_str: str) -> Dict[str, Any]:
 
 def build_filters(source_spec: Dict[str, Any], db_config) -> List[QueryFilter]:
     """Build QueryFilter objects from source specification and database config."""
+    from promaia.storage.property_resolver import PropertyResolver
+
     filters = []
-    
+    resolver = PropertyResolver()
+    database_id = db_config.database_id
+
     # Add filters from source specification
     logger.debug(f"Source spec property_filters: {source_spec.get('property_filters', {})}")
     for key, value in source_spec.get("property_filters", {}).items():
         if not key.endswith(('_after', '_before')):  # Skip date filters
             logger.debug(f"Adding source filter: {key} = {value}")
             filters.append(QueryFilter(key, "eq", value))
-    
-    # Add filters from database configuration
+
+    # Add filters from database configuration with ID resolution
     logger.debug(f"Database config property_filters: {db_config.property_filters}")
-    for prop_name, prop_values in db_config.property_filters.items():
-        if isinstance(prop_values, list):
-            logger.debug(f"Adding config filter: {prop_name} in {prop_values}")
-            filters.append(QueryFilter(prop_name, "in", prop_values))
+    for prop_key, prop_values in db_config.property_filters.items():
+        # Determine if this is an ID or a name (IDs typically don't contain spaces and have specific patterns)
+        # Simple heuristic: if it looks like a Notion property ID, resolve it
+        is_property_id = not ' ' in prop_key and len(prop_key) > 10
+
+        if is_property_id:
+            # Resolve property ID to current name
+            resolved_name, resolved_values = resolver.resolve_filter_value(database_id, prop_key, prop_values)
+            if resolved_name and resolved_values:
+                if isinstance(resolved_values, list):
+                    logger.debug(f"Resolved filter: {prop_key} -> {resolved_name} in {resolved_values}")
+                    filters.append(QueryFilter(resolved_name, "in", resolved_values))
+                else:
+                    logger.debug(f"Resolved filter: {prop_key} -> {resolved_name} = {resolved_values}")
+                    filters.append(QueryFilter(resolved_name, "eq", resolved_values))
+            else:
+                logger.warning(f"Could not resolve property ID {prop_key}, skipping filter")
         else:
-            logger.debug(f"Adding config filter: {prop_name} = {prop_values}")
-            filters.append(QueryFilter(prop_name, "eq", prop_values))
-    
+            # Use name directly (backward compatibility)
+            if isinstance(prop_values, list):
+                logger.debug(f"Adding config filter: {prop_key} in {prop_values}")
+                filters.append(QueryFilter(prop_key, "in", prop_values))
+            else:
+                logger.debug(f"Adding config filter: {prop_key} = {prop_values}")
+                filters.append(QueryFilter(prop_key, "eq", prop_values))
+
     logger.debug(f"Final filters: {[(f.property_name, f.operator, f.value) for f in filters]}")
     return filters
 

@@ -46,6 +46,9 @@ class DatabaseConfig:
         
         # Filtering settings
         self.filters = config_data.get("filters", {}) or {}
+        # property_filters now supports both name-based and ID-based formats:
+        # - Name-based: {"Team": "Consumer Product"} or {"Team": ["Consumer Product", "Engineering"]}
+        # - ID-based: {"prop_abc123": "opt_xyz789"} or {"prop_abc123": ["opt_xyz789", "opt_def456"]}
         self.property_filters = config_data.get("property_filters", {}) or {}
         self.date_filters = config_data.get("date_filters", {}) or {}
 
