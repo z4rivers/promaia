@@ -218,6 +218,24 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     })
             else:
                 # Regular database
+
+                # Special handling for convos database - filter by workspace
+                if db.source_type == "conversation" and workspace_names:
+                    from promaia.storage.hybrid_storage import get_hybrid_registry
+                    registry = get_hybrid_registry()
+
+                    # Query conversations that match any of the requested workspaces
+                    matching_convos = registry.query_conversations_by_workspace(workspace_names)
+
+                    # Skip if no conversations found for these workspaces
+                    if not matching_convos:
+                        continue
+
+                    # Show count of matching conversations
+                    convo_count = len(matching_convos)
+                else:
+                    convo_count = None
+
                 if qualified_name in current_source_lookup:
                     # Use current source spec (preserves user edits)
                     source_spec = current_source_lookup[qualified_name]
@@ -227,13 +245,19 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     # Use default
                     source_spec = f"{qualified_name}:{default_days_for_db}"
                     current_days = default_days_for_db
-                    
-                all_entries.append({
+
+                entry = {
                     'spec': source_spec,
                     'type': 'database',
                     'database': qualified_name,
                     'days': current_days
-                })
+                }
+
+                # Add conversation count if available
+                if convo_count is not None:
+                    entry['convo_count'] = convo_count
+
+                all_entries.append(entry)
         
         if not all_entries:
             # Provide more specific error messaging

@@ -530,7 +530,7 @@ class HybridContentRegistry:
                 cursor.execute("""
                     SELECT name FROM sqlite_master
                     WHERE type='table' AND name LIKE 'notion_%'
-                    AND name NOT IN ('notion_page_chunks', 'notion_property_schema')
+                    AND name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
                     ORDER BY name
                 """)
 
@@ -785,8 +785,8 @@ class HybridContentRegistry:
                     INSERT OR REPLACE INTO conversation_content (
                         page_id, workspace, database_id, file_path,
                         thread_id, thread_name, message_count, context_type, sql_query_prompt,
-                        created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        created_time, last_edited_time, synced_time, file_size, checksum, workspaces_used
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -801,7 +801,8 @@ class HybridContentRegistry:
                     last_edited_time,
                     content_data['synced_time'],
                     content_data.get('file_size'),
-                    content_data.get('checksum')
+                    content_data.get('checksum'),
+                    metadata.get('workspaces_used')
                 ))
 
                 conn.commit()
@@ -810,6 +811,63 @@ class HybridContentRegistry:
         except Exception as e:
             logger.error(f"Error adding conversation content: {e}")
             return False
+
+    def query_conversations_by_workspace(self, workspaces: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get conversations that used any of the specified workspaces.
+        Uses UNION logic: conversation appears if it contains ANY requested workspace.
+
+        Args:
+            workspaces: List of workspace names to filter by
+
+        Returns:
+            List of conversation records with page_id, thread_name, workspace, workspaces_used
+        """
+        if not workspaces:
+            return []
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                # Build query for JSON array containment
+                # Check if any requested workspace appears in the workspaces_used JSON array
+                conditions = []
+                params = []
+
+                for workspace in workspaces:
+                    conditions.append("workspaces_used LIKE ?")
+                    params.append(f'%"{workspace}"%')
+
+                where_clause = " OR ".join(conditions)
+
+                query = f"""
+                    SELECT
+                        page_id,
+                        thread_id,
+                        thread_name,
+                        workspace,
+                        workspaces_used,
+                        message_count,
+                        context_type,
+                        created_time,
+                        last_edited_time
+                    FROM conversation_content
+                    WHERE workspaces_used IS NOT NULL
+                    AND ({where_clause})
+                    ORDER BY last_edited_time DESC
+                """
+
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+
+                # Convert Row objects to dictionaries
+                return [dict(row) for row in results]
+
+        except Exception as e:
+            logger.error(f"Error querying conversations by workspace: {e}")
+            return []
 
     def get_existing_message_ids_for_thread(self, thread_id: str, workspace: str = None) -> set:
         """Get existing message IDs for a thread to avoid duplicates."""

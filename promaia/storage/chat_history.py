@@ -139,6 +139,30 @@ class ChatHistoryManager:
             # Convert to markdown
             markdown_content = conversation_to_markdown(page_data)
 
+            # Extract workspaces used in this conversation
+            import json
+            workspaces_used = set()
+            context = thread.context or {}
+
+            # Add primary workspace if specified
+            if context.get('workspace'):
+                workspaces_used.add(context.get('workspace'))
+
+            # Extract workspaces from source specifications
+            for source in context.get('sources', []):
+                base_name = source.split(':')[0]  # Remove day specification
+                if '.' in base_name:
+                    workspace = base_name.split('.')[0]
+                    workspaces_used.add(workspace)
+
+            # Add from resolved_workspace if different
+            if context.get('resolved_workspace'):
+                workspaces_used.add(context.get('resolved_workspace'))
+
+            # Default to 'default' if no workspaces found
+            primary_workspace = list(workspaces_used)[0] if workspaces_used else 'default'
+            workspaces_json = json.dumps(sorted(list(workspaces_used))) if workspaces_used else None
+
             # Prepare metadata
             metadata = {
                 'page_id': thread.id,
@@ -146,7 +170,7 @@ class ChatHistoryManager:
                 'source_id': thread.id,
                 'data_source': 'conversation',
                 'content_type': 'conversation',
-                'workspace': 'default',
+                'workspace': primary_workspace,
                 'database_id': 'convos',
                 'database_name': 'convos',
                 'created_time': thread.created_at,
@@ -158,6 +182,7 @@ class ChatHistoryManager:
                 'message_count': len(thread.messages),
                 'context_type': page_data['properties']['context_type'],
                 'sql_query_prompt': thread.context.get('sql_query_prompt', ''),
+                'workspaces_used': workspaces_json,
             }
 
             # Save to unified storage (includes vector embeddings and SQL)
