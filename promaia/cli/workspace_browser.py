@@ -93,6 +93,7 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
 
             workspace_databases = db_manager.get_workspace_databases(workspace)
             workspace_display = workspace
+            workspace_names = [workspace]  # Define workspace_names for single workspace case
 
         # Add workspace-agnostic databases (e.g., convos with workspace_scope="all")
         agnostic_databases = db_manager.get_workspace_agnostic_databases()
