@@ -15,19 +15,21 @@ import hashlib
 import shutil
 
 from promaia.notion.pages import (
-    get_sync_pages, 
-    get_pages_edited_after, 
-    get_block_content, 
-    get_page_title, 
-    update_webflow_id, 
+    get_sync_pages,
+    get_pages_edited_after,
+    get_block_content,
+    get_page_title,
+    update_webflow_id,
     get_pages_by_blog_status,
     update_page_blog_status,
-    get_page_property
+    get_page_property,
+    update_page_properties_batch
 )
 from promaia.html_converter.converter import page_to_html
 from promaia.webflow.client import get_webflow_client, WebflowClient
 from promaia.utils.config import update_last_sync_time, get_last_sync_time
 from promaia.utils.config_loader import get_notion_database_id
+from promaia.storage.sync_cache import SyncCache
 
 # Default database IDs from environment variables
 # DEFAULT_NOTION_DATABASE_ID = os.getenv("NOTION_WEBFLOW_DATABASE_ID") # Will be replaced by config loader
@@ -74,28 +76,30 @@ def truncate_url(url: str, max_length: int = 60) -> str:
     
     return f"{protocol}://{rest[:start_length]}...{rest[-end_length:]}"
 
-def process_html_images(html_content: str, page_id: str) -> str:
+async def process_html_images(html_content: str, page_id: str, max_concurrent: int = 8) -> str:
     """
-    Process all images in HTML content, uploading them to Webflow and replacing URLs.
+    Process all images in HTML content in parallel, uploading them to Webflow and replacing URLs.
     The formatted HTML must follow Webflow's RichText field requirements.
-    
+
     Args:
         html_content: HTML content containing images
         page_id: ID of the page (used to create unique filenames)
-        
+        max_concurrent: Maximum number of concurrent image uploads (default: 8)
+
     Returns:
         HTML content with Notion image URLs replaced with Webflow URLs in proper format
     """
     # Parse the HTML
     soup = BeautifulSoup(html_content, 'html.parser')
-    
+
     # Find all image tags
     images = soup.find_all('img')
 
     # Keep track of processed images to avoid duplicates
     processed_urls = {}
 
-    # Process each image
+    # Collect images to process
+    images_to_process = []
     for img in images:
         src = img.get('src')
 
@@ -109,28 +113,59 @@ def process_html_images(html_content: str, page_id: str) -> str:
         if 'webflow.com' in src or 'website-files.com' in src:
             continue
 
-        try:
-            # Generate a unique filename for the image
-            parsed_url = urllib.parse.urlparse(src)
-            original_filename = os.path.basename(parsed_url.path)
+        images_to_process.append((img, src))
 
-            # Create a hash from the URL to ensure uniqueness
-            url_hash = hashlib.md5(src.encode()).hexdigest()[:8]
+    # Process images in parallel
+    if images_to_process:
+        async def upload_single_image(img, src):
+            """Upload a single image and return the result."""
+            try:
+                # Generate a unique filename for the image
+                parsed_url = urllib.parse.urlparse(src)
+                original_filename = os.path.basename(parsed_url.path)
 
-            # Create a filename with page ID and hash
-            if '.' in original_filename:
-                name, ext = os.path.splitext(original_filename)
-                filename = f"{page_id[:8]}_{url_hash}{ext}"
-            else:
-                filename = f"{page_id[:8]}_{url_hash}.jpg"
+                # Create a hash from the URL to ensure uniqueness
+                url_hash = hashlib.md5(src.encode()).hexdigest()[:8]
 
-            # Upload the image to Webflow
-            result = get_webflow_client(silent=True).upload_asset_from_url(src, filename)
+                # Create a filename with page ID and hash
+                if '.' in original_filename:
+                    name, ext = os.path.splitext(original_filename)
+                    filename = f"{page_id[:8]}_{url_hash}{ext}"
+                else:
+                    filename = f"{page_id[:8]}_{url_hash}.jpg"
 
-            if result and 'url' in result:
-                # Get the new URL from Webflow
-                new_url = result['url']
+                # Upload the image to Webflow (synchronous call wrapped in executor)
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: get_webflow_client(silent=True).upload_asset_from_url(src, filename)
+                )
 
+                if result and 'url' in result:
+                    return (img, src, result['url'], True)
+                else:
+                    return (img, src, None, False)
+            except Exception:
+                return (img, src, None, False)
+
+        # Create semaphore to limit concurrent uploads
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def upload_with_semaphore(img, src):
+            async with semaphore:
+                return await upload_single_image(img, src)
+
+        # Process all images concurrently
+        tasks = [upload_with_semaphore(img, src) for img, src in images_to_process]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Apply results to the HTML
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+
+            img, src, new_url, success = result
+            if success and new_url:
                 # Create a new figure element with the proper Webflow structure
                 figure = soup.new_tag('figure')
                 figure['class'] = 'w-richtext-figure-type-image w-richtext-align-fullwidth'
@@ -157,11 +192,7 @@ def process_html_images(html_content: str, page_id: str) -> str:
 
                 # Keep track of this URL
                 processed_urls[src] = new_url
-            # Silent failure for image processing - don't spam logs
-        except Exception:
-            # Silent error handling for image processing
-            pass
-    
+
     # Return the updated HTML content
     return str(soup)
 
@@ -381,14 +412,15 @@ async def notion_to_webflow_item(page: Dict[str, Any],
             webflow_data[is_newsletter_field] = is_newsletter_prop.get("checkbox", False)
 
     try:
-        # Get page content
-        blocks = await get_block_content(page_id)
+        # Get page content with persistent caching
+        last_edited_time = page.get('last_edited_time') if page else None
+        blocks = await get_block_content(page_id, last_edited_time=last_edited_time)
 
         # Convert blocks to HTML
         html_content = page_to_html(blocks)
 
-        # Process images in the HTML content
-        processed_html = process_html_images(html_content, page_id)
+        # Process images in the HTML content (now async with parallel processing)
+        processed_html = await process_html_images(html_content, page_id)
 
         # Set HTML content field - always supported
         webflow_data["post-body"] = processed_html
@@ -404,7 +436,7 @@ async def notion_to_webflow_item(page: Dict[str, Any],
 
 async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: str, webflow_id_map: Dict[str, Any],
                              required_fields: List[str], blog_status_property_name: str, webflow_id_property_name: str,
-                             field_mapping: Dict[str, str]) -> Tuple[str, int, int, int, int, int]:
+                             field_mapping: Dict[str, str], sync_cache: Optional[SyncCache] = None) -> Tuple[str, int, int, int, int, int]:
     """
     Process a single Notion page for Webflow sync.
 
@@ -416,12 +448,26 @@ async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: 
         return "", 0, 0, 0, 0, 1
 
     try:
-        current_blog_status = await get_page_property(page_id, blog_status_property_name)
-        stored_webflow_id_on_notion = await get_page_property(page_id, webflow_id_property_name)
+        # Extract properties from page_data instead of making API calls
+        properties = page_data.get("properties", {})
 
-        # Ensure stored_webflow_id_on_notion is a string or None
-        if not isinstance(stored_webflow_id_on_notion, str) or not stored_webflow_id_on_notion.strip():
-            stored_webflow_id_on_notion = None
+        # Extract current blog status
+        status_prop = properties.get(blog_status_property_name, {})
+        current_blog_status = None
+        if status_prop.get("type") == "status":
+            current_blog_status = status_prop.get("status", {}).get("name")
+        elif status_prop.get("type") == "select":
+            current_blog_status = status_prop.get("select", {}).get("name")
+
+        # Extract stored webflow ID
+        webflow_id_prop = properties.get(webflow_id_property_name, {})
+        stored_webflow_id_on_notion = None
+        if webflow_id_prop.get("type") == "rich_text":
+            rich_text_list = webflow_id_prop.get("rich_text", [])
+            if rich_text_list:
+                stored_webflow_id_on_notion = "".join([text.get("plain_text", "") for text in rich_text_list if text])
+                if not stored_webflow_id_on_notion or not stored_webflow_id_on_notion.strip():
+                    stored_webflow_id_on_notion = None
 
         if current_blog_status == "Live":
             # Live pages are kept as-is
@@ -460,9 +506,18 @@ async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: 
 
                 response = get_webflow_client(silent=True).update_item(webflow_collection_id, stored_webflow_id_on_notion, update_payload)
                 if response:
-                    # Update status: "To sync" → "Update on sync"
+                    # Batch update status to "Update on sync" if needed
                     if current_blog_status == "To sync":
-                        await update_page_blog_status(page_id, blog_status_property_name, "Update on sync")
+                        await update_page_properties_batch(
+                            page_id,
+                            status_property_name=blog_status_property_name,
+                            new_status="Update on sync"
+                        )
+
+                    # Update cache after successful sync
+                    if sync_cache:
+                        sync_cache.update_cache(page_id, page_data, stored_webflow_id_on_notion)
+
                     return page_id, 0, 1, 0, 0, 0
                 else:
                     return page_id, 0, 0, 0, 0, 1
@@ -472,11 +527,23 @@ async def process_single_page(page_data: Dict[str, Any], webflow_collection_id: 
                 response = get_webflow_client(silent=True).create_item(webflow_collection_id, webflow_data_payload)
                 if response and response.get("id"):
                     new_webflow_id = response["id"]
-                    await update_webflow_id(page_id, new_webflow_id, property_name=webflow_id_property_name)
 
-                    # Update status: "To sync" → "Update on sync"
+                    # Batch update both webflow_id and status in a single API call
                     if current_blog_status == "To sync":
-                        await update_page_blog_status(page_id, blog_status_property_name, "Update on sync")
+                        await update_page_properties_batch(
+                            page_id,
+                            status_property_name=blog_status_property_name,
+                            new_status="Update on sync",
+                            webflow_id_property_name=webflow_id_property_name,
+                            webflow_id=new_webflow_id
+                        )
+                    else:
+                        await update_webflow_id(page_id, new_webflow_id, property_name=webflow_id_property_name)
+
+                    # Update cache after successful sync
+                    if sync_cache:
+                        sync_cache.update_cache(page_id, page_data, new_webflow_id)
+
                     return page_id, 1, 0, 0, 0, 0
                 else:
                     return page_id, 0, 0, 0, 0, 1
@@ -494,7 +561,8 @@ async def sync_to_webflow(notion_database_id: str = None,
                          blog_status_property_name: str = "Blog Status",
                          webflow_id_property_name: str = "Webflow ID",
                          force_update: bool = False,
-                         max_concurrent: int = 5
+                         max_concurrent: int = 5,
+                         use_cache: bool = True
                          ) -> Tuple[int, int, int, int, int]:
     """
     Sync Notion pages to Webflow CMS based on a 'Blog Status' property with optimized async processing.
@@ -507,6 +575,7 @@ async def sync_to_webflow(notion_database_id: str = None,
         webflow_id_property_name: Name of the Notion rich_text property storing the Webflow item ID (default: "Webflow ID").
         force_update: If True, attempts to update items even if status doesn't force it (e.g. "Live" items if modified).
         max_concurrent: Maximum number of concurrent page processing operations.
+        use_cache: If True, uses content hash caching to skip unchanged pages (default: True).
 
     Returns:
         Tuple of (created_count, updated_count, deleted_count, skipped_count, error_count)
@@ -560,8 +629,13 @@ async def sync_to_webflow(notion_database_id: str = None,
     except Exception:
         required_fields = []
 
-    # Pre-filter pages by status to avoid unnecessary processing
+    # Initialize sync cache if enabled
+    sync_cache = SyncCache() if use_cache else None
+
+    # Pre-filter pages by status and check cache to avoid unnecessary processing
+    # Extract status directly from page_data properties (eliminates N+1 query)
     pages_by_status = {"To sync": [], "Update on sync": [], "Don't sync": [], "Live": []}
+    cache_skipped_count = 0
 
     for page_data in pages_to_process:
         page_id = page_data.get("id")
@@ -570,11 +644,34 @@ async def sync_to_webflow(notion_database_id: str = None,
             continue
 
         try:
-            current_blog_status = await get_page_property(page_id, blog_status_property_name)
-            if current_blog_status in target_statuses_for_fetch:
+            # Extract status directly from page properties instead of making API call
+            properties = page_data.get("properties", {})
+            status_prop = properties.get(blog_status_property_name, {})
+
+            # Handle both status and select property types
+            current_blog_status = None
+            if status_prop.get("type") == "status":
+                status_obj = status_prop.get("status", {})
+                current_blog_status = status_obj.get("name")
+            elif status_prop.get("type") == "select":
+                select_obj = status_prop.get("select", {})
+                current_blog_status = select_obj.get("name")
+
+            if current_blog_status and current_blog_status in target_statuses_for_fetch:
+                # Check cache for "Update on sync" pages to skip unchanged content
+                if use_cache and sync_cache and current_blog_status == "Update on sync":
+                    if not sync_cache.should_process_page(page_id, page_data):
+                        # Page hasn't changed since last sync, skip it
+                        cache_skipped_count += 1
+                        skipped_count += 1
+                        continue
+
                 pages_by_status[current_blog_status].append(page_data)
         except Exception as e:
             error_count += 1
+
+    if use_cache and cache_skipped_count > 0:
+        print(f"⚡ Cache: Skipped {cache_skipped_count} unchanged pages")
 
     # Show what we're working with
     total_to_process = len(pages_by_status['To sync']) + len(pages_by_status['Update on sync'])
@@ -582,14 +679,37 @@ async def sync_to_webflow(notion_database_id: str = None,
         page_word = "page" if total_to_process == 1 else "pages"
         print(f"📄 Processing {total_to_process} {page_word}...")
 
-        # Show which pages are being processed
+        # Show which pages are being processed - extract from page_data directly
         sync_pages = pages_by_status["To sync"] + pages_by_status["Update on sync"]
         for page_data in sync_pages:
             page_id = page_data.get("id")
             if page_id:
                 try:
-                    page_title = await get_page_property(page_id, "Name") or await get_page_property(page_id, "Title") or f"Page {page_id[:8]}"
-                    current_status = await get_page_property(page_id, blog_status_property_name)
+                    # Extract title and status from page_data properties (no API calls)
+                    properties = page_data.get("properties", {})
+
+                    # Extract title from Name or Title property
+                    page_title = None
+                    for title_key in ["Name", "Title"]:
+                        if title_key in properties:
+                            title_prop = properties[title_key]
+                            if title_prop.get("type") == "title":
+                                title_array = title_prop.get("title", [])
+                                if title_array:
+                                    page_title = "".join([text.get("plain_text", "") for text in title_array if text])
+                                    break
+
+                    if not page_title:
+                        page_title = f"Page {page_id[:8]}"
+
+                    # Extract status
+                    status_prop = properties.get(blog_status_property_name, {})
+                    current_status = None
+                    if status_prop.get("type") == "status":
+                        current_status = status_prop.get("status", {}).get("name")
+                    elif status_prop.get("type") == "select":
+                        current_status = status_prop.get("select", {}).get("name")
+
                     action = "Creating" if current_status == "To sync" else "Updating"
                     print(f"   {action}: {page_title}")
                 except Exception:
@@ -635,7 +755,7 @@ async def sync_to_webflow(notion_database_id: str = None,
             async with semaphore:
                 return await process_single_page(
                     page_data, webflow_collection_id, webflow_id_map, required_fields,
-                    blog_status_property_name, webflow_id_property_name, field_mapping
+                    blog_status_property_name, webflow_id_property_name, field_mapping, sync_cache
                 )
 
         # Process pages concurrently
@@ -657,6 +777,10 @@ async def sync_to_webflow(notion_database_id: str = None,
 
     # Update last sync time
     new_sync_time = update_last_sync_time()
+
+    # Clean up sync cache
+    if sync_cache:
+        sync_cache.close()
 
     # Clean final summary
     if created_count > 0 or updated_count > 0 or deleted_count > 0:

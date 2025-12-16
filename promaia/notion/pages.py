@@ -12,6 +12,8 @@ import logging
 from promaia.notion.client import notion_client, ensure_default_client
 from promaia.utils.config import get_last_sync_time, get_sync_days_setting
 from notion_client.errors import APIResponseError
+from promaia.storage.block_cache import BlockCache
+from promaia.utils.rate_limiter import get_notion_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +84,15 @@ async def query_database(database_id: str, filter_condition=None, sort_condition
         query_params["start_cursor"] = start_cursor
     
     logger.debug(f"[query_database] Initial query_params for {database_id}: {json.dumps(query_params, indent=2)}")
+
+    # Use adaptive rate limiter
+    rate_limiter = get_notion_rate_limiter()
+    await rate_limiter.acquire()
+
     # Get the first page of results
     response = await client.databases.query(**query_params)
     results = response["results"]
     logger.debug(f"[query_database] Initial response for {database_id}: {len(results)} results. Has more: {response.get('has_more')}, Next cursor: {response.get('next_cursor')}")
-    
-    # Add rate limiting delay
-    await asyncio.sleep(NOTION_RATE_LIMIT_DELAY)
     
     # If the requested page_size was 1 (implying "get latest/top 1 after sort" by the caller),
     # and we got at least one result, we don't need to paginate further.
@@ -105,10 +109,10 @@ async def query_database(database_id: str, filter_condition=None, sort_condition
         logger.debug(f"[query_database] Pagination for {database_id} (Page: {page_count + 1}). Current results: {len(results)}")
         query_params["start_cursor"] = response["next_cursor"]
         logger.debug(f"[query_database] Querying {database_id} with new start_cursor: {query_params['start_cursor']}")
-        
-        # Add rate limiting delay between pagination requests
-        await asyncio.sleep(NOTION_RATE_LIMIT_DELAY)
-        
+
+        # Use adaptive rate limiter for pagination
+        await rate_limiter.acquire()
+
         response = await client.databases.query(**query_params)
         logger.debug(f"[query_database] Paginated response for {database_id}: {len(response.get('results', []))} new results. Has more: {response.get('has_more')}, Next cursor: {response.get('next_cursor')}")
         results.extend(response["results"])
@@ -422,11 +426,9 @@ async def get_pages_by_date_chunked(
             
             logger.info(f"Retrieved {len(chunk_pages)} pages from chunk {total_chunks}")
             all_pages.extend(chunk_pages)
-            
-            # Add delay between chunks to be respectful to the API
-            if len(chunk_pages) > 0:
-                await asyncio.sleep(NOTION_RATE_LIMIT_DELAY * 3)  # Longer delay between chunks
-            
+
+            # Rate limiting is handled by the adaptive rate limiter in query_database
+
             # If we hit the max pages limit for this chunk, log a warning and suggest smaller chunks
             if len(chunk_pages) >= max_pages_per_chunk:
                 logger.warning(f"Chunk {total_chunks} hit the max pages limit ({max_pages_per_chunk}). Consider using --chunk-days 1 for better rate limiting.")
@@ -559,20 +561,31 @@ async def get_page_title(page_id: str) -> str:
         logger.error(f"Error getting page title: {str(e)}")
         return f"Untitled {page_id[:8]}"
 
-async def get_block_content(block_id: str) -> List[Dict[str, Any]]:
+async def get_block_content(block_id: str, last_edited_time: Optional[str] = None, use_persistent_cache: bool = True) -> List[Dict[str, Any]]:
     """
     Fetch all blocks from a page or block including nested blocks.
-    
+
     Args:
         block_id: ID of the block or page (when called initially, this is the page_id)
-        
+        last_edited_time: Optional last edited timestamp for cache validation
+        use_persistent_cache: If True, uses persistent SQLite cache (default: True)
+
     Returns:
         List of block objects with their content
     """
-    # Check if we already have this block in the cache
+    # Check persistent cache first if enabled
+    if use_persistent_cache and last_edited_time:
+        persistent_cache = BlockCache()
+        cached_blocks = persistent_cache.get_blocks(block_id, last_edited_time)
+        if cached_blocks:
+            persistent_cache.close()
+            return cached_blocks
+        persistent_cache.close()
+
+    # Check in-memory cache
     if block_id in block_cache:
         return block_cache[block_id]
-    
+
     page_id_for_logging = block_id # Keep the initial block_id as page_id for logging
 
     blocks = []
@@ -686,13 +699,19 @@ async def get_block_content(block_id: str) -> List[Dict[str, Any]]:
     tasks = []
     for b in blocks: # renamed block to b to avoid conflict with the outer scope 'block' variable
         tasks.append(process_block(b, page_id_for_logging)) # Pass page_id_for_logging
-    
+
     if tasks:
         processed_blocks = await asyncio.gather(*tasks)
-    
-    # Cache the processed blocks
+
+    # Cache the processed blocks in memory
     block_cache[block_id] = processed_blocks
-    
+
+    # Cache in persistent storage if enabled
+    if use_persistent_cache and last_edited_time:
+        persistent_cache = BlockCache()
+        persistent_cache.set_blocks(block_id, last_edited_time, processed_blocks)
+        persistent_cache.close()
+
     return processed_blocks
 
 def clear_block_cache():
@@ -827,6 +846,68 @@ async def update_page_blog_status(page_id: str, status_property_name: str, new_s
         return True
     except Exception as e:
         logger.error(f"  ✗ Error updating '{status_property_name}' for page {page_id}: {str(e)}")
+        return False
+
+async def update_page_properties_batch(page_id: str,
+                                       status_property_name: Optional[str] = None,
+                                       new_status: Optional[str] = None,
+                                       webflow_id_property_name: Optional[str] = None,
+                                       webflow_id: Optional[str] = None) -> bool:
+    """
+    Update multiple properties of a Notion page in a single API call.
+    This is more efficient than making separate calls for each property.
+
+    Args:
+        page_id: ID of the Notion page
+        status_property_name: Name of the status property (if updating)
+        new_status: New status value (if updating status)
+        webflow_id_property_name: Name of the Webflow ID property (if updating)
+        webflow_id: Webflow item ID to store, or None/empty to clear (if updating)
+
+    Returns:
+        True if the update was successful, False otherwise.
+    """
+    try:
+        properties = {}
+
+        # Add status property if specified
+        if status_property_name and new_status:
+            properties[status_property_name] = {
+                "status": {
+                    "name": new_status
+                }
+            }
+
+        # Add webflow_id property if specified
+        if webflow_id_property_name:
+            if webflow_id and webflow_id.strip():
+                properties[webflow_id_property_name] = {
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": webflow_id
+                            }
+                        }
+                    ]
+                }
+            else:
+                # Clear the Webflow ID
+                properties[webflow_id_property_name] = {"rich_text": []}
+
+        if not properties:
+            logger.warning(f"No properties to update for page {page_id}")
+            return False
+
+        update_payload = {"properties": properties}
+
+        client = ensure_default_client()
+        await client.pages.update(page_id=page_id, **update_payload)
+
+        logger.info(f"  ✓ Batch updated properties for page {page_id}")
+        return True
+    except Exception as e:
+        logger.error(f"  ✗ Error batch updating properties for page {page_id}: {str(e)}")
         return False
 
 async def get_page_property(page_id: str, property_name: str) -> Any:
@@ -1100,12 +1181,10 @@ async def fetch_sub_page_content(page_id: str,
         }
     
     visited_pages.add(page_id)
-    
+
     try:
-        # Add rate limiting for sub-page fetching
-        if depth > 0:  # Don't delay for the top-level page
-            await asyncio.sleep(SUBPAGE_RATE_LIMIT_DELAY)
-        
+        # Rate limiting is handled by the adaptive rate limiter in API calls
+
         logger.debug(f"Fetching sub-page content: {page_id} (depth: {depth})")
         
         # Fetch page title
