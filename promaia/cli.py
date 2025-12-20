@@ -50,6 +50,9 @@ from promaia.cli.mail_commands import add_mail_commands
 # Import Gmail commands
 from promaia.cli.gmail_commands import add_gmail_commands
 
+# Import agent commands
+from promaia.cli.agent_commands import add_agent_commands
+
 # Import workspace commands
 from promaia.cli.workspace_commands import (
     add_workspace_commands, add_workspace_commands_to_existing_parser
@@ -363,6 +366,23 @@ def handle_edit_sync(args):
         
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
+
+async def handle_discord_bot(args):
+    """Handle discord-bot command to start the Promaia Discord bot."""
+    import asyncio
+    from promaia.discord.bot import run_bot
+
+    print(f"🤖 Starting Promaia Discord bot for workspace: {args.workspace}")
+    print("Press Ctrl+C to stop the bot")
+
+    try:
+        await run_bot(workspace=args.workspace, token=args.token)
+    except KeyboardInterrupt:
+        print("\n✅ Bot stopped")
+    except Exception as e:
+        print(f"❌ Error starting bot: {e}")
+        import traceback
+        traceback.print_exc()
 
 def handle_edit_status(args):
     """Handle edit status command"""
@@ -2879,6 +2899,9 @@ def main():
     # Add Gmail commands
     add_gmail_commands(subparsers)
 
+    # Add agent commands
+    add_agent_commands(subparsers)
+
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
     sync_parser.add_argument('--source', '-s', dest='sources', action='append',
@@ -3031,17 +3054,19 @@ def main():
     newsletter_send_parser.set_defaults(func=newsletter_sync_command)
     
     newsletter_test_parser = newsletter_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    newsletter_test_parser.add_argument("--email", action="append", help="Email address to send test to (can be used multiple times)")
     newsletter_test_parser.set_defaults(func=newsletter_test_command)
-    
+
     # Add 'news' alias for newsletter
     news_parser = subparsers.add_parser("news", help="Newsletter operations (alias for newsletter)")
     news_subparsers = news_parser.add_subparsers(dest="newsletter_action", required=True, help="Newsletter action")
-    
+
     news_send_parser = news_subparsers.add_parser("send", help="Send newsletters via Resend for eligible CMS pages")
     news_send_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (use with caution)")
     news_send_parser.set_defaults(func=newsletter_sync_command)
-    
+
     news_test_parser = news_subparsers.add_parser("test", help="Test newsletter generation without sending")
+    news_test_parser.add_argument("--email", action="append", help="Email address to send test to (can be used multiple times)")
     news_test_parser.set_defaults(func=newsletter_test_command)
     
 
@@ -3097,6 +3122,12 @@ def main():
     edit_status_parser = edit_subparsers.add_parser("status", help="Show sync status of local pages")
     edit_status_parser.add_argument("content_type", nargs="?", help="Content type to check status for (optional)")
     edit_status_parser.set_defaults(func=handle_edit_status)
+
+    # Discord bot command
+    discord_parser = subparsers.add_parser("discord-bot", help="Start Promaia Discord bot")
+    discord_parser.add_argument("--workspace", "-w", default="koii", help="Workspace to use for bot configuration")
+    discord_parser.add_argument("--token", help="Discord bot token (optional, will use credentials file if not provided)")
+    discord_parser.set_defaults(func=handle_discord_bot)
 
     args = parser.parse_args()
 
@@ -3256,6 +3287,21 @@ def main():
                 print_text(f"No function assigned to discord command: {args.discord_command}", style="red")
         else:
             print_text("Discord command requires a subcommand. Use 'maia discord --help' for options.", style="red")
+    elif args.command == "agent":
+        # Handle agent commands
+        if hasattr(args, 'agent_command') and args.agent_command:
+            if hasattr(args, 'func'):
+                asyncio.run(args.func(args))
+            else:
+                print_text(f"No function assigned to agent command: {args.agent_command}", style="red")
+        else:
+            print_text("Agent command requires a subcommand. Use 'maia agent --help' for options.", style="red")
+    elif args.command == "discord-bot":
+        # Handle Discord bot command
+        if hasattr(args, 'func'):
+            asyncio.run(args.func(args))
+        else:
+            print_text("Discord bot command not properly configured", style="red")
     else:
         parser.print_help()
 
