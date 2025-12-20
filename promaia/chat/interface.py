@@ -15,7 +15,7 @@ import shlex
 import logging
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.history import FileHistory, History
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
@@ -115,7 +115,8 @@ if os.getenv("OPENAI_API_KEY"):
 gemini_client = None
 if os.getenv("GOOGLE_API_KEY"):
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    gemini_client = genai.GenerativeModel('gemini-2.5-pro')
+    from promaia.ai.models import get_current_google_model
+    gemini_client = genai.GenerativeModel(get_current_google_model())
 
 current_api = get_api_preference()
 os.environ["API_TYPE"] = current_api
@@ -125,7 +126,62 @@ os.environ["API_TYPE"] = current_api
 # Create key bindings for intuitive chat input
 from prompt_toolkit.filters import Condition
 
-# Store partially typed input when Ctrl+E is pressed for edit mode
+
+class MessageOnlyHistory(History):
+    """
+    Custom history that wraps FileHistory but filters out slash commands.
+    Only shows actual user messages when navigating with up/down arrows.
+    """
+    def __init__(self, filename: str):
+        self.file_history = FileHistory(filename)
+        self._loaded = False
+        self._loaded_strings = []
+
+    async def load(self):
+        """Load history asynchronously."""
+        if not self._loaded:
+            # Load from file history and filter
+            self._loaded_strings = []
+            for entry in self.file_history.load_history_strings():
+                # Skip entries that are slash commands
+                if not entry.startswith('/'):
+                    self._loaded_strings.append(entry)
+            self._loaded = True
+
+        # Yield filtered entries
+        for entry in self._loaded_strings:
+            yield entry
+
+    def load_history_strings(self):
+        """Load history and filter out slash commands (synchronous version)."""
+        for entry in self.file_history.load_history_strings():
+            # Skip entries that are slash commands
+            if not entry.startswith('/'):
+                yield entry
+
+    def append_string(self, string: str):
+        """
+        Append a string to history (called by PromptSession).
+        This is the primary method that prompt_toolkit uses.
+        """
+        # Store everything in the underlying file history
+        self.file_history.append_string(string)
+        # If this is a message (not a command), add it to our loaded strings
+        if not string.startswith('/'):
+            if self._loaded:
+                self._loaded_strings.append(string)
+
+    def store_string(self, string: str):
+        """Store all entries (including commands) but only return non-commands on load."""
+        # Delegate to append_string for consistency
+        self.append_string(string)
+
+    def get_strings(self):
+        """Get all history strings (filtered)."""
+        return list(self.load_history_strings())
+
+
+# Store partially typed input when Ctrl+O is pressed for edit mode
 pending_input_text = None
 
 bindings = KeyBindings()
@@ -133,24 +189,39 @@ bindings = KeyBindings()
 @bindings.add('enter')
 def _(event):
     """Enter key sends the message/command."""
-    event.app.exit(result=event.app.current_buffer.text)
+    # Get the text from the buffer
+    text = event.app.current_buffer.text
+    # Manually append to history before exiting (since we're using custom exit)
+    if text.strip():  # Only save non-empty inputs
+        event.app.current_buffer.append_to_history()
+    # Exit with the text as result
+    event.app.exit(result=text)
 
 @bindings.add('c-j')
 def _(event):
     """Ctrl+J adds a new line. On many terminals, Shift+Enter sends Ctrl+J."""
     event.current_buffer.insert_text('\n')
 
-@bindings.add('c-e')
+@bindings.add('c-o')
 def _(event):
-    """Ctrl+E triggers edit mode, preserving any partially typed input."""
+    """Ctrl+O triggers edit mode, preserving any partially typed input."""
     global pending_input_text
     # Save current buffer text to restore after edit mode
     pending_input_text = event.app.current_buffer.text
     # Exit with /e command to trigger edit mode
     event.app.exit(result='/e')
 
+@bindings.add('c-l')
+def _(event):
+    """Ctrl+L triggers inline sync, preserving any partially typed input."""
+    global pending_input_text
+    # Save current buffer text to restore after sync
+    pending_input_text = event.app.current_buffer.text
+    # Exit with special /sync-inline command to trigger inline sync mode
+    event.app.exit(result='/sync-inline')
+
 session = PromptSession(
-    history=FileHistory('.chat_history'),
+    history=MessageOnlyHistory('.chat_history'),
     multiline=True,  # Keep multiline for editing capabilities
     key_bindings=bindings
 )
@@ -270,7 +341,8 @@ def get_current_model_name():
     elif current_api == "openai":
         return get_model_display_name("gpt-4o", "openai")
     elif current_api == "gemini":
-        model_id = GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06")
+        from promaia.ai.models import get_current_google_model
+        model_id = get_current_google_model()
         return get_model_display_name(model_id, "gemini")
     elif current_api == "llama":
         model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
@@ -284,10 +356,11 @@ def switch_model(target_model=None):
     from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS
     
     # Build available models dynamically
+    from promaia.ai.models import get_current_google_model
     available_models = {
         "1": ("anthropic", get_model_display_name(ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929"), "anthropic")),
         "2": ("openai", get_model_display_name("gpt-4o", "openai")), 
-        "3": ("gemini", get_model_display_name(GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06"), "gemini")),
+        "3": ("gemini", get_model_display_name(get_current_google_model(), "gemini")),
         "4": ("llama", get_model_display_name(os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest'), "llama"))
     }
     
@@ -400,6 +473,7 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail /queries", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
+    print_text("  Ctrl+L - Quick inline sync (all or specific databases)", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
@@ -426,6 +500,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail /queries", style="dim")
+    print_text("Keyboard shortcuts: Ctrl+O (edit context) • Ctrl+L (quick sync)", style="dim")
     print_text("")
 
 
@@ -463,7 +538,17 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
             )
             return response
         except Exception as e:
+            # Check if this is a connection error - don't retry these
+            error_str = str(e).lower()
+            is_connection_error = any(keyword in error_str for keyword in ['connection', 'network', 'timeout', 'unreachable', 'failed to connect'])
+
             debug_print(f"Anthropic API call failed on attempt {attempt + 1}: {e}")
+
+            if is_connection_error:
+                # Don't retry connection errors - fail fast
+                debug_print("Connection error detected - not retrying")
+                raise
+
             if attempt + 1 == max_retries:
                 return None
             time.sleep(2) # Wait before retrying
@@ -1800,9 +1885,14 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     # No applicable filters, add source as-is
                     # Note: Discord filters with __COMPLEX_EXPR__ are handled separately below
                     # and should not be added here to avoid duplication
-                    if source not in [s.split('.')[0] for s in processed_sources]:
+                    # Extract database name (before : or .) for deduplication
+                    source_db_name = source.split(':')[0].split('.')[0]
+                    existing_db_names = [s.split(':')[0].split('.')[0] for s in processed_sources]
+                    if source_db_name not in existing_db_names:
                         processed_sources.append(source)
                         debug_print(f"Using unfiltered source: {source}")
+                    else:
+                        debug_print(f"Skipping duplicate source: {source} (already have {source_db_name})")
 
         # Log final filter application
         if DEBUG_MODE and (source_specific_filters or global_filters):
@@ -2169,6 +2259,92 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             except Exception as e:
                 print_text(f"  ❌ {source_name}: Sync failed - {e}", style="bold red")
                 debug_print(f"Sync error for {source_name}: {e}")
+
+    async def inline_sync_databases(sync_args_str: str = None):
+        """
+        Inline sync with optional source specifications.
+
+        Args:
+            sync_args_str: Optional string like "-s stories:7 -s projects:60"
+                          If None or empty, syncs all databases in current context
+
+        Returns:
+            List of SyncResult objects, or None if sync failed
+        """
+        nonlocal initial_multi_source_data
+
+        from promaia.cli.database_commands import sync_database, parse_source_specs
+        from promaia.config.databases import get_database_manager
+        import shlex
+
+        db_manager = get_database_manager()
+
+        # Parse sync arguments if provided
+        sources_to_sync = []
+
+        if sync_args_str and sync_args_str.strip():
+            # Parse -s arguments: "-s stories:7 -s projects:60"
+            try:
+                args_list = shlex.split(sync_args_str)
+                i = 0
+                while i < len(args_list):
+                    if args_list[i] == '-s' and i + 1 < len(args_list):
+                        sources_to_sync.append(args_list[i + 1])
+                        i += 2
+                    else:
+                        i += 1
+
+                if not sources_to_sync:
+                    print_text("❌ Invalid sync arguments. Use: -s <source:days>", style="bold red")
+                    print_text("Example: -s stories:7 -s projects:60", style="dim")
+                    return None
+
+            except Exception as e:
+                print_text(f"❌ Error parsing sync arguments: {e}", style="bold red")
+                return None
+        else:
+            # Sync all databases in current context (same logic as /s command)
+            if context_state['sources']:
+                sources_to_sync = context_state['sources']
+            elif context_state.get('sql_query_content'):
+                sources_to_sync = list(context_state['sql_query_content'].keys())
+            elif context_state.get('initial_multi_source_data'):
+                sources_to_sync = list(context_state['initial_multi_source_data'].keys())
+            elif initial_multi_source_data:
+                sources_to_sync = list(initial_multi_source_data.keys())
+
+        if not sources_to_sync:
+            print_text("⚠️  No databases to sync.", style="bold yellow")
+            return None
+
+        # Create mock args for sync
+        class MockArgs:
+            def __init__(self):
+                self.force = False
+                self.days = None
+                self.start_date = None
+                self.end_date = None
+                self.date_range = None
+
+        mock_args = MockArgs()
+
+        # Parse source specifications
+        parsed_sources = parse_source_specs(sources_to_sync)
+
+        # Track results for summary
+        sync_results = []
+
+        # Sync each database
+        for source_spec in parsed_sources:
+            try:
+                result = await sync_database(source_spec, mock_args)
+                sync_results.append(result)
+            except Exception as e:
+                source_name = source_spec.get('qualified_name', source_spec.get('name', 'unknown'))
+                print_text(f"❌ Error syncing {source_name}: {e}", style="bold red")
+                debug_print(f"Inline sync error for {source_name}: {e}")
+
+        return sync_results if sync_results else None
 
     def edit_context():
         """CLI-style context editing interface."""
@@ -4282,14 +4458,31 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                                 break
                     elif workspace:
                         # If browsing a workspace, check if the selection belongs to that workspace
+                        # Handle both qualified names (workspace.db) and unqualified names (db)
                         if db_name.startswith(workspace + '.'):
                             should_include = True
+                        else:
+                            # Check if this is a database that belongs to the workspace but doesn't have the prefix
+                            # (e.g., "ds" database in "koii" workspace, or "dreamshare" in "koii")
+                            from promaia.config.databases import get_database_manager
+                            db_manager = get_database_manager()
+                            db_config = db_manager.get_database(db_name, workspace)
+                            if db_config and db_config.workspace == workspace:
+                                should_include = True
                     elif multiple_workspaces:
                         # If browsing multiple workspaces, check if selection belongs to any of them
                         for ws in multiple_workspaces:
                             if db_name.startswith(ws + '.'):
                                 should_include = True
                                 break
+                            else:
+                                # Check if database belongs to this workspace
+                                from promaia.config.databases import get_database_manager
+                                db_manager = get_database_manager()
+                                db_config = db_manager.get_database(db_name, ws)
+                                if db_config and db_config.workspace == ws:
+                                    should_include = True
+                                    break
                     
                     if should_include:
                         filtered_selections.append(sel)
@@ -5389,7 +5582,7 @@ The user will type `/send` to trigger the actual sending process.
     while True:
         try:
             global pending_input_text
-            # Check if there's pending input text from Ctrl+E (edit mode)
+            # Check if there's pending input text from Ctrl+O (edit mode)
             if pending_input_text:
                 user_input = session.prompt("You: ", style=style, default=pending_input_text)
                 pending_input_text = None  # Clear after using
@@ -5475,9 +5668,9 @@ The user will type `/send` to trigger the actual sending process.
                         print()
                         # Show the same detailed breakdown as when starting a new chat
                         print_welcome_message(
-                            query_command=context_state['query_command'], 
-                            total_pages=total_pages_loaded, 
-                            model_name=get_current_model_name(), 
+                            query_command=context_state['query_command'],
+                            total_pages=total_pages_loaded,
+                            model_name=get_current_model_name(),
                             source_breakdown=generate_source_breakdown(initial_multi_source_data)
                         )
                         # Save context log for sync-triggered update
@@ -5487,6 +5680,81 @@ The user will type `/send` to trigger the actual sending process.
                 except Exception as e:
                     print_text(f"Error syncing context databases: {e}", style="bold red")
                     debug_print(f"Sync error details: {e}")
+                continue
+
+            elif user_input.strip() == '/sync-inline':
+                # Handle inline sync triggered by Ctrl+L
+                try:
+                    from prompt_toolkit import prompt
+                    from prompt_toolkit.key_binding import KeyBindings as SyncKeyBindings
+
+                    # Create bindings for sync prompt
+                    sync_bindings = SyncKeyBindings()
+                    sync_cancelled = {'value': False}
+
+                    @sync_bindings.add('c-c')
+                    def handle_cancel(event):
+                        sync_cancelled['value'] = True
+                        event.app.exit(result='')
+
+                    # Show sync prompt
+                    print_text("\n⚡ Quick Sync", style="bold cyan")
+                    print_text("Press Enter to sync all in context, or type -s args (e.g., -s stories:7 -s projects:60)", style="dim")
+
+                    try:
+                        sync_input = prompt(
+                            "Sync: ",
+                            key_bindings=sync_bindings,
+                            default=""
+                        )
+
+                        if sync_cancelled['value']:
+                            print_text("Sync cancelled.", style="bold yellow")
+                            continue
+
+                        # Execute sync
+                        import asyncio
+                        print_text("Syncing...", style="cyan")
+
+                        sync_results = asyncio.run(inline_sync_databases(sync_input.strip() if sync_input else None))
+
+                        if sync_results:
+                            # Build summary message
+                            summary_parts = []
+                            for result in sync_results:
+                                if hasattr(result, 'database_name') and hasattr(result, 'pages_saved'):
+                                    db_name = result.database_name or 'unknown'
+                                    # Shorten database name for display
+                                    display_name = db_name.split('.')[-1] if '.' in db_name else db_name
+                                    new_count = result.pages_saved
+                                    summary_parts.append(f"{display_name} ({new_count} new)")
+
+                            if summary_parts:
+                                summary = "✅ Synced: " + ", ".join(summary_parts)
+                                print_text(summary, style="bold green")
+                            else:
+                                print_text("✅ Sync completed", style="bold green")
+
+                            # Wait 2 seconds to show summary
+                            import time
+                            time.sleep(2)
+
+                            # Reload context with new data
+                            if reload_context():
+                                print_text("Context reloaded with fresh data.", style="dim green")
+                        else:
+                            print_text("⚠️  Sync completed with no results.", style="dim yellow")
+
+                    except KeyboardInterrupt:
+                        print_text("\nSync cancelled.", style="bold yellow")
+                    except Exception as e:
+                        print_text(f"Sync error: {e}", style="bold red")
+                        debug_print(f"Inline sync error details: {e}")
+
+                except Exception as e:
+                    print_text(f"Error in inline sync: {e}", style="bold red")
+                    debug_print(f"Inline sync handler error: {e}")
+
                 continue
 
             elif user_input.strip().lower() == '/e':
@@ -6999,18 +7267,18 @@ The user will type `/send` when ready to send the email.
                     def regenerate_anthropic_response(updated_system_prompt):
                         """Regenerate Anthropic response with updated context."""
                         try:
-                            # Safety check for None or empty messages_for_api
-                            if not messages_for_api or len(messages_for_api) == 0:
-                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                            # Use current messages (not messages_for_api) to get fresh conversation state
+                            if not messages or len(messages) == 0:
+                                logger.warning("messages is None or empty, cannot regenerate")
                                 print_text("⚠️  Cannot regenerate response with empty message history", style="yellow")
                                 return None
 
                             if current_message_images:
-                                formatted_messages = _format_anthropic_with_images(messages_for_api, current_message_images)
+                                formatted_messages = _format_anthropic_with_images(messages, current_message_images)
                                 regen_response = call_anthropic_with_retry(anthropic_client, updated_system_prompt, formatted_messages, temperature=current_temperature)
                             else:
                                 clean_messages = []
-                                for msg in messages_for_api:
+                                for msg in messages:
                                     if msg and isinstance(msg, dict) and msg.get("content"):
                                         clean_msg = {"role": msg.get("role", "user"), "content": msg.get("content", "")}
                                         clean_messages.append(clean_msg)
@@ -7084,14 +7352,15 @@ The user will type `/send` when ready to send the email.
                     def regenerate_openai_response(updated_system_prompt):
                         """Regenerate OpenAI response with updated context."""
                         try:
-                            if not messages_for_api:
-                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                            # Use current messages (not messages_for_api) to get fresh conversation state
+                            if not messages:
+                                logger.warning("messages is None or empty, cannot regenerate")
                                 return None
 
                             if current_message_images:
-                                formatted_messages = _format_openai_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                                formatted_messages = _format_openai_with_images(updated_system_prompt, messages, current_message_images)
                             else:
-                                formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages_for_api
+                                formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages
 
                             regen_response = openai_client.chat.completions.create(
                                 model="gpt-4o",
@@ -7160,19 +7429,20 @@ The user will type `/send` when ready to send the email.
                     def regenerate_gemini_response(updated_system_prompt):
                         """Regenerate Gemini response with updated context."""
                         try:
-                            if not messages_for_api:
-                                logger.warning("messages_for_api is None or empty, cannot regenerate")
+                            # Use current messages (not messages_for_api) to get fresh conversation state
+                            if not messages:
+                                logger.warning("messages is None or empty, cannot regenerate")
                                 return None
 
                             if current_message_images:
-                                current_gemini_model, gemini_messages = _format_gemini_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                                current_gemini_model, gemini_messages = _format_gemini_with_images(updated_system_prompt, messages, current_message_images)
                                 regen_response = current_gemini_model.generate_content(
                                     contents=gemini_messages,
                                     generation_config={"temperature": current_temperature}
                                 )
                             else:
                                 formatted_prompt = f"System: {updated_system_prompt}\n\nConversation:\n"
-                                for msg in messages_for_api:
+                                for msg in messages:
                                     if msg and isinstance(msg, dict):
                                         formatted_prompt += f"{msg.get('role', 'user').title()}: {msg.get('content', '')}\n"
                                 regen_response = gemini_client.generate_content(formatted_prompt)
@@ -7290,14 +7560,15 @@ The user will type `/send` when ready to send the email.
                         def regenerate_llama_response(updated_system_prompt):
                             """Regenerate Llama response with updated context."""
                             try:
-                                if not messages_for_api:
-                                    logger.warning("messages_for_api is None or empty, cannot regenerate")
+                                # Use current messages (not messages_for_api) to get fresh conversation state
+                                if not messages:
+                                    logger.warning("messages is None or empty, cannot regenerate")
                                     return None
 
                                 if current_message_images:
-                                    formatted_messages = _format_llama_with_images(updated_system_prompt, messages_for_api, current_message_images)
+                                    formatted_messages = _format_llama_with_images(updated_system_prompt, messages, current_message_images)
                                 else:
-                                    formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages_for_api
+                                    formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages
 
                                 model_name = os.getenv("LLAMA_DEFAULT_MODEL", LLAMA_MODELS.get("llama3", "llama3:latest"))
                                 regen_response = llama_client.chat.completions.create(
@@ -7700,8 +7971,15 @@ The user will type `/send` when ready to send the email.
                     print_text("Error: No response generated.", style="bold red")
 
             except Exception as e:
-                print_text(f"Error calling {current_api} API: {e}", style="bold red")
-                debug_print(f"Full API error: {e}")
+                # Check for connection/network errors
+                error_str = str(e).lower()
+                if any(keyword in error_str for keyword in ['connection', 'network', 'timeout', 'unreachable', 'failed to connect']):
+                    print_text(f"\n❌ Connection Error: Unable to reach {current_api.title()} API", style="bold red")
+                    print_text(f"   Please check your internet connection and try again.", style="yellow")
+                    debug_print(f"Connection error details: {e}")
+                else:
+                    print_text(f"Error calling {current_api} API: {e}", style="bold red")
+                    debug_print(f"Full API error: {e}")
 
         except KeyboardInterrupt:
             # Save chat messages if in draft mode
@@ -7851,12 +8129,13 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
     """Format Gemini content with image support (base64 and File API)."""
     from promaia.utils.image_processing import format_image_for_gemini
     import google.generativeai as genai
+    from promaia.ai.models import get_current_google_model
 
     # Gemini uses a different approach - we need to create a model with system instruction
     # and then format the conversation with images
 
     current_gemini_model = genai.GenerativeModel(
-        model_name="gemini-2.5-pro",
+        model_name=get_current_google_model(),
         system_instruction=system_prompt
     )
 
