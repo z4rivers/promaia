@@ -28,28 +28,27 @@ def run_sync():
     try:
         # Get the project directory
         project_dir = Path(__file__).parent.absolute()
-        
-        # Activate virtual environment and run sync
-        venv_python = project_dir / "venv" / "bin" / "python"
-        
-        # Check if virtual environment exists
-        if not venv_python.exists():
-            # Fallback to system python3
-            python_cmd = "python3"
-            logger.warning(f"Virtual environment not found at {venv_python}, using system python3")
+
+        # Use the maia command directly from venv bin (avoids permission issues)
+        maia_cmd = project_dir / "venv" / "bin" / "maia"
+
+        if maia_cmd.exists():
+            cmd_str = str(maia_cmd)
+            logger.info(f"Using maia command: {cmd_str}")
         else:
-            python_cmd = str(venv_python)
-            logger.info(f"Using virtual environment: {venv_python}")
-        
+            # Fall back to trying maia in PATH
+            cmd_str = "maia"
+            logger.warning(f"Virtual environment maia not found, using system maia (may fail)")
+
         # Change to project directory
         os.chdir(project_dir)
-        
+
         # Run the sync command
         logger.info("Starting database sync...")
-        
+
         # Use the maia sync command which syncs all enabled databases
-        cmd = [python_cmd, "-m", "promaia", "sync"]
-        
+        cmd = [cmd_str, "sync"]
+
         result = subprocess.run(
             cmd,
             capture_output=True,
