@@ -12,6 +12,10 @@ credentials.json
 *secret*.json
 *key*.json
 
+# Main config file (contains workspace API keys)
+promaia.config.json
+!promaia.config.template.json
+
 # Gmail/OAuth specific credentials
 credentials/*/gmail_credentials.json
 **/gmail_credentials.json
@@ -23,6 +27,10 @@ credentials/*/gmail_token.json
 openai_key.txt
 anthropic_key.txt
 google_api_key.txt
+
+# MCP server configuration (may contain API keys)
+mcp_servers.json
+!mcp_servers.json.template
 
 # ============================================================================
 # DATABASES & DATA FILES
@@ -287,6 +295,9 @@ _create_system_prompt_debug.txt
 
 # Notion cache
 .notion-cache/
+
+# WebP conversion cache
+data/webp_conversion_cache.json
 
 # Anthropic project files
 .anthropic/
