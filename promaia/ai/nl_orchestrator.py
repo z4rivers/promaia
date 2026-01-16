@@ -1004,6 +1004,12 @@ Return ONLY the JSON object:"""
         main_table = schema.get('main_content_table', 'unified_content')
         important_tables = [main_table, 'gmail_content', 'generic_content', 'unified_content']
         
+        # Add workspace-specific notion tables (e.g., notion_koii_stories, notion_koii_journal)
+        # These contain the actual Notion properties
+        for table_name in schema['tables'].keys():
+            if table_name.startswith('notion_') and not table_name.endswith(('_schema', '_chunks', '_relations', '_select_options')):
+                important_tables.append(table_name)
+        
         for table, info in schema['tables'].items():
             if table in important_tables:
                 output += f"\n{table} ({info['row_count']} rows):\n"

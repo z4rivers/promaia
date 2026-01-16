@@ -171,7 +171,11 @@ IMPORTANT: The database_name column stores ONLY the nickname (e.g., "stories", n
 Return SQLite query that:
 - SELECTs: u.page_id, u.workspace, u.database_name, u.title, u.created_time (+ any other needed fields)
 - IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
-- JOINs specialized tables (gmail_content, etc.) for full-text search
+- JOINs workspace-specific tables (e.g., notion_koii_stories, notion_koii_journal) to access Notion properties
+  - These tables have columns like: date, status, _epics, assignee, etc. (see sample data above)
+  - Join on: JOIN notion_{workspace}_{database} n ON u.page_id = n.page_id
+  - Example: JOIN notion_koii_stories n ON u.page_id = n.page_id
+- Also JOINs specialized tables (gmail_content, generic_content) if needed
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
@@ -182,8 +186,9 @@ DATE FILTER RULES - CRITICAL DISTINCTION:
 
 **Which date column to use:**
 - For queries about CONTENT DATES (sprint dates, due dates, story dates):
-  → Use property date columns from metadata JSON: json_extract(g.metadata, '$.date.start')
-  → Example: "stories in current sprint", "tasks between X and Y", "stories due in april"
+  → Use the direct date column from workspace-specific table: n.date, n.due_date, etc.
+  → Look at the sample rows from notion_{workspace}_{database} tables to see which columns exist
+  → Example: "stories in current sprint" → use n.date from notion_koii_stories
   
 - For queries about SYNC/CREATION dates (when added to database):
   → Use u.created_time
@@ -192,15 +197,16 @@ DATE FILTER RULES - CRITICAL DISTINCTION:
 **How to apply date filters:**
 
 For CONTENT dates (sprints, deadlines, business dates):
-- Use: json_extract(g.metadata, '$.date.start') or json_extract(g.metadata, '$.due_date.start')
-- Check available property schemas to find the exact property name
-- If days_back provided: "AND json_extract(g.metadata, '$.date.start') >= date('now', '-N days')"
+- First JOIN the workspace-specific table to access properties
+- Then use the direct date column: n.date, n.due_date, n.publish_date, etc.
+- Check the sample rows above to see which date columns exist for each database
+- If days_back provided: "AND n.date >= date('now', '-N days')"
 - If start_date/end_date provided:
-  - start: "AND json_extract(g.metadata, '$.date.start') >= 'YYYY-MM-DD'"
-  - end: "AND json_extract(g.metadata, '$.date.start') <= 'YYYY-MM-DD'"
+  - start: "AND n.date >= 'YYYY-MM-DD'" or "AND n.date >= date('now', '-N days')"
+  - end: "AND n.date <= 'YYYY-MM-DD'"
 
 For SYNC dates (when content was added/created):
-- Use: u.created_time
+- Use: u.created_time (no need to join workspace table)
 - If days_back provided: "AND u.created_time >= date('now', '-N days')"
 - If start_date/end_date provided:
   - start: "AND u.created_time >= 'YYYY-MM-DD'"
@@ -211,23 +217,38 @@ For date ranges, always use >= for start and <= for end
 
 DATE FILTER EXAMPLES:
 
-CONTENT DATE FILTERING (use property date column):
-- "stories in current sprint between X and Y" → 
-  SQL: "AND json_extract(g.metadata, '$.date.start') >= date('now', '-7 days') AND json_extract(g.metadata, '$.date.start') <= '2026-04-30'"
-- "tasks due in april" → 
-  SQL: "AND json_extract(g.metadata, '$.date.start') <= '2026-04-30'"
-- "stories from january to march" → 
-  SQL: "AND json_extract(g.metadata, '$.date.start') >= '2026-01-01' AND json_extract(g.metadata, '$.date.start') <= '2026-03-31'"
+CONTENT DATE FILTERING (use workspace-specific table date column):
+- "stories in current sprint between X and Y" →
+  SQL: 
+  ```
+  SELECT u.page_id, u.workspace, u.database_name, u.title, n.date, n.status
+  FROM unified_content u
+  JOIN notion_koii_stories n ON u.page_id = n.page_id
+  WHERE u.database_name = 'stories'
+    AND n.date >= date('now', '-7 days')
+    AND n.date <= '2026-04-30'
+  ```
 
-SYNC DATE FILTERING (use created_time):
+- "stories with epic 'angl' due in april" →
+  SQL:
+  ```
+  SELECT u.page_id, u.workspace, u.database_name, u.title, n.date, n._epics
+  FROM unified_content u
+  JOIN notion_koii_stories n ON u.page_id = n.page_id
+  WHERE u.database_name = 'stories'
+    AND n._epics LIKE '%angl%'
+    AND n.date <= '2026-04-30'
+  ```
+
+SYNC DATE FILTERING (use created_time, no workspace join needed):
 - "pages created last 7 days" → 
-  SQL: "AND u.created_time >= date('now', '-7 days')"
+  SQL: "SELECT * FROM unified_content u WHERE u.created_time >= date('now', '-7 days')"
 - "recently synced stories" → 
-  SQL: "AND u.created_time >= date('now', '-7 days')"
+  SQL: "SELECT * FROM unified_content u WHERE u.database_name = 'stories' AND u.created_time >= date('now', '-7 days')"
 
-DEFAULT RULE: If the query mentions sprints, deadlines, "in X period", or business date ranges, use CONTENT dates (property date column). If it mentions "created", "synced", "added", use created_time.
+DEFAULT RULE: If the query mentions sprints, deadlines, "in X period", story properties, or business date ranges → use CONTENT dates from workspace table. If it mentions "created", "synced", "added" → use created_time.
 
-SQL only (no markdown):"""
+SQL only (no markdown, no triple backticks):"""
         
         if debug:
             print_text(f"\n📤 SQL Generation Prompt:", style="cyan")
