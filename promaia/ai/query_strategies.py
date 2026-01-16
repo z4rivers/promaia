@@ -173,6 +173,9 @@ Return SQLite query that:
 - IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
 - JOINs workspace-specific tables (e.g., notion_koii_stories, notion_koii_journal) to access Notion properties
   - These tables have columns like: date, status, _epics, assignee, etc. (see sample data above)
+  - IMPORTANT: Relation columns (e.g., _projects, _epics) store UUIDs like ["abc-123-def"], not text
+    - To filter by relation text, you need to know the UUID of the related page
+    - Check sample data to see UUID format in relation columns
   - Join pattern: JOIN notion_WORKSPACE_DATABASE n ON u.page_id = n.page_id
   - Example: JOIN notion_koii_stories n ON u.page_id = n.page_id
 - Also JOINs specialized tables (gmail_content, generic_content) if needed
