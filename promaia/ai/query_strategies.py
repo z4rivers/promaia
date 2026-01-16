@@ -179,10 +179,10 @@ Return SQLite query that:
 - LIMIT 1200
 
 DATE FILTER RULES:
-- If days_back is provided: use "AND u.created_time >= date('now', '-{days_back} days')"
+- If days_back is provided: use "AND u.created_time >= date('now', '-N days')" where N is the days_back value
 - If start_date and/or end_date are provided, use them for date ranges:
-  - start_date: "AND u.created_time >= '{start_date}'" or "AND u.created_time >= date('now', '-N days')"
-  - end_date: "AND u.created_time <= '{end_date}'" (can be a future date like '2026-04-30')
+  - start_date: "AND u.created_time >= 'YYYY-MM-DD'" or "AND u.created_time >= date('now', '-N days')"
+  - end_date: "AND u.created_time <= 'YYYY-MM-DD'" (can be a future date like '2026-04-30')
 - NEVER combine days_back with start_date/end_date - use one or the other
 - For date ranges, use >= for start and <= for end
 
