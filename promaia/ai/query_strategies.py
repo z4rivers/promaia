@@ -175,22 +175,57 @@ Return SQLite query that:
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
-- Applies date filters on created_time/email_date columns using the rules below
+- Applies date filters using the rules below - CRITICAL: distinguish between content dates vs sync dates
 - LIMIT 1200
 
-DATE FILTER RULES:
-- If days_back is provided: use "AND u.created_time >= date('now', '-N days')" where N is the days_back value
-- If start_date and/or end_date are provided, use them for date ranges:
-  - start_date: "AND u.created_time >= 'YYYY-MM-DD'" or "AND u.created_time >= date('now', '-N days')"
-  - end_date: "AND u.created_time <= 'YYYY-MM-DD'" (can be a future date like '2026-04-30')
-- NEVER combine days_back with start_date/end_date - use one or the other
-- For date ranges, use >= for start and <= for end
+DATE FILTER RULES - CRITICAL DISTINCTION:
+
+**Which date column to use:**
+- For queries about CONTENT DATES (sprint dates, due dates, story dates):
+  → Use property date columns from metadata JSON: json_extract(g.metadata, '$.date.start')
+  → Example: "stories in current sprint", "tasks between X and Y", "stories due in april"
+  
+- For queries about SYNC/CREATION dates (when added to database):
+  → Use u.created_time
+  → Example: "pages created last week", "recently synced content", "new entries"
+
+**How to apply date filters:**
+
+For CONTENT dates (sprints, deadlines, business dates):
+- Use: json_extract(g.metadata, '$.date.start') or json_extract(g.metadata, '$.due_date.start')
+- Check available property schemas to find the exact property name
+- If days_back provided: "AND json_extract(g.metadata, '$.date.start') >= date('now', '-N days')"
+- If start_date/end_date provided:
+  - start: "AND json_extract(g.metadata, '$.date.start') >= 'YYYY-MM-DD'"
+  - end: "AND json_extract(g.metadata, '$.date.start') <= 'YYYY-MM-DD'"
+
+For SYNC dates (when content was added/created):
+- Use: u.created_time
+- If days_back provided: "AND u.created_time >= date('now', '-N days')"
+- If start_date/end_date provided:
+  - start: "AND u.created_time >= 'YYYY-MM-DD'"
+  - end: "AND u.created_time <= 'YYYY-MM-DD'"
+
+NEVER combine days_back with start_date/end_date - use one or the other
+For date ranges, always use >= for start and <= for end
 
 DATE FILTER EXAMPLES:
-- Query: "last 7 days" → days_back: 7 → SQL: "AND u.created_time >= date('now', '-7 days')"
-- Query: "between a week ago and april 2026" → start_date: "date('now', '-7 days')", end_date: "2026-04-30" → SQL: "AND u.created_time >= date('now', '-7 days') AND u.created_time <= '2026-04-30'"
-- Query: "until april" → end_date: "2026-04-30" → SQL: "AND u.created_time <= '2026-04-30'"
-- Query: "from january to march" → start_date: "2026-01-01", end_date: "2026-03-31" → SQL: "AND u.created_time >= '2026-01-01' AND u.created_time <= '2026-03-31'"
+
+CONTENT DATE FILTERING (use property date column):
+- "stories in current sprint between X and Y" → 
+  SQL: "AND json_extract(g.metadata, '$.date.start') >= date('now', '-7 days') AND json_extract(g.metadata, '$.date.start') <= '2026-04-30'"
+- "tasks due in april" → 
+  SQL: "AND json_extract(g.metadata, '$.date.start') <= '2026-04-30'"
+- "stories from january to march" → 
+  SQL: "AND json_extract(g.metadata, '$.date.start') >= '2026-01-01' AND json_extract(g.metadata, '$.date.start') <= '2026-03-31'"
+
+SYNC DATE FILTERING (use created_time):
+- "pages created last 7 days" → 
+  SQL: "AND u.created_time >= date('now', '-7 days')"
+- "recently synced stories" → 
+  SQL: "AND u.created_time >= date('now', '-7 days')"
+
+DEFAULT RULE: If the query mentions sprints, deadlines, "in X period", or business date ranges, use CONTENT dates (property date column). If it mentions "created", "synced", "added", use created_time.
 
 SQL only (no markdown):"""
         
