@@ -4,35 +4,54 @@ Discord connector implementation for Maia.
 This module provides a Discord bot API connector that integrates with the existing
 Maia architecture for message synchronization and storage.
 """
+from __future__ import annotations
+
 import os
 import json
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
 from pathlib import Path
-
-try:
-    import discord
-    from discord.ext import commands
-except ImportError:
-    print("Discord integration requires discord.py")
-    print("Install with: pip install discord.py")
-    raise
 
 from .base import BaseConnector, QueryFilter, DateRangeFilter, SyncResult
 
+if TYPE_CHECKING:
+    import discord
+
 logger = logging.getLogger(__name__)
+
+# Lazy import for discord - only loaded when DiscordConnector is actually instantiated
+discord = None
+commands = None
+
+def _ensure_discord_imported():
+    """Ensure discord.py is imported. Raises ImportError if not available."""
+    global discord, commands
+    if discord is None:
+        try:
+            import discord as discord_module
+            from discord.ext import commands as commands_module
+            discord = discord_module
+            commands = commands_module
+        except ImportError:
+            raise ImportError(
+                "Discord integration requires discord.py\n"
+                "Install with: pip install discord.py"
+            )
 
 class DiscordConnector(BaseConnector):
     """Discord bot API connector for message synchronization."""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        
+
+        # Ensure discord.py is available before proceeding
+        _ensure_discord_imported()
+
         self.server_id = config.get("database_id")  # Use server_id as database_id for consistency
         self.workspace = config.get("workspace", "koii")
-        
+
         # Bot configuration
         self.bot_token = config.get("bot_token")
         self.intents = discord.Intents.default()

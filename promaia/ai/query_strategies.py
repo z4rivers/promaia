@@ -113,8 +113,11 @@ class SQLQueryStrategy(QueryStrategy):
         intent_line = f"Goal: {intent['goal']}"
         if intent.get('search_terms'):
             intent_line += f" | Terms: {', '.join(intent.get('search_terms', []))}"
-        if intent.get('date_filter', {}).get('description', 'none') != 'none':
-            intent_line += f" | Date: {intent.get('date_filter', {}).get('description')}"
+        
+        # Handle date filter display
+        date_filter = intent.get('date_filter', {})
+        if date_filter.get('description') and date_filter.get('description') != 'none':
+            intent_line += f" | Date: {date_filter.get('description')}"
         
         # Extract workspace and normalize database names from qualified names
         target_workspaces = set()
@@ -172,8 +175,22 @@ Return SQLite query that:
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
-- Applies date filters on created_time/email_date columns
+- Applies date filters on created_time/email_date columns using the rules below
 - LIMIT 1200
+
+DATE FILTER RULES:
+- If days_back is provided: use "AND u.created_time >= date('now', '-{days_back} days')"
+- If start_date and/or end_date are provided, use them for date ranges:
+  - start_date: "AND u.created_time >= '{start_date}'" or "AND u.created_time >= date('now', '-N days')"
+  - end_date: "AND u.created_time <= '{end_date}'" (can be a future date like '2026-04-30')
+- NEVER combine days_back with start_date/end_date - use one or the other
+- For date ranges, use >= for start and <= for end
+
+DATE FILTER EXAMPLES:
+- Query: "last 7 days" → days_back: 7 → SQL: "AND u.created_time >= date('now', '-7 days')"
+- Query: "between a week ago and april 2026" → start_date: "date('now', '-7 days')", end_date: "2026-04-30" → SQL: "AND u.created_time >= date('now', '-7 days') AND u.created_time <= '2026-04-30'"
+- Query: "until april" → end_date: "2026-04-30" → SQL: "AND u.created_time <= '2026-04-30'"
+- Query: "from january to march" → start_date: "2026-01-01", end_date: "2026-03-31" → SQL: "AND u.created_time >= '2026-01-01' AND u.created_time <= '2026-03-31'"
 
 SQL only (no markdown):"""
         

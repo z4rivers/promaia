@@ -39,13 +39,67 @@ def block_to_html(block: Dict[str, Any]) -> str:
             
         elif block_type == "bulleted_list_item":
             text = format_rich_text_html(content.get("rich_text", []))
-            # We'll handle list grouping in the page_to_html function
-            html_output = f"<li>{text}</li>\n"
-            
+            html_output = f"<li>{text}"
+
+            # Process children (can be nested lists, callouts, or other blocks)
+            if block.get("children"):
+                # Separate list items from other content
+                nested_items = []
+                other_children = []
+                for child in block["children"]:
+                    child_type = child.get("type", "")
+                    if child_type in ["bulleted_list_item", "numbered_list_item"]:
+                        nested_items.append(child)
+                    else:
+                        other_children.append(child)
+
+                # Process non-list children first (like callouts)
+                for child in other_children:
+                    html_output += "\n" + block_to_html(child)
+
+                # Wrap nested list items in appropriate list tags
+                if nested_items:
+                    # Determine nested list type from first item
+                    first_type = nested_items[0].get("type", "")
+                    nested_list_tag = "ul" if first_type == "bulleted_list_item" else "ol"
+                    html_output += f"\n<{nested_list_tag}>\n"
+                    for child in nested_items:
+                        html_output += block_to_html(child)
+                    html_output += f"</{nested_list_tag}>\n"
+
+            html_output += "</li>\n"
+
         elif block_type == "numbered_list_item":
             text = format_rich_text_html(content.get("rich_text", []))
-            # We'll handle list grouping in the page_to_html function
-            html_output = f"<li>{text}</li>\n"
+            html_output = f"<li>{text}"
+
+            # Process children (can be nested lists, callouts, or other blocks)
+            if block.get("children"):
+                # Separate list items from other content
+                nested_items = []
+                other_children = []
+                for child in block["children"]:
+                    child_type = child.get("type", "")
+                    if child_type in ["bulleted_list_item", "numbered_list_item"]:
+                        nested_items.append(child)
+                    else:
+                        other_children.append(child)
+
+                # Process non-list children first (like callouts)
+                for child in other_children:
+                    html_output += "\n" + block_to_html(child)
+
+                # Wrap nested list items in appropriate list tags
+                if nested_items:
+                    # Determine nested list type from first item
+                    first_type = nested_items[0].get("type", "")
+                    nested_list_tag = "ul" if first_type == "bulleted_list_item" else "ol"
+                    html_output += f"\n<{nested_list_tag}>\n"
+                    for child in nested_items:
+                        html_output += block_to_html(child)
+                    html_output += f"</{nested_list_tag}>\n"
+
+            html_output += "</li>\n"
             
         elif block_type == "to_do":
             text = format_rich_text_html(content.get("rich_text", []))
@@ -85,8 +139,18 @@ def block_to_html(block: Dict[str, Any]) -> str:
             emoji = content.get("icon", {}).get("emoji", "")
             html_output = f"""<div class="callout">
                 <div class="callout-emoji">{emoji}</div>
-                <div class="callout-text">{text}</div>
+                <div class="callout-text">{text}"""
+
+            # Process children if they exist
+            if block.get("children"):
+                for child in block["children"]:
+                    html_output += block_to_html(child)
+
+            html_output += """</div>
             </div>\n"""
+
+            # Return early since we already processed children
+            return html_output
             
         elif block_type == "code":
             text = "".join([
@@ -196,7 +260,7 @@ def block_to_html(block: Dict[str, Any]) -> str:
         html_output = f"<!-- Error processing {block_type} block: {str(e)} -->\n"
     
     # Process children blocks if they exist (and weren't already processed above)
-    if block.get("children") and block_type not in ["toggle", "column_list", "table"]:
+    if block.get("children") and block_type not in ["toggle", "column_list", "table", "callout", "bulleted_list_item", "numbered_list_item"]:
         for child in block["children"]:
             html_output += block_to_html(child)
             

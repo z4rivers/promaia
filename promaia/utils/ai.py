@@ -121,6 +121,10 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
             "input_cost_per_million": 3.00,
             "output_cost_per_million": 15.00
         },
+        "claude-opus-4.5": {
+            "input_cost_per_million": 5.00,
+            "output_cost_per_million": 25.00
+        },
         "claude-opus-4": {
             "input_cost_per_million": 15.00,
             "output_cost_per_million": 75.00
@@ -132,6 +136,10 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
         "gpt-4o": {
             "input_cost_per_million": 2.50,
             "output_cost_per_million": 10.00
+        },
+        "gemini-3-flash": {
+            "input_cost_per_million": 0.50,
+            "output_cost_per_million": 3.00
         },
         "gemini-2.5-pro-short": {
             "input_cost_per_million": 1.25,
@@ -149,6 +157,8 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
     
     # Map model names to pricing keys
     model_mapping = {
+        "claude-opus-4-5-20251101": "claude-opus-4.5",
+        "claude-opus-4-5-20250514": "claude-opus-4.5",
         "claude-opus-4-1-20250805": "claude-opus-4",
         "claude-opus-4-20250514": "claude-opus-4",
         "claude-sonnet-4-20250514": "claude-sonnet-4",

@@ -108,7 +108,15 @@ def markdown_to_html(markdown_text: str) -> str:
             if in_list:
                 html_lines.append(f'</{in_list}>')
                 in_list = False
-            html_lines.append(f'<p>{format_inline_markdown(line)}</p>')
+
+            # Pass through HTML tags (callouts and nested lists are already formatted as HTML)
+            if line.strip().startswith('<div') or line.strip().startswith('</div>') or \
+               line.strip().startswith('<li') or line.strip().startswith('</li>') or \
+               line.strip().startswith('<ul>') or line.strip().startswith('</ul>') or \
+               line.strip().startswith('<ol>') or line.strip().startswith('</ol>'):
+                html_lines.append(line)
+            else:
+                html_lines.append(f'<p>{format_inline_markdown(line)}</p>')
     
     # Close any open lists
     if in_list:
@@ -120,33 +128,34 @@ def markdown_to_html(markdown_text: str) -> str:
 def format_inline_markdown(text: str) -> str:
     """
     Format inline markdown elements like bold, italic, links, and code.
-    
+
     Args:
         text: Text with inline markdown
-        
+
     Returns:
         HTML-formatted text
     """
-    # Handle images: ![alt](url)
+    # Handle images: ![alt](url) - must be before links
     text = re.sub(r'!\[([^\]]*)\]\(([^\)]+)\)', r'<img src="\2" alt="\1" />', text)
-    
-    # Handle links: [text](url)
-    text = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', text)
-    
+
+    # Handle links: [text](url) including those with nested brackets like [[1]]
+    # Match the brackets and everything inside, including nested brackets
+    text = re.sub(r'\[(.+?)\]\(([^\)]+)\)', r'<a href="\2" style="color: #007acc; text-decoration: none;">\1</a>', text)
+
     # Handle bold: **text** or __text__
     text = re.sub(r'\*\*([^\*]+)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__([^_]+)__', r'<strong>\1</strong>', text)
-    
+
     # Handle italic: *text* or _text_
     text = re.sub(r'\*([^\*]+)\*', r'<em>\1</em>', text)
     text = re.sub(r'_([^_]+)_', r'<em>\1</em>', text)
-    
+
     # Handle strikethrough: ~~text~~
     text = re.sub(r'~~([^~]+)~~', r'<del>\1</del>', text)
-    
+
     # Handle inline code: `code`
     text = re.sub(r'`([^`]+)`', lambda m: f'<code>{escape_html(m.group(1))}</code>', text)
-    
+
     return text
 
 def create_simple_newsletter_html(
@@ -183,9 +192,7 @@ def create_simple_newsletter_html(
     header_image_html = ""
     if header_image_url:
         header_image_html = f'''
-        <div style="position: relative; width: 100%; padding-bottom: 66.67%; margin: 0 0 20px 0; overflow: hidden; border-radius: 8px;">
-            <img src="{header_image_url}" alt="Header Image" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block;" />
-        </div>
+        <img src="{header_image_url}" alt="Header Image" style="width: 100%; max-width: 600px; height: auto; display: block; margin: 0 0 24px 0; border-radius: 8px;" />
         '''
     
     # Build subtitle section if provided
@@ -209,15 +216,33 @@ def create_simple_newsletter_html(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{escape_html(title)}</title>
+    <style>
+        /* Force all list items to use filled bullets */
+        ul {{ list-style-type: disc; }}
+        ul ul {{ list-style-type: disc; }}
+        ul ul ul {{ list-style-type: disc; }}
+
+        /* Reduce indentation for nested lists */
+        ul, ol {{
+            padding-left: 20px;
+            margin: 8px 0;
+        }}
+
+        /* Ensure list items have proper spacing */
+        li {{
+            margin: 4px 0;
+            padding-left: 4px;
+        }}
+    </style>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #ffffff;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 40px 30px;">
         {header_image_html}
-        
+
         <h1 style="font-size: 28px; font-weight: 600; color: #1a1a1a; margin: 0 0 10px 0; line-height: 1.3;">{escape_html(title)}</h1>
-        
+
         {subtitle_html}
-        
+
         <div style="color: #333; font-size: 16px; line-height: 1.6; margin: 20px 0;">
             {content_html}
         </div>
@@ -237,6 +262,45 @@ def create_simple_newsletter_html(
     
     return html_email
 
+
+def format_rich_text_for_email(rich_text: List[Dict[str, Any]]) -> str:
+    """
+    Format Notion rich text array as HTML for emails.
+
+    Args:
+        rich_text: Array of Notion rich text objects
+
+    Returns:
+        HTML formatted text with inline styles
+    """
+    if not rich_text:
+        return ""
+
+    html_parts = []
+    for text_obj in rich_text:
+        if not text_obj or "plain_text" not in text_obj:
+            continue
+
+        text = escape_html(text_obj["plain_text"])
+        annotations = text_obj.get("annotations", {})
+
+        # Apply HTML formatting based on annotations
+        if annotations.get("bold"):
+            text = f"<strong>{text}</strong>"
+        if annotations.get("italic"):
+            text = f"<em>{text}</em>"
+        if annotations.get("strikethrough"):
+            text = f"<del>{text}</del>"
+        if annotations.get("code"):
+            text = f"<code>{text}</code>"
+
+        # Handle links
+        if text_obj.get("href"):
+            text = f'<a href="{text_obj["href"]}" style="color: #007acc; text-decoration: none;">{text}</a>'
+
+        html_parts.append(text)
+
+    return "".join(html_parts)
 
 def notion_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
     """
@@ -311,9 +375,130 @@ def notion_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
         elif block_type == "paragraph":
             markdown_parts.append(f"\n{text_content}\n")
         elif block_type == "bulleted_list_item":
-            markdown_parts.append(f"- {text_content}\n")
+            # Check for nested items or callouts
+            if block.get("children"):
+                # Output as HTML for proper nesting support
+                list_html = f"<li>{text_content}"
+
+                # Process nested children (can be list items or callouts)
+                nested_items = []
+                nested_callouts = []
+                for child in block["children"]:
+                    if not child:
+                        continue
+                    child_type = child.get("type", "")
+                    if child_type in ["bulleted_list_item", "numbered_list_item"]:
+                        nested_items.append(child)
+                    elif child_type == "callout":
+                        nested_callouts.append(child)
+
+                # Add nested callouts first
+                if nested_callouts:
+                    for callout_child in nested_callouts:
+                        callout_content = callout_child.get("callout", {})
+                        icon_obj = callout_content.get("icon") or {}
+                        emoji = icon_obj.get("emoji", "💡") if isinstance(icon_obj, dict) else "💡"
+                        callout_rich_text = callout_content.get("rich_text", [])
+                        callout_text = format_rich_text_for_email(callout_rich_text)
+
+                        # Process callout children (multi-paragraph callouts)
+                        if callout_child.get("children"):
+                            callout_child_parts = [callout_text] if callout_text else []
+                            for callout_grandchild in callout_child.get("children", []):
+                                if not callout_grandchild:
+                                    continue
+                                gc_type = callout_grandchild.get("type", "")
+                                gc_content = callout_grandchild.get(gc_type, {})
+                                gc_rich_text = gc_content.get("rich_text", [])
+                                gc_text = format_rich_text_for_email(gc_rich_text)
+                                if gc_text:
+                                    callout_child_parts.append(gc_text)
+                            callout_text = "<br><br>".join(callout_child_parts)
+
+                        # Output inline callout within list item
+                        list_html += f'''
+<div style="border: 1px solid #1a1a1a; border-radius: 8px; padding: 12px; margin: 8px 0; display: block;">
+    <span style="font-size: 1.2em; margin-right: 8px;">{emoji}</span>{callout_text}
+</div>'''
+
+                # Wrap nested list items in proper list tags
+                if nested_items:
+                    nested_list_tag = "ul" if nested_items[0].get("type") == "bulleted_list_item" else "ol"
+                    list_html += f"\n<{nested_list_tag}>\n"
+                    for child in nested_items:
+                        child_content = child.get(child.get("type", ""), {})
+                        child_rich_text = child_content.get("rich_text", [])
+                        child_text = "".join([t.get("plain_text", "") for t in child_rich_text if t])
+                        list_html += f"<li>{child_text}</li>\n"
+                    list_html += f"</{nested_list_tag}>\n"
+
+                list_html += "</li>\n"
+                markdown_parts.append(list_html)
+            else:
+                markdown_parts.append(f"- {text_content}\n")
+
         elif block_type == "numbered_list_item":
-            markdown_parts.append(f"1. {text_content}\n")
+            # Check for nested items or callouts
+            if block.get("children"):
+                # Output as HTML for proper nesting support
+                list_html = f"<li>{text_content}"
+
+                # Process nested children (can be list items or callouts)
+                nested_items = []
+                nested_callouts = []
+                for child in block["children"]:
+                    if not child:
+                        continue
+                    child_type = child.get("type", "")
+                    if child_type in ["bulleted_list_item", "numbered_list_item"]:
+                        nested_items.append(child)
+                    elif child_type == "callout":
+                        nested_callouts.append(child)
+
+                # Add nested callouts first
+                if nested_callouts:
+                    for callout_child in nested_callouts:
+                        callout_content = callout_child.get("callout", {})
+                        icon_obj = callout_content.get("icon") or {}
+                        emoji = icon_obj.get("emoji", "💡") if isinstance(icon_obj, dict) else "💡"
+                        callout_rich_text = callout_content.get("rich_text", [])
+                        callout_text = format_rich_text_for_email(callout_rich_text)
+
+                        # Process callout children (multi-paragraph callouts)
+                        if callout_child.get("children"):
+                            callout_child_parts = [callout_text] if callout_text else []
+                            for callout_grandchild in callout_child.get("children", []):
+                                if not callout_grandchild:
+                                    continue
+                                gc_type = callout_grandchild.get("type", "")
+                                gc_content = callout_grandchild.get(gc_type, {})
+                                gc_rich_text = gc_content.get("rich_text", [])
+                                gc_text = format_rich_text_for_email(gc_rich_text)
+                                if gc_text:
+                                    callout_child_parts.append(gc_text)
+                            callout_text = "<br><br>".join(callout_child_parts)
+
+                        # Output inline callout within list item
+                        list_html += f'''
+<div style="border: 1px solid #1a1a1a; border-radius: 8px; padding: 12px; margin: 8px 0; display: block;">
+    <span style="font-size: 1.2em; margin-right: 8px;">{emoji}</span>{callout_text}
+</div>'''
+
+                # Wrap nested list items in proper list tags
+                if nested_items:
+                    nested_list_tag = "ul" if nested_items[0].get("type") == "bulleted_list_item" else "ol"
+                    list_html += f"\n<{nested_list_tag}>\n"
+                    for child in nested_items:
+                        child_content = child.get(child.get("type", ""), {})
+                        child_rich_text = child_content.get("rich_text", [])
+                        child_text = "".join([t.get("plain_text", "") for t in child_rich_text if t])
+                        list_html += f"<li>{child_text}</li>\n"
+                    list_html += f"</{nested_list_tag}>\n"
+
+                list_html += "</li>\n"
+                markdown_parts.append(list_html)
+            else:
+                markdown_parts.append(f"1. {text_content}\n")
         elif block_type == "quote":
             markdown_parts.append(f"\n> {text_content}\n")
         elif block_type == "code":
@@ -321,6 +506,48 @@ def notion_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
             markdown_parts.append(f"\n```{language}\n{text_content}\n```\n")
         elif block_type == "divider":
             markdown_parts.append("\n---\n")
+        elif block_type == "callout":
+            # Handle callouts with emoji - output as HTML directly for emails
+            icon_obj = content.get("icon") or {}
+            emoji = icon_obj.get("emoji", "💡") if isinstance(icon_obj, dict) else "💡"
+
+            # Build full callout content with children
+            callout_lines = []
+            if text_content and text_content.strip():
+                callout_lines.append(text_content)
+
+            # Process children if they exist
+            if block.get("children"):
+                for child in block["children"]:
+                    if not child:
+                        continue
+                    child_type = child.get("type", "")
+                    if not child_type:
+                        continue
+                    child_content = child.get(child_type) or {}
+                    if not isinstance(child_content, dict):
+                        continue
+                    child_rich_text = child_content.get("rich_text") or []
+                    child_text = "".join([t.get("plain_text", "") for t in child_rich_text if t])
+                    if child_text and child_text.strip():
+                        callout_lines.append(child_text)
+
+            # Only create callout if we have content
+            if callout_lines:
+                # Join all lines and format as inline-styled HTML for emails
+                callout_html = f'''<div style="border: 1px solid #1a1a1a; border-radius: 8px; padding: 16px; margin: 16px 0; display: block;">
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <span style="font-size: 1.2em; margin-right: 8px;">{emoji}</span>{callout_lines[0]}'''
+
+                # Add remaining lines as separate paragraphs within the callout
+                if len(callout_lines) > 1:
+                    for line in callout_lines[1:]:
+                        callout_html += f'<br><br>{line}'
+
+                callout_html += '''</div>
+                </div>'''
+
+                markdown_parts.append(f"\n{callout_html}\n")
         elif block_type == "image":
             # Handle images
             image_url = ""
@@ -328,13 +555,13 @@ def notion_blocks_to_markdown(blocks: List[Dict[str, Any]]) -> str:
                 image_url = content.get("external", {}).get("url", "")
             elif content.get("type") == "file":
                 image_url = content.get("file", {}).get("url", "")
-            
+
             if image_url:
                 caption = ""
                 if content.get("caption"):
                     caption_parts = [t.get("plain_text", "") for t in content.get("caption", [])]
                     caption = "".join(caption_parts)
-                
+
                 markdown_parts.append(f"\n![{caption}]({image_url})\n")
         else:
             # Default formatting for other block types

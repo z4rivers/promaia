@@ -325,10 +325,10 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     source_windows.append(spacer_window)
                 
                 if entry_group == 'databases':
-                    header_text = "📄 Regular Databases:"
+                    header_text = "📄 Regular Sources:"
                 else:
-                    # For Discord groups, capitalize the server name nicely
-                    header_text = f"💬 {entry_group.title()}:"
+                    # For Discord groups, use consistent labeling
+                    header_text = "💬 Discord Sources:"
                 
                 # Create header window (non-focusable)
                 header_window = Window(

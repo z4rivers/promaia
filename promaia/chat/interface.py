@@ -49,6 +49,8 @@ DEBUG_MODE = os.getenv("MAIA_DEBUG", "0") == "1"
 
 # Configuration file for API preferences
 API_PREFERENCE_FILE = os.path.join(os.path.expanduser("~"), ".maia_api_preference")
+# Configuration file for browser selection preferences
+BROWSER_PREFERENCE_FILE = os.path.join(os.path.expanduser("~"), ".maia_browser_selection")
 
 
 def format_email_preview(body: str, attachments: list, max_body_length: int = 400) -> str:
@@ -84,25 +86,57 @@ def format_email_preview(body: str, attachments: list, max_body_length: int = 40
 # --- API Client Initialization ---
 
 def get_api_preference():
-    """Get the saved API preference."""
+    """Get the saved API preference and model ID."""
     try:
         if os.path.exists(API_PREFERENCE_FILE):
             with open(API_PREFERENCE_FILE, 'r') as f:
-                api_type = f.read().strip()
+                content = f.read().strip()
+                lines = content.split('\n')
+                api_type = lines[0] if lines else "anthropic"
+                model_id = lines[1] if len(lines) > 1 else None
+
                 if api_type in ["anthropic", "openai", "gemini", "llama"]:
+                    # Set the model ID in environment if available
+                    if model_id:
+                        os.environ["SELECTED_MODEL_ID"] = model_id
                     return api_type
     except Exception as e:
         debug_print(f"Error reading API preference: {str(e)}")
     return "anthropic"
 
-def save_api_preference(api_type):
-    """Save the API preference."""
+def save_api_preference(api_type, model_id=None):
+    """Save the API preference and optionally the model ID."""
     try:
         with open(API_PREFERENCE_FILE, 'w') as f:
             f.write(api_type)
-        debug_print(f"API preference saved: {api_type}")
+            if model_id:
+                f.write(f'\n{model_id}')
+        debug_print(f"API preference saved: {api_type}" + (f" (model: {model_id})" if model_id else ""))
     except Exception as e:
         debug_print(f"Error saving API preference: {str(e)}")
+
+def get_browser_selection():
+    """Get the saved browser selection (selected sources)."""
+    try:
+        if os.path.exists(BROWSER_PREFERENCE_FILE):
+            with open(BROWSER_PREFERENCE_FILE, 'r') as f:
+                content = f.read().strip()
+                if content:
+                    # Sources are stored one per line
+                    return [line.strip() for line in content.split('\n') if line.strip()]
+    except Exception as e:
+        debug_print(f"Error reading browser selection: {str(e)}")
+    return None
+
+def save_browser_selection(sources):
+    """Save the browser selection (selected sources)."""
+    try:
+        with open(BROWSER_PREFERENCE_FILE, 'w') as f:
+            if sources:
+                f.write('\n'.join(sources))
+        debug_print(f"Browser selection saved: {len(sources)} sources")
+    except Exception as e:
+        debug_print(f"Error saving browser selection: {str(e)}")
 
 anthropic_client = None
 if os.getenv("ANTHROPIC_API_KEY"):
@@ -115,8 +149,13 @@ if os.getenv("OPENAI_API_KEY"):
 gemini_client = None
 if os.getenv("GOOGLE_API_KEY"):
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    from promaia.ai.models import get_current_google_model
-    gemini_client = genai.GenerativeModel(get_current_google_model())
+    from promaia.ai.models import get_current_google_model, GOOGLE_MODELS
+    # Use selected model ID if available, otherwise use default
+    selected_model = os.getenv("SELECTED_MODEL_ID")
+    if selected_model and "gemini" in selected_model.lower():
+        gemini_client = genai.GenerativeModel(selected_model)
+    else:
+        gemini_client = genai.GenerativeModel(get_current_google_model())
 
 current_api = get_api_preference()
 os.environ["API_TYPE"] = current_api
@@ -219,6 +258,15 @@ def _(event):
     pending_input_text = event.app.current_buffer.text
     # Exit with special /sync-inline command to trigger inline sync mode
     event.app.exit(result='/sync-inline')
+
+@bindings.add('c-b')
+def _(event):
+    """Ctrl+B triggers browser mode, preserving any partially typed input."""
+    global pending_input_text
+    # Save current buffer text to restore after browser mode
+    pending_input_text = event.app.current_buffer.text
+    # Exit with special /browser-inline command to trigger browser mode
+    event.app.exit(result='/browser-inline')
 
 session = PromptSession(
     history=MessageOnlyHistory('.chat_history'),
@@ -333,10 +381,15 @@ def get_current_model_name():
     """Get the display name of the current model based on the current API."""
     global current_api
     from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS, LLAMA_MODELS
-    
-    # Get the actual model ID being used for each API type
+
+    # Check if a specific model ID was selected
+    selected_model_id = os.getenv("SELECTED_MODEL_ID")
+    if selected_model_id:
+        return get_model_display_name(selected_model_id, current_api)
+
+    # Get the actual model ID being used for each API type (fallback)
     if current_api == "anthropic":
-        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
+        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
         return get_model_display_name(model_id, "anthropic")
     elif current_api == "openai":
         return get_model_display_name("gpt-4o", "openai")
@@ -347,7 +400,7 @@ def get_current_model_name():
     elif current_api == "llama":
         model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
         return get_model_display_name(model_id, "llama")
-    
+
     return "Unknown Model"
 
 def switch_model(target_model=None):
@@ -357,24 +410,39 @@ def switch_model(target_model=None):
     
     # Build available models dynamically
     from promaia.ai.models import get_current_google_model
-    available_models = {
-        "1": ("anthropic", get_model_display_name(ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929"), "anthropic")),
-        "2": ("openai", get_model_display_name("gpt-4o", "openai")), 
-        "3": ("gemini", get_model_display_name(get_current_google_model(), "gemini")),
-        "4": ("llama", get_model_display_name(os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest'), "llama"))
-    }
-    
-    # Check availability of each model
+    # Build available models list dynamically
     available_choices = {}
+    choice_num = 1
+
+    # Add Anthropic models
     if anthropic_client:
-        available_choices["1"] = available_models["1"]
+        for key, model_id in ANTHROPIC_MODELS.items():
+            display_name = get_model_display_name(model_id, "anthropic")
+            available_choices[str(choice_num)] = ("anthropic", display_name, model_id)
+            choice_num += 1
+
+    # Add OpenAI models
     if openai_client:
-        available_choices["2"] = available_models["2"]  
+        for model_id in ["gpt-4o", "gpt-4o-mini"]:
+            display_name = get_model_display_name(model_id, "openai")
+            available_choices[str(choice_num)] = ("openai", display_name, model_id)
+            choice_num += 1
+
+    # Add Gemini models
     if gemini_client:
-        available_choices["3"] = available_models["3"]
-    # Llama is always available if configured
+        for key in ["flash", "pro"]:
+            if key in GOOGLE_MODELS:
+                model_id = GOOGLE_MODELS[key]
+                display_name = get_model_display_name(model_id, "gemini")
+                available_choices[str(choice_num)] = ("gemini", display_name, model_id)
+                choice_num += 1
+
+    # Add Llama model
     if os.getenv("LLAMA_BASE_URL"):
-        available_choices["4"] = available_models["4"]
+        model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
+        display_name = get_model_display_name(model_id, "llama")
+        available_choices[str(choice_num)] = ("llama", display_name, model_id)
+        choice_num += 1
     
     if not available_choices:
         print_text("No AI models are available. Check your API keys.", style="bold red")
@@ -385,42 +453,59 @@ def switch_model(target_model=None):
         target_model = target_model.lower()
         model_map = {
             "claude": "anthropic", "anthropic": "anthropic",
-            "gpt": "openai", "openai": "openai", 
+            "opus": "anthropic", "sonnet": "anthropic",
+            "gpt": "openai", "openai": "openai",
             "gemini": "gemini", "google": "gemini",
+            "flash": "gemini", "pro": "gemini",
             "llama": "llama", "local": "llama"
         }
-        
+
         if target_model in model_map:
             new_api = model_map[target_model]
-            # Check if this model is available
-            for choice_num, (api, name) in available_choices.items():
+            # Check if this model is available - find first matching provider
+            for choice_num, (api, name, model_id) in available_choices.items():
                 if api == new_api:
                     current_api = new_api
                     os.environ["API_TYPE"] = current_api
-                    save_api_preference(current_api)
+                    os.environ["SELECTED_MODEL_ID"] = model_id
+                    save_api_preference(current_api, model_id)
                     print_text(f"Switched to {name}", style="bold green")
                     return True
-            
+
             print_text(f"Model '{target_model}' is not available. Check API keys.", style="bold red")
             return False
-    
+
     # Interactive model selection
     print_text("Available models:", style="bold")
-    for choice, (api, name) in available_choices.items():
-        current_indicator = " (current)" if api == current_api else ""
+
+    # Get currently selected model ID
+    current_model_id = os.getenv("SELECTED_MODEL_ID")
+    debug_print(f"Current model ID from env: {current_model_id}, current_api: {current_api}")
+
+    for choice, (api, name, model_id) in available_choices.items():
+        # Mark as current only if the specific model ID matches
+        # If no model ID is saved, mark the first model of the current API as current
+        if current_model_id:
+            is_current = (model_id == current_model_id)
+        else:
+            # No specific model selected - show first one of current API as current
+            is_current = (api == current_api and not any(
+                available_choices[c][0] == current_api and int(c) < int(choice)
+                for c in available_choices.keys()
+            ))
+        current_indicator = " (current)" if is_current else ""
         print_text(f"  {choice}. {name}{current_indicator}", style="cyan")
-    
+
     try:
-        choice = input("Select model (1-4): ").strip()
+        max_choice = len(available_choices)
+        choice = input(f"Select model (1-{max_choice}): ").strip()
         if choice in available_choices:
-            new_api, model_name = available_choices[choice]
-            if new_api != current_api:
-                current_api = new_api
-                os.environ["API_TYPE"] = current_api
-                save_api_preference(current_api)
-                print_text(f"Switched to {model_name}", style="bold green")
-            else:
-                print_text(f"Already using {model_name}", style="bold yellow")
+            new_api, model_name, model_id = available_choices[choice]
+            current_api = new_api
+            os.environ["API_TYPE"] = current_api
+            os.environ["SELECTED_MODEL_ID"] = model_id
+            save_api_preference(current_api, model_id)
+            print_text(f"Switched to {model_name}", style="bold green")
             return True
         else:
             print_text("Invalid choice.", style="bold red")
@@ -500,7 +585,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
     print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail /queries", style="dim")
-    print_text("Keyboard shortcuts: Ctrl+O (edit context) • Ctrl+L (quick sync)", style="dim")
+    print_text("Keyboard shortcuts: Ctrl+O (edit context) • Ctrl+L (quick sync) • Ctrl+B (browser)", style="dim")
     print_text("")
 
 
@@ -516,16 +601,21 @@ async def push_chat_to_notion(messages):
 def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, temperature=0.7, max_retries=3):
     """Calls the Anthropic API with retry logic."""
     from promaia.ai.models import ANTHROPIC_MODELS
-    
+
     # Determine which model to use based on current selection
-    # Check if we're using Claude Opus via the display name
-    current_model_name = get_current_model_name()
-    if "Opus" in current_model_name:
-        model_to_use = ANTHROPIC_MODELS.get("opus", "claude-opus-4-1-20250805")
+    # Check if a specific model ID was selected
+    selected_model_id = os.getenv("SELECTED_MODEL_ID")
+    if selected_model_id and "claude" in selected_model_id.lower():
+        model_to_use = selected_model_id
     else:
-        model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
-    
-    debug_print(f"Using Anthropic model: {model_to_use} (selected: {current_model_name})")
+        # Fallback to checking display name
+        current_model_name = get_current_model_name()
+        if "Opus" in current_model_name:
+            model_to_use = ANTHROPIC_MODELS.get("opus", "claude-opus-4-5")
+        else:
+            model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+
+    debug_print(f"Using Anthropic model: {model_to_use}")
     
     for attempt in range(max_retries):
         try:
@@ -4191,9 +4281,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     if not selected_sources:
                         print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
                         return False
-                    
+
                     print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
-                    
+
+                    # Save the browser selection for persistence
+                    save_browser_selection(selected_sources)
+
                     # Process Discord channel sources and convert to database + filter format
                     # Use same logic as process_browser_selections
                     processed_sources = []
@@ -4535,8 +4628,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             if not selected_sources:
                 print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
                 return False
-            
+
             print_text(f"✅ Selected {len(selected_sources)} sources from unified browser", style="green")
+
+            # Save the browser selection for persistence
+            save_browser_selection(selected_sources)
 
             # Process selections and update context
             processed_sources, processed_filters = process_browser_selections(selected_sources)
@@ -5313,8 +5409,12 @@ The user will type `/send` to trigger the actual sending process.
                 else:
                     formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages
 
+                # Use selected model ID if available
+                selected_model = os.getenv("SELECTED_MODEL_ID")
+                openai_model = selected_model if (selected_model and "gpt" in selected_model.lower()) else "gpt-4o"
+
                 response = openai_client.chat.completions.create(
-                    model="gpt-4o",
+                    model=openai_model,
                     messages=formatted_messages,
                     max_tokens=4096,
                     temperature=current_temperature
@@ -5754,6 +5854,113 @@ The user will type `/send` to trigger the actual sending process.
                 except Exception as e:
                     print_text(f"Error in inline sync: {e}", style="bold red")
                     debug_print(f"Inline sync handler error: {e}")
+
+                continue
+
+            elif user_input.strip() == '/browser-inline':
+                # Handle inline browser mode triggered by Ctrl+B
+                try:
+                    print_text("\n🔍 Browser Mode", style="bold cyan")
+                    print_text("Launching unified browser...", style="dim")
+
+                    # Get current context information
+                    workspace = context_state.get('workspace')
+                    multiple_workspaces = context_state.get('database_filter', [])
+                    database_filter = context_state.get('database_filter', [])
+                    default_days = context_state.get('default_days')
+                    current_sources = context_state.get('sources', [])
+
+                    # Try to load saved browser selection as current sources if none in context
+                    if not current_sources:
+                        saved_sources = get_browser_selection()
+                        if saved_sources:
+                            current_sources = saved_sources
+
+                    # Launch unified browser
+                    from promaia.cli.workspace_browser import launch_unified_browser
+
+                    # Handle multiple workspaces case
+                    if multiple_workspaces and not workspace:
+                        selected_sources = launch_unified_browser(
+                            workspace=None,
+                            default_days=default_days,
+                            database_filter=multiple_workspaces,
+                            current_sources=current_sources
+                        )
+                    else:
+                        selected_sources = launch_unified_browser(
+                            workspace=workspace,
+                            default_days=default_days,
+                            database_filter=database_filter,
+                            current_sources=current_sources
+                        )
+
+                    if not selected_sources:
+                        print_text("ℹ️  No sources selected. Keeping current context unchanged.", style="yellow")
+                        continue
+
+                    print_text(f"✅ Selected {len(selected_sources)} sources", style="green")
+
+                    # Save the browser selection for persistence
+                    save_browser_selection(selected_sources)
+
+                    # Process selections and update context
+                    from promaia.chat.query_tools import process_browser_selections
+                    processed_sources, processed_filters = process_browser_selections(selected_sources)
+
+                    # Update context with new sources
+                    original_sources = context_state.get('sources', []) or []
+                    final_sources = []
+
+                    # Build set of database names that are IN the current browse scope
+                    browse_scope_db_names = set()
+
+                    # Determine which databases are in scope for this browse operation
+                    if database_filter:
+                        for filter_item in database_filter:
+                            filter_base = filter_item.split(':')[0]
+                            browse_scope_db_names.add(filter_base)
+                    elif workspace:
+                        # If workspace without specific filter, all databases in workspace are in scope
+                        from promaia.config.databases import get_database_manager
+                        db_manager = get_database_manager()
+                        workspace_dbs = db_manager.get_workspace_databases(workspace)
+                        for db in workspace_dbs:
+                            db_name = f"{workspace}.{db['name']}"
+                            browse_scope_db_names.add(db_name)
+
+                    # Keep sources that are outside browse scope
+                    for src in original_sources:
+                        src_base = src.split(':')[0]
+                        if src_base not in browse_scope_db_names:
+                            final_sources.append(src)
+
+                    # Add new selections
+                    final_sources.extend(processed_sources)
+
+                    # Update context
+                    context_state['sources'] = final_sources
+                    context_state['filters'] = processed_filters
+
+                    # Reload context with new selections
+                    if reload_context():
+                        print_text("Context reloaded with new browser selections.", style="dim green")
+
+                        # Show updated welcome message
+                        print_welcome_message(
+                            query_command=context_state['query_command'],
+                            total_pages=total_pages_loaded,
+                            model_name=get_current_model_name(),
+                            source_breakdown=generate_source_breakdown(initial_multi_source_data)
+                        )
+                    else:
+                        print_text("⚠️  Failed to reload context.", style="dim yellow")
+
+                except KeyboardInterrupt:
+                    print_text("\nBrowser cancelled.", style="bold yellow")
+                except Exception as e:
+                    print_text(f"Browser error: {e}", style="bold red")
+                    debug_print(f"Inline browser error details: {e}")
 
                 continue
 
@@ -7362,8 +7569,12 @@ The user will type `/send` when ready to send the email.
                             else:
                                 formatted_messages = [{"role": "system", "content": updated_system_prompt}] + messages
 
+                            # Use selected model ID if available
+                            selected_model = os.getenv("SELECTED_MODEL_ID")
+                            openai_model = selected_model if (selected_model and "gpt" in selected_model.lower()) else "gpt-4o"
+
                             regen_response = openai_client.chat.completions.create(
-                                model="gpt-4o",
+                                model=openai_model,
                                 messages=formatted_messages,
                                 max_tokens=4096,
                                 temperature=current_temperature
@@ -7383,8 +7594,12 @@ The user will type `/send` when ready to send the email.
                         # Regular text-only message
                         formatted_messages = [{"role": "system", "content": current_system_prompt}] + messages_for_api
 
+                    # Use selected model ID if available
+                    selected_model = os.getenv("SELECTED_MODEL_ID")
+                    openai_model = selected_model if (selected_model and "gpt" in selected_model.lower()) else "gpt-4o"
+
                     response = openai_client.chat.completions.create(
-                        model="gpt-4o",
+                        model=openai_model,
                         messages=formatted_messages,
                         max_tokens=4096,
                         temperature=current_temperature
@@ -8130,12 +8345,20 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
     from promaia.utils.image_processing import format_image_for_gemini
     import google.generativeai as genai
     from promaia.ai.models import get_current_google_model
+    import os
 
     # Gemini uses a different approach - we need to create a model with system instruction
     # and then format the conversation with images
 
+    # Use selected model ID if available, otherwise use default
+    selected_model = os.getenv("SELECTED_MODEL_ID")
+    if selected_model and "gemini" in selected_model.lower():
+        model_name = selected_model
+    else:
+        model_name = get_current_google_model()
+
     current_gemini_model = genai.GenerativeModel(
-        model_name=get_current_google_model(),
+        model_name=model_name,
         system_instruction=system_prompt
     )
 

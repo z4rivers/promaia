@@ -647,11 +647,12 @@ async def newsletter_sync_command(args):
     if force_send:
         print("⚠️ Force mode enabled")
     else:
-        # Safety confirmation - require typing the title
+        # Safety confirmation - require typing first 5 characters of the title
         if len(eligible_pages) == 1:
             title = get_page_display_title(eligible_pages[0])
-            user_input = input(f"Send newsletter '{title}'? Type the title to confirm: ").strip()
-            if user_input != title:
+            title_prefix = title[:5]
+            user_input = input(f"Send newsletter '{title}'? Type first 5 characters to confirm: ").strip()
+            if user_input.lower() != title_prefix.lower():
                 print("❌ Confirmation failed")
                 return
         else:
@@ -700,16 +701,21 @@ async def newsletter_test_command(args):
     """
     print("🧪 Testing newsletters...")
 
-    # Show which test email will be used
-    test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
-    print(f"📧 Test email: {test_email}")
-    
+    # Get test email recipients from args or environment variable
+    if hasattr(args, 'email') and args.email:
+        test_recipients = args.email
+        print(f"📧 Test emails: {', '.join(test_recipients)}")
+    else:
+        test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
+        test_recipients = [test_email]
+        print(f"📧 Test email: {test_email}")
+
     # Always use the CMS database
     database_id = WEBFLOW_CMS_DATABASE_ID
-    
+
     # Get eligible pages
     eligible_pages = await get_eligible_newsletter_pages(database_id)
-    
+
     if not eligible_pages:
         print("❌ No newsletters to test")
         return
@@ -724,7 +730,7 @@ async def newsletter_test_command(args):
         title = get_page_display_title(page)
 
         # Test newsletter generation (with actual TEST email sending)
-        success, message, email_id = await test_newsletter_generation(page)
+        success, message, email_id = await test_newsletter_generation(page, test_recipients=test_recipients)
 
         if success:
             print(f"   {message}")
@@ -736,18 +742,19 @@ async def newsletter_test_command(args):
     # Clean summary
     if success_count > 0:
         print(f"✅ Sent {success_count} test email(s)")
-        print(f"📬 Check {test_email} for test newsletters")
+        print(f"📬 Check {', '.join(test_recipients)} for test newsletters")
     if failure_count > 0:
         print(f"❌ {failure_count} test(s) failed")
 
 
-async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
+async def test_newsletter_generation(page: Dict[str, Any], test_recipients: Optional[List[str]] = None) -> Tuple[bool, str, Optional[str]]:
     """
     Test newsletter generation for a page and send actual TEST email to safe recipients.
-    
+
     Args:
         page: Notion page object
-        
+        test_recipients: Optional list of email addresses to send test to. If not provided, uses RESEND_TEST_EMAIL env var.
+
     Returns:
         Tuple of (success, message, email_id)
     """
@@ -776,7 +783,13 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
             # Try to get Webflow-hosted version
             webflow_image_url = await get_webflow_hosted_image_url(page, cover_image_url)
             if webflow_image_url:
-                cover_image_url = webflow_image_url
+                # Check if we have a cached WebP version of this Webflow image
+                from promaia.config.webp_cache import get_cached_webp_url
+                cached_webp = get_cached_webp_url(webflow_image_url)
+                if cached_webp:
+                    cover_image_url = cached_webp
+                else:
+                    cover_image_url = webflow_image_url
         
         # Get page title
         title = get_page_display_title(page)
@@ -807,8 +820,9 @@ async def test_newsletter_generation(page: Dict[str, Any]) -> Tuple[bool, str, O
         )
 
         # Get safe test recipients
-        test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
-        test_recipients = [test_email]
+        if test_recipients is None:
+            test_email = os.getenv("RESEND_TEST_EMAIL", "koii@koiibenvenutto.com")
+            test_recipients = [test_email]
 
         # Create TEST subject line
         test_subject = f"[TEST] {title}"

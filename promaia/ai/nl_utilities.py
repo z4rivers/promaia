@@ -341,8 +341,10 @@ class ResultValidator:
         
         # Check if date filtering worked
         date_filter = intent.get('date_filter', {})
+        from datetime import datetime, timedelta
+        
+        # Check days_back (backward-only date filter)
         if date_filter.get('days_back'):
-            from datetime import datetime, timedelta
             cutoff = datetime.now() - timedelta(days=date_filter['days_back'])
             
             # Sample check on first few results
@@ -360,6 +362,57 @@ class ResultValidator:
             
             if not dates_ok:
                 return False, f"Some results are older than {date_filter.get('days_back')} days (outside requested date range)."
+        
+        # Check date range (start_date and/or end_date)
+        start_date_str = date_filter.get('start_date')
+        end_date_str = date_filter.get('end_date')
+        if start_date_str or end_date_str:
+            # Sample check on first few results
+            dates_ok = True
+            for result in results[:5]:
+                created = result.get('created_time', '')
+                if created:
+                    try:
+                        result_date = datetime.fromisoformat(created[:19] if 'T' in created else created[:10])
+                        
+                        # Check start_date if provided
+                        if start_date_str:
+                            # Handle relative dates like "date('now', '-7 days')"
+                            if 'date(' in start_date_str.lower():
+                                # Extract days from relative date
+                                if '-' in start_date_str and 'days' in start_date_str:
+                                    import re
+                                    match = re.search(r'-(\d+)\s*days', start_date_str)
+                                    if match:
+                                        days = int(match.group(1))
+                                        start_cutoff = datetime.now() - timedelta(days=days)
+                                        if result_date < start_cutoff:
+                                            dates_ok = False
+                                            break
+                            else:
+                                # ISO date string
+                                start_cutoff = datetime.fromisoformat(start_date_str[:10])
+                                if result_date < start_cutoff:
+                                    dates_ok = False
+                                    break
+                        
+                        # Check end_date if provided
+                        if end_date_str and dates_ok:
+                            end_cutoff = datetime.fromisoformat(end_date_str[:10])
+                            if result_date > end_cutoff:
+                                dates_ok = False
+                                break
+                    except Exception as e:
+                        # Skip validation on parse errors
+                        pass
+            
+            if not dates_ok:
+                range_desc = []
+                if start_date_str:
+                    range_desc.append(f"after {start_date_str}")
+                if end_date_str:
+                    range_desc.append(f"before {end_date_str}")
+                return False, f"Some results are outside the requested date range ({' and '.join(range_desc)})."
         
         # Check for search terms in results (if applicable)
         # NOTE: This is a soft check - if we got results, the SQL likely worked correctly

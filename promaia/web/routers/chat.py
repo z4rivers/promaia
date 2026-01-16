@@ -28,7 +28,8 @@ import httpx
 router = APIRouter()
 
 # Initialize AI Clients
-gemini_model_name = GOOGLE_MODELS.get("pro", "gemini-2.5-pro")
+from promaia.ai.models import get_current_google_model
+gemini_model_name = get_current_google_model()
 gemini_client_initialized = False
 anthropix_client = None
 openai_client = None
@@ -228,19 +229,56 @@ async def upload_image(file: UploadFile = File(...)):
         debug_print(f"Error uploading image: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+def get_provider_from_model_id(model_id: str) -> str:
+    """Determine the provider type from a model ID."""
+    if not model_id:
+        return "gemini"  # Default
+
+    # Check if it's a provider type (for backwards compatibility)
+    if model_id in ["gemini", "anthropic", "openai", "llama"]:
+        return model_id
+
+    # Detect provider from model ID
+    if "claude" in model_id.lower():
+        return "anthropic"
+    elif "gemini" in model_id.lower():
+        return "gemini"
+    elif "gpt" in model_id.lower():
+        return "openai"
+    elif "llama" in model_id.lower() or "mistral" in model_id.lower() or "mixtral" in model_id.lower() or "codellama" in model_id.lower():
+        return "llama"
+
+    # Default to gemini if unknown
+    return "gemini"
+
 @router.post("/message", response_model=ChatMessageOutput)
 async def handle_chat_message(chat_input: ChatMessageInput):
     debug_print("--- handle_chat_message invoked ---")
     user_message = chat_input.message
     conversation_id = chat_input.conversation_id or str(uuid.uuid4())
     message_history = chat_input.history or []
-    preferred_model = chat_input.preferred_model or "gemini"  # Default to Gemini
+
+    # Support both specific model IDs and provider types
+    model_id = chat_input.preferred_model or "gemini-3-flash-preview"
+    provider_type = get_provider_from_model_id(model_id)
+
+    # If it's just a provider type, get the default model ID for that provider
+    if model_id in ["gemini", "anthropic", "openai", "llama"]:
+        if model_id == "gemini":
+            model_id = GOOGLE_MODELS.get("flash", "gemini-3-flash-preview")
+        elif model_id == "anthropic":
+            model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+        elif model_id == "openai":
+            model_id = "gpt-4o"
+        # llama stays as is (will be handled by env var)
+
     images = chat_input.images or []
-    
+
     debug_print(f"User message: {user_message}")
     debug_print(f"Conversation ID: {conversation_id}")
     debug_print(f"Message history length: {len(message_history)}")
-    debug_print(f"Preferred model: {preferred_model}")
+    debug_print(f"Model ID: {model_id}")
+    debug_print(f"Provider type: {provider_type}")
     debug_print(f"Image attachments: {len(images)}")
     
     multi_source_data = {}
@@ -269,75 +307,85 @@ async def handle_chat_message(chat_input: ChatMessageInput):
         "openai": openai_client is not None,
         "llama": llama_base_url is not None
     }
-    
-    if preferred_model not in model_clients or not model_clients[preferred_model]:
-        available_models = [k for k, v in model_clients.items() if v]
-        if not available_models:
+
+    if provider_type not in model_clients or not model_clients[provider_type]:
+        available_providers = [k for k, v in model_clients.items() if v]
+        if not available_providers:
             raise HTTPException(status_code=503, detail="No AI models are configured.")
-        
-        # Fall back to first available model
-        preferred_model = available_models[0]
-        debug_print(f"Requested model not available, falling back to: {preferred_model}")
-    
+
+        # Fall back to first available provider
+        provider_type = available_providers[0]
+        if provider_type == "gemini":
+            model_id = GOOGLE_MODELS.get("flash", "gemini-3-flash-preview")
+        elif provider_type == "anthropic":
+            model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+        elif provider_type == "openai":
+            model_id = "gpt-4o"
+        debug_print(f"Requested provider not available, falling back to: {provider_type} (model: {model_id})")
+
     # Check image support
-    if images and not is_vision_supported(preferred_model):
-        raise HTTPException(status_code=400, detail=f"Model '{preferred_model}' does not support image inputs.")
-    
+    if images and not is_vision_supported(provider_type):
+        raise HTTPException(status_code=400, detail=f"Model '{model_id}' does not support image inputs.")
+
     # Validate image limits
     if images:
-        limits = get_model_image_limits(preferred_model)
+        limits = get_model_image_limits(provider_type)
         if len(images) > limits['max_images']:
             raise HTTPException(
-                status_code=400, 
-                detail=f"Model '{preferred_model}' supports maximum {limits['max_images']} images per message."
+                status_code=400,
+                detail=f"Model '{model_id}' supports maximum {limits['max_images']} images per message."
             )
-    
-    ai_reply_content = f"Sorry, I couldn't process that with {preferred_model}."
+
+    ai_reply_content = f"Sorry, I couldn't process that with {model_id}."
 
     try:
         # Route to appropriate model handler
-        if preferred_model == "gemini":
+        if provider_type == "gemini":
             ai_reply_content, token_usage_data = await _handle_gemini(
-                user_message, images, message_history, system_prompt_str
+                user_message, images, message_history, system_prompt_str, model_id
             )
-        elif preferred_model == "anthropic":
+        elif provider_type == "anthropic":
             ai_reply_content, token_usage_data = await _handle_anthropic(
-                user_message, images, message_history, system_prompt_str
+                user_message, images, message_history, system_prompt_str, model_id
             )
-        elif preferred_model == "openai":
+        elif provider_type == "openai":
             ai_reply_content, token_usage_data = await _handle_openai(
-                user_message, images, message_history, system_prompt_str
+                user_message, images, message_history, system_prompt_str, model_id
             )
-        elif preferred_model == "llama":
+        elif provider_type == "llama":
             ai_reply_content, token_usage_data = await _handle_llama(
-                user_message, images, message_history, system_prompt_str
+                user_message, images, message_history, system_prompt_str, model_id
             )
         else:
-            raise ValueError(f"Unknown model: {preferred_model}")
+            raise ValueError(f"Unknown provider: {provider_type}")
 
-    except HTTPException as e: 
-        raise e 
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        error_detail_msg = f"Error calling AI model '{preferred_model}': {e}"
+        error_detail_msg = f"Error calling AI model '{model_id}': {e}"
         debug_print(error_detail_msg)
         debug_print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=error_detail_msg)
-    
+
     if not ai_reply_content:
-        debug_print(f"AI model '{preferred_model}' returned empty content.")
-        raise HTTPException(status_code=500, detail=f"AI service ({preferred_model}) failed to generate a response.")
+        debug_print(f"AI model '{model_id}' returned empty content.")
+        raise HTTPException(status_code=500, detail=f"AI service ({model_id}) failed to generate a response.")
 
     return ChatMessageOutput(
-        reply=ai_reply_content, 
+        reply=ai_reply_content,
         conversation_id=conversation_id,
-        model_used=preferred_model,
+        model_used=model_id,
         token_usage=token_usage_data
     )
 
-async def _handle_gemini(user_message: str, images: List[ImageData], message_history: list, system_prompt: str):
+async def _handle_gemini(user_message: str, images: List[ImageData], message_history: list, system_prompt: str, model_id: str = None):
     """Handle Gemini model requests with image support."""
+    # Use provided model_id or fall back to default
+    if not model_id:
+        model_id = gemini_model_name
+
     current_gemini_model = genai.GenerativeModel(
-        model_name=gemini_model_name,
+        model_name=model_id,
         system_instruction=system_prompt
     )
     
@@ -397,7 +445,9 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
         total_tokens = getattr(usage, 'total_token_count', 0)
         
         from promaia.utils.ai import calculate_ai_cost
-        model_tier = "gemini-2.5-pro-short" if prompt_tokens <= 128000 else "gemini-2.5-pro-long"
+        from promaia.ai.models import get_current_google_model
+        # Use Gemini 3 Flash for cost calculation
+        model_tier = get_current_google_model()
         cost_data = calculate_ai_cost(prompt_tokens, response_tokens, model_tier)
         total_cost = cost_data["total_cost"]
         
@@ -413,11 +463,11 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
     
     return ai_reply_content, token_usage_data
 
-async def _handle_anthropic(user_message: str, images: List[ImageData], message_history: list, system_prompt: str):
+async def _handle_anthropic(user_message: str, images: List[ImageData], message_history: list, system_prompt: str, model_id: str = None):
     """Handle Anthropic Claude model requests with image support."""
     # Build message history for Anthropic
     anthropic_messages = []
-    
+
     for msg in message_history:
         # Handle message content
         if hasattr(msg, 'get_text_content'):
@@ -426,46 +476,45 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
         else:
             text_content = str(msg.content)
             msg_images = []
-        
+
         content_parts = []
         if text_content:
             content_parts.append({"type": "text", "text": text_content})
-        
+
         # Add images to message
         for img in msg_images:
             content_parts.append(format_image_for_anthropic(img.data, img.media_type))
-        
+
         anthropic_messages.append({
             "role": msg.role,
             "content": content_parts
         })
-    
+
     # Add current user message
     current_content = []
     if user_message:
         current_content.append({"type": "text", "text": user_message})
-    
+
     for img in images:
         current_content.append(format_image_for_anthropic(img.data, img.media_type))
-    
+
     anthropic_messages.append({
         "role": "user",
         "content": current_content
     })
-    
+
     debug_print(f"Calling Anthropic with {len(anthropic_messages)} messages and {len(images)} images")
-    
-    # Use the retry utility - default to Sonnet 4.5
-    from promaia.ai.models import get_model_display_name
-    # Default to Sonnet 4.5 (faster, cheaper, and now the standard)
-    model_name = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
-    
-    debug_print(f"Using Anthropic model: {model_name}")
+
+    # Use provided model_id or fall back to Sonnet 4.5
+    if not model_id:
+        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+
+    debug_print(f"Using Anthropic model: {model_id}")
     response_content = await call_anthropic_with_retry(
         anthropix_client,
         system_prompt,
         anthropic_messages,
-        model_name=model_name,
+        model_name=model_id,
         max_tokens=4096
     )
     
@@ -489,7 +538,7 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
     
     return response_content, token_usage_data
 
-async def _handle_openai(user_message: str, images: List[ImageData], message_history: list, system_prompt: str):
+async def _handle_openai(user_message: str, images: List[ImageData], message_history: list, system_prompt: str, model_id: str = None):
     """Handle OpenAI GPT-4o model requests with image support."""
     # Build message history for OpenAI
     openai_messages = [{"role": "system", "content": system_prompt}]
@@ -529,10 +578,14 @@ async def _handle_openai(user_message: str, images: List[ImageData], message_his
         "content": current_content if current_content else user_message
     })
     
-    debug_print(f"Calling OpenAI with {len(openai_messages)} messages and {len(images)} images")
-    
+    # Use provided model_id or fall back to gpt-4o
+    if not model_id:
+        model_id = "gpt-4o"
+
+    debug_print(f"Calling OpenAI with model {model_id}, {len(openai_messages)} messages and {len(images)} images")
+
     response = await openai_client.chat.completions.create(
-        model="gpt-4o",  # GPT-4o has vision support
+        model=model_id,
         messages=openai_messages,
         max_tokens=4096,
         temperature=0.7
@@ -560,7 +613,7 @@ async def _handle_openai(user_message: str, images: List[ImageData], message_his
     
     return ai_reply_content, token_usage_data
 
-async def _handle_llama(user_message: str, images: List[ImageData], message_history: list, system_prompt: str):
+async def _handle_llama(user_message: str, images: List[ImageData], message_history: list, system_prompt: str, model_id: str = None):
     """Handle local Llama model requests with image support."""
     # Build message history for Llama (OpenAI-compatible format)
     llama_messages = [{"role": "system", "content": system_prompt}]
@@ -600,11 +653,15 @@ async def _handle_llama(user_message: str, images: List[ImageData], message_hist
         "content": current_content if current_content else user_message
     })
     
-    debug_print(f"Calling local Llama with {len(llama_messages)} messages and {min(len(images), 1)} images")
-    
+    # Use provided model_id or fall back to env var or default
+    if not model_id:
+        model_id = os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest")
+
+    debug_print(f"Calling local Llama with model {model_id}, {len(llama_messages)} messages and {min(len(images), 1)} images")
+
     # Call local Llama server (OpenAI-compatible)
     payload = {
-        "model": os.getenv("LLAMA_DEFAULT_MODEL", "llama3:latest"),
+        "model": model_id,
         "messages": llama_messages,
         "max_tokens": 4096,
         "temperature": 0.7
@@ -647,42 +704,80 @@ async def get_available_models():
         "openai": openai_client is not None,
         "llama": llama_base_url is not None
     }
-    
+
     available_models = []
-    from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS
+    from promaia.ai.models import get_model_display_name, ANTHROPIC_MODELS, GOOGLE_MODELS, LLAMA_MODELS
     import os
-    
-    for model_type, available in model_clients.items():
-        if available:
-            limits = get_model_image_limits(model_type)
-            
-            # Get the display name dynamically based on actual model ID
-            if model_type == "anthropic":
-                model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
-                display_name = get_model_display_name(model_id, "anthropic")
-            elif model_type == "gemini":
-                model_id = GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06")
-                display_name = get_model_display_name(model_id, "gemini")
-            elif model_type == "openai":
-                display_name = get_model_display_name("gpt-4o", "openai")
-            elif model_type == "llama":
-                model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
-                display_name = get_model_display_name(model_id, "llama")
-            else:
-                display_name = model_type
-            
+
+    # Add all Anthropic models if client is available
+    if model_clients["anthropic"]:
+        limits = get_model_image_limits("anthropic")
+        for key, model_id in ANTHROPIC_MODELS.items():
             model_info = {
-                "type": model_type,
-                "name": display_name,
-                "vision_supported": is_vision_supported(model_type),
+                "type": "anthropic",
+                "model_id": model_id,
+                "name": get_model_display_name(model_id, "anthropic"),
+                "vision_supported": is_vision_supported("anthropic"),
                 "max_images": limits["max_images"],
                 "supported_formats": limits["supported_formats"]
             }
             available_models.append(model_info)
-    
+
+    # Add all Google models if client is available
+    if model_clients["gemini"]:
+        limits = get_model_image_limits("gemini")
+        # Only add main models (flash and pro)
+        for key in ["flash", "pro"]:
+            if key in GOOGLE_MODELS:
+                model_id = GOOGLE_MODELS[key]
+                model_info = {
+                    "type": "gemini",
+                    "model_id": model_id,
+                    "name": get_model_display_name(model_id, "gemini"),
+                    "vision_supported": is_vision_supported("gemini"),
+                    "max_images": limits["max_images"],
+                    "supported_formats": limits["supported_formats"]
+                }
+                available_models.append(model_info)
+
+    # Add OpenAI models if client is available
+    if model_clients["openai"]:
+        limits = get_model_image_limits("openai")
+        for model_id in ["gpt-4o", "gpt-4o-mini"]:
+            model_info = {
+                "type": "openai",
+                "model_id": model_id,
+                "name": get_model_display_name(model_id, "openai"),
+                "vision_supported": is_vision_supported("openai"),
+                "max_images": limits["max_images"],
+                "supported_formats": limits["supported_formats"]
+            }
+            available_models.append(model_info)
+
+    # Add Llama models if client is available
+    if model_clients["llama"]:
+        limits = get_model_image_limits("llama")
+        llama_model_id = os.getenv('LLAMA_DEFAULT_MODEL', 'llama3:latest')
+        model_info = {
+            "type": "llama",
+            "model_id": llama_model_id,
+            "name": get_model_display_name(llama_model_id, "llama"),
+            "vision_supported": is_vision_supported("llama"),
+            "max_images": limits["max_images"],
+            "supported_formats": limits["supported_formats"]
+        }
+        available_models.append(model_info)
+
+    # Determine default model (prefer Gemini Flash, then first available)
+    default_model = None
+    if gemini_client_initialized:
+        default_model = "gemini-3-flash-preview"
+    elif available_models:
+        default_model = available_models[0]["model_id"]
+
     return {
         "available_models": available_models,
-        "default_model": "gemini" if gemini_client_initialized else (available_models[0]["type"] if available_models else None)
+        "default_model": default_model
     }
 
 # You can add other chat-related endpoints here if needed. 

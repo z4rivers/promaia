@@ -1125,10 +1125,11 @@ def load_database_pages_with_filters(
             where_clause = " AND ".join(where_conditions)
             query = f"""
                 SELECT page_id
-                FROM unified_content 
+                FROM unified_content
                 WHERE {where_clause}
                 ORDER BY {date_filter_prop} DESC
             """
+
             cursor.execute(query, params)
             page_ids = [row[0] for row in cursor.fetchall()]
         

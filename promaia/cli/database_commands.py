@@ -2786,12 +2786,12 @@ def add_database_commands_to_existing_parser(parent_parser, subparsers):
     
     # Add channels to Discord database
     add_channels_parser = subparsers.add_parser('add-channels', help='Add Discord channels to database via browser')
-    add_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dgs" or "trass.discord")')
+    add_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dreamshare" or "trass.discord")')
     add_channels_parser.set_defaults(func=handle_database_add_channels)
-    
+
     # Remove channels from Discord database
     remove_channels_parser = subparsers.add_parser('remove-channels', help='Remove Discord channels from database via browser')
-    remove_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dgs" or "trass.discord")')
+    remove_channels_parser.add_argument('database_name', help='Discord database name (e.g., "dreamshare" or "trass.discord")')
     remove_channels_parser.add_argument('--force', action='store_true', help='Skip confirmation prompt')
     remove_channels_parser.set_defaults(func=handle_database_remove_channels)
     

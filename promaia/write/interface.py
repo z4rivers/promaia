@@ -502,7 +502,8 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
             genai.configure(api_key=google_api_key)
 
             # Initialize Model
-            model = genai.GenerativeModel(GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06"))
+            from promaia.ai.models import get_current_google_model
+            model = genai.GenerativeModel(get_current_google_model())
 
             # Start chat session
             chat = model.start_chat(history=[])
@@ -525,8 +526,9 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
             blog_content = response.text
             # Save the response to a file without output
             with open(os.path.join(debug_dir, f"write_response_{timestamp}.json"), "w", encoding="utf-8") as f:
+                from promaia.ai.models import get_current_google_model
                 f.write(json.dumps({
-                    "model": GOOGLE_MODELS.get("pro", "gemini-2.5-pro-preview-05-06"),
+                    "model": get_current_google_model(),
                     "content": blog_content
                 }, indent=2))
         elif api_type == "llama":

@@ -72,7 +72,8 @@ class PromaiLLMAdapter:
                         elif client_type == "gemini":
                             self.client_type = "gemini"
                             genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-                            self.client = genai.GenerativeModel('gemini-2.5-pro')
+                            from promaia.ai.models import get_current_google_model
+                            self.client = genai.GenerativeModel(get_current_google_model())
                             return
                     except Exception as e:
                         print(f"⚠️  Failed to setup {client_type} client: {e}")
@@ -737,7 +738,7 @@ Respond with JSON in this exact format:
     "goal": "what the user wants to find",
     "databases": ["list", "of", "relevant", "databases"],
     "search_terms": ["key", "content", "search", "terms"],
-    "date_filter": {{"days_back": null, "description": ""}},
+    "date_filter": {{"days_back": null, "start_date": null, "end_date": null, "description": ""}},
     "property_constraints": {{}}
 }}
 
@@ -763,8 +764,23 @@ Rules for database names - CRITICAL:
 - If the query mentions BOTH a workspace AND a database, you MUST combine them as "workspace.database"
 - If ONLY a database is mentioned with no workspace context, use the simple name
 - Extract specific search terms from the query
-- Parse date expressions: "last N months" → days_back: N*30, "past week" → days_back: 7
-- If no date mentioned, set days_back: null
+
+Rules for date_filter - CRITICAL:
+- For simple backward lookups use days_back: "last N months" → days_back: N*30, "past week" → days_back: 7
+- For date RANGES use start_date and end_date: "between X and Y" → start_date: X, end_date: Y
+- For future dates, use ISO format (YYYY-MM-DD) or relative dates: "until april" → end_date: "2026-04-30"
+- Parse relative dates: "a week ago" → "DATE('now', '-7 days')" for start_date
+- TODAY IS: 2026-01-16 - use this for calculating relative dates
+- If no date mentioned, set all date_filter fields to null
+- NEVER mix incompatible date logic (e.g., don't use days_back with start_date/end_date)
+
+Examples of CORRECT date filtering:
+- "last 7 days" → {{"days_back": 7, "start_date": null, "end_date": null, "description": "last 7 days"}}
+- "past 2 months" → {{"days_back": 60, "start_date": null, "end_date": null, "description": "past 2 months"}}
+- "between a week ago and april" → {{"days_back": null, "start_date": "DATE('now', '-7 days')", "end_date": "2026-04-30", "description": "between a week ago and April 2026"}}
+- "from january to march" → {{"days_back": null, "start_date": "2026-01-01", "end_date": "2026-03-31", "description": "from January to March 2026"}}
+- "until april" → {{"days_back": null, "start_date": null, "end_date": "2026-04-30", "description": "until April 2026"}}
+- "since last monday" → {{"days_back": null, "start_date": "DATE('now', '-7 days')", "end_date": null, "description": "since last Monday"}}
 
 Examples of CORRECT database naming:
 - "trass gmail about X" → databases: ["trass.gmail"] ✓ (workspace + database = qualified name)

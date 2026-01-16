@@ -481,8 +481,36 @@ class WebflowClient:
             # Calculate MD5 hash of the file
             with open(file_path, 'rb') as f:
                 file_data = f.read()
-                file_hash = hashlib.md5(file_data).hexdigest()
-            
+
+            # Determine content type from file path
+            content_type, _ = mimetypes.guess_type(file_path)
+            if not content_type:
+                content_type = 'application/octet-stream'
+
+            # Check if WebP conversion is enabled and should be applied
+            from promaia.config.cms_config import should_convert_to_webp, get_webp_config
+            if should_convert_to_webp(content_type):
+                try:
+                    from promaia.utils.image_processing import convert_to_webp
+                    webp_config = get_webp_config()
+                    quality = webp_config.get('quality', 85)
+                    max_dimension = webp_config.get('max_dimension')
+
+                    print(f"Converting {file_name} from {content_type} to WebP (quality={quality})")
+                    original_size = len(file_data)
+                    file_data, file_name = convert_to_webp(file_data, quality=quality, max_dimension=max_dimension)
+
+                    # Calculate savings
+                    new_size = len(file_data)
+                    savings_percent = ((original_size - new_size) / original_size) * 100
+                    print(f"WebP conversion: {original_size} → {new_size} bytes ({savings_percent:.1f}% smaller)")
+                except Exception as e:
+                    print(f"WebP conversion failed, using original: {e}")
+                    # Continue with original file if conversion fails
+
+            # Calculate hash after potential conversion
+            file_hash = hashlib.md5(file_data).hexdigest()
+
             # Step 1: Get upload URL from Webflow
             url = f"{self.base_url}/sites/{self.site_id}/assets"
             
@@ -520,10 +548,10 @@ class WebflowClient:
             for key, value in upload_details.items():
                 form_data[key] = value
             
-            # Add the file
+            # Add the file (use file_data which may have been converted to WebP)
             file_content_type = upload_details.get('content-type') or 'application/octet-stream'
             files = {
-                'file': (file_name, open(file_path, 'rb'), file_content_type)
+                'file': (file_name, file_data, file_content_type)
             }
             
             # Make the S3 upload request
@@ -654,7 +682,29 @@ class WebflowClient:
             file_data = response.content
             file_size = len(file_data)
             print(f"Image downloaded: {file_size} bytes, type: {content_type}")
-            
+
+            # Check if WebP conversion is enabled and should be applied
+            from promaia.config.cms_config import should_convert_to_webp, get_webp_quality, get_webp_config
+            if should_convert_to_webp(content_type):
+                try:
+                    from promaia.utils.image_processing import convert_to_webp
+                    webp_config = get_webp_config()
+                    quality = webp_config.get('quality', 85)
+                    max_dimension = webp_config.get('max_dimension')
+
+                    print(f"Converting {content_type} to WebP (quality={quality})")
+                    original_size = file_size
+                    file_data, file_name = convert_to_webp(file_data, quality=quality, max_dimension=max_dimension)
+                    file_size = len(file_data)
+                    content_type = 'image/webp'
+
+                    # Calculate savings
+                    savings_percent = ((original_size - file_size) / original_size) * 100
+                    print(f"WebP conversion: {original_size} → {file_size} bytes ({savings_percent:.1f}% smaller)")
+                except Exception as e:
+                    print(f"WebP conversion failed, using original: {e}")
+                    # Continue with original image if conversion fails
+
             # Get the upload URL from Webflow
             print(f"Getting upload URL from Webflow for {file_name}")
             upload_data = self._get_upload_url(file_name, content_type, file_size, file_data)

@@ -54,14 +54,14 @@ Within any chat session:
 ```
 🔍 trass | Sources: 5 databases, 7 channels | Selected: 8/12 | ↑↓ Navigate SPACE Toggle ENTER Confirm ESC Cancel
 
-📄 Regular Databases:
+📄 Regular Sources:
 ☑       trass.cpj:7
-☐       trass.epics:all  
+☐       trass.epics:all
 ☑       trass.gmail:7
 ☑       trass.journal:20
 ☑       trass.stories:7
 
-💬 Discord Channels:
+💬 Discord Sources:
 ☑       trass.tg#announcements:7
 ☐       trass.tg#customer-support:7
 ☑       trass.tg#koii-work:30

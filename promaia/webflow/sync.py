@@ -109,9 +109,27 @@ async def process_html_images(html_content: str, page_id: str, max_concurrent: i
                 img['src'] = processed_urls[src]
             continue
 
-        # Skip if image is already on Webflow
+        # Check if image is on Webflow but needs WebP conversion
+        from promaia.config.webp_cache import should_convert_webflow_image, get_cached_webp_url
+        from promaia.config.cms_config import is_webp_conversion_enabled
+
         if 'webflow.com' in src or 'website-files.com' in src:
-            continue
+            # Check cache first
+            cached_webp = get_cached_webp_url(src)
+            if cached_webp:
+                # Already converted and cached, use the cached WebP URL
+                img['src'] = cached_webp
+                processed_urls[src] = cached_webp
+                continue
+
+            # Check if this Webflow image should be converted to WebP
+            if is_webp_conversion_enabled() and should_convert_webflow_image(src):
+                # This is a JPEG/PNG on Webflow that needs conversion
+                # Add it to the processing queue
+                pass  # Will be processed below
+            else:
+                # Already WebP or conversion disabled - skip
+                continue
 
         images_to_process.append((img, src))
 
@@ -142,7 +160,16 @@ async def process_html_images(html_content: str, page_id: str, max_concurrent: i
                 )
 
                 if result and 'url' in result:
-                    return (img, src, result['url'], True)
+                    new_url = result['url']
+
+                    # If this was a Webflow image that got converted, cache the mapping
+                    if 'webflow.com' in src or 'website-files.com' in src:
+                        if new_url.lower().endswith('.webp') and not src.lower().endswith('.webp'):
+                            from promaia.config.webp_cache import cache_webp_conversion
+                            cache_webp_conversion(src, new_url)
+                            print(f"   📝 Cached WebP conversion for existing Webflow image")
+
+                    return (img, src, new_url, True)
                 else:
                     return (img, src, None, False)
             except Exception:

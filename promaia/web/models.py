@@ -44,7 +44,7 @@ class ChatMessageInput(BaseModel):
     images: Optional[List[ImageData]] = None  # Direct image attachments for input
     conversation_id: Optional[str] = None
     history: Optional[List[ChatMessage]] = None
-    preferred_model: Optional[str] = None  # 'anthropic', 'openai', 'gemini', 'llama'
+    preferred_model: Optional[str] = None  # Specific model ID like 'claude-opus-4-5', 'gemini-3-pro-preview', etc. Falls back to provider type for backwards compatibility.
 
 class TokenUsage(BaseModel):
     prompt_tokens: int
