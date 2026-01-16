@@ -173,7 +173,7 @@ Return SQLite query that:
 - IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
 - JOINs workspace-specific tables (e.g., notion_koii_stories, notion_koii_journal) to access Notion properties
   - These tables have columns like: date, status, _epics, assignee, etc. (see sample data above)
-  - Join on: JOIN notion_{workspace}_{database} n ON u.page_id = n.page_id
+  - Join pattern: JOIN notion_WORKSPACE_DATABASE n ON u.page_id = n.page_id
   - Example: JOIN notion_koii_stories n ON u.page_id = n.page_id
 - Also JOINs specialized tables (gmail_content, generic_content) if needed
 - Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
@@ -187,7 +187,7 @@ DATE FILTER RULES - CRITICAL DISTINCTION:
 **Which date column to use:**
 - For queries about CONTENT DATES (sprint dates, due dates, story dates):
   → Use the direct date column from workspace-specific table: n.date, n.due_date, etc.
-  → Look at the sample rows from notion_{workspace}_{database} tables to see which columns exist
+  → Look at the sample rows from notion_WORKSPACE_DATABASE tables to see which columns exist
   → Example: "stories in current sprint" → use n.date from notion_koii_stories
   
 - For queries about SYNC/CREATION dates (when added to database):
