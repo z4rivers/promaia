@@ -52,6 +52,7 @@ from promaia.cli.gmail_commands import add_gmail_commands
 
 # Import agent commands
 from promaia.cli.agent_commands import add_agent_commands
+from promaia.cli.scheduled_agent_commands import add_scheduled_agent_commands
 
 # Import workspace commands
 from promaia.cli.workspace_commands import (
@@ -2902,6 +2903,9 @@ def main():
     # Add agent commands
     add_agent_commands(subparsers)
 
+    # Add scheduled agent commands
+    add_scheduled_agent_commands(subparsers)
+
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
     sync_parser.add_argument('--source', '-s', dest='sources', action='append',
@@ -3302,6 +3306,14 @@ def main():
             asyncio.run(args.func(args))
         else:
             print_text("Discord bot command not properly configured", style="red")
+    elif args.command in ["agent-add", "agent-list", "agent-run", "agent-logs", "agent-remove",
+                          "agent-enable", "agent-disable", "agent-info",
+                          "agent-scheduler-start", "agent-scheduler-stop", "agent-scheduler-status"]:
+        # Handle scheduled agent commands
+        if hasattr(args, 'func'):
+            asyncio.run(args.func(args))
+        else:
+            print_text(f"No function assigned to command: {args.command}", style="red")
     else:
         parser.print_help()
 
