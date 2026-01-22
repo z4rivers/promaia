@@ -492,21 +492,26 @@ Please adjust the query to fix this issue.
         if results is None or not validation_result['is_valid']:
             error_msg = validation_result['message'] if validation_result else "Query execution failed"
 
-            # For vector search with 0 results, suggest modifying threshold
-            if self.query_mode == "vector" and results is not None and len(results) == 0:
-                print_text(f"\n⚠️  {error_msg}", style="yellow")
-                if min_similarity:
-                    print_text(f"   Current threshold: {min_similarity}", style="dim")
-                    print_text(f"   💡 Tip: Try lowering --threshold or adjusting your query", style="cyan")
-            else:
-                # For other failures
-                print_text(f"\n⚠️  {error_msg}", style="yellow")
-                if max_retries > 0:
-                    print_text(f"   Query failed after {max_retries} retries", style="dim")
+            # Only show error details and prompts if not skip_confirmation
+            if not skip_confirmation:
+                # For vector search with 0 results, suggest modifying threshold
+                if self.query_mode == "vector" and results is not None and len(results) == 0:
+                    print_text(f"\n⚠️  {error_msg}", style="yellow")
+                    if min_similarity:
+                        print_text(f"   Current threshold: {min_similarity}", style="dim")
+                        print_text(f"   💡 Tip: Try lowering --threshold or adjusting your query", style="cyan")
+                else:
+                    # For other failures
+                    print_text(f"\n⚠️  {error_msg}", style="yellow")
+                    if max_retries > 0:
+                        print_text(f"   Query failed after {max_retries} retries", style="dim")
 
-            # Ask user what to do (same prompt as success case)
-            print()  # Blank line before prompt
-            user_action = self._ask_user_confirmation_on_failure()
+                # Ask user what to do (same prompt as success case)
+                print()  # Blank line before prompt
+                user_action = self._ask_user_confirmation_on_failure()
+            else:
+                # When skip_confirmation, don't prompt - just return failure
+                user_action = ''  # Auto-accept failure (return empty results)
 
             if user_action == 'modify':
                 return {

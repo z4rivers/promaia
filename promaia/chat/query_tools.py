@@ -162,6 +162,7 @@ class QueryToolExecutor:
         if tool_name == 'query_sql':
             # For SQL queries, show that SQL will be generated
             print_text(f"  📝 Will generate SQL query for natural language search", style="dim")
+            print_text(f"  ⚠️  Note: SQL searches for EXACT TEXT/KEYWORDS in content, not abstract concepts", style="yellow")
 
         elif tool_name == 'query_vector':
             # Show vector search parameters
@@ -204,6 +205,12 @@ class QueryToolExecutor:
             self._display_query_before_execution(i, tool_call)
 
         print()  # Blank line before execution message
+        
+        # Visual separator before execution
+        print_text("=" * 70, style="dim")
+        print_text("EXECUTION PHASE (Running in Parallel)", style="bold cyan")
+        print_text("=" * 70, style="dim")
+        print()
 
         # PHASE 1: Parallel execution (no user interaction)
         if len(tool_calls) > 1:
@@ -212,8 +219,8 @@ class QueryToolExecutor:
             print_text(f"⚡ Executing query...", style="cyan")
 
         execution_tasks = [
-            self._execute_query_only(tool_call)
-            for tool_call in tool_calls
+            self._execute_query_only(tool_call, query_index=i)
+            for i, tool_call in enumerate(tool_calls, 1)
         ]
 
         # Wait for ALL queries to complete
@@ -230,6 +237,12 @@ class QueryToolExecutor:
 
         if len(tool_calls) > 1:
             print_text(f"✅ All queries completed\n", style="green")
+
+        # Visual separator before approval phase
+        print_text("=" * 70, style="dim")
+        print_text("APPROVAL PHASE", style="bold cyan")
+        print_text("=" * 70, style="dim")
+        print()
 
         # PHASE 2: Serial approval with results preview
         final_results = []
@@ -302,7 +315,7 @@ class QueryToolExecutor:
 
         return final_results
 
-    async def _execute_query_only(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_query_only(self, tool_call: Dict[str, Any], query_index: int = None) -> Dict[str, Any]:
         """Execute query without permission check - for parallel execution.
 
         This method executes the query and returns the result WITHOUT requesting
@@ -311,6 +324,7 @@ class QueryToolExecutor:
 
         Args:
             tool_call: Tool call dictionary with tool_name and parameters
+            query_index: Index of query for labeled output (e.g., "Query 1", "Query 2")
 
         Returns:
             Execution result with success/error state and loaded content
@@ -321,11 +335,11 @@ class QueryToolExecutor:
         try:
             # Execute the appropriate query tool directly
             if tool_name == 'query_sql':
-                return await self._execute_query_sql(parameters)
+                return await self._execute_query_sql(parameters, query_index=query_index)
             elif tool_name == 'query_vector':
-                return await self._execute_query_vector(parameters)
+                return await self._execute_query_vector(parameters, query_index=query_index)
             elif tool_name == 'query_source':
-                return await self._execute_query_source(parameters)
+                return await self._execute_query_source(parameters, query_index=query_index)
             else:
                 return {
                     'success': False,
@@ -407,15 +421,18 @@ class QueryToolExecutor:
                 'tool_call': tool_call
             }
 
-    async def _execute_query_sql(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_query_sql(self, parameters: Dict[str, Any], query_index: int = None) -> Dict[str, Any]:
         """Execute a SQL natural language query.
 
         Args:
             parameters: Query parameters including 'query', optional 'workspace', 'max_results'
+            query_index: Index of query for labeled output (e.g., "Query 1", "Query 2")
 
         Returns:
-            Result with loaded content
+            Result with loaded content (includes 'generated_sql' field for visibility)
         """
+        from promaia.utils.display import print_text
+        
         query = parameters.get('query')
         if not query:
             return {
@@ -425,15 +442,24 @@ class QueryToolExecutor:
 
         workspace = parameters.get('workspace', self.context_state.get('workspace'))
         max_results = parameters.get('max_results')
+        
+        # Create query label
+        query_label = f"Query {query_index}" if query_index else "SQL Query"
 
         try:
-            # Process natural language query
-            loaded_content = process_natural_language_to_content(
+            # Show that we're processing the natural language query with label
+            print_text(f"🤖 [{query_label}] Processing natural language query...", style="cyan")
+            
+            # Process natural language query with metadata return
+            loaded_content, metadata = process_natural_language_to_content(
                 nl_prompt=query,
                 workspace=workspace,
                 verbose=False,
-                skip_confirmation=True  # Skip prompts during parallel execution
+                skip_confirmation=True,  # Skip prompts during parallel execution
+                return_metadata=True  # Get SQL query for display
             )
+
+            print_text(f"✅ [{query_label}] Query processed successfully", style="green")
 
             # Count total pages
             total_pages = sum(len(pages) for pages in loaded_content.values())
@@ -444,7 +470,9 @@ class QueryToolExecutor:
                 'total_pages': total_pages,
                 'databases': list(loaded_content.keys()),
                 'query': query,
-                'workspace': workspace
+                'workspace': workspace,
+                'generated_sql': metadata.get('generated_query'),  # Include for display
+                'query_mode': metadata.get('query_mode')
             }
 
         except Exception as e:
@@ -453,11 +481,12 @@ class QueryToolExecutor:
                 'error': f"SQL query failed: {str(e)}"
             }
 
-    async def _execute_query_vector(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_query_vector(self, parameters: Dict[str, Any], query_index: int = None) -> Dict[str, Any]:
         """Execute a vector semantic search query.
 
         Args:
             parameters: Query parameters including 'query', optional 'workspace', 'top_k', 'min_similarity'
+            query_index: Index of query for labeled output (e.g., "Query 1", "Query 2")
 
         Returns:
             Result with loaded content
@@ -474,16 +503,27 @@ class QueryToolExecutor:
         top_k = parameters.get('top_k', self.context_state.get('top_k', 60))
         # Very low default threshold (0.2) for semantic search to cast a wide net for fuzzy searches
         min_similarity = parameters.get('min_similarity', self.context_state.get('threshold', 0.2))
+        
+        # Create query label
+        query_label = f"Query {query_index}" if query_index else "Vector Search"
+        
+        from promaia.utils.display import print_text
 
         try:
+            # Show that we're executing vector search with label
+            print_text(f"🔍 [{query_label}] Executing vector search...", style="cyan")
+            
             # Process vector search query
             loaded_content = process_vector_search_to_content(
                 vs_prompt=query,
                 workspace=workspace,
                 n_results=top_k,
                 min_similarity=min_similarity,
-                verbose=False
+                verbose=False,
+                skip_confirmation=True  # Skip prompts during parallel execution
             )
+            
+            print_text(f"✅ [{query_label}] Complete: {sum(len(pages) for pages in loaded_content.values())} results", style="green")
 
             # Count total pages
             total_pages = sum(len(pages) for pages in loaded_content.values())
@@ -505,12 +545,13 @@ class QueryToolExecutor:
                 'error': f"Vector search failed: {str(e)}"
             }
 
-    async def _execute_query_source(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_query_source(self, parameters: Dict[str, Any], query_index: int = None) -> Dict[str, Any]:
         """Execute a direct source query.
 
         Args:
             parameters: Query parameters including 'source' (format: "database:days"),
                        optional 'workspace', 'filters'
+            query_index: Index of query for labeled output (e.g., "Query 1", "Query 2")
 
         Returns:
             Result with loaded content
@@ -524,8 +565,16 @@ class QueryToolExecutor:
 
         workspace = parameters.get('workspace', self.context_state.get('workspace'))
         filters = parameters.get('filters', {})
+        
+        # Create query label
+        query_label = f"Query {query_index}" if query_index else "Source Query"
+        
+        from promaia.utils.display import print_text
 
         try:
+            # Show that we're loading from source with label
+            print_text(f"📁 [{query_label}] Loading from source: {source}", style="cyan")
+            
             # Parse source format: "database:days" or "database"
             if ':' in source:
                 database_name, days_str = source.split(':', 1)
@@ -572,6 +621,8 @@ class QueryToolExecutor:
                         total_pages += len(pages)
                         database_list.append(qualified_name)
 
+                    print_text(f"✅ [{query_label}] Complete: {total_pages} pages from {len(database_list)} databases", style="green")
+                    
                     return {
                         'success': True,
                         'loaded_content': loaded_content,
@@ -603,6 +654,8 @@ class QueryToolExecutor:
             # Format as multi_source_data with workspace prefix for clarity
             qualified_name = f"{database_config.workspace}.{database_name}"
             loaded_content = {qualified_name: pages}
+            
+            print_text(f"✅ [{query_label}] Complete: {len(pages)} pages loaded", style="green")
 
             return {
                 'success': True,

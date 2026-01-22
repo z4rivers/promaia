@@ -122,6 +122,90 @@ async def handle_database_list(args):
         status = "✓" if db_config.sync_enabled else "✗"
         print(f"  {status} {db_config.get_qualified_name()} ({db_config.source_type}) - {db_config.description}")
 
+async def _add_discord_channels_interactive(db_config, workspace, db_name):
+    """Helper function to interactively add Discord channels to a database."""
+    from promaia.cli.discord_commands import interactive_channel_browser, get_accessible_channels_cached
+    from rich.console import Console
+    import os
+    import json
+
+    console = Console()
+    db_manager = get_database_manager()
+
+    print(f"🔍 Loading available channels for Discord server...")
+
+    # Get Discord bot token from credentials file
+    config_dir = os.path.expanduser("~/.config/maia")
+    credentials_file = os.path.join(config_dir, "discord_credentials.json")
+
+    bot_token = None
+    if os.path.exists(credentials_file):
+        try:
+            with open(credentials_file, 'r') as f:
+                creds_data = json.load(f)
+            bot_token = creds_data.get("bot_token")
+        except Exception as e:
+            print(f"✗ Error reading Discord credentials: {e}")
+
+    if not bot_token:
+        print(f"✗ No Discord bot token configured")
+        print(f"💡 To configure Discord:")
+        print(f"   1. Create a Discord bot at https://discord.com/developers/applications")
+        print(f"   2. Save the bot token to {credentials_file}")
+        print(f"      Format: {{\"bot_token\": \"your-bot-token-here\"}}")
+        print(f"   3. Then run: maia database add-channels {db_name}")
+        return
+
+    # Get all available channels for this server
+    servers = []
+    try:
+        channels = await get_accessible_channels_cached(db_config, bot_token)
+        if channels:
+            servers = [{
+                "server_id": db_config.database_id,
+                "server_name": f"Discord Server ({db_config.nickname})",
+                "db_name": db_config.nickname,
+                "channels": channels
+            }]
+    except Exception as e:
+        print(f"⚠️  Could not fetch channels: {e}")
+        print(f"💡 You may need to run 'maia discord refresh' first")
+        print(f"💡 Or add channels later with: maia database add-channels {db_name}")
+        return
+
+    if not servers or not servers[0]["channels"]:
+        print(f"✗ No accessible channels found")
+        print(f"💡 Try running 'maia discord refresh' to update the channel cache")
+        return
+
+    print(f"📋 Select channels to sync:")
+    print("   Use SPACE to select channels, ENTER to confirm, ESC to cancel")
+
+    # Use the interactive browser
+    selected_channels, _ = await interactive_channel_browser(console, servers, workspace)
+
+    if not selected_channels:
+        print("No channels selected.")
+        return
+
+    # Extract channel IDs from selection
+    channels_to_add = [channel[1] for channel in selected_channels]  # channel[1] is channel_id
+
+    print(f"\n➕ Adding {len(channels_to_add)} channels to database '{db_name}':")
+    for channel in selected_channels:
+        print(f"   - {channel[2]} ({channel[1]})")  # channel[2] is channel_name
+
+    # Update config with selected channels
+    if len(channels_to_add) == 1:
+        db_config.property_filters['channel_id'] = channels_to_add[0]
+    else:
+        db_config.property_filters['channel_id'] = channels_to_add
+
+    db_manager.save_config()
+
+    print(f"✅ Successfully added {len(channels_to_add)} channels")
+    print(f"💡 Run 'maia database sync {db_name}' to sync the channels")
+
 async def handle_database_add(args):
     """Handle 'maia database add' command."""
     db_manager = get_database_manager()
@@ -131,8 +215,36 @@ async def handle_database_add(args):
     
     # Interactive configuration
     name = args.name or input("Database name: ")
-    source_type = args.source_type or input("Source type (notion): ") or "notion"
-    database_id = args.database_id or input("Database ID: ")
+
+    # Source type selection with menu
+    if args.source_type:
+        source_type = args.source_type
+    else:
+        print("Available source types:")
+        print("  1. notion (default)")
+        print("  2. discord")
+        print("  3. gmail")
+        choice = input("Select source type (1-3) or press Enter for notion: ").strip()
+
+        source_type_map = {
+            "1": "notion",
+            "2": "discord",
+            "3": "gmail",
+            "notion": "notion",
+            "discord": "discord",
+            "gmail": "gmail",
+            "": "notion"  # default
+        }
+        source_type = source_type_map.get(choice.lower(), "notion")
+
+    # Use appropriate label for ID field based on source type
+    id_label = {
+        "discord": "Server ID",
+        "gmail": "Gmail Account",
+        "notion": "Database ID"
+    }.get(source_type, "Database ID")
+
+    database_id = args.database_id or input(f"{id_label}: ")
     description = args.description or input("Description (optional): ")
     
     if not workspace:
@@ -188,14 +300,34 @@ async def handle_database_add(args):
                 return  # Skip connection test if we can't retrieve the config
             
             # Test connection with full database config (includes workspace info)
-            connector = ConnectorRegistry.get_connector(source_type, db_config.to_dict())
-            if connector and await connector.test_connection():
-                print("✓ Connection test successful")
-            else:
-                print("⚠ Warning: Connection test failed")
+            try:
+                connector = ConnectorRegistry.get_connector(source_type, db_config.to_dict())
+                if connector and await connector.test_connection():
+                    print("✓ Connection test successful")
+                else:
+                    print("⚠ Warning: Connection test failed")
+            except ImportError as ie:
+                print(f"⚠ Warning: Connection test skipped - {ie}")
+                print(f"  Note: The database was added successfully, but connection couldn't be tested.")
+            except Exception as conn_e:
+                print(f"⚠ Warning: Connection test failed - {conn_e}")
+
+            # For Discord databases, offer to select channels
+            if source_type == "discord":
+                print("\n📋 Would you like to select Discord channels to sync?")
+                channel_choice = input("Select channels now? (y/N): ").strip().lower()
+
+                if channel_choice in ['y', 'yes']:
+                    try:
+                        await _add_discord_channels_interactive(db_config, workspace, name)
+                    except Exception as ch_e:
+                        print(f"⚠ Warning: Could not add channels: {ch_e}")
+                        print(f"💡 You can add channels later with: maia database add-channels {name}")
+                else:
+                    print(f"💡 You can add channels later with: maia database add-channels {name}")
         else:
             print(f"✗ Failed to add database '{name}' (may already exist)")
-            
+
     except Exception as e:
         print(f"✗ Failed to add database: {e}")
 
@@ -1154,6 +1286,7 @@ def display_sync_summary(sync_results: List, overall_duration: float):
     """Display a comprehensive summary of all database sync results."""
     from promaia.connectors.base import SyncResult
     from promaia.utils.display import print_text, print_markdown
+    from promaia.utils.notifications import send_sync_complete_notification
     
     # Separate successful results from exceptions
     successful_results = []
@@ -1187,6 +1320,14 @@ def display_sync_summary(sync_results: List, overall_duration: float):
     # Calculate summary stats
     total_databases = len(successful_results) + len(failed_results)
     success_rate = (len(successful_results) / total_databases * 100) if total_databases > 0 else 0
+    
+    # Send system notification for sync completion
+    if total_databases > 0:
+        send_sync_complete_notification(
+            success_count=len(successful_results),
+            failed_count=len(failed_results),
+            duration=overall_duration
+        )
     
     # Header
     print("🔄 DATABASE SYNC SUMMARY")
@@ -1244,7 +1385,14 @@ def display_sync_summary(sync_results: List, overall_duration: float):
             else:
                 db_display = db_name
                 
-            print(f"  ⚠️  {db_display}{duration_str} • {failure['error']}")
+            error_msg = failure['error']
+            print(f"  ⚠️  {db_display}{duration_str} • {error_msg}")
+            
+            # Add helpful hints for common errors
+            if "Gmail authentication required" in error_msg or "Token has expired" in error_msg:
+                print(f"      💡 Run: maia workspace gmail-setup {workspace if '.' in db_name else 'koii'}")
+            elif "Discord credentials not found" in error_msg:
+                print(f"      💡 Run: maia workspace discord-setup {workspace if '.' in db_name else 'koii'}")
     # Overall summary
     print("🎯 OVERALL RESULTS")
     

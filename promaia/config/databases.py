@@ -58,12 +58,12 @@ class DatabaseConfig:
             # For Gmail, use data/md/gmail/{workspace}/ structure
             default_md_dir = f"data/md/gmail/{self.workspace}"
         elif source_type == "discord":
-            # For Discord, use data/md/discord/{workspace}/ structure with human-readable names
-            default_md_dir = f"data/md/discord/{self.workspace}"
+            # For Discord, use data/md/discord/{workspace}/{nickname} structure to separate different servers
+            default_md_dir = f"data/md/discord/{self.workspace}/{self.nickname}"
         else:
             # For other sources (Notion), use data/md/notion/{workspace}/
             default_md_dir = f"data/md/notion/{self.workspace}"
-        
+
         self.markdown_directory = config_data.get("markdown_directory", default_md_dir)
         
         # Backward compatibility: keep output_directory for legacy systems

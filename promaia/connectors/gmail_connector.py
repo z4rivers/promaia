@@ -127,10 +127,14 @@ class GmailConnector(BaseConnector):
             return thread_id
         return thread_id.replace('thread_', '', 1) if thread_id.startswith('thread_') else thread_id
 
-    async def connect(self) -> bool:
-        """Establish connection to Gmail API."""
+    async def connect(self, allow_interactive=False) -> bool:
+        """Establish connection to Gmail API.
+        
+        Args:
+            allow_interactive: If False, won't prompt for authentication (default: False)
+        """
         try:
-            self.service = await self._get_authenticated_service()
+            self.service = await self._get_authenticated_service(allow_interactive=allow_interactive)
             return self.service is not None
         except Exception as e:
             self.logger.error(f"Failed to connect to Gmail: {e}")
@@ -162,8 +166,13 @@ class GmailConnector(BaseConnector):
             self.logger.error(f"Failed to get user email: {e}")
             return None
     
-    async def _get_authenticated_service(self):
-        """Get authenticated Gmail service with token refresh."""
+    async def _get_authenticated_service(self, allow_interactive=False):
+        """Get authenticated Gmail service with token refresh.
+        
+        Args:
+            allow_interactive: If False, won't prompt for authentication (default: False)
+                              This prevents blocking during automated syncs
+        """
         creds = None
         
         # Load existing token
@@ -189,7 +198,15 @@ class GmailConnector(BaseConnector):
                         f"Please run: maia workspace gmail-setup {self.workspace} {self.email}"
                     )
                 
-                # Run OAuth flow
+                # Don't run interactive OAuth flow during automated syncs
+                if not allow_interactive:
+                    raise ValueError(
+                        f"Gmail authentication required for {self.email}. "
+                        f"Token has expired or is invalid. "
+                        f"Please run: maia workspace gmail-setup {self.workspace} {self.email}"
+                    )
+                
+                # Run OAuth flow (only if interactive is allowed)
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_file, self.SCOPES
                 )
@@ -416,7 +433,11 @@ class GmailConnector(BaseConnector):
                          limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Query emails from Gmail with intelligent chunking and batching."""
         if not self.service:
-            await self.connect()
+            # Don't allow interactive auth during automated syncs
+            connected = await self.connect(allow_interactive=False)
+            if not connected:
+                self.logger.error("Failed to connect to Gmail - authentication required")
+                return []
         
         try:
             all_email_data = []
@@ -1127,6 +1148,20 @@ Subject: {subject}
                                    excluded_properties: List[str] = None,
                                    complex_filter: Optional[Dict[str, Any]] = None) -> SyncResult:
         """Sync Gmail threads to local storage using unified storage system with message-level appending."""
+        # Ensure connection before syncing (without interactive auth)
+        if not self.service:
+            connected = await self.connect(allow_interactive=False)
+            if not connected:
+                result = SyncResult()
+                result.start_time = datetime.now()
+                result.end_time = datetime.now()
+                result.errors.append(
+                    f"Gmail authentication required. Token has expired or is invalid. "
+                    f"Please run: maia workspace gmail-setup {self.workspace} {self.email}"
+                )
+                self.logger.error(result.errors[0])
+                return result
+        
         # Check if we're in message-level mode (new appending strategy)
         content_mode = self.config.get('gmail_content_mode', 'latest_only')
         

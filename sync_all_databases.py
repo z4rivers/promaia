@@ -29,16 +29,26 @@ def run_sync():
         # Get the project directory
         project_dir = Path(__file__).parent.absolute()
 
-        # Use the maia command directly from venv bin (avoids permission issues)
-        maia_cmd = project_dir / "venv" / "bin" / "maia"
+        # Try multiple locations for maia command
+        possible_paths = [
+            project_dir / "venv" / "bin" / "maia",
+            Path.home() / "bin" / "maia",
+            Path("/usr/local/bin/maia"),
+        ]
 
-        if maia_cmd.exists():
+        maia_cmd = None
+        for path in possible_paths:
+            if path.exists():
+                maia_cmd = path
+                logger.info(f"Found maia command at: {maia_cmd}")
+                break
+
+        if maia_cmd:
             cmd_str = str(maia_cmd)
-            logger.info(f"Using maia command: {cmd_str}")
         else:
-            # Fall back to trying maia in PATH
+            # Last resort: try maia in PATH (may work if cron has proper PATH)
             cmd_str = "maia"
-            logger.warning(f"Virtual environment maia not found, using system maia (may fail)")
+            logger.warning(f"Maia not found in standard locations, trying PATH")
 
         # Change to project directory
         os.chdir(project_dir)

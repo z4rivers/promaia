@@ -411,10 +411,19 @@ You can include MULTIPLE `<tool_call>` blocks in a SINGLE response when:
 - You want to try multiple search strategies simultaneously (casting a wide net)
 - You're uncertain which query type will work best
 
+**When to use multiple queries**:
+✅ Good: Searching for a person who might be in emails OR messages (gmail + discord)
+✅ Good: Trying SQL for exact name AND vector for fuzzy match (hedging your strategy)
+✅ Good: Searching across different time periods or workspaces simultaneously
+❌ Bad: Running SQL AND vector for the SAME abstract question where SQL won't work (wasteful)
+❌ Bad: Making queries "just to be safe" when one strategy is clearly sufficient
+
 **Benefits of multiple queries**:
 - Faster: All queries execute in parallel instead of separate iterations
 - More efficient: User approves all at once instead of multiple interruptions
 - Better results: Can combine complementary search strategies
+
+**Important**: Multiple queries should be COMPLEMENTARY (different strategies, databases, or time periods), not redundant. Don't run SQL if you know it won't find anything useful.
 
 Example - Multiple queries in one response:
 ```
@@ -484,15 +493,20 @@ I'll search for Eddie's emails using multiple strategies:
 **Description**: Search for **EXACT TEXT/KEYWORDS** in content using natural language that converts to SQL. This searches the actual text content, NOT database properties.
 
 **When to use**:
-- Searching for exact text/keywords that appear IN THE CONTENT (email body, journal text, story description)
-- Finding messages FROM a specific person (sender name appears in content)
-- Finding text ABOUT a topic (keywords in the content itself)
-- **NOT for Notion properties** (status, priority, assignee, dates) - use query_vector for those
+- Searching for SPECIFIC, CONCRETE keywords that appear in content (names like "Federico", "Product X", specific phrases)
+- Finding messages FROM a specific person by name (e.g., "emails from Federico")
+- Finding content that MENTIONS specific topics with concrete terms (e.g., "mentions quarterly results")
+- **Important**: SQL works best with SPECIFIC, SEARCHABLE terms like names, products, projects, not abstract concepts
 
 **When NOT to use**:
-- Filtering by database properties like status, priority, tags, assignee → Use **query_vector** instead
-- Fuzzy/uncertain searches → Use **query_vector** instead
+- ❌ **Abstract questions** like "who am I?", "what's my purpose?", "identity", "values" → Use **query_vector** for philosophical/abstract queries
+- ❌ **Filtering by database properties** like status, priority, tags, assignee → Use **query_vector** instead
+- ❌ **Fuzzy/uncertain searches** → Use **query_vector** instead
+- ❌ **Concepts without specific keywords** → If you can't identify 2-3 concrete keywords that would appear in text, don't use SQL
 - Example: "stories with status in-progress" → This is a PROPERTY filter, use query_vector NOT query_sql
+- Example: "who am I?" → This is abstract/philosophical, use query_vector NOT query_sql (SQL would search for literal phrase "who am I" which won't exist)
+
+**SQL Success Check**: Before using query_sql, ask yourself: "What specific words/phrases will appear in the text?" If you can't identify concrete keywords, use query_vector instead.
 
 **Parameters**:
 - `query`* (string): Natural language description specifying workspace, database, and search terms that appear in content. Format: "{workspace} {database} from/about {text_keywords} {time_filter}". Examples: "trass gmail from federico about launch last 30 days", "trass journal mentioning meeting last month"

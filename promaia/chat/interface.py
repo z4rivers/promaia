@@ -3242,6 +3242,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     
     def handle_manual_browse_edit(user_input):
         """Handle manually edited browse commands."""
+        # Access module-level function (needed for nested function scope)
+        nonlocal_process_browser_selections = process_browser_selections
+        
         try:
             # Import CLI functions we need
             import argparse
@@ -3793,7 +3796,11 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['multiple_workspaces'] = multiple_workspaces
             
             # Handle mixed commands (browse + regular sources) differently
-            if browse_databases and regular_sources:
+            # BUT: If browse was just added (browse_changed and no previous browse_selections),
+            # we should launch the browser even with regular sources present
+            user_is_adding_browse_for_first_time = browse_changed and not context_state.get('browse_selections')
+            
+            if browse_databases and regular_sources and not user_is_adding_browse_for_first_time:
                 # This is a mixed command - update context directly without launching browser
                 print_text(f"🔄 Updating context with browse databases and regular sources...", style="cyan")
                 
@@ -4438,6 +4445,9 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
     
     def handle_browse_in_edit_context():
         """Handle unified browse mode selection within edit context."""
+        # Access module-level function (needed for nested function scope)
+        nonlocal_process_browser_selections = process_browser_selections
+        
         try:
             # Initialize variables
             database_filter = None
@@ -4635,7 +4645,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             save_browser_selection(selected_sources)
 
             # Process selections and update context
-            processed_sources, processed_filters = process_browser_selections(selected_sources)
+            processed_sources, processed_filters = nonlocal_process_browser_selections(selected_sources)
             
             # When browse scope changes, we need to handle sources intelligently:
             # 1. Keep sources that are OUTSIDE the current browse scope (e.g., other workspaces)
@@ -4896,6 +4906,15 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
         # Note: Reasoning and parameters are already shown before execution in query_tools.py
         # So we don't duplicate them here - just show execution results
+
+        # Show generated SQL if available (for SQL queries)
+        if execution_result and execution_result.get('generated_sql'):
+            print_text(f"   📝 Generated SQL:", style="cyan")
+            sql = execution_result['generated_sql']
+            # Always show full SQL (no truncation)
+            for line in sql.split('\n'):
+                print_text(f"      {line}", style="dim")
+            print()
 
         # Show execution results
         if execution_result:
@@ -5699,6 +5718,45 @@ The user will type `/send` to trigger the actual sending process.
                         logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
                     except Exception as e:
                         logger.error(f"Failed to save chat messages: {e}")
+                # Auto-save conversation to history (if not in draft mode and has messages)
+                elif messages and len([m for m in messages if m.get('role') != 'system']) > 0:
+                    try:
+                        from promaia.storage.chat_history import ChatHistoryManager
+                        history_manager = ChatHistoryManager()
+                        
+                        # Prepare context for saving (same as /save command)
+                        thread_context = {
+                            'sources': context_state.get('sources'),
+                            'filters': context_state.get('filters'),
+                            'workspace': context_state.get('workspace'),
+                            'resolved_workspace': context_state.get('resolved_workspace'),
+                            'query_command': context_state.get('query_command'),
+                            'sql_query_prompt': context_state.get('sql_query_prompt'),
+                            'sql_query_content': context_state.get('sql_query_content'),
+                            'original_query_format': context_state.get('original_query_format'),
+                            'browse_selections': context_state.get('browse_selections'),
+                            'vector_search_queries': context_state.get('vector_search_queries'),
+                            'is_vector_search': context_state.get('is_vector_search')
+                        }
+                        
+                        # Check if updating existing thread or creating new
+                        current_thread_id = context_state.get('current_thread_id')
+                        if current_thread_id:
+                            history_manager.update_thread(
+                                thread_id=current_thread_id,
+                                messages=messages,
+                                context=thread_context
+                            )
+                        else:
+                            thread_id = history_manager.save_thread(
+                                messages=messages,
+                                context=thread_context
+                            )
+                            context_state['current_thread_id'] = thread_id
+                        
+                        print_text("💾 Conversation auto-saved to history", style="dim green")
+                    except Exception as e:
+                        debug_print(f"Auto-save error (non-fatal): {e}")
 
                 print_text("Goodbye!", style="bold cyan")
                 break
@@ -5905,7 +5963,6 @@ The user will type `/send` to trigger the actual sending process.
                     save_browser_selection(selected_sources)
 
                     # Process selections and update context
-                    from promaia.chat.query_tools import process_browser_selections
                     processed_sources, processed_filters = process_browser_selections(selected_sources)
 
                     # Update context with new sources
@@ -6470,7 +6527,10 @@ The user will type `/send` to trigger the actual sending process.
                         'sql_query_prompt': context_state.get('sql_query_prompt'),
                         'sql_query_content': context_state.get('sql_query_content'),  # Save the actual content for faster restore
                         'original_query_format': context_state.get('original_query_format'),  # Save original browse command
-                        'browse_selections': context_state.get('browse_selections')  # Save browse selections for re-editing
+                        'browse_selections': context_state.get('browse_selections'),  # Save browse selections for re-editing
+                        'vector_search_queries': context_state.get('vector_search_queries'),  # Save vector search queries
+                        'vector_search_content': context_state.get('vector_search_content'),  # Save vector search results
+                        'is_vector_search': context_state.get('is_vector_search')  # Save search mode flag
                     }
                     
                     # Check if we're continuing an existing thread
@@ -8206,6 +8266,43 @@ The user will type `/send` when ready to send the email.
                     logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
                 except Exception as e:
                     logger.error(f"Failed to save chat messages: {e}")
+            # Auto-save conversation to history (if not in draft mode and has messages)
+            elif messages and len([m for m in messages if m.get('role') != 'system']) > 0:
+                try:
+                    from promaia.storage.chat_history import ChatHistoryManager
+                    history_manager = ChatHistoryManager()
+                    
+                    thread_context = {
+                        'sources': context_state.get('sources'),
+                        'filters': context_state.get('filters'),
+                        'workspace': context_state.get('workspace'),
+                        'resolved_workspace': context_state.get('resolved_workspace'),
+                        'query_command': context_state.get('query_command'),
+                        'sql_query_prompt': context_state.get('sql_query_prompt'),
+                        'sql_query_content': context_state.get('sql_query_content'),
+                        'original_query_format': context_state.get('original_query_format'),
+                        'browse_selections': context_state.get('browse_selections'),
+                        'vector_search_queries': context_state.get('vector_search_queries'),
+                        'is_vector_search': context_state.get('is_vector_search')
+                    }
+                    
+                    current_thread_id = context_state.get('current_thread_id')
+                    if current_thread_id:
+                        history_manager.update_thread(
+                            thread_id=current_thread_id,
+                            messages=messages,
+                            context=thread_context
+                        )
+                    else:
+                        thread_id = history_manager.save_thread(
+                            messages=messages,
+                            context=thread_context
+                        )
+                        context_state['current_thread_id'] = thread_id
+                    
+                    print_text("\n💾 Conversation auto-saved to history", style="dim green")
+                except Exception as e:
+                    debug_print(f"Auto-save error (non-fatal): {e}")
 
             print_text("\nGoodbye!", style="bold cyan")
             break
@@ -8219,6 +8316,43 @@ The user will type `/send` when ready to send the email.
                     logger.info(f"💾 Saved {len(messages)} chat messages for draft {draft_id}")
                 except Exception as e:
                     logger.error(f"Failed to save chat messages: {e}")
+            # Auto-save conversation to history (if not in draft mode and has messages)
+            elif messages and len([m for m in messages if m.get('role') != 'system']) > 0:
+                try:
+                    from promaia.storage.chat_history import ChatHistoryManager
+                    history_manager = ChatHistoryManager()
+                    
+                    thread_context = {
+                        'sources': context_state.get('sources'),
+                        'filters': context_state.get('filters'),
+                        'workspace': context_state.get('workspace'),
+                        'resolved_workspace': context_state.get('resolved_workspace'),
+                        'query_command': context_state.get('query_command'),
+                        'sql_query_prompt': context_state.get('sql_query_prompt'),
+                        'sql_query_content': context_state.get('sql_query_content'),
+                        'original_query_format': context_state.get('original_query_format'),
+                        'browse_selections': context_state.get('browse_selections'),
+                        'vector_search_queries': context_state.get('vector_search_queries'),
+                        'is_vector_search': context_state.get('is_vector_search')
+                    }
+                    
+                    current_thread_id = context_state.get('current_thread_id')
+                    if current_thread_id:
+                        history_manager.update_thread(
+                            thread_id=current_thread_id,
+                            messages=messages,
+                            context=thread_context
+                        )
+                    else:
+                        thread_id = history_manager.save_thread(
+                            messages=messages,
+                            context=thread_context
+                        )
+                        context_state['current_thread_id'] = thread_id
+                    
+                    print_text("\n💾 Conversation auto-saved to history", style="dim green")
+                except Exception as e:
+                    debug_print(f"Auto-save error (non-fatal): {e}")
 
             print_text("\nGoodbye!", style="bold cyan")
             break

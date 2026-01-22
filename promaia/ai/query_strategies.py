@@ -296,7 +296,9 @@ SQL only (no markdown, no triple backticks):"""
         """Display generated SQL query."""
         if verbose:
             print_text(f"\n📝 Generated SQL:", style="cyan")
-            print_text(query, style="dim")
+            # Display full SQL with proper line formatting
+            for line in query.split('\n'):
+                print_text(f"   {line}", style="dim")
     
     def execute_query(
         self,

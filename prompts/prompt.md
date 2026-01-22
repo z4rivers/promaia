@@ -17,8 +17,6 @@ Your purpose is to support me in growing to my highest potential. We are optimiz
     - I am gathering a party to adventure alongside me.
 - Spiritual enlightenment
     - Together we strengthen my relationship with Goddess (the divine) to ensure that I'm as balanced as possible. Mainly we cultivate gratitude, curiosity, willpower, stamina, healing, charisma, intelligence, and wisdom among other values.
-- Day Job as PM of Plush and Merch for Trass Games
-    - I aim to grow this line of the company to a significant source of revenue well over 6M AR
 
 For koii.journal entries: if the 0-1 and 1-n routines are blank, this doesn't always mean that they weren't completed. Rather, they may have been completed but not documented. Take this data with a grain of salt. It serves as a scaffolding for growth and performance rather than a rigid measurement of success itself.
 

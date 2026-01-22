@@ -30,7 +30,8 @@ def process_natural_language_to_content(
     workspace: str = None,
     database_names: List[str] = None,
     verbose: bool = False,
-    skip_confirmation: bool = False
+    skip_confirmation: bool = False,
+    return_metadata: bool = False
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process natural language queries using the new agentic system.
@@ -44,9 +45,11 @@ def process_natural_language_to_content(
         database_names: Optional list of databases to search
         verbose: Show detailed processing steps
         skip_confirmation: Skip user confirmation prompts (for parallel query execution)
+        return_metadata: If True, returns (content, metadata) tuple with generated SQL
 
     Returns:
         Dict mapping database_name -> list of content entries
+        OR tuple of (content_dict, metadata_dict) if return_metadata=True
     """
     try:
         processor = get_nl_processor(verbose=verbose)
@@ -59,9 +62,16 @@ def process_natural_language_to_content(
             skip_confirmation=skip_confirmation
         )
         
+        # Extract metadata for visibility
+        metadata = {
+            'generated_query': result.get('query'),  # SQL query or vector params
+            'query_mode': result.get('query_mode'),
+            'intent': result.get('intent')
+        }
+        
         # Check if user chose to quit (exit to terminal)
         if result.get("action") == "quit":
-            return {}  # Return empty results to prevent chat from loading
+            return ({}, metadata) if return_metadata else {}
         
         if result["success"] and result["results"]:
             # Extract page IDs from the results
@@ -74,7 +84,7 @@ def process_natural_language_to_content(
             if not page_ids:
                 if verbose:
                     print_text("⚠️  No page IDs found in query results", style="yellow")
-                return {}
+                return ({}, metadata) if return_metadata else {}
             
             # Use the universal adapter to load full content
             if verbose:
@@ -89,20 +99,21 @@ def process_natural_language_to_content(
             )
             
             # Return the full content in the expected format
-            return full_content if full_content else {}
+            content = full_content if full_content else {}
+            return (content, metadata) if return_metadata else content
         
         else:
             # Query failed after retries
             error_msg = result.get("error", "Unknown error")
             print_text(f"⚠️  Natural language query failed: {error_msg}", style="yellow")
-            return {}
+            return ({}, metadata) if return_metadata else {}
     
     except Exception as e:
         print_text(f"❌ Error in natural language processing: {e}", style="red")
         if os.getenv("MAIA_DEBUG") == "1":
             import traceback
             traceback.print_exc()
-        return {}
+        return ({}, {}) if return_metadata else {}
 
 
 def process_vector_search_to_content(
@@ -111,7 +122,8 @@ def process_vector_search_to_content(
     database_names: List[str] = None,
     verbose: bool = False,
     n_results: int = 20,
-    min_similarity: float = 0.2
+    min_similarity: float = 0.2,
+    skip_confirmation: bool = False
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process vector search queries using semantic similarity.
@@ -125,6 +137,7 @@ def process_vector_search_to_content(
         verbose: Show detailed processing steps
         n_results: Maximum number of results to return (default: 20)
         min_similarity: Minimum similarity threshold 0-1 (default: 0.2)
+        skip_confirmation: Skip user confirmation prompts (for parallel query execution)
     
     Returns:
         Dict mapping database_name -> list of content entries
@@ -139,7 +152,8 @@ def process_vector_search_to_content(
             workspace=workspace,
             max_retries=0,  # No auto-retry for vector search (deterministic)
             n_results=n_results,
-            min_similarity=min_similarity
+            min_similarity=min_similarity,
+            skip_confirmation=skip_confirmation
         )
         
         # Check if user chose to quit (exit to terminal)
