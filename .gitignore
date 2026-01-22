@@ -14,7 +14,9 @@ credentials.json
 
 # Main config file (contains workspace API keys)
 promaia.config.json
+promaia.config.json.*
 !promaia.config.template.json
+!promaia.config.template*.json
 
 # Gmail/OAuth specific credentials
 credentials/*/gmail_credentials.json
