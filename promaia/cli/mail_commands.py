@@ -92,7 +92,33 @@ async def handle_mail(args):
         print_text("📬 Maia Mail - Intelligent Email Response System", style="bold cyan")
         print_text(f"Workspace(s): {', '.join(workspaces)}", style="dim")
         print()
-        
+
+        # Handle manual flush (cleanup) if requested
+        if hasattr(args, 'flush') and args.flush:
+            from promaia.mail.draft_manager import DraftManager
+            draft_manager = DraftManager()
+
+            flush_threshold = args.days if hasattr(args, 'days') else 7
+            print_text(f"🗑️  Archiving skipped drafts older than {flush_threshold} days...", style="cyan")
+            print()
+
+            total_archived = 0
+            for workspace in workspaces:
+                archived = draft_manager.auto_archive_old_skipped_drafts(
+                    workspace=workspace,
+                    days_threshold=flush_threshold
+                )
+                total_archived += archived
+
+            print()
+            if total_archived > 0:
+                print_text(f"✅ Archived {total_archived} old skipped draft(s)", style="green")
+            else:
+                print_text("✅ No old skipped drafts to archive", style="green")
+            print()
+            print_separator()
+            return
+
         # Refresh existing drafts if requested
         if hasattr(args, 'refresh') and args.refresh:
             days = args.days if hasattr(args, 'days') else 7
@@ -143,8 +169,16 @@ async def handle_mail(args):
         else:
             print_text("📋 Launching review interface...", style="cyan")
         print()
-        
-        review_ui = EmailReviewUI()
+
+        # Configure time filtering
+        show_all = hasattr(args, 'all') and args.all
+        default_days = args.days if hasattr(args, 'days') else 7
+
+        review_ui = EmailReviewUI(
+            default_days=default_days,
+            show_all=show_all,
+            auto_archive_threshold=30  # Fixed at 30 days for auto-archive
+        )
         start_in_history = hasattr(args, 'history') and args.history
         await review_ui.launch_review(workspaces, start_in_history=start_in_history)
         
@@ -226,8 +260,20 @@ def add_mail_commands(subparsers):
         '--days',
         type=int,
         default=7,
-        help='Number of days to look back for refresh (default: 7). Only used with --refresh'
+        help='Number of days to show in queue or refresh (default: 7). Pending/unsure always shown regardless of age.'
     )
-    
+
+    mail_parser.add_argument(
+        '--all',
+        action='store_true',
+        help='Show all drafts regardless of age (no time filtering)'
+    )
+
+    mail_parser.add_argument(
+        '--flush',
+        action='store_true',
+        help='Archive old skipped drafts (manual cleanup) and exit'
+    )
+
     mail_parser.set_defaults(func=handle_mail)
 

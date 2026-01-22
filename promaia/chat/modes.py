@@ -299,11 +299,22 @@ class DraftMode(ChatMode):
         from promaia.mail.response_generator import ResponseGenerator
         generator = ResponseGenerator()
         draft_to_send = generator._format_email_body(draft_to_send)
-        
+
+        # Display the draft for review
+        print()
+        print_text("─" * 80, style="dim")
+        print_text(f"DRAFT TO SEND (Artifact #{latest_artifact_id})", style="bold cyan")
+        print_text(f"Subject: {self.draft_data['inbound_subject']}", style="cyan")
+        print_text("─" * 80, style="dim")
+        print()
+        print_text(draft_to_send, style="white")
+        print()
+        print_text("─" * 80, style="dim")
+
         # Safety confirmation
         print()
         print_text(f"⚠️  Ready to send Draft #{latest_artifact_id}", style="bold yellow")
-        print_text(f"Subject: {self.draft_data['inbound_subject']}", style="yellow")
+        print_text(f"To: {', '.join(recipients)}", style="yellow")
         print_text(f"\nType the first 5 characters to confirm: '{self.draft_data['safety_string']}'", style="yellow")
         print_text(f"Or type 'cancel' (or press Enter) to abort", style="dim")
 

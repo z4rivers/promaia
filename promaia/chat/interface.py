@@ -6924,10 +6924,47 @@ The user will type `/send` to trigger the actual sending process.
                     continue
 
                 # If we have a valid email artifact but mail mode isn't enabled, auto-enable it
-                if not context_state.get('enable_email_send', False):
+                # and auto-setup Gmail accounts for sending
+                if not context_state.get('enable_email_send', False) or not context_state.get('mail_from_accounts'):
                     context_state['enable_email_send'] = True
                     logger.info("📧 Auto-enabled email send mode due to valid email artifact")
                     print_text("📧 Email send mode enabled", style="cyan")
+
+                    # Auto-setup Gmail accounts if not already set
+                    if not context_state.get('mail_from_accounts'):
+                        try:
+                            from promaia.config.databases import get_database_manager
+                            from promaia.config.workspaces import get_workspace_manager
+
+                            db_manager = get_database_manager()
+                            workspace_manager = get_workspace_manager()
+
+                            # Load from current workspace or all workspaces
+                            current_workspace = context_state.get('workspace') or context_state.get('resolved_workspace')
+                            workspaces_to_load = [current_workspace] if current_workspace else workspace_manager.list_workspaces()
+
+                            # Find all Gmail databases
+                            mail_from_accounts = []
+                            for ws in workspaces_to_load:
+                                gmail_dbs = [
+                                    db for db in db_manager.get_workspace_databases(ws)
+                                    if db.source_type == "gmail"
+                                ]
+                                for gmail_db in gmail_dbs:
+                                    mail_from_accounts.append({
+                                        'workspace': ws,
+                                        'email': gmail_db.database_id,
+                                        'display': f"{gmail_db.database_id} ({ws})" if ws != 'default' else gmail_db.database_id
+                                    })
+
+                            if mail_from_accounts:
+                                context_state['mail_from_accounts'] = mail_from_accounts
+                                logger.info(f"📧 Auto-setup {len(mail_from_accounts)} Gmail account(s) for sending")
+                                print_text(f"📧 Found {len(mail_from_accounts)} Gmail account(s) for sending", style="cyan")
+                            else:
+                                print_text("⚠️  No Gmail accounts configured - you won't be able to send", style="yellow")
+                        except Exception as e:
+                            logger.error(f"Failed to auto-setup Gmail accounts: {e}", exc_info=True)
 
                 # Validate email body
                 if not email_body.strip() and not attachments:

@@ -25,8 +25,19 @@ logger = logging.getLogger(__name__)
 class EmailReviewUI:
     """Interactive review interface for email drafts."""
     
-    def __init__(self):
+    def __init__(self, default_days: int = 7, show_all: bool = False, auto_archive_threshold: int = 30):
+        """
+        Initialize Email Review UI.
+
+        Args:
+            default_days: Default number of days to show in queue (default: 7)
+            show_all: If True, show all drafts regardless of age (default: False)
+            auto_archive_threshold: Days after which to auto-archive skipped drafts (default: 30)
+        """
         self.draft_manager = DraftManager()
+        self.default_days = None if show_all else default_days
+        self.show_all = show_all
+        self.auto_archive_threshold = auto_archive_threshold
         self.session_start_count = 0  # Track how many items at session start
         self.session_sent = 0  # Track items sent this session
         self.session_archived = 0  # Track items archived this session
@@ -171,17 +182,31 @@ class EmailReviewUI:
     
     def _load_drafts(self, workspaces: List[str], include_resolved: bool = False) -> List[Dict[str, Any]]:
         """Load drafts based on current mode (queue or history).
-        
+
         Args:
             workspaces: List of workspace names
             include_resolved: If True, include sent/archived drafts (for stats calculation)
         """
         all_drafts = []
         for workspace in workspaces:
+            # Auto-archive old skipped drafts before loading queue (only in queue mode)
+            if not self.history_mode and not include_resolved:
+                archived_count = self.draft_manager.auto_archive_old_skipped_drafts(
+                    workspace=workspace,
+                    days_threshold=self.auto_archive_threshold
+                )
+                if archived_count > 0:
+                    logger.debug(f"Auto-archived {archived_count} old skipped drafts for {workspace}")
+
             if self.history_mode:
                 drafts = self.draft_manager.get_history_for_workspace(workspace)
             else:
-                drafts = self.draft_manager.get_drafts_for_workspace(workspace, include_resolved=include_resolved)
+                # Pass days filter to DraftManager (pending/unsure always shown regardless of date)
+                drafts = self.draft_manager.get_drafts_for_workspace(
+                    workspace,
+                    include_resolved=include_resolved,
+                    days=self.default_days
+                )
             all_drafts.extend(drafts)
         return all_drafts
     
@@ -237,7 +262,7 @@ class EmailReviewUI:
     
     def _render_status_bar(self, session_stats: Dict[str, int], queue_counts: Dict[str, int]) -> str:
         """Render progress and status bar.
-        
+
         Args:
             session_stats: Session-level progress stats
             queue_counts: Current queue composition (pending/skipped)
@@ -250,15 +275,22 @@ class EmailReviewUI:
                 f"Total: {total_history} completed messages\n\n"
             )
         else:
+            # Time window indicator
+            if self.default_days is not None:
+                time_window = f"Showing last {self.default_days} days (pending/unsure shown regardless of age)  •  --all to see more\n"
+            else:
+                time_window = "Showing all drafts\n"
+
             # Queue view header with session progress
             if session_stats['session_start'] > 0:
                 bar = self._render_progress_bar(session_stats)
                 progress_line = f"Session Progress: [{bar}] {session_stats['resolved']}/{session_stats['session_start']} completed ({session_stats['percent']}%)\n"
             else:
                 progress_line = ""
-            
+
             return (
                 f"Maia Mail - Draft Review Queue\n\n"
+                f"{time_window}"
                 f"{progress_line}"
                 f"Queue: ⏳ {queue_counts['pending']} pending  •  🤷‍♀️ {queue_counts['unsure']} unsure  •  ⏭️ {queue_counts['skipped']} skipped  •  "
                 f"Session: ✅ {session_stats['sent']} sent  •  🗄️ {session_stats['archived']} archived\n\n"

@@ -7,7 +7,7 @@ import sqlite3
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
@@ -362,40 +362,73 @@ class DraftManager:
             logger.error(f"❌ Failed to get pending drafts: {e}")
             return []
     
-    def get_drafts_for_workspace(self, workspace: str, include_resolved: bool = False) -> List[Dict[str, Any]]:
+    def get_drafts_for_workspace(
+        self,
+        workspace: str,
+        include_resolved: bool = False,
+        status_filter: Optional[List[str]] = None,
+        days: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get drafts for a workspace (queue view).
-        
+
         By default, excludes sent/archived messages (they go to history instead).
-        
+
         Args:
             workspace: Workspace name
             include_resolved: If True, includes ALL messages including sent/archived (for display purposes)
                             If False (default), only shows pending/skipped (active queue)
+            status_filter: Optional list of statuses to filter by (e.g., ['pending', 'unsure'])
+            days: Optional number of days to filter by. Special handling:
+                 - pending/unsure drafts are ALWAYS shown regardless of date
+                 - Other statuses (skipped) are filtered to last N days
+                 - If None, no date filtering is applied
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
+                # Build base query based on include_resolved
                 if include_resolved:
-                    # Show all messages (for stats/display in review UI)
-                    cursor.execute(
-                        "SELECT * FROM email_drafts WHERE workspace = ? ORDER BY created_time DESC",
-                        (workspace,)
-                    )
+                    base_condition = "workspace = ?"
+                    params = [workspace]
                 else:
-                    # Only show active queue items (exclude sent/archived)
-                    cursor.execute(
-                        """SELECT * FROM email_drafts 
-                        WHERE workspace = ? AND status NOT IN ('sent', 'archived') 
-                        ORDER BY created_time DESC""",
-                        (workspace,)
-                    )
-                
+                    base_condition = "workspace = ? AND status NOT IN ('sent', 'archived')"
+                    params = [workspace]
+
+                # Add status filter if provided
+                if status_filter:
+                    placeholders = ','.join('?' for _ in status_filter)
+                    base_condition += f" AND status IN ({placeholders})"
+                    params.extend(status_filter)
+
+                # Add date filtering with special handling for pending/unsure
+                if days is not None:
+                    cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+                    # Always show pending/unsure, filter others by date
+                    base_condition += " AND (status IN ('pending', 'unsure') OR created_time >= ?)"
+                    params.append(cutoff_date)
+
+                # Order by status priority first (pending → unsure → skipped), then by date
+                # This ensures important work (pending/unsure) appears before skipped emails
+                query = f"""
+                    SELECT * FROM email_drafts
+                    WHERE {base_condition}
+                    ORDER BY
+                        CASE status
+                            WHEN 'pending' THEN 1
+                            WHEN 'unsure' THEN 2
+                            WHEN 'skipped' THEN 3
+                            ELSE 4
+                        END ASC,
+                        created_time DESC
+                """
+                cursor.execute(query, params)
+
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to get drafts for workspace {workspace}: {e}")
             return []
@@ -843,4 +876,58 @@ class DraftManager:
         except Exception as e:
             logger.error(f"❌ Failed to update last sync time for {workspace}: {e}")
             raise
+
+    def auto_archive_old_skipped_drafts(
+        self,
+        workspace: str,
+        days_threshold: int = 30
+    ) -> int:
+        """
+        Auto-archive skipped drafts older than threshold.
+
+        This helps clean up old notification emails, delivery confirmations,
+        and other skipped drafts that are no longer relevant.
+
+        Args:
+            workspace: Workspace name
+            days_threshold: Number of days after which to archive skipped drafts (default: 30)
+
+        Returns:
+            Number of drafts archived
+        """
+        try:
+            cutoff_date = (datetime.now() - timedelta(days=days_threshold)).isoformat()
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Update skipped drafts older than threshold
+                cursor.execute("""
+                    UPDATE email_drafts
+                    SET status = 'archived',
+                        completed_time = ?,
+                        reviewed_time = ?
+                    WHERE workspace = ?
+                      AND status = 'skipped'
+                      AND created_time < ?
+                """, (
+                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
+                    workspace,
+                    cutoff_date
+                ))
+
+                archived_count = cursor.rowcount
+                conn.commit()
+
+                if archived_count > 0:
+                    logger.info(f"🗑️  Auto-archived {archived_count} old skipped drafts for workspace '{workspace}' (older than {days_threshold} days)")
+                else:
+                    logger.debug(f"No old skipped drafts to archive for workspace '{workspace}'")
+
+                return archived_count
+
+        except Exception as e:
+            logger.error(f"❌ Failed to auto-archive old skipped drafts for {workspace}: {e}")
+            return 0
 

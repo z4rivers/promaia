@@ -112,11 +112,10 @@ class ArtifactManager:
             return artifact, commentary
         else:
             # No artifact tags found
-            # This should only happen if user explicitly requested "as artifact"
-            # but AI didn't use tags (which means AI likely didn't think it should be an artifact)
-            logger.warning("extract_artifact_content() called but no <artifact> tags found. "
-                         "User may have explicitly requested artifact mode. "
-                         "Treating entire response as artifact.")
+            # This can happen in specialized modes (like draft mode) where all AI responses
+            # are treated as artifacts even without explicit tags
+            logger.debug("extract_artifact_content() called but no <artifact> tags found. "
+                        "Treating entire response as artifact (expected in some modes like draft mode).")
             return ai_response, ""
 
     def is_json_artifact(self, content: str) -> bool:
