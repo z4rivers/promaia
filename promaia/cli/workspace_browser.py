@@ -151,17 +151,20 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
         current_source_lookup = {}
         current_enabled_set = set()
         if current_sources:
+            logger.debug(f"🔍 Browser pre-populating with {len(current_sources)} sources: {current_sources}")
             for source in current_sources:
                 if '#' in source:
                     # Discord channel: trass.discord#channel-name:7
                     db_channel, days_part = source.rsplit(':', 1)
                     current_source_lookup[db_channel] = source
                     current_enabled_set.add(db_channel)
+                    logger.debug(f"   Discord channel: {db_channel}")
                 else:
                     # Regular database: trass.journal:7
                     db_name = source.split(':')[0]
                     current_source_lookup[db_name] = source
                     current_enabled_set.add(db_name)
+                    logger.debug(f"   Database: {db_name}")
         
         for db in workspace_databases:
             # Skip databases not included in browser unless they're specifically requested in the filter
@@ -242,10 +245,12 @@ async def interactive_unified_browser(workspace: Optional[str], default_days: Op
                     source_spec = current_source_lookup[qualified_name]
                     # Extract days from current spec
                     current_days = safe_parse_days(source_spec, default_days_for_db)
+                    logger.debug(f"   ✓ Found {qualified_name} in current_source_lookup, using spec: {source_spec}")
                 else:
                     # Use default
                     source_spec = f"{qualified_name}:{default_days_for_db}"
                     current_days = default_days_for_db
+                    logger.debug(f"   ✗ {qualified_name} NOT in current_source_lookup (keys: {list(current_source_lookup.keys())}), using default: {source_spec}")
 
                 entry = {
                     'spec': source_spec,

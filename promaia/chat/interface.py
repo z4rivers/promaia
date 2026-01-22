@@ -4535,61 +4535,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
             # Determine current sources for pre-populating the browser
             current_sources = []
             if stored_browser_selections:
-                # Filter stored selections to only include sources that match the current browse scope
-                # This prevents sources from previous browse scopes (e.g., trass.tg) from persisting
-                # when browsing a different scope (e.g., just workspace 'trass')
-                filtered_selections = []
-                
-                for sel in stored_browser_selections:
-                    should_include = False
-                    
-                    # Extract the database name from the selection
-                    if '#' in sel:
-                        # Discord channel: trass.tg#channel-name:7
-                        db_name = sel.split('#')[0]
-                    else:
-                        # Regular database: trass.journal:7
-                        db_name = sel.split(':')[0]
-                    
-                    # Check if this selection matches the current browse scope
-                    if database_filter:
-                        # If we have a database filter, check if the selection matches any filter item
-                        for filter_item in database_filter:
-                            filter_base = filter_item.split(':')[0]
-                            if db_name == filter_base or db_name.startswith(filter_base + '.'):
-                                should_include = True
-                                break
-                    elif workspace:
-                        # If browsing a workspace, check if the selection belongs to that workspace
-                        # Handle both qualified names (workspace.db) and unqualified names (db)
-                        if db_name.startswith(workspace + '.'):
-                            should_include = True
-                        else:
-                            # Check if this is a database that belongs to the workspace but doesn't have the prefix
-                            # (e.g., "ds" database in "koii" workspace, or "dreamshare" in "koii")
-                            from promaia.config.databases import get_database_manager
-                            db_manager = get_database_manager()
-                            db_config = db_manager.get_database(db_name, workspace)
-                            if db_config and db_config.workspace == workspace:
-                                should_include = True
-                    elif multiple_workspaces:
-                        # If browsing multiple workspaces, check if selection belongs to any of them
-                        for ws in multiple_workspaces:
-                            if db_name.startswith(ws + '.'):
-                                should_include = True
-                                break
-                            else:
-                                # Check if database belongs to this workspace
-                                from promaia.config.databases import get_database_manager
-                                db_manager = get_database_manager()
-                                db_config = db_manager.get_database(db_name, ws)
-                                if db_config and db_config.workspace == ws:
-                                    should_include = True
-                                    break
-                    
-                    if should_include:
-                        filtered_selections.append(sel)
-                
+                logger.debug(f"📋 Stored browser selections: {stored_browser_selections}")
+                logger.debug(f"   Workspace: {workspace}, Database filter: {database_filter}, Multiple workspaces: {multiple_workspaces}")
+
+                # SIMPLIFIED: Just pass all stored selections to the browser
+                # The browser will only show databases that exist in the current workspace anyway
+                # This avoids complex filtering bugs while still maintaining proper scoping
+                filtered_selections = stored_browser_selections.copy()
+                logger.debug(f"📋 Passing all {len(filtered_selections)} stored selections to browser (browser will filter to current scope)")
+
+                # OLD COMPLEX FILTERING REMOVED - caused bugs where valid selections were filtered out
+                # The browser is smart enough to only show databases that exist in the workspace
+                # So we don't need to pre-filter here
+
                 current_sources.extend(filtered_selections)
             else:
                 # If no selections are stored, and it's a workspace browse, populate with all sources
