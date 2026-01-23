@@ -4,8 +4,8 @@ Agent configuration management with JSON persistence.
 
 import json
 import os
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any
+from dataclasses import dataclass, asdict, field
+from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
 
 
@@ -17,16 +17,20 @@ class AgentConfig:
     workspace: str
     databases: List[str]  # e.g., ["journal:7", "gmail:7", "stories:all"]
     prompt_file: str  # Path to .md file or inline content
-    interval_minutes: int  # 5, 15, 30, 60, etc.
     mcp_tools: List[str]  # List of MCP tool names to enable
     max_iterations: int  # Maximum query iterations (default: 3)
     output_notion_page_id: str  # Where to write results
     enabled: bool = True
 
+    # Scheduling fields (new format uses schedule, old format uses interval_minutes)
+    schedule: Optional[List[Tuple[str, str]]] = None  # List of (day, time) like [("Mon", "09:00"), ...]
+    interval_minutes: Optional[int] = None  # Legacy: 5, 15, 30, 60, etc. (deprecated, use schedule)
+
     # Optional fields
     description: Optional[str] = None
     created_at: Optional[str] = None
     last_run_at: Optional[str] = None
+    calendar_event_ids: Optional[str] = None  # Comma-separated event IDs from Google Calendar
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -53,8 +57,15 @@ class AgentConfig:
         if not self.prompt_file:
             errors.append("Prompt file is required")
 
-        if self.interval_minutes <= 0:
+        # Check scheduling: either schedule or interval_minutes must be set
+        if not self.schedule and not self.interval_minutes:
+            errors.append("Either schedule or interval_minutes must be set")
+
+        if self.interval_minutes is not None and self.interval_minutes <= 0:
             errors.append("Interval must be positive")
+
+        if self.schedule is not None and len(self.schedule) == 0:
+            errors.append("Schedule must have at least one run")
 
         if self.max_iterations <= 0:
             errors.append("Max iterations must be positive")

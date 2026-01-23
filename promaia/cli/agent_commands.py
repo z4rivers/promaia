@@ -298,9 +298,14 @@ async def handle_agent_cleanup(args):
         print("✅ No expired tasks to cleanup")
 
 
-def add_agent_commands(subparsers):
-    """Add agent commands to the main parser."""
-    agent_parser = subparsers.add_parser('agent', help='Manage external agent tasks')
+def add_agent_commands(subparsers, include_scheduled=True):
+    """Add agent commands to the main parser.
+
+    Args:
+        subparsers: The main argument parser's subparsers
+        include_scheduled: Whether to include scheduled agent commands (default: True)
+    """
+    agent_parser = subparsers.add_parser('agent', help='Manage agents and scheduled tasks')
     agent_subparsers = agent_parser.add_subparsers(dest='agent_command', help='Agent commands')
 
     # Submit command
@@ -352,3 +357,6 @@ def add_agent_commands(subparsers):
     # Cleanup command
     cleanup_parser = agent_subparsers.add_parser('cleanup', help='Cleanup expired tasks')
     cleanup_parser.set_defaults(func=handle_agent_cleanup)
+
+    # Return the subparsers so scheduled commands can be added
+    return agent_subparsers if include_scheduled else None

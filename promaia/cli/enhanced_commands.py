@@ -41,25 +41,34 @@ async def sync_sources_for_chat(sources: List[str], args):
     """Sync specified sources for chat context."""
     db_manager = get_database_manager()
     source_specs = parse_source_specs(sources)
-    
+
+    # Also sync Notion-backed prompts if any exist
+    try:
+        from promaia.cli.notion_prompt_manager import sync_all_notion_prompts
+        prompt_results = await sync_all_notion_prompts()
+        if prompt_results['synced']:
+            print(f"✓ Synced {len(prompt_results['synced'])} Notion-backed prompt(s)")
+    except Exception as e:
+        logger.debug(f"Could not sync Notion prompts: {e}")
+
     for source_spec in source_specs:
         db_name = source_spec["name"]
         db_config = db_manager.get_database(db_name)
-        
+
         if not db_config:
             print(f"⚠ Database '{db_name}' not found, skipping")
             continue
-        
+
         try:
             connector = ConnectorRegistry.get_connector(db_config.source_type, db_config.to_dict())
             if not connector:
                 print(f"⚠ No connector for {db_config.source_type}, skipping {db_name}")
                 continue
-            
+
             # Build filters
             filters = build_filters(source_spec, db_config)
             date_filter = build_date_filter(source_spec, db_config, args)
-            
+
             # Sync to local storage
             result = await connector.sync_to_local(
                 output_directory=db_config.output_directory,
@@ -69,9 +78,9 @@ async def sync_sources_for_chat(sources: List[str], args):
                 force_update=getattr(args, 'force', False),
                 excluded_properties=db_config.excluded_properties
             )
-            
+
             print(f"✓ {db_name}: {result.pages_saved} pages synced")
-            
+
         except Exception as e:
             print(f"✗ Failed to sync {db_name}: {e}")
 

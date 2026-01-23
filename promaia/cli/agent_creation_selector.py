@@ -1,0 +1,993 @@
+"""Interactive selectors for agent creation flow."""
+
+import asyncio
+import os
+import logging
+import subprocess
+import tempfile
+from typing import List, Optional, Tuple, Dict, Any
+from pathlib import Path
+from prompt_toolkit import prompt
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout.containers import HSplit, Window, VSplit
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.layout import Layout
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.widgets import TextArea, Frame
+from rich.console import Console
+from rich.table import Table
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Styling Utilities
+# ============================================================================
+
+def _styled_header(text: str) -> str:
+    """Create a styled header for selectors."""
+    return f"🤖 {text}"
+
+
+def _styled_status_line(selected_count: int, total: int, instructions: str) -> str:
+    """Create status line for selectors."""
+    return f"Selected: {selected_count}/{total} | {instructions}"
+
+
+def _format_database_entry(name: str, days: str, enabled: bool) -> str:
+    """Format a database entry for display."""
+    checkbox = "☑" if enabled else "☐"
+    days_display = f"[{days}]" if days != "all" else "[all]"
+    return f"{checkbox}  {name} {days_display}"
+
+
+def _get_entry_prefix(enabled: bool) -> str:
+    """Get checkbox prefix for an entry."""
+    checkbox = "☑" if enabled else "☐"
+    return f"{checkbox}      "
+
+
+# ============================================================================
+# Workspace Selector
+# ============================================================================
+
+async def select_workspace(workspaces: List[str], preselected: str = None) -> Optional[str]:
+    """
+    Interactive workspace selector.
+
+    Args:
+        workspaces: List of available workspace names
+        preselected: Pre-selected workspace (auto-select if only one)
+
+    Returns:
+        Selected workspace name or None if cancelled
+    """
+    console = Console()
+
+    # If only one workspace, auto-select it
+    if len(workspaces) == 1:
+        selected = workspaces[0]
+        console.print(f"✓ Workspace: [cyan]{selected}[/cyan] (auto-selected)", style="dim")
+        return selected
+
+    # State management
+    current_focus = 0
+    if preselected and preselected in workspaces:
+        current_focus = workspaces.index(preselected)
+
+    should_exit = False
+    confirmed = False
+
+    def get_status_display():
+        return f"🔍 Select Workspace | ↑↓:Navigate ENTER:Select ESC:Cancel"
+
+    def get_entry_display(index: int) -> str:
+        """Get display text for a workspace entry."""
+        indicator = "→" if index == current_focus else " "
+        return f"{indicator}  {workspaces[index]}"
+
+    # Create display windows
+    def create_layout():
+        # Status line
+        status_window = Window(
+            FormattedTextControl(text=get_status_display),
+            height=1,
+        )
+
+        # Title line
+        title_window = Window(
+            FormattedTextControl(text=_styled_header("Select Workspace")),
+            height=1,
+            style="class:title"
+        )
+
+        # Entry windows
+        entry_windows = []
+        for i in range(len(workspaces)):
+            entry_window = Window(
+                FormattedTextControl(text=lambda i=i: get_entry_display(i)),
+                height=1,
+                style=f"class:{'selected' if i == current_focus else 'unselected'}"
+            )
+            entry_windows.append(entry_window)
+
+        # Main container
+        container = HSplit([
+            status_window,
+            title_window,
+            Window(height=1),  # Spacer
+            *entry_windows
+        ])
+
+        return Layout(container)
+
+    layout = create_layout()
+
+    # Key bindings
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(workspaces) - 1:
+            current_focus += 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Enter)
+    def confirm_selection(event):
+        nonlocal should_exit, confirmed
+        should_exit = True
+        confirmed = True
+        event.app.exit()
+
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        nonlocal should_exit
+        should_exit = True
+        event.app.exit()
+
+    # Create application
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    # Run the application
+    await app.run_async()
+
+    if confirmed:
+        return workspaces[current_focus]
+    else:
+        return None
+
+
+# ============================================================================
+# Database Selector with Inline Day Editing
+# ============================================================================
+
+async def select_databases(
+    workspace: str,
+    available_databases: List[Dict[str, Any]]
+) -> Optional[List[Tuple[str, str]]]:
+    """
+    Interactive database selector with inline day editing.
+
+    Args:
+        workspace: Workspace name
+        available_databases: List of database configs with 'name' and 'default_days'
+
+    Returns:
+        List of tuples like [("journal", "7"), ("stories", "all")] or None if cancelled
+    """
+    console = Console()
+
+    if not available_databases:
+        console.print("❌ No databases available", style="red")
+        return None
+
+    # Create TextArea widgets for each database
+    text_areas = []
+    enabled_states = []
+    database_names = []
+    source_windows = []
+
+    for db in available_databases:
+        db_name = db['name']
+        default_days = db.get('default_days', 7)
+        database_names.append(db_name)
+
+        # Create text area for days input
+        days_text = str(default_days) if default_days != "all" else "all"
+        text_area = TextArea(
+            text=days_text,
+            height=1,
+            multiline=False,
+            wrap_lines=False,
+            scrollbar=False,
+            focusable=True,
+        )
+        text_area.buffer.cursor_position = len(days_text)
+        text_areas.append(text_area)
+
+        # Start with default_include if available
+        is_enabled = db.get('default_include', True)
+        enabled_states.append(is_enabled)
+
+        # Create window for this database entry
+        prefix_text = _get_entry_prefix(is_enabled)
+        source_window = VSplit([
+            Window(
+                FormattedTextControl(text=prefix_text),
+                width=8,
+                dont_extend_width=True,
+            ),
+            Window(
+                FormattedTextControl(text=f"{db_name}: "),
+                width=len(db_name) + 2,
+                dont_extend_width=True,
+            ),
+            text_area,
+            Window(
+                FormattedTextControl(text=" days"),
+                width=5,
+                dont_extend_width=True,
+            ),
+        ])
+        source_windows.append(source_window)
+
+    # State management
+    current_focus = 0
+    should_exit = False
+    confirmed = False
+
+    def get_status_display():
+        """Generate status line."""
+        enabled_count = sum(enabled_states)
+        total_count = len(enabled_states)
+        return f"🔍 {workspace} | Selected: {enabled_count}/{total_count} | ↑↓:Navigate SPACE:Toggle ENTER:Confirm ESC:Cancel"
+
+    # Status line
+    status_window = Window(
+        FormattedTextControl(text=get_status_display),
+        height=1,
+    )
+
+    # Title line
+    title_window = Window(
+        FormattedTextControl(text=_styled_header("Select Databases")),
+        height=1,
+        style="class:title"
+    )
+
+    # Main container
+    container = HSplit([
+        status_window,
+        title_window,
+        Window(height=1),  # Spacer
+        *source_windows
+    ])
+
+    layout = Layout(container)
+
+    # Set initial focus
+    layout.focus(text_areas[current_focus])
+
+    # Key bindings
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+            layout.focus(text_areas[current_focus])
+
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(text_areas) - 1:
+            current_focus += 1
+            layout.focus(text_areas[current_focus])
+
+    @bindings.add(' ')  # Spacebar
+    def toggle_database(event):
+        nonlocal current_focus
+        enabled_states[current_focus] = not enabled_states[current_focus]
+
+        # Update prefix display
+        prefix_text = _get_entry_prefix(enabled_states[current_focus])
+        source_windows[current_focus].children[0].content.text = prefix_text
+
+        # Update status
+        status_window.content.text = get_status_display
+
+    @bindings.add(Keys.Enter)
+    def confirm_selection(event):
+        nonlocal should_exit, confirmed
+        should_exit = True
+        confirmed = True
+        event.app.exit()
+
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        nonlocal should_exit
+        should_exit = True
+        event.app.exit()
+
+    # Create application
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    # Run the application
+    await app.run_async()
+
+    if confirmed:
+        # Return enabled databases with their days values
+        result = []
+        for i, (text_area, enabled, db_name) in enumerate(zip(text_areas, enabled_states, database_names)):
+            if enabled:
+                days_value = text_area.text.strip()
+                # Validate days value
+                if days_value.lower() in ['all', 'unlimited', 'max']:
+                    days_value = 'all'
+                else:
+                    try:
+                        days_int = int(days_value)
+                        if days_int <= 0:
+                            days_value = '7'  # Fallback to default
+                        else:
+                            days_value = str(days_int)
+                    except ValueError:
+                        days_value = '7'  # Fallback to default
+
+                result.append((db_name, days_value))
+
+        if not result:
+            console.print("❌ No databases selected", style="red")
+            return None
+
+        return result
+    else:
+        return None
+
+
+# ============================================================================
+# Prompt Input Selector with File Browser
+# ============================================================================
+
+async def input_prompt() -> Optional[str]:
+    """
+    Interactive prompt input with file browser and editor support.
+
+    Returns:
+        Prompt content as string or None if cancelled
+    """
+    console = Console()
+
+    # Ensure agent_prompts directory exists
+    prompts_dir = Path.home() / ".promaia" / "agent_prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get list of .md files
+    md_files = sorted(prompts_dir.glob("*.md"))
+
+    if not md_files:
+        console.print("📝 No prompt files found. Creating a new one...", style="cyan")
+        return await _create_new_prompt_file(prompts_dir)
+
+    # File browser with preview
+    file_list = [f.name for f in md_files]
+
+    # State management
+    current_focus = 0
+    should_exit = False
+    confirmed = False
+    action = None  # 'select', 'new', 'edit', 'notion'
+
+    def get_preview_content() -> str:
+        """Get preview of currently selected file."""
+        if current_focus < len(md_files):
+            try:
+                content = md_files[current_focus].read_text()
+                # Limit preview to first 500 characters
+                if len(content) > 500:
+                    return content[:500] + "\n\n... (truncated)"
+                return content
+            except Exception as e:
+                return f"Error reading file: {e}"
+        return ""
+
+    def get_status_display():
+        return "↑↓:Navigate N:New E:Edit P:Notion ENTER:Select ESC:Cancel"
+
+    def get_file_display(index: int) -> str:
+        """Get display text for a file entry."""
+        indicator = "→" if index == current_focus else " "
+        return f"{indicator}  {file_list[index]}"
+
+    # Create display windows
+    def create_layout():
+        # Status line
+        status_window = Window(
+            FormattedTextControl(text=get_status_display),
+            height=1,
+        )
+
+        # Title line
+        title_window = Window(
+            FormattedTextControl(text=_styled_header("Select Prompt File")),
+            height=1,
+            style="class:title"
+        )
+
+        # File list
+        file_windows = []
+        for i in range(len(file_list)):
+            file_window = Window(
+                FormattedTextControl(text=lambda i=i: get_file_display(i)),
+                height=1,
+                style=f"class:{'selected' if i == current_focus else 'unselected'}"
+            )
+            file_windows.append(file_window)
+
+        file_list_container = HSplit(file_windows)
+
+        # Preview pane
+        preview_text = get_preview_content()
+        preview_window = Window(
+            FormattedTextControl(text=preview_text),
+            wrap_lines=True,
+        )
+
+        # Split layout: file list (left) + preview (right)
+        content_container = VSplit([
+            HSplit([
+                Window(FormattedTextControl(text="Files:"), height=1, style="class:header"),
+                file_list_container,
+            ], width=30),
+            Window(width=1),  # Separator
+            HSplit([
+                Window(FormattedTextControl(text="Preview:"), height=1, style="class:header"),
+                preview_window,
+            ]),
+        ])
+
+        # Main container
+        container = HSplit([
+            status_window,
+            title_window,
+            Window(height=1),  # Spacer
+            content_container,
+        ])
+
+        return Layout(container)
+
+    layout = create_layout()
+
+    # Key bindings
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(file_list) - 1:
+            current_focus += 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add('n')
+    @bindings.add('N')
+    def create_new(event):
+        nonlocal should_exit, action
+        should_exit = True
+        action = 'new'
+        event.app.exit()
+
+    @bindings.add('e')
+    @bindings.add('E')
+    def edit_file(event):
+        nonlocal should_exit, action
+        should_exit = True
+        action = 'edit'
+        event.app.exit()
+
+    @bindings.add('p')
+    @bindings.add('P')
+    def paste_notion_link(event):
+        nonlocal should_exit, action
+        should_exit = True
+        action = 'notion'
+        event.app.exit()
+
+    @bindings.add(Keys.Enter)
+    def confirm_selection(event):
+        nonlocal should_exit, confirmed
+        should_exit = True
+        confirmed = True
+        event.app.exit()
+
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        nonlocal should_exit
+        should_exit = True
+        event.app.exit()
+
+    # Create application
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    # Run the application
+    await app.run_async()
+
+    if confirmed:
+        # Read and return selected file content
+        try:
+            content = md_files[current_focus].read_text()
+            return content
+        except Exception as e:
+            console.print(f"❌ Error reading file: {e}", style="red")
+            return None
+    elif action == 'new':
+        return await _create_new_prompt_file(prompts_dir)
+    elif action == 'edit':
+        # Edit the selected file and return its content
+        file_path = md_files[current_focus]
+        if await _edit_file_in_editor(file_path):
+            try:
+                content = file_path.read_text()
+                return content
+            except Exception as e:
+                console.print(f"❌ Error reading edited file: {e}", style="red")
+                return None
+        return None
+    elif action == 'notion':
+        # Create prompt from Notion URL
+        return await _create_notion_prompt(prompts_dir)
+    else:
+        return None
+
+
+async def _create_new_prompt_file(prompts_dir: Path) -> Optional[str]:
+    """Create a new prompt file using the user's editor."""
+    console = Console()
+
+    # Prompt for filename
+    console.print("\nEnter filename for new prompt (without .md extension):")
+    filename = input("Filename: ").strip()
+
+    if not filename:
+        console.print("❌ Filename is required", style="red")
+        return None
+
+    # Add .md extension if not present
+    if not filename.endswith('.md'):
+        filename += '.md'
+
+    file_path = prompts_dir / filename
+
+    # Check if file already exists
+    if file_path.exists():
+        console.print(f"❌ File '{filename}' already exists", style="red")
+        return None
+
+    # Create initial content
+    initial_content = "# Agent Prompt\n\nDescribe what the agent should do...\n"
+    file_path.write_text(initial_content)
+
+    # Open in editor
+    if await _edit_file_in_editor(file_path):
+        try:
+            content = file_path.read_text()
+            if content.strip():
+                console.print(f"✓ Created prompt file: {filename}", style="green")
+                return content
+            else:
+                console.print("❌ Prompt file is empty", style="red")
+                file_path.unlink()  # Remove empty file
+                return None
+        except Exception as e:
+            console.print(f"❌ Error reading new file: {e}", style="red")
+            return None
+    else:
+        console.print("❌ Editor was closed without saving", style="red")
+        file_path.unlink()  # Remove file if editing was cancelled
+        return None
+
+
+async def _edit_file_in_editor(file_path: Path) -> bool:
+    """Open a file in the user's preferred editor."""
+    console = Console()
+
+    # Determine editor
+    editor = os.environ.get('EDITOR') or os.environ.get('VISUAL') or 'nano'
+
+    console.print(f"Opening in {editor}...", style="dim")
+
+    try:
+        # Open editor and wait for completion
+        subprocess.run([editor, str(file_path)], check=True)
+        return True
+    except subprocess.CalledProcessError:
+        console.print(f"❌ Error opening editor: {editor}", style="red")
+        return False
+    except FileNotFoundError:
+        console.print(f"❌ Editor not found: {editor}", style="red")
+        console.print("Set EDITOR environment variable to your preferred editor", style="dim")
+        return False
+
+
+async def _create_notion_prompt(prompts_dir: Path) -> Optional[str]:
+    """Create a new prompt file from a Notion page URL."""
+    from promaia.cli.notion_prompt_manager import create_notion_prompt, get_prompt_content
+    console = Console()
+
+    console.print("\n📄 Create Prompt from Notion Page", style="cyan")
+    console.print("Paste the Notion page URL:")
+
+    notion_url = input("URL: ").strip()
+
+    if not notion_url:
+        console.print("❌ URL is required", style="red")
+        return None
+
+    # Prompt for filename
+    console.print("\nEnter filename for this prompt (without .md extension):")
+    console.print("(Press ENTER to auto-generate from page ID)")
+    filename = input("Filename: ").strip()
+
+    # Show progress message
+    console.print("\n⏳ Fetching Notion page...", style="cyan")
+
+    # Create the Notion-backed prompt
+    try:
+        prompt_file = await create_notion_prompt(
+            notion_url=notion_url,
+            filename=filename if filename else None,
+            prompts_dir=prompts_dir
+        )
+
+        if not prompt_file:
+            console.print("❌ Failed to create prompt from Notion page", style="red")
+            return None
+
+        console.print(f"✅ Created Notion-backed prompt: {prompt_file.name}", style="green")
+        console.print("   This prompt will stay synced with the Notion page", style="dim")
+
+        # Return the prompt content (without metadata)
+        return get_prompt_content(prompt_file)
+
+    except Exception as e:
+        console.print(f"❌ Error creating Notion prompt: {e}", style="red")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+# ============================================================================
+# Interval Selector
+# ============================================================================
+
+async def select_interval() -> Optional[int]:
+    """
+    Interactive interval selector with common presets.
+
+    Returns:
+        Interval in minutes or None if cancelled
+    """
+    console = Console()
+
+    # Common intervals
+    intervals = [
+        (5, "⚡ Very Frequent (5 minutes)"),
+        (15, "🔄 Frequent (15 minutes)"),
+        (30, "⏰ Regular (30 minutes)"),
+        (60, "📅 Hourly (60 minutes)"),
+        (None, "✏️  Custom (enter manually)"),
+    ]
+
+    # State management
+    current_focus = 2  # Default to 30 minutes
+    should_exit = False
+    confirmed = False
+
+    def get_status_display():
+        return "↑↓:Navigate ENTER:Select ESC:Cancel"
+
+    def get_entry_display(index: int) -> str:
+        """Get display text for an interval entry."""
+        indicator = "→" if index == current_focus else " "
+        return f"{indicator}  {intervals[index][1]}"
+
+    # Create display windows
+    def create_layout():
+        # Status line
+        status_window = Window(
+            FormattedTextControl(text=get_status_display),
+            height=1,
+        )
+
+        # Title line
+        title_window = Window(
+            FormattedTextControl(text=_styled_header("Select Run Interval")),
+            height=1,
+            style="class:title"
+        )
+
+        # Entry windows
+        entry_windows = []
+        for i in range(len(intervals)):
+            entry_window = Window(
+                FormattedTextControl(text=lambda i=i: get_entry_display(i)),
+                height=1,
+                style=f"class:{'selected' if i == current_focus else 'unselected'}"
+            )
+            entry_windows.append(entry_window)
+
+        # Main container
+        container = HSplit([
+            status_window,
+            title_window,
+            Window(height=1),  # Spacer
+            *entry_windows
+        ])
+
+        return Layout(container)
+
+    layout = create_layout()
+
+    # Key bindings
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(intervals) - 1:
+            current_focus += 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Enter)
+    def confirm_selection(event):
+        nonlocal should_exit, confirmed
+        should_exit = True
+        confirmed = True
+        event.app.exit()
+
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        nonlocal should_exit
+        should_exit = True
+        event.app.exit()
+
+    # Create application
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    # Run the application
+    await app.run_async()
+
+    if confirmed:
+        selected_interval = intervals[current_focus][0]
+
+        if selected_interval is None:
+            # Custom interval
+            console.print("\nEnter custom interval in minutes:")
+            try:
+                custom_value = input("Minutes: ").strip()
+                interval_minutes = int(custom_value)
+                if interval_minutes <= 0:
+                    console.print("❌ Interval must be positive", style="red")
+                    return None
+                return interval_minutes
+            except ValueError:
+                console.print("❌ Invalid interval", style="red")
+                return None
+        else:
+            return selected_interval
+    else:
+        return None
+
+
+# ============================================================================
+# Notion Page Selector
+# ============================================================================
+
+async def select_notion_page(workspace: str) -> Optional[str]:
+    """
+    Interactive Notion page selector with search.
+
+    Args:
+        workspace: Workspace name to query pages from
+
+    Returns:
+        Page ID or None if cancelled
+    """
+    console = Console()
+
+    # For now, we'll use manual input mode as fetching all Notion pages
+    # might be expensive. We can add the browser mode later.
+    console.print("\n📄 Enter Notion page ID", style="cyan")
+    console.print("(This is where agent results will be written)", style="dim")
+
+    page_id = input("Page ID: ").strip()
+
+    if not page_id:
+        console.print("❌ Page ID is required", style="red")
+        return None
+
+    return page_id
+
+
+# ============================================================================
+# MCP Tools Selector
+# ============================================================================
+
+async def select_mcp_tools(available_tools: List[str]) -> List[str]:
+    """
+    Interactive MCP tools selector.
+
+    Args:
+        available_tools: List of available MCP tool names
+
+    Returns:
+        List of selected tool names (can be empty)
+    """
+    console = Console()
+
+    if not available_tools:
+        return []
+
+    # State management
+    enabled_states = [False for _ in available_tools]  # Start with nothing selected
+    current_focus = 0
+    should_exit = False
+    confirmed = False
+
+    def get_status_display():
+        """Generate status line."""
+        enabled_count = sum(enabled_states)
+        total_count = len(enabled_states)
+        return f"MCP Tools | Selected: {enabled_count}/{total_count} | ↑↓:Navigate SPACE:Toggle ENTER:Confirm ESC:Cancel"
+
+    def get_entry_display(index: int) -> str:
+        """Get display text for an entry."""
+        checkbox = "☑" if enabled_states[index] else "☐"
+        return f"{checkbox}  {available_tools[index]}"
+
+    # Create display windows
+    def create_layout():
+        # Status line
+        status_window = Window(
+            FormattedTextControl(text=get_status_display),
+            height=1,
+        )
+
+        # Title line
+        title_window = Window(
+            FormattedTextControl(text=_styled_header("Select MCP Tools (Optional)")),
+            height=1,
+            style="class:title"
+        )
+
+        # Entry windows
+        entry_windows = []
+        for i in range(len(available_tools)):
+            entry_window = Window(
+                FormattedTextControl(text=lambda i=i: get_entry_display(i)),
+                height=1,
+                style=f"class:{'selected' if i == current_focus else 'unselected'}"
+            )
+            entry_windows.append(entry_window)
+
+        # Main container
+        container = HSplit([
+            status_window,
+            title_window,
+            Window(height=1),  # Spacer
+            *entry_windows
+        ])
+
+        return Layout(container)
+
+    layout = create_layout()
+
+    # Key bindings
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(available_tools) - 1:
+            current_focus += 1
+            layout = create_layout()
+            event.app.layout = layout
+
+    @bindings.add(' ')  # Spacebar
+    def toggle_selection(event):
+        nonlocal current_focus
+        enabled_states[current_focus] = not enabled_states[current_focus]
+        layout = create_layout()
+        event.app.layout = layout
+
+    @bindings.add(Keys.Enter)
+    def confirm_selection(event):
+        nonlocal should_exit, confirmed
+        should_exit = True
+        confirmed = True
+        event.app.exit()
+
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        nonlocal should_exit
+        should_exit = True
+        event.app.exit()
+
+    # Create application
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+
+    # Run the application
+    await app.run_async()
+
+    if confirmed:
+        # Return selected tools
+        result_tools = []
+        for i, enabled in enumerate(enabled_states):
+            if enabled:
+                result_tools.append(available_tools[i])
+        return result_tools
+    else:
+        return []

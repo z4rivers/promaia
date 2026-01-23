@@ -14,23 +14,38 @@ logger = logging.getLogger(__name__)
 async def handle_workspace_list(args):
     """Handle 'maia workspace list' command."""
     workspace_manager = get_workspace_manager()
-    workspaces = workspace_manager.list_workspaces()
+    include_archived = getattr(args, 'archived', False)
+    workspaces = workspace_manager.list_workspaces(include_archived=include_archived)
     default_workspace = workspace_manager.get_default_workspace()
-    
+
     if not workspaces:
-        print("No workspaces configured.")
+        if include_archived:
+            print("No workspaces configured.")
+        else:
+            print("No active workspaces configured.")
+            print("Use --archived to see archived workspaces.")
         print("Add a workspace with: maia workspace add <name> --api-key <your_notion_token>")
         return
-    
+
     print("Configured workspaces:")
     for workspace_name in workspaces:
         workspace = workspace_manager.get_workspace(workspace_name)
         status = "✓" if workspace.enabled else "✗"
         default_marker = " (default)" if workspace_name == default_workspace else ""
-        print(f"  {status} {workspace_name}{default_marker}")
+        archived_marker = " [ARCHIVED]" if workspace.archived else ""
+
+        print(f"  {status} {workspace_name}{default_marker}{archived_marker}")
         if workspace.description:
             print(f"    Description: {workspace.description}")
-    
+        if workspace.archived and workspace.archived_at:
+            from datetime import datetime
+            archived_date = datetime.fromisoformat(workspace.archived_at).strftime("%Y-%m-%d")
+            print(f"    Archived: {archived_date}", end="")
+            if workspace.archived_reason:
+                print(f" - {workspace.archived_reason}")
+            else:
+                print()
+
     print(f"\nDefault workspace: {default_workspace or 'None'}")
 
 async def handle_workspace_add(args):
@@ -93,20 +108,28 @@ async def handle_workspace_info(args):
     """Handle 'maia workspace info' command."""
     workspace_manager = get_workspace_manager()
     db_manager = get_database_manager()
-    
+
     name = args.name
     workspace = workspace_manager.get_workspace(name)
-    
+
     if not workspace:
         print(f"✗ Workspace '{name}' not found")
         return
-    
+
     print(f"Workspace: {name}")
     print(f"Description: {workspace.description or 'None'}")
     print(f"Enabled: {workspace.enabled}")
+    print(f"Archived: {workspace.archived}")
+    if workspace.archived:
+        if workspace.archived_at:
+            from datetime import datetime
+            archived_date = datetime.fromisoformat(workspace.archived_at).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Archived At: {archived_date}")
+        if workspace.archived_reason:
+            print(f"Archive Reason: {workspace.archived_reason}")
     print(f"API Key: {'*' * 30}...{workspace.api_key[-4:] if workspace.api_key else 'None'}")
     print(f"Created: {workspace.created_at}")
-    
+
     # Show databases in this workspace
     workspace_databases = db_manager.get_workspace_databases(name)
     print(f"\nDatabases ({len(workspace_databases)}):")
@@ -120,30 +143,83 @@ async def handle_workspace_info(args):
 async def handle_workspace_test(args):
     """Handle 'maia workspace test' command."""
     workspace_manager = get_workspace_manager()
-    
+
     name = args.name
     workspace = workspace_manager.get_workspace(name)
-    
+
     if not workspace:
         print(f"✗ Workspace '{name}' not found")
         return
-    
+
     if not workspace.api_key:
         print(f"✗ Workspace '{name}' has no API key configured")
         return
-    
+
     # Test the API key by making a simple request
     try:
         from notion_client import Client
         client = Client(auth=workspace.api_key)
-        
+
         # Try to list users (minimal API call)
         response = client.users.list()
         print(f"✓ Workspace '{name}' API key is valid")
         print(f"  Connected to workspace with {len(response.get('results', []))} users")
-        
+
     except Exception as e:
         print(f"✗ Workspace '{name}' API key test failed: {str(e)}")
+
+async def handle_workspace_archive(args):
+    """Handle 'maia workspace archive' command."""
+    workspace_manager = get_workspace_manager()
+
+    name = args.name
+    reason = getattr(args, 'reason', '')
+
+    workspace = workspace_manager.get_workspace(name)
+    if not workspace:
+        print(f"✗ Workspace '{name}' not found")
+        return
+
+    if workspace.archived:
+        print(f"✗ Workspace '{name}' is already archived")
+        return
+
+    if workspace_manager.archive_workspace(name, reason):
+        print(f"✓ Archived workspace '{name}'")
+        if reason:
+            print(f"  Reason: {reason}")
+        print("\nWhat happens when a workspace is archived:")
+        print("  • Stops syncing automatically")
+        print("  • Hidden from browser and context by default")
+        print("  • Excluded from mail processing")
+        print("  • Data preserved - can still access with explicit -ws flag")
+        print(f"\nTo unarchive: maia workspace unarchive {name}")
+    else:
+        print(f"✗ Failed to archive workspace '{name}'")
+
+async def handle_workspace_unarchive(args):
+    """Handle 'maia workspace unarchive' command."""
+    workspace_manager = get_workspace_manager()
+
+    name = args.name
+
+    workspace = workspace_manager.get_workspace(name)
+    if not workspace:
+        print(f"✗ Workspace '{name}' not found")
+        return
+
+    if not workspace.archived:
+        print(f"✗ Workspace '{name}' is not archived")
+        return
+
+    if workspace_manager.unarchive_workspace(name):
+        print(f"✓ Unarchived workspace '{name}'")
+        print("\nWorkspace is now active:")
+        print("  • Will sync automatically")
+        print("  • Visible in browser and context")
+        print("  • Included in mail processing")
+    else:
+        print(f"✗ Failed to unarchive workspace '{name}'")
 
 def add_workspace_commands(subparsers):
     """Add workspace management commands to CLI."""
@@ -156,10 +232,12 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
     
     # List workspaces
     list_parser = subparsers.add_parser('list', help='List all configured workspaces')
+    list_parser.add_argument('--archived', action='store_true', help='Include archived workspaces')
     list_parser.set_defaults(func=handle_workspace_list)
-    
+
     # Add 'ls' alias for list
     ls_parser = subparsers.add_parser('ls', help='List all configured workspaces (alias for list)')
+    ls_parser.add_argument('--archived', action='store_true', help='Include archived workspaces')
     ls_parser.set_defaults(func=handle_workspace_list)
     
     # Add workspace
@@ -196,7 +274,18 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
     test_parser = subparsers.add_parser('test', help='Test workspace API connection')
     test_parser.add_argument('name', help='Workspace name to test')
     test_parser.set_defaults(func=handle_workspace_test)
-    
+
+    # Archive workspace
+    archive_parser = subparsers.add_parser('archive', help='Archive a workspace (stops syncing, hides from context)')
+    archive_parser.add_argument('name', help='Workspace name to archive')
+    archive_parser.add_argument('--reason', help='Reason for archiving (optional)')
+    archive_parser.set_defaults(func=handle_workspace_archive)
+
+    # Unarchive workspace
+    unarchive_parser = subparsers.add_parser('unarchive', help='Unarchive a workspace (re-enables syncing)')
+    unarchive_parser.add_argument('name', help='Workspace name to unarchive')
+    unarchive_parser.set_defaults(func=handle_workspace_unarchive)
+
     # Gmail setup (optional)
     try:
         from promaia.cli.gmail_commands import add_workspace_gmail_commands

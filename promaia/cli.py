@@ -2900,11 +2900,10 @@ def main():
     # Add Gmail commands
     add_gmail_commands(subparsers)
 
-    # Add agent commands
-    add_agent_commands(subparsers)
-
-    # Add scheduled agent commands
-    add_scheduled_agent_commands(subparsers)
+    # Add agent commands (both external and scheduled)
+    agent_subparsers = add_agent_commands(subparsers, include_scheduled=True)
+    if agent_subparsers:
+        add_scheduled_agent_commands(agent_subparsers)
 
     # Add top-level sync command (alias for database sync)
     sync_parser = subparsers.add_parser('sync', help='Sync databases (alias for database sync)')
@@ -3306,14 +3305,6 @@ def main():
             asyncio.run(args.func(args))
         else:
             print_text("Discord bot command not properly configured", style="red")
-    elif args.command in ["agent-add", "agent-list", "agent-run", "agent-logs", "agent-remove",
-                          "agent-enable", "agent-disable", "agent-info",
-                          "agent-scheduler-start", "agent-scheduler-stop", "agent-scheduler-status"]:
-        # Handle scheduled agent commands
-        if hasattr(args, 'func'):
-            asyncio.run(args.func(args))
-        else:
-            print_text(f"No function assigned to command: {args.command}", style="red")
     else:
         parser.print_help()
 

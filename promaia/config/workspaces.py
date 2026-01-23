@@ -17,22 +17,35 @@ logger = logging.getLogger(__name__)
 
 class WorkspaceConfig:
     """Configuration for a single workspace."""
-    
+
     def __init__(self, name: str, config_data: Dict[str, Any]):
         self.name = name
         self.api_key = config_data.get("api_key")
         self.description = config_data.get("description", "")
         self.enabled = config_data.get("enabled", True)
         self.created_at = config_data.get("created_at", datetime.now().isoformat())
-        
+        self.archived = config_data.get("archived", False)
+        self.archived_at = config_data.get("archived_at")
+        self.archived_reason = config_data.get("archived_reason", "")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert workspace config to dictionary."""
-        return {
+        result = {
             "api_key": self.api_key,
             "description": self.description,
             "enabled": self.enabled,
-            "created_at": self.created_at
+            "created_at": self.created_at,
+            "archived": self.archived
         }
+
+        # Only include archive metadata if archived
+        if self.archived:
+            if self.archived_at:
+                result["archived_at"] = self.archived_at
+            if self.archived_reason:
+                result["archived_reason"] = self.archived_reason
+
+        return result
 
 class WorkspaceManager:
     """Manages workspace configurations and operations."""
@@ -142,24 +155,107 @@ class WorkspaceManager:
         if name not in self.workspaces:
             logger.warning(f"Workspace '{name}' not found")
             return False
-        
+
         del self.workspaces[name]
-        
+
         # Update default workspace if needed
         if self.default_workspace == name:
             self.default_workspace = next(iter(self.workspaces.keys())) if self.workspaces else None
-        
+
         self.save_config()
         logger.info(f"Removed workspace '{name}'")
         return True
-    
+
+    def archive_workspace(self, name: str, reason: str = "") -> bool:
+        """
+        Archive a workspace.
+
+        Args:
+            name: Workspace name
+            reason: Optional reason for archiving
+
+        Returns:
+            True if successful
+        """
+        if name not in self.workspaces:
+            logger.warning(f"Workspace '{name}' not found")
+            return False
+
+        workspace = self.workspaces[name]
+        if workspace.archived:
+            logger.warning(f"Workspace '{name}' is already archived")
+            return False
+
+        workspace.archived = True
+        workspace.archived_at = datetime.now().isoformat()
+        workspace.archived_reason = reason
+
+        # Update default workspace if this was the default
+        if self.default_workspace == name:
+            # Find first non-archived workspace
+            active_workspaces = [
+                ws_name for ws_name, ws in self.workspaces.items()
+                if not ws.archived and ws_name != name
+            ]
+            self.default_workspace = active_workspaces[0] if active_workspaces else None
+
+        self.save_config()
+        logger.info(f"Archived workspace '{name}'")
+        return True
+
+    def unarchive_workspace(self, name: str) -> bool:
+        """
+        Unarchive a workspace.
+
+        Args:
+            name: Workspace name
+
+        Returns:
+            True if successful
+        """
+        if name not in self.workspaces:
+            logger.warning(f"Workspace '{name}' not found")
+            return False
+
+        workspace = self.workspaces[name]
+        if not workspace.archived:
+            logger.warning(f"Workspace '{name}' is not archived")
+            return False
+
+        workspace.archived = False
+        workspace.archived_at = None
+        workspace.archived_reason = ""
+
+        # Set as default if no default exists
+        if not self.default_workspace:
+            self.default_workspace = name
+
+        self.save_config()
+        logger.info(f"Unarchived workspace '{name}'")
+        return True
+
     def get_workspace(self, name: str) -> Optional[WorkspaceConfig]:
         """Get workspace configuration by name."""
         return self.workspaces.get(name)
     
-    def list_workspaces(self) -> List[str]:
-        """List all workspace names."""
-        return list(self.workspaces.keys())
+    def list_workspaces(self, include_archived: bool = False) -> List[str]:
+        """
+        List all workspace names.
+
+        Args:
+            include_archived: If True, include archived workspaces. Default False.
+
+        Returns:
+            List of workspace names
+        """
+        if include_archived:
+            return list(self.workspaces.keys())
+
+        # Filter out archived workspaces by default
+        return [
+            name for name, workspace in self.workspaces.items()
+            if not workspace.archived
+        ]
     
     def get_default_workspace(self) -> Optional[str]:
         """Get the default workspace name."""
@@ -188,20 +284,33 @@ class WorkspaceManager:
         workspace = self.get_workspace(workspace_name)
         return workspace.api_key if workspace else None
     
-    def validate_workspace(self, name: str) -> bool:
-        """Validate that a workspace is properly configured."""
+    def validate_workspace(self, name: str, allow_archived: bool = False) -> bool:
+        """
+        Validate that a workspace is properly configured.
+
+        Args:
+            name: Workspace name
+            allow_archived: If True, archived workspaces are valid. Default False.
+
+        Returns:
+            True if workspace is valid
+        """
         workspace = self.get_workspace(name)
         if not workspace:
             return False
-        
+
         if not workspace.api_key:
             logger.error(f"Workspace '{name}' is missing API key")
             return False
-        
+
         if not workspace.enabled:
             logger.warning(f"Workspace '{name}' is disabled")
             return False
-        
+
+        if workspace.archived and not allow_archived:
+            logger.warning(f"Workspace '{name}' is archived")
+            return False
+
         return True
 
 # Global workspace manager instance

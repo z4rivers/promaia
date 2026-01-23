@@ -394,25 +394,74 @@ class DatabaseManager:
         
         return None
     
-    def list_databases(self, workspace: str = None) -> List[str]:
-        """List database names, optionally filtered by workspace."""
+    def list_databases(self, workspace: str = None, include_archived: bool = False) -> List[str]:
+        """
+        List database names, optionally filtered by workspace.
+
+        Args:
+            workspace: Filter by workspace name (optional)
+            include_archived: If True, include databases from archived workspaces. Default False.
+
+        Returns:
+            List of database names
+        """
+        # Import here to avoid circular dependency
+        from promaia.config.workspaces import get_workspace_manager
+
+        workspace_manager = get_workspace_manager()
+
         if workspace is None:
-            return list(self.databases.keys())
-        
+            # Filter all databases by archived status
+            if include_archived:
+                return list(self.databases.keys())
+
+            return [
+                name for name, config in self.databases.items()
+                if not self._is_workspace_archived(workspace_manager, config.workspace)
+            ]
+
+        # Check if the specified workspace is archived
+        if not include_archived and self._is_workspace_archived(workspace_manager, workspace):
+            return []
+
         return [
-            name for name, config in self.databases.items() 
+            name for name, config in self.databases.items()
             if config.workspace == workspace
         ]
-    
-    def list_databases_by_workspace(self) -> Dict[str, List[str]]:
-        """List databases grouped by workspace."""
+
+    def list_databases_by_workspace(self, include_archived: bool = False) -> Dict[str, List[str]]:
+        """
+        List databases grouped by workspace.
+
+        Args:
+            include_archived: If True, include databases from archived workspaces. Default False.
+
+        Returns:
+            Dictionary mapping workspace names to lists of database names
+        """
+        # Import here to avoid circular dependency
+        from promaia.config.workspaces import get_workspace_manager
+
+        workspace_manager = get_workspace_manager()
         result = {}
+
         for name, config in self.databases.items():
             workspace = config.workspace
+
+            # Skip archived workspaces unless explicitly included
+            if not include_archived and self._is_workspace_archived(workspace_manager, workspace):
+                continue
+
             if workspace not in result:
                 result[workspace] = []
             result[workspace].append(name)
+
         return result
+
+    def _is_workspace_archived(self, workspace_manager, workspace_name: str) -> bool:
+        """Check if a workspace is archived."""
+        workspace = workspace_manager.get_workspace(workspace_name)
+        return workspace.archived if workspace else False
     
     def remove_database(self, name: str, workspace: str = None) -> bool:
         """Remove a database configuration."""
@@ -436,8 +485,28 @@ class DatabaseManager:
         
         return False
     
-    def get_workspace_databases(self, workspace: str) -> List[DatabaseConfig]:
-        """Get all databases for a specific workspace."""
+    def get_workspace_databases(self, workspace: str, include_archived: bool = False) -> List[DatabaseConfig]:
+        """
+        Get all databases for a specific workspace.
+
+        Args:
+            workspace: Workspace name
+            include_archived: If True, include databases from archived workspaces. Default False.
+
+        Returns:
+            List of database configurations
+        """
+        # Import here to avoid circular dependency
+        from promaia.config.workspaces import get_workspace_manager
+
+        # Check if workspace is archived (unless explicitly including archived)
+        if not include_archived:
+            workspace_manager = get_workspace_manager()
+            workspace_obj = workspace_manager.get_workspace(workspace)
+            if workspace_obj and workspace_obj.archived:
+                # Return empty list for archived workspaces by default
+                return []
+
         return [
             config for config in self.databases.values()
             if config.workspace == workspace
