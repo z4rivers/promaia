@@ -42,7 +42,7 @@ def _generate_placeholder_name() -> str:
 async def _add_agent_to_calendar(agent_config: AgentConfig) -> bool:
     """Add an agent to Google Calendar."""
     try:
-        from promaia.calendar import get_calendar_manager
+        from promaia.gcal import get_calendar_manager
 
         calendar_mgr = get_calendar_manager()
 
@@ -690,7 +690,7 @@ async def handle_calendar_sync(args):
         maia agent calendar-sync <name>
     """
     from promaia.utils.display import print_text
-    from promaia.calendar import get_calendar_manager
+    from promaia.gcal import get_calendar_manager
     from rich.console import Console
 
     console = Console()
@@ -747,7 +747,7 @@ async def handle_calendar_remove(args):
         maia agent calendar-remove <name>
     """
     from promaia.utils.display import print_text
-    from promaia.calendar import get_calendar_manager
+    from promaia.gcal import get_calendar_manager
     from rich.console import Console
 
     console = Console()
@@ -788,7 +788,7 @@ async def handle_calendar_list(args):
         maia agent calendar-list
     """
     from promaia.utils.display import print_text
-    from promaia.calendar import get_calendar_manager
+    from promaia.gcal import get_calendar_manager
     from rich.console import Console
     from rich.table import Table
 
