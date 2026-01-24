@@ -53,6 +53,14 @@ class AgentExecutor:
         start_time = datetime.now(timezone.utc)
 
         try:
+            # Load fresh config from Notion if available
+            if self.config.notion_page_id and self.config.agent_id:
+                from promaia.agents.notion_config import load_agent_by_id
+                notion_agent = await load_agent_by_id(self.config.agent_id, self.config.workspace)
+                if notion_agent:
+                    self.config = notion_agent
+                    logger.info(f"Loaded System Prompt from Notion for '{self.config.name}'")
+
             # Start tracking execution
             execution_id = self.tracker.start_execution(self.config.name)
             logger.info(f"🤖 Starting agent '{self.config.name}' (execution {execution_id})")
@@ -103,10 +111,41 @@ class AgentExecutor:
             )
 
             # Update agent's last run time
-            update_agent_last_run(
-                self.config.name,
-                datetime.now(timezone.utc).isoformat()
-            )
+            timestamp = datetime.now(timezone.utc).isoformat()
+            update_agent_last_run(self.config.name, timestamp)
+
+            # Write to Notion journal and update Last Run
+            if self.config.notion_page_id and self.config.agent_id:
+                try:
+                    from promaia.agents.notion_journal import write_journal_entry
+                    from promaia.agents.notion_config import update_last_run
+
+                    # Write journal entry
+                    journal_content = (
+                        f"Executed successfully\n"
+                        f"Duration: {metrics['duration_seconds']:.1f}s\n"
+                        f"Iterations: {metrics['iterations_used']}\n"
+                        f"Tokens: {metrics['tokens_used']}\n"
+                        f"Cost: ${metrics['cost_estimate']:.4f}"
+                    )
+
+                    await write_journal_entry(
+                        agent_id=self.config.agent_id,
+                        workspace=self.config.workspace,
+                        entry_type="Execution",
+                        content=journal_content,
+                        execution_id=execution_id
+                    )
+
+                    # Update Last Run in Notion
+                    await update_last_run(
+                        agent_id=self.config.agent_id,
+                        workspace=self.config.workspace,
+                        timestamp=timestamp
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Could not write to Notion journal: {e}")
 
             logger.info(f"✅ Agent '{self.config.name}' completed successfully")
             return {
@@ -125,6 +164,21 @@ class AgentExecutor:
                     status='failed',
                     error_message=str(e)
                 )
+
+            # Write error to journal
+            if self.config.notion_page_id and self.config.agent_id:
+                try:
+                    from promaia.agents.notion_journal import write_journal_entry
+
+                    await write_journal_entry(
+                        agent_id=self.config.agent_id,
+                        workspace=self.config.workspace,
+                        entry_type="Error",
+                        content=f"Execution failed: {str(e)}",
+                        execution_id=execution_id
+                    )
+                except Exception as journal_error:
+                    logger.warning(f"Could not write error to journal: {journal_error}")
 
             return {
                 'success': False,

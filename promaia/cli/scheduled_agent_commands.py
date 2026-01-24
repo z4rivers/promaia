@@ -251,9 +251,16 @@ async def handle_agent_add(args):
     console.print()  # Spacing
     description = input("Description (optional, press ENTER to skip): ").strip()
 
+    # Generate agent ID
+    from promaia.agents.notion_setup import generate_agent_id
+    existing_agents = load_agents()
+    agent_id = generate_agent_id(name, existing_agents)
+    console.print(f"✓ Agent ID: [cyan]{agent_id}[/cyan]", style="dim")
+
     # Create agent config
     agent_config = AgentConfig(
         name=name,
+        agent_id=agent_id,
         workspace=workspace,
         databases=databases,
         prompt_file=prompt_content,
@@ -284,10 +291,28 @@ async def handle_agent_add(args):
         console.print("❌ Cancelled", style="yellow")
         return
 
+    # Create agent structure in Notion
+    try:
+        from promaia.agents.notion_setup import create_agent_in_notion
+
+        notion_page_id = await create_agent_in_notion(agent_config, workspace)
+        agent_config.notion_page_id = notion_page_id
+
+    except Exception as e:
+        console.print(f"\n⚠️  Could not create Notion structure: {e}", style="yellow")
+        console.print("   Agent will be created without Notion integration", style="dim")
+        # Continue anyway - agent can still work from JSON
+
     # Save
     save_agent(agent_config)
 
     console.print(f"\n✅ Agent '{name}' created successfully!", style="green")
+    console.print(f"   Agent ID: [cyan]{agent_id}[/cyan]", style="dim")
+
+    if agent_config.notion_page_id:
+        console.print(f"   View in Notion: https://notion.so/{agent_config.notion_page_id}", style="dim")
+        console.print(f"   Mention with @{agent_id} in calendar events", style="dim")
+
     console.print(f"   Use 'maia agent run-scheduled {name}' to test it", style="dim")
 
     # Ask if user wants to add to Google Calendar

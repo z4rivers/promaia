@@ -26,6 +26,13 @@ class AgentConfig:
     schedule: Optional[List[Tuple[str, str]]] = None  # List of (day, time) like [("Mon", "09:00"), ...]
     interval_minutes: Optional[int] = None  # Legacy: 5, 15, 30, 60, etc. (deprecated, use schedule)
 
+    # Notion integration fields
+    agent_id: str = ""                                  # "grace", "bondu", "daily-summary"
+    notion_page_id: Optional[str] = None                # Agent's page in Agents database
+    system_prompt_page_id: Optional[str] = None         # System Prompt subpage ID
+    instructions_db_id: Optional[str] = None            # Instructions sub-database ID
+    journal_db_id: Optional[str] = None                 # Journal sub-database ID
+
     # Optional fields
     description: Optional[str] = None
     created_at: Optional[str] = None
