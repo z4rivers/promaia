@@ -271,7 +271,7 @@ maia agent info-scheduled agent-name
 
 # Note the current interval
 # Remove and recreate with schedule instead
-maia agent remove-scheduled agent-name
+maia agent remove agent-name
 maia agent add  # Follow new schedule-based flow
 ```
 

@@ -77,8 +77,16 @@ def _show_agent_summary(agent: AgentConfig, console):
     print()
     print_separator("Agent Configuration Summary")
     console.print(f"Name: [bold white]{agent.name}[/bold white]")
+    console.print(f"Agent ID: [bold cyan]@{agent.agent_id}[/bold cyan]")
     console.print(f"Workspace: [cyan]{agent.workspace}[/cyan]")
-    console.print(f"Databases: [cyan]{', '.join(agent.databases)}[/cyan]")
+
+    # Show databases in a compact format
+    db_count = len(agent.databases)
+    if db_count <= 3:
+        console.print(f"Databases: [cyan]{', '.join(agent.databases)}[/cyan]")
+    else:
+        db_preview = ', '.join(agent.databases[:3])
+        console.print(f"Databases: [cyan]{db_preview}, +{db_count - 3} more[/cyan]")
 
     # Show schedule or interval
     if agent.schedule:
@@ -86,24 +94,30 @@ def _show_agent_summary(agent: AgentConfig, console):
         console.print(f"Schedule: [cyan]{len(agent.schedule)} runs/week[/cyan]")
         console.print(f"  [dim]{schedule_display}[/dim]")
     elif agent.interval_minutes:
-        console.print(f"Interval: [cyan]Every {agent.interval_minutes} minutes[/cyan]")
+        console.print(f"Schedule: [cyan]Every {agent.interval_minutes} minutes[/cyan]")
+    else:
+        console.print(f"Schedule: [cyan]Calendar events only (tag @{agent.agent_id})[/cyan]")
 
     console.print(f"Max Iterations: [cyan]{agent.max_iterations}[/cyan]")
-    console.print(f"Output Page: [cyan]{agent.output_notion_page_id}[/cyan]")
+
+    if agent.mcp_tools:
+        console.print(f"MCP Tools: [cyan]{', '.join(agent.mcp_tools)}[/cyan]")
+    else:
+        console.print(f"MCP Tools: [dim]None[/dim]")
 
     if agent.description:
         console.print(f"Description: [dim]{agent.description}[/dim]")
 
-    if agent.mcp_tools:
-        console.print(f"MCP Tools: [cyan]{', '.join(agent.mcp_tools)}[/cyan]")
-
-    # Show prompt preview
-    prompt_preview = agent.prompt_file[:150] if len(agent.prompt_file) > 150 else agent.prompt_file
-    if len(agent.prompt_file) > 150:
-        prompt_preview += "..."
-    console.print(f"Prompt: [dim]{prompt_preview}[/dim]")
+    # Show prompt info
+    console.print(f"\nSystem Prompt: [dim]Default (edit in Notion after creation)[/dim]")
 
     print_separator()
+    console.print("\n[bold white]What happens when you create this agent:[/bold white]")
+    console.print("  • Creates agent page in Notion Agents database", style="dim")
+    console.print("  • Sets up System Prompt subpage (editable)", style="dim")
+    console.print("  • Creates Instructions and Journal sub-databases", style="dim")
+    console.print("  • Opens agent page in browser for easy access", style="dim")
+    console.print()
 
 
 async def handle_agent_add(args):
@@ -117,10 +131,8 @@ async def handle_agent_add(args):
     from promaia.cli.agent_creation_selector import (
         select_workspace,
         select_databases,
-        input_prompt,
-        select_interval,
-        select_notion_page,
         select_mcp_tools,
+        fetch_discord_channels,
     )
     from promaia.config.databases import get_database_manager
     from rich.console import Console
@@ -168,17 +180,25 @@ async def handle_agent_add(args):
     available_databases = []
     for db in workspace_databases:
         if db.browser_include:  # Only show databases marked for browser
-            available_databases.append({
+            db_config = {
                 'name': db.get_qualified_name(),
                 'default_days': db.default_days,
                 'default_include': db.default_include,
-            })
+            }
+            # Add source_type if it's Discord
+            if hasattr(db, 'source_type'):
+                db_config['source_type'] = db.source_type
+            available_databases.append(db_config)
 
     if not available_databases:
         console.print(f"❌ No databases available in workspace '{workspace}'", style="red")
         return
 
+    # Enrich Discord databases with channel info
     console.print()  # Spacing
+    console.print("⏳ Loading Discord channels...", style="dim")
+    available_databases = await fetch_discord_channels(workspace, available_databases)
+
     selected_dbs = await select_databases(workspace, available_databases)
     if not selected_dbs:
         console.print("❌ Cancelled", style="red")
@@ -188,29 +208,39 @@ async def handle_agent_add(args):
     databases = [f"{db_name}:{days}" for db_name, days in selected_dbs]
     console.print(f"✓ Databases: {len(selected_dbs)} selected", style="dim")
 
-    # Step 4: Prompt input (interactive file browser)
+    # Step 4: Use default prompt - user edits in Notion System Prompt page after creation
+    prompt_content = f"You are {name}, a helpful AI assistant for the {workspace} workspace."
     console.print()  # Spacing
-    prompt_content = await input_prompt()
-    if not prompt_content:
-        console.print("❌ Cancelled", style="red")
-        return
+    console.print("✓ Default prompt (edit in Notion System Prompt page after creation)", style="dim")
 
-    console.print(f"✓ Prompt: {len(prompt_content)} characters", style="dim")
-
-    # Step 5: Schedule selection (interactive grid)
+    # Step 5: Scheduling options
     console.print()  # Spacing
-    console.print("📅 Schedule agent runs (MIDI-style grid):", style="cyan")
-    console.print("   Use arrow keys to navigate, SPACE to toggle slots", style="dim")
+    console.print("📅 Agent Scheduling", style="bold cyan")
+    console.print()
+    console.print("You can schedule your agent in two ways:", style="dim")
+    console.print(f"  1. Interval: Run automatically every N minutes", style="dim")
+    console.print(f"  2. Calendar: Tag @agent-name in Google Calendar events", style="dim")
+    console.print(f"     (Works in event title or description)", style="dim")
+    console.print(f"  Both can be used together!", style="dim")
+    console.print()
 
-    from promaia.cli.schedule_grid_selector import select_schedule, schedule_to_string
+    schedule = None
+    interval_minutes = None
 
-    schedule = await select_schedule()
-    if not schedule:
-        console.print("❌ Cancelled", style="red")
-        return
+    use_interval = input("Run on interval? (Y/n): ").strip().lower()
 
-    schedule_str = schedule_to_string(schedule)
-    console.print(f"✓ Schedule: {len(schedule)} runs/week", style="dim")
+    if use_interval != 'n':
+        interval_input = input("Interval in minutes (leave empty to skip): ").strip()
+        if interval_input:
+            try:
+                interval_minutes = int(interval_input)
+                console.print(f"✓ Interval: every {interval_minutes} minutes", style="dim")
+            except ValueError:
+                console.print("⚠️  Invalid interval, skipping", style="yellow")
+        else:
+            console.print("✓ No interval (calendar events only)", style="dim")
+    else:
+        console.print(f"✓ No interval", style="dim")
 
     # Step 6: Max iterations (simple with default)
     console.print()  # Spacing
@@ -223,29 +253,48 @@ async def handle_agent_add(args):
 
     console.print(f"✓ Max iterations: {max_iterations}", style="dim")
 
-    # Step 7: Output page selection (interactive browser)
+    # Step 7: Output page is optional - agents respond contextually
+    output_page_id = None
     console.print()  # Spacing
-    output_page_id = await select_notion_page(workspace)
-    if not output_page_id:
-        console.print("❌ Cancelled", style="red")
-        return
-
-    console.print(f"✓ Output page: {output_page_id}", style="dim")
+    console.print("✓ Agents respond contextually (no fixed output page)", style="dim")
 
     # Step 8: MCP tools (optional, interactive)
     mcp_tools = []
     console.print()  # Spacing
-    configure_mcp = input("Configure MCP tools? (y/N): ").strip().lower()
-    if configure_mcp == 'y':
-        # For now, we'll get available tools from a simple list
-        # In the future, this could query actual available MCP tools
-        available_tools = []  # Placeholder - would be populated from MCP server
-        if available_tools:
+    console.print("🛠️  MCP Tools (Model Context Protocol)", style="bold cyan")
+    console.print("   Enable external tools for your agent:", style="dim")
+
+    # Load available MCP servers
+    available_tools = []
+    try:
+        import json
+        from pathlib import Path
+        mcp_config_file = Path("mcp_servers.json")
+        if mcp_config_file.exists():
+            with open(mcp_config_file, 'r') as f:
+                mcp_config = json.load(f)
+                servers = mcp_config.get('servers', {})
+                available_tools = [
+                    name for name, config in servers.items()
+                    if config.get('enabled', True)
+                ]
+    except Exception as e:
+        logger.warning(f"Could not load MCP servers: {e}")
+
+    if available_tools:
+        console.print(f"   Available: {', '.join(available_tools)}", style="dim")
+        configure_mcp = input("\nConfigure MCP tools? (y/N): ").strip().lower()
+        if configure_mcp == 'y':
             mcp_tools = await select_mcp_tools(available_tools)
             if mcp_tools:
-                console.print(f"✓ MCP Tools: {len(mcp_tools)} selected", style="dim")
+                console.print(f"✓ MCP Tools: {', '.join(mcp_tools)}", style="dim")
+            else:
+                console.print("✓ No MCP tools selected", style="dim")
         else:
-            console.print("No MCP tools available", style="yellow")
+            console.print("✓ No MCP tools (can add later)", style="dim")
+    else:
+        console.print("   No MCP servers configured", style="yellow")
+        console.print("   Configure in mcp_servers.json", style="dim")
 
     # Step 9: Description (optional, simple text)
     console.print()  # Spacing
@@ -264,8 +313,8 @@ async def handle_agent_add(args):
         workspace=workspace,
         databases=databases,
         prompt_file=prompt_content,
-        schedule=schedule,  # New schedule format
-        interval_minutes=None,  # No longer using interval
+        schedule=None,  # No schedule grid - use calendar events or interval
+        interval_minutes=interval_minutes,  # Optional interval
         mcp_tools=mcp_tools,
         max_iterations=max_iterations,
         output_notion_page_id=output_page_id,
@@ -306,29 +355,78 @@ async def handle_agent_add(args):
     # Save
     save_agent(agent_config)
 
+    # Auto-create dedicated Google Calendar for this agent
+    console.print("\n📅 Creating dedicated Google Calendar...", style="dim")
+
+    try:
+        from promaia.gcal import get_calendar_manager
+
+        calendar_mgr = get_calendar_manager()
+
+        # Create calendar
+        calendar_description = f"Automated schedule for {agent_config.name} agent"
+        if agent_config.description:
+            calendar_description += f"\n\n{agent_config.description}"
+
+        calendar_id = calendar_mgr.create_agent_calendar(
+            agent_name=agent_config.name,
+            description=calendar_description
+        )
+
+        if calendar_id:
+            # Store calendar ID
+            agent_config.calendar_id = calendar_id
+            save_agent(agent_config)
+
+            console.print(f"   ✅ Created calendar: {agent_config.name}", style="green")
+            console.print(f"   Calendar ID: [dim]{calendar_id}[/dim]")
+
+            # Auto-sync agent to calendar if schedule exists
+            if agent_config.schedule:
+                console.print(f"   Adding {len(agent_config.schedule)} recurring events...", style="dim")
+                event_ids = calendar_mgr.create_agent_event(
+                    agent_name=agent_config.name,
+                    schedule=agent_config.schedule,
+                    agent_config=agent_config.to_dict(),
+                    calendar_id=calendar_id
+                )
+
+                if event_ids:
+                    agent_config.calendar_event_ids = event_ids
+                    save_agent(agent_config)
+                    console.print(f"   ✅ Added {len(agent_config.schedule)} recurring events", style="green")
+        else:
+            console.print("   ⚠️  Failed to create calendar", style="yellow")
+
+    except Exception as e:
+        console.print(f"   ⚠️  Calendar creation failed: {e}", style="yellow")
+        logger.warning(f"Could not create calendar for agent {agent_config.name}: {e}")
+
     console.print(f"\n✅ Agent '{name}' created successfully!", style="green")
-    console.print(f"   Agent ID: [cyan]{agent_id}[/cyan]", style="dim")
+    console.print(f"\n   🤖 Agent ID: [bold cyan]@{agent_id}[/bold cyan]", style="white")
 
     if agent_config.notion_page_id:
-        console.print(f"   View in Notion: https://notion.so/{agent_config.notion_page_id}", style="dim")
-        console.print(f"   Mention with @{agent_id} in calendar events", style="dim")
+        # Use shortest working Notion URL format: workspace/page_id_no_dashes
+        page_id_clean = agent_config.notion_page_id.replace("-", "")
+        agent_url = f"https://www.notion.so/{workspace}/{page_id_clean}"
 
-    console.print(f"   Use 'maia agent run-scheduled {name}' to test it", style="dim")
+        console.print(f"\n   📋 Notion: {agent_url}", style="cyan")
+        console.print(f"      💡 Edit System Prompt and configure your agent", style="dim")
 
-    # Ask if user wants to add to Google Calendar
-    console.print()
-    add_to_calendar = input("Add this agent to Google Calendar? (Y/n): ").strip().lower()
+    # Show calendar link if created
+    if agent_config.calendar_id:
+        console.print(f"\n   📆 Google Calendar:", style="bold white")
+        console.print(f"      https://calendar.google.com", style="cyan")
+        console.print(f"      (Look for '{agent_config.name}' calendar in sidebar)", style="dim")
 
-    if add_to_calendar != 'n':
-        console.print("\n📅 Adding agent to Google Calendar...", style="cyan")
-        success = await _add_agent_to_calendar(agent_config)
+    # Show scheduling info
+    console.print(f"\n   📅 Scheduling:", style="bold white")
+    if agent_config.interval_minutes:
+        console.print(f"      • Runs every {agent_config.interval_minutes} minutes", style="dim")
+    console.print(f"      • Tag @{agent_id} in Google Calendar events", style="dim")
+    console.print(f"        (title or description)", style="dim")
 
-        if success:
-            console.print("✅ Agent added to your Google Calendar!", style="green")
-            console.print("   You can now manage it like any calendar event", style="dim")
-        else:
-            console.print("⚠️  Could not add to calendar. You can add it later with:", style="yellow")
-            console.print(f"   maia agent calendar-sync {name}", style="dim")
+    console.print(f"\n   🧪 Test with: 'maia agent run-scheduled {name}'", style="dim")
 
 
 async def handle_agent_list_scheduled(args):
@@ -413,7 +511,10 @@ async def handle_agent_run_scheduled(args):
         print(f"  Cost: ${metrics.get('cost_estimate', 0):.4f}")
         print(f"  Duration: {metrics.get('duration_seconds', 0):.1f}s")
 
-        print(f"\n📝 Output written to Notion page: {agent.output_notion_page_id}")
+        if agent.output_notion_page_id:
+            print(f"\n📝 Output written to Notion page: {agent.output_notion_page_id}")
+        else:
+            print(f"\n📝 Output generated (no fixed output page)")
 
         # Show preview of output
         if result.get('output'):
@@ -483,30 +584,95 @@ async def handle_agent_logs_scheduled(args):
 
 async def handle_agent_remove_scheduled(args):
     """
-    Remove a scheduled agent.
+    Remove an agent.
 
     Usage:
-        maia agent remove-scheduled <name>
+        maia agent remove <name>
     """
+    from rich.console import Console
+
+    console = Console()
+
     agent = get_agent(args.name)
 
     if not agent:
-        print(f"❌ Agent '{args.name}' not found")
+        console.print(f"❌ Agent '{args.name}' not found", style="red")
         return
 
     # Confirm deletion
     if not args.yes:
         confirm = input(f"⚠️  Remove agent '{args.name}'? (y/N): ").strip().lower()
         if confirm != 'y':
-            print("Cancelled")
+            console.print("Cancelled", style="yellow")
             return
 
+    # Ask about Notion page deletion if agent has one
+    delete_notion = False
+    if agent.notion_page_id:
+        console.print(f"\n📋 Agent has Notion page: [cyan]{agent.notion_page_id}[/cyan]")
+
+        if not args.yes:
+            try:
+                from prompt_toolkit import PromptSession
+                session = PromptSession()
+                delete_notion_input = await session.prompt_async("Delete Notion page too? (y/N): ")
+                delete_notion = delete_notion_input.strip().lower() == 'y'
+            except (EOFError, KeyboardInterrupt):
+                console.print("   Keeping Notion page", style="dim")
+
+        if delete_notion:
+            try:
+                from promaia.notion.client import get_notion_client
+                workspace_mgr = get_workspace_manager()
+                workspace_config = workspace_mgr.get_workspace(agent.workspace)
+
+                if workspace_config:
+                    notion = get_notion_client(workspace_config.notion_token)
+                    # Archive the page (Notion's way of "deleting")
+                    notion.pages.update(agent.notion_page_id, archived=True)
+                    console.print("   ✅ Deleted Notion page", style="green")
+                else:
+                    console.print("   ⚠️  Could not find workspace config", style="yellow")
+            except Exception as e:
+                console.print(f"   ⚠️  Notion page deletion failed: {e}", style="yellow")
+        else:
+            console.print("   ℹ️  Notion page preserved (you can delete manually)", style="dim")
+
+    # Ask about calendar deletion if agent has one
+    delete_calendar = False
+    if agent.calendar_id:
+        console.print(f"\n📅 Agent has dedicated calendar: [cyan]{agent.calendar_id}[/cyan]")
+
+        if not args.yes:
+            try:
+                from prompt_toolkit import PromptSession
+                session = PromptSession()
+                delete_cal_input = await session.prompt_async("Delete calendar too? (y/N): ")
+                delete_calendar = delete_cal_input.strip().lower() == 'y'
+            except (EOFError, KeyboardInterrupt):
+                console.print("   Keeping calendar", style="dim")
+
+        if delete_calendar:
+            try:
+                from promaia.gcal import get_calendar_manager
+                calendar_mgr = get_calendar_manager()
+
+                if calendar_mgr.delete_agent_calendar(agent.calendar_id):
+                    console.print("   ✅ Deleted calendar", style="green")
+                else:
+                    console.print("   ⚠️  Failed to delete calendar", style="yellow")
+            except Exception as e:
+                console.print(f"   ⚠️  Calendar deletion failed: {e}", style="yellow")
+        else:
+            console.print("   ℹ️  Calendar preserved (you can delete manually in Google Calendar)", style="dim")
+
+    # Delete the agent
     deleted = delete_agent(args.name)
 
     if deleted:
-        print(f"✅ Agent '{args.name}' removed")
+        console.print(f"\n✅ Agent '{args.name}' removed", style="green")
     else:
-        print(f"❌ Failed to remove agent '{args.name}'")
+        console.print(f"\n❌ Failed to remove agent '{args.name}'", style="red")
 
 
 async def handle_agent_enable(args):
@@ -593,6 +759,16 @@ async def handle_agent_info_scheduled(args):
 
     if agent.description:
         print(f"\nDescription: {agent.description}")
+
+    # Show calendar info
+    if agent.calendar_id:
+        print(f"\nGoogle Calendar:")
+        print(f"  Calendar ID: {agent.calendar_id}")
+        print(f"  URL: https://calendar.google.com")
+        print(f"  (Look for '{agent.name}' in sidebar)")
+        if agent.calendar_event_ids:
+            event_count = len(agent.calendar_event_ids.split(','))
+            print(f"  Events: {event_count} recurring event(s)")
 
     print(f"\nPrompt:")
     prompt_preview = agent.prompt_file[:200] if len(agent.prompt_file) < 500 else agent.prompt_file[:200] + "..."
@@ -735,16 +911,39 @@ async def handle_calendar_sync(args):
     try:
         calendar_mgr = get_calendar_manager()
 
+        # Ensure agent has a dedicated calendar
+        calendar_id = agent.calendar_id
+        if not calendar_id:
+            console.print("Creating dedicated calendar for this agent...", style="dim")
+            calendar_description = f"Automated schedule for {agent.name} agent"
+            if agent.description:
+                calendar_description += f"\n\n{agent.description}"
+
+            calendar_id = calendar_mgr.create_agent_calendar(
+                agent_name=agent.name,
+                description=calendar_description
+            )
+
+            if calendar_id:
+                agent.calendar_id = calendar_id
+                save_agent(agent)
+                console.print(f"   ✅ Created calendar", style="green")
+            else:
+                # Fall back to primary calendar
+                console.print("   ⚠️  Failed to create calendar, using primary", style="yellow")
+                calendar_id = "primary"
+
         # Remove existing events if any
         if agent.calendar_event_ids:
             console.print("Removing existing calendar events...", style="dim")
-            calendar_mgr.delete_agent_events(args.name)
+            calendar_mgr.delete_agent_events(args.name, calendar_id=calendar_id)
 
-        # Create new events
+        # Create new events on agent's dedicated calendar
         event_ids = calendar_mgr.create_agent_event(
             agent_name=agent.name,
             schedule=agent.schedule,
-            agent_config=agent.to_dict()
+            agent_config=agent.to_dict(),
+            calendar_id=calendar_id
         )
 
         if event_ids:
@@ -754,7 +953,10 @@ async def handle_calendar_sync(args):
 
             console.print(f"\n✅ Agent '{args.name}' synced to Google Calendar!", style="green")
             console.print(f"   Created {len(agent.schedule)} recurring event(s)", style="dim")
-            console.print(f"   View in your calendar: https://calendar.google.com", style="dim")
+
+            # Show calendar link
+            console.print(f"   View calendar: https://calendar.google.com", style="cyan")
+            console.print(f"   (Look for '{agent.name}' in 'My calendars')", style="dim")
         else:
             console.print(f"\n❌ Failed to sync agent to calendar", style="red")
 
@@ -790,7 +992,11 @@ async def handle_calendar_remove(args):
 
     try:
         calendar_mgr = get_calendar_manager()
-        success = calendar_mgr.delete_agent_events(args.name)
+
+        # Use agent's dedicated calendar if available
+        calendar_id = agent.calendar_id if agent.calendar_id else "primary"
+
+        success = calendar_mgr.delete_agent_events(args.name, calendar_id=calendar_id)
 
         if success:
             # Clear event IDs from agent config
@@ -851,6 +1057,78 @@ async def handle_calendar_list(args):
         console.print(f"❌ Error: {e}", style="red")
 
 
+async def handle_calendar_share(args):
+    """
+    Share an agent's calendar with a team member.
+
+    Usage:
+        maia agent calendar-share <name>
+    """
+    from promaia.utils.display import print_text
+    from promaia.gcal import get_calendar_manager
+    from rich.console import Console
+    from prompt_toolkit import PromptSession
+
+    console = Console()
+
+    agent = get_agent(args.name)
+    if not agent:
+        console.print(f"❌ Agent '{args.name}' not found", style="red")
+        return
+
+    if not agent.calendar_id:
+        console.print(f"❌ Agent '{args.name}' doesn't have a dedicated calendar", style="red")
+        console.print(f"   Run 'maia agent calendar-sync {args.name}' to create one first", style="dim")
+        return
+
+    print_text(f"\n👥 Share Calendar: {agent.name}\n", style="bold cyan")
+
+    session = PromptSession()
+
+    try:
+        # Get email address
+        console.print("Email address to share with:")
+        email = await session.prompt_async("› ")
+        email = email.strip()
+
+        if not email or '@' not in email:
+            console.print("❌ Invalid email address", style="red")
+            return
+
+        # Get permission level
+        console.print("\nPermission level:")
+        console.print("  1. View only (can see schedule)")
+        console.print("  2. Edit (can modify schedule)")
+        console.print()
+
+        choice = await session.prompt_async("Select (1-2): ")
+        choice = choice.strip()
+
+        if choice not in ['1', '2']:
+            console.print("❌ Invalid choice", style="red")
+            return
+
+        role = 'writer' if choice == '2' else 'reader'
+        role_display = 'Edit' if choice == '2' else 'View only'
+
+        # Share the calendar
+        console.print(f"\n📤 Sharing calendar with {email} ({role_display})...", style="dim")
+
+        calendar_mgr = get_calendar_manager()
+        success = calendar_mgr.share_calendar(agent.calendar_id, email, role)
+
+        if success:
+            console.print(f"\n✅ Calendar shared successfully!", style="green")
+            console.print(f"   {email} can now {role_display.lower()} the '{agent.name}' calendar", style="dim")
+        else:
+            console.print(f"\n❌ Failed to share calendar", style="red")
+
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n❌ Cancelled", style="red")
+    except Exception as e:
+        console.print(f"\n❌ Error: {e}", style="red")
+
+
 async def handle_sync_prompts(args):
     """
     Sync all Notion-backed prompts with their source pages.
@@ -895,6 +1173,368 @@ async def handle_sync_prompts(args):
         traceback.print_exc()
 
 
+async def select_agent_for_edit() -> Optional[str]:
+    """Interactive selector to choose an agent for editing."""
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.layout.containers import HSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.layout.layout import Layout
+    from prompt_toolkit.formatted_text import FormattedText
+
+    agents = load_agents()
+
+    if not agents:
+        print("❌ No agents configured")
+        return None
+
+    if len(agents) == 1:
+        # Only one agent, auto-select
+        return agents[0].name
+
+    current_index = [0]
+    selected_agent = [None]
+
+    def get_formatted_text():
+        """Generate the formatted text for the agent list."""
+        lines = [
+            ('class:header', '🤖 Select Agent to Edit\n'),
+            ('', '\n'),
+        ]
+
+        for i, agent in enumerate(agents):
+            prefix = '→ ' if i == current_index[0] else '  '
+            style = 'class:selected' if i == current_index[0] else 'class:normal'
+
+            schedule_info = ""
+            if agent.schedule:
+                schedule_info = f" | {len(agent.schedule)} runs/week"
+            elif agent.interval_minutes:
+                schedule_info = f" | Every {agent.interval_minutes}min"
+
+            status = "✅" if agent.enabled else "⏸️"
+            line = f"{prefix}{status} {agent.name} (@{agent.agent_id}) | {agent.workspace}{schedule_info}\n"
+            lines.append((style, line))
+
+        lines.append(('', '\n'))
+        lines.append(('class:status', '↑↓: Navigate | ENTER: Select | q: Cancel'))
+
+        return FormattedText(lines)
+
+    kb = KeyBindings()
+
+    @kb.add(Keys.Up)
+    def move_up(event):
+        current_index[0] = max(0, current_index[0] - 1)
+
+    @kb.add(Keys.Down)
+    def move_down(event):
+        current_index[0] = min(len(agents) - 1, current_index[0] + 1)
+
+    @kb.add(Keys.Enter)
+    def select(event):
+        selected_agent[0] = agents[current_index[0]].name
+        event.app.exit()
+
+    @kb.add('q')
+    def cancel(event):
+        event.app.exit()
+
+    @kb.add(Keys.ControlC)
+    def ctrl_c(event):
+        event.app.exit()
+
+    # Create layout
+    text_window = Window(
+        content=FormattedTextControl(
+            get_formatted_text,
+            focusable=True
+        ),
+        always_hide_cursor=True
+    )
+
+    layout = Layout(HSplit([text_window]))
+
+    # Create and run application
+    app = Application(
+        layout=layout,
+        key_bindings=kb,
+        full_screen=False,
+        mouse_support=False
+    )
+
+    await app.run_async()
+
+    return selected_agent[0]
+
+
+async def handle_agent_edit(args):
+    """
+    Interactively edit an existing scheduled agent.
+
+    Usage:
+        maia agent edit [agent_name]
+    """
+    from promaia.utils.display import print_text
+    from promaia.cli.agent_creation_selector import (
+        select_databases,
+        select_mcp_tools,
+        fetch_discord_channels,
+    )
+    from promaia.cli.schedule_grid_selector import select_schedule, schedule_to_string
+    from promaia.config.databases import get_database_manager
+    from rich.console import Console
+
+    console = Console()
+
+    # If no name provided, show selector
+    agent_name = args.name if hasattr(args, 'name') and args.name else None
+
+    if not agent_name:
+        agent_name = await select_agent_for_edit()
+        if not agent_name:
+            console.print("❌ Cancelled", style="red")
+            return
+
+    # Load the agent - try by name first, then by agent_id
+    agent = get_agent(agent_name)
+    if not agent:
+        # Try finding by agent_id
+        agents = load_agents()
+        for a in agents:
+            if a.agent_id == agent_name:
+                agent = a
+                break
+
+    if not agent:
+        console.print(f"❌ Agent '{agent_name}' not found", style="red")
+        console.print("   Available agents:", style="dim")
+        agents = load_agents()
+        for a in agents:
+            console.print(f"     • {a.name} (@{a.agent_id})", style="dim")
+        return
+
+    print_text(f"\n✏️  Edit Agent: {agent.name}\n", style="bold cyan")
+
+    # Show current configuration
+    console.print("[dim]Current configuration:[/dim]")
+    console.print(f"  Name: [cyan]{agent.name}[/cyan]")
+    console.print(f"  Agent ID: [cyan]@{agent.agent_id}[/cyan]")
+    console.print(f"  Workspace: [cyan]{agent.workspace}[/cyan]")
+    console.print(f"  Databases: [cyan]{', '.join(agent.databases)}[/cyan]")
+    if agent.schedule:
+        console.print(f"  Schedule: [cyan]{schedule_to_string(agent.schedule)}[/cyan]")
+    console.print()
+
+    # Ask what to edit
+    from prompt_toolkit import PromptSession
+
+    console.print("[bold]What would you like to edit?[/bold]")
+    console.print("  1. Name")
+    console.print("  2. Agent ID")
+    console.print("  3. Databases")
+    console.print("  4. Schedule")
+    console.print("  5. MCP Tools")
+    console.print("  6. Max Iterations")
+    console.print("  7. Description")
+    console.print("  8. All fields (full edit)")
+    console.print("  9. Calendar Settings")
+    console.print("  0. Cancel")
+    console.print()
+
+    session = PromptSession()
+    try:
+        choice = await session.prompt_async("Select option (0-9): ")
+        choice = choice.strip()
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n❌ Cancelled", style="red")
+        return
+
+    if choice == "0":
+        console.print("❌ Cancelled", style="red")
+        return
+
+    # Edit based on choice
+    if choice in ["1", "8"]:
+        console.print(f"\nCurrent name: [cyan]{agent.name}[/cyan]")
+        try:
+            new_name = await session.prompt_async("New name (ENTER to keep): ")
+            new_name = new_name.strip()
+            if new_name:
+                agent.name = new_name
+                console.print(f"✓ Updated name to: [cyan]{new_name}[/cyan]", style="dim")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+    if choice in ["2", "8"]:
+        console.print(f"\nCurrent Agent ID: [cyan]@{agent.agent_id}[/cyan]")
+        try:
+            new_id = await session.prompt_async("New Agent ID (without @, ENTER to keep): ")
+            new_id = new_id.strip()
+            if new_id:
+                agent.agent_id = new_id
+                console.print(f"✓ Updated Agent ID to: [cyan]@{new_id}[/cyan]", style="dim")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+    if choice in ["3", "8"]:
+        console.print("\nSelect databases...")
+        db_manager = get_database_manager()
+        workspace_databases = db_manager.get_workspace_databases(agent.workspace)
+
+        # Format databases for selector
+        available_databases = []
+        for db in workspace_databases:
+            if db.browser_include:
+                db_config = {
+                    'name': db.get_qualified_name(),
+                    'default_days': db.default_days,
+                    'default_include': any(db.get_qualified_name() in d for d in agent.databases),
+                }
+                if hasattr(db, 'source_type'):
+                    db_config['source_type'] = db.source_type
+                available_databases.append(db_config)
+
+        # Enrich Discord databases
+        available_databases = await fetch_discord_channels(agent.workspace, available_databases)
+
+        selected_databases = await select_databases(available_databases)
+        if selected_databases:
+            agent.databases = selected_databases
+            console.print(f"✓ Updated databases: [cyan]{', '.join(selected_databases)}[/cyan]", style="dim")
+
+    if choice in ["4", "8"]:
+        console.print("\nSelect schedule...")
+        new_schedule = await select_schedule()
+        if new_schedule:
+            agent.schedule = new_schedule
+            console.print(f"✓ Updated schedule: [cyan]{schedule_to_string(new_schedule)}[/cyan]", style="dim")
+
+    if choice in ["5", "8"]:
+        console.print("\nSelect MCP tools...")
+        selected_tools = await select_mcp_tools(agent.mcp_tools)
+        if selected_tools is not None:  # Allow empty list
+            agent.mcp_tools = selected_tools
+            tools_display = ', '.join(selected_tools) if selected_tools else "None"
+            console.print(f"✓ Updated MCP tools: [cyan]{tools_display}[/cyan]", style="dim")
+
+    if choice in ["6", "8"]:
+        console.print(f"\nCurrent max iterations: [cyan]{agent.max_iterations}[/cyan]")
+        try:
+            new_max = await session.prompt_async("New max iterations (ENTER to keep): ")
+            new_max = new_max.strip()
+            if new_max and new_max.isdigit():
+                agent.max_iterations = int(new_max)
+                console.print(f"✓ Updated max iterations: [cyan]{new_max}[/cyan]", style="dim")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+    if choice in ["7", "8"]:
+        console.print(f"\nCurrent description: [dim]{agent.description}[/dim]")
+        try:
+            new_desc = await session.prompt_async("New description (ENTER to keep): ")
+            new_desc = new_desc.strip()
+            if new_desc:
+                agent.description = new_desc
+                console.print(f"✓ Updated description", style="dim")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+    if choice == "9":
+        console.print("\n📅 Calendar Settings", style="bold cyan")
+
+        if agent.calendar_id:
+            console.print(f"\n   Current calendar ID: [cyan]{agent.calendar_id}[/cyan]")
+            console.print(f"   URL: https://calendar.google.com")
+            console.print(f"   (Look for '{agent.name}' in sidebar)", style="dim")
+
+            if agent.calendar_event_ids:
+                event_count = len(agent.calendar_event_ids.split(','))
+                console.print(f"   Events: {event_count} recurring event(s)")
+
+            console.print("\n[bold]Calendar Actions:[/bold]")
+            console.print("  1. Share calendar with team member")
+            console.print("  2. View calendar URL")
+            console.print("  3. Recreate calendar (deletes and creates new)")
+            console.print("  0. Back")
+
+            try:
+                cal_choice = await session.prompt_async("\nSelect option (0-3): ")
+                cal_choice = cal_choice.strip()
+
+                if cal_choice == "1":
+                    # Share calendar
+                    console.print("\nEmail address to share with:")
+                    email = await session.prompt_async("› ")
+                    email = email.strip()
+
+                    if email and '@' in email:
+                        console.print("\nPermission level:")
+                        console.print("  1. View only")
+                        console.print("  2. Edit")
+
+                        perm_choice = await session.prompt_async("Select (1-2): ")
+                        role = 'writer' if perm_choice.strip() == '2' else 'reader'
+
+                        from promaia.gcal import get_calendar_manager
+                        calendar_mgr = get_calendar_manager()
+
+                        if calendar_mgr.share_calendar(agent.calendar_id, email, role):
+                            console.print(f"\n✅ Shared calendar with {email}", style="green")
+                        else:
+                            console.print(f"\n❌ Failed to share calendar", style="red")
+
+                elif cal_choice == "2":
+                    # Show URL
+                    console.print(f"\n📆 Calendar URL:", style="bold")
+                    console.print(f"   https://calendar.google.com", style="cyan")
+                    console.print(f"   (Look for '{agent.name}' in sidebar)", style="dim")
+
+                elif cal_choice == "3":
+                    # Recreate calendar
+                    console.print("\n⚠️  This will delete the existing calendar and create a new one", style="yellow")
+                    confirm = await session.prompt_async("Continue? (y/N): ")
+
+                    if confirm.strip().lower() == 'y':
+                        from promaia.gcal import get_calendar_manager
+                        calendar_mgr = get_calendar_manager()
+
+                        # Delete old calendar
+                        calendar_mgr.delete_agent_calendar(agent.calendar_id)
+
+                        # Create new calendar
+                        new_calendar_id = calendar_mgr.create_agent_calendar(
+                            agent_name=agent.name,
+                            description=agent.description or f"Automated schedule for {agent.name}"
+                        )
+
+                        if new_calendar_id:
+                            agent.calendar_id = new_calendar_id
+                            agent.calendar_event_ids = None  # Clear old events
+                            console.print(f"\n✅ Calendar recreated", style="green")
+                            console.print(f"   New calendar ID: {new_calendar_id}")
+                        else:
+                            console.print(f"\n❌ Failed to create new calendar", style="red")
+
+            except (EOFError, KeyboardInterrupt):
+                console.print("\n❌ Cancelled", style="yellow")
+
+        else:
+            console.print(f"\n   ⚠️  No calendar associated with this agent", style="yellow")
+            console.print(f"   Run 'maia agent calendar-sync {agent.name}' to create one", style="dim")
+
+    # Save changes
+    console.print()
+    console.print("💾 Saving changes...")
+    save_agent(agent)
+
+    console.print("✅ Agent updated successfully!", style="green")
+    console.print()
+    console.print("[dim]To sync changes to Notion:[/dim]")
+    console.print(f"  [For future implementation: maia agent sync-to-notion '{agent.name}']")
+
+
 def add_scheduled_agent_commands(agent_subparsers):
     """Add scheduled agent commands to the agent subparser.
 
@@ -904,6 +1544,11 @@ def add_scheduled_agent_commands(agent_subparsers):
     # Add command
     add_parser = agent_subparsers.add_parser('add', help='Create a new scheduled agent')
     add_parser.set_defaults(func=handle_agent_add)
+
+    # Edit command
+    edit_parser = agent_subparsers.add_parser('edit', help='Edit an existing scheduled agent')
+    edit_parser.add_argument('name', nargs='?', help='Agent name (optional - will show selector if omitted)')
+    edit_parser.set_defaults(func=handle_agent_edit)
 
     # List command (for scheduled agents)
     list_scheduled_parser = agent_subparsers.add_parser('list-scheduled', help='List all scheduled agents')
@@ -920,11 +1565,11 @@ def add_scheduled_agent_commands(agent_subparsers):
     logs_scheduled_parser.add_argument('--limit', '-l', type=int, default=20, help='Number of logs to show')
     logs_scheduled_parser.set_defaults(func=handle_agent_logs_scheduled)
 
-    # Remove command (for scheduled agents)
-    remove_scheduled_parser = agent_subparsers.add_parser('remove-scheduled', help='Remove a scheduled agent')
-    remove_scheduled_parser.add_argument('name', help='Agent name')
-    remove_scheduled_parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation')
-    remove_scheduled_parser.set_defaults(func=handle_agent_remove_scheduled)
+    # Remove command (for agents)
+    remove_parser = agent_subparsers.add_parser('remove', help='Remove an agent')
+    remove_parser.add_argument('name', help='Agent name')
+    remove_parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation')
+    remove_parser.set_defaults(func=handle_agent_remove_scheduled)
 
     # Enable command
     enable_parser = agent_subparsers.add_parser('enable', help='Enable a scheduled agent')
@@ -967,3 +1612,7 @@ def add_scheduled_agent_commands(agent_subparsers):
 
     calendar_list_parser = agent_subparsers.add_parser('calendar-list', help='List agents on Google Calendar')
     calendar_list_parser.set_defaults(func=handle_calendar_list)
+
+    calendar_share_parser = agent_subparsers.add_parser('calendar-share', help='Share agent calendar with team member')
+    calendar_share_parser.add_argument('name', help='Agent name')
+    calendar_share_parser.set_defaults(func=handle_calendar_share)
