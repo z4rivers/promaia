@@ -1,7 +1,10 @@
 """
 Agent Executor - Runs scheduled agents with multi-step query capability.
+
+Now supports both legacy custom iteration loop and new Claude Agent SDK integration.
 """
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
@@ -17,6 +20,51 @@ from promaia.ai.nl_orchestrator import PromaiLLMAdapter
 from promaia.config.databases import get_database_config
 
 logger = logging.getLogger(__name__)
+
+# Hard caps to prevent "prompt too long" failures when an agent is configured
+# with huge sources like stories:all.
+DEFAULT_MAX_PAGES_PER_SOURCE = 50
+DEFAULT_MAX_CHARS_PER_ENTRY = 2000
+
+# Try to import Claude Agent SDK (optional, falls back to legacy mode)
+SDK_AVAILABLE = False
+_SDK_IMPORT_DEBUG = []
+try:
+    _SDK_IMPORT_DEBUG.append("Attempting SDK import...")
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage
+    SDK_AVAILABLE = True
+    _SDK_IMPORT_DEBUG.append("✓ SDK import successful")
+    print(f"✓ Claude Agent SDK imported successfully", flush=True)
+    logger.debug("Claude Agent SDK available")
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = True\n")
+        f.write(f"PID: {os.getpid()}\n")
+except ImportError as e:
+    SDK_AVAILABLE = False
+    _SDK_IMPORT_ERROR = str(e)
+    _SDK_IMPORT_DEBUG.append(f"✗ ImportError: {e}")
+    print(f"✗ Claude Agent SDK import failed (ImportError): {e}", flush=True)
+    logger.debug(f"Claude Agent SDK not available, will use legacy execution mode: {e}")
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = False (ImportError)\n")
+        f.write(f"Error: {e}\n")
+        f.write(f"PID: {os.getpid()}\n")
+except Exception as e:
+    SDK_AVAILABLE = False
+    _SDK_IMPORT_ERROR = f"Unexpected error importing claude_agent_sdk: {e}"
+    _SDK_IMPORT_DEBUG.append(f"✗ Exception: {e}")
+    print(f"✗ Claude Agent SDK import failed (Exception): {e}", flush=True)
+    logger.debug(_SDK_IMPORT_ERROR)
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = False (Exception)\n")
+        f.write(f"Error: {e}\n")
+        f.write(f"PID: {os.getpid()}\n")
 
 
 class AgentExecutor:
@@ -42,9 +90,13 @@ class AgentExecutor:
         self.tracker = ExecutionTracker()
         self.notion_writer = NotionOutputWriter(workspace=agent_config.workspace)
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self, run_request: Optional[str] = None, run_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Execute the agent.
+
+        Args:
+            run_request: Optional run-specific instruction (e.g., calendar event description)
+            run_metadata: Optional metadata (e.g., calendar event id, start time)
 
         Returns:
             Execution result with status, metrics, and output
@@ -72,17 +124,39 @@ class AgentExecutor:
             if not initial_context:
                 logger.warning("No context data loaded")
 
-            # Step 2: Load custom prompt
-            custom_prompt = self._load_custom_prompt()
+            # Step 2: Execute agent (SDK or legacy mode)
+            # DEBUG: Log SDK availability
+            print(f"\n🔍 DEBUG: sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}\n", flush=True)
+            logger.info(f"🔍 DEBUG: sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}")
+            
+            if self.config.sdk_enabled and SDK_AVAILABLE:
+                logger.info("🚀 Using Claude Agent SDK for execution")
+                result = await self._execute_with_sdk(initial_context, run_request=run_request, run_metadata=run_metadata)
+            else:
+                if self.config.sdk_enabled and not SDK_AVAILABLE:
+                    import sys
+                    details = ""
+                    try:
+                        details = f" (python={sys.executable}"
+                        if '_SDK_IMPORT_ERROR' in globals():
+                            details += f", import_error={globals().get('_SDK_IMPORT_ERROR')}"
+                        details += ")"
+                    except Exception:
+                        details = ""
+                    logger.warning(f"⚠️ SDK enabled but not available, falling back to legacy mode{details}")
+                else:
+                    logger.info(f"ℹ️ SDK disabled in config (sdk_enabled={self.config.sdk_enabled})")
+                logger.info("🔄 Using legacy iteration loop")
 
-            # Step 3: Create full prompt with context
-            full_prompt = self._create_agent_prompt(custom_prompt, initial_context)
+                # Legacy mode: Load custom prompt and create full prompt with context
+                custom_prompt = self._load_custom_prompt()
+                full_prompt = self._create_agent_prompt(custom_prompt, initial_context)
+                if run_request:
+                    full_prompt += f"\n\n# Run Request\n\n{run_request}\n"
+                result = await self._execute_with_iterations(full_prompt, initial_context)
 
-            # Step 4: Execute agent with iteration loop
-            result = await self._execute_with_iterations(full_prompt, initial_context)
-
-            # Step 5: Write results to Notion
-            if result.get('output'):
+            # Step 5: Write results to Notion (if output page configured)
+            if result.get('output') and self.config.output_notion_page_id:
                 success = await self._write_to_notion(result['output'])
                 result['notion_written'] = success
             else:
@@ -205,15 +279,25 @@ class AgentExecutor:
                     database_name = source_spec
                     days = None
 
+                # Get database config
+                database_config = get_database_config(database_name, self.config.workspace)
+                if not database_config:
+                    logger.warning(f"  ⚠ Database '{database_name}' not found in workspace '{self.config.workspace}'")
+                    continue
+
                 # Load pages for this database
                 pages = load_database_pages_with_filters(
-                    database_name=database_name,
-                    workspace=self.config.workspace,
+                    database_config=database_config,
                     days=days
                 )
 
                 if pages:
-                    context[database_name] = pages
+                    context[database_name] = self._shrink_pages_for_prompt(
+                        database_name=database_name,
+                        pages=pages,
+                        max_pages=DEFAULT_MAX_PAGES_PER_SOURCE,
+                        max_chars_per_entry=DEFAULT_MAX_CHARS_PER_ENTRY,
+                    )
                     logger.info(f"  ✓ Loaded {len(pages)} pages from '{database_name}'")
                 else:
                     logger.info(f"  ⚠ No pages found in '{database_name}'")
@@ -223,6 +307,66 @@ class AgentExecutor:
 
         return context
 
+    def _shrink_pages_for_prompt(
+        self,
+        database_name: str,
+        pages: List[Dict[str, Any]],
+        max_pages: int,
+        max_chars_per_entry: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Reduce payload size before stuffing pages into a model prompt.
+
+        We keep the original list order but:
+        - cap number of entries
+        - truncate large 'content' fields
+        - insert a synthetic first entry describing truncation (so the model knows)
+        """
+        if not pages:
+            return pages
+
+        total = len(pages)
+        trimmed = pages[:max_pages] if total > max_pages else list(pages)
+
+        def truncate_text(val: Any) -> Any:
+            if not isinstance(val, str):
+                return val
+            if len(val) <= max_chars_per_entry:
+                return val
+            return val[: max_chars_per_entry - 50] + "\n\n...[truncated]..."
+
+        shrunk: List[Dict[str, Any]] = []
+        for p in trimmed:
+            if not isinstance(p, dict):
+                shrunk.append(p)
+                continue
+
+            # Shallow copy and truncate known heavy fields
+            p2 = dict(p)
+            if "content" in p2:
+                p2["content"] = truncate_text(p2.get("content"))
+            # Some loaders store full markdown under other keys
+            for k in ("markdown", "body", "text"):
+                if k in p2:
+                    p2[k] = truncate_text(p2.get(k))
+
+            shrunk.append(p2)
+
+        if total > max_pages:
+            shrunk.insert(
+                0,
+                {
+                    "filename": f"{database_name} (truncated)",
+                    "content": (
+                        f"NOTE: Initial context was truncated for safety. "
+                        f"Showing first {max_pages} of {total} entries from '{database_name}'. "
+                        f"Use query tools to retrieve more if needed."
+                    ),
+                },
+            )
+
+        return shrunk
+
     def _load_custom_prompt(self) -> str:
         """
         Load the custom prompt for the agent.
@@ -230,15 +374,34 @@ class AgentExecutor:
         Returns:
             Prompt text
         """
-        prompt_path = Path(self.config.prompt_file)
+        prompt_value = self.config.prompt_file or ""
 
-        # If it's a file path, read it
-        if prompt_path.exists():
-            with open(prompt_path, 'r') as f:
-                return f.read()
+        # Heuristic: only treat as a path if it looks like one.
+        # Many agents store the full prompt inline (multi-line markdown), and
+        # blindly calling Path(...).exists() on that can raise "File name too long".
+        looks_like_path = (
+            isinstance(prompt_value, str)
+            and "\n" not in prompt_value
+            and len(prompt_value) <= 240
+            and (
+                prompt_value.startswith(("/", "./", "../", "~"))
+                or prompt_value.endswith((".md", ".txt"))
+                or ("/" in prompt_value)
+            )
+        )
+
+        if looks_like_path:
+            try:
+                prompt_path = Path(prompt_value).expanduser()
+                if prompt_path.is_file():
+                    with open(prompt_path, "r", encoding="utf-8") as f:
+                        return f.read()
+            except OSError:
+                # Treat as inline if the "path" is invalid for the OS
+                pass
 
         # Otherwise, treat it as inline content
-        return self.config.prompt_file
+        return prompt_value
 
     def _create_agent_prompt(
         self,
@@ -480,6 +643,673 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
         except Exception as e:
             logger.error(f"Error writing to Notion: {e}")
             return False
+
+    # ==================== SDK INTEGRATION METHODS ====================
+
+    async def _execute_with_sdk(
+        self,
+        initial_context: Dict[str, List[Dict[str, Any]]],
+        run_request: Optional[str] = None,
+        run_metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute agent using Claude Agent SDK with multi-message context approach.
+
+        Uses message history to split large context across multiple messages,
+        bypassing the 40KB per-message subprocess buffer limit.
+
+        Args:
+            initial_context: Preloaded context from databases
+
+        Returns:
+            Result dictionary with output and metrics
+        """
+        if not SDK_AVAILABLE:
+            raise RuntimeError("SDK execution requested but SDK not available")
+
+        try:
+            # Build initial message history with preloaded context (may be multi-message)
+            initial_messages = self._build_initial_message_history(
+                initial_context,
+                run_request=run_request,
+                run_metadata=run_metadata
+            )
+
+            # Build SDK options with tools and MCP servers
+            sdk_options = self._build_sdk_options()
+
+            # Execute with SDK
+            messages = []
+            final_result = None
+            total_iterations = 0
+
+            logger.info("🤖 Starting SDK agent loop...")
+            logger.info(f"📨 Initial context: {len(initial_messages)} message(s)")
+
+            # For now, concatenate all messages into single prompt
+            # SDK multi-message support seems to have issues, so we'll use single large prompt
+            full_prompt_parts = []
+            for i, msg in enumerate(initial_messages):
+                role = msg['role']
+                content = msg['content']
+                if role == 'user':
+                    if i == 0:
+                        full_prompt_parts.append(content)
+                    else:
+                        full_prompt_parts.append(f"\n---\n\n{content}")
+                # Skip assistant acknowledgments - they're just for message chunking
+
+            full_prompt = "\n".join(full_prompt_parts)
+            logger.info(f"📨 Combined prompt size: {len(full_prompt):,} chars (~{len(full_prompt)/1024:.1f} KB)")
+
+            # Use ClaudeSDKClient for better MCP support
+            print(f"\n🚀 Creating ClaudeSDKClient with MCP servers...\n", flush=True)
+            async with ClaudeSDKClient(options=sdk_options) as client:
+                print(f"✓ ClaudeSDKClient created successfully\n", flush=True)
+                await client.query(full_prompt)
+                async for message in client.receive_response():
+                    messages.append(message)
+
+                    # Log ALL message types for debugging
+                    message_type = type(message).__name__
+                    logger.info(f"📨 SDK message: {message_type}")
+
+                    # Log message attributes for debugging
+                    if logger.isEnabledFor(logging.DEBUG):
+                        attrs = [a for a in dir(message) if not a.startswith('_')]
+                        logger.debug(f"  Message attributes: {attrs}")
+
+                    # Extract content from ResultMessage
+                    if message_type == "ResultMessage":
+                        # ResultMessage contains the final output
+                        if hasattr(message, 'content'):
+                            # Content is a list of content blocks
+                            content_blocks = []
+                            for block in message.content:
+                                if hasattr(block, 'text'):
+                                    content_blocks.append(block.text)
+                            final_result = "\n".join(content_blocks)
+                            logger.info(f"✅ Final result captured: {len(final_result)} chars")
+
+                    # Collect ALL assistant messages (not just one)
+                    elif message_type == "AssistantMessage":
+                        if hasattr(message, 'content'):
+                            content_blocks = []
+                            for block in message.content:
+                                if hasattr(block, 'text'):
+                                    content_blocks.append(block.text)
+                                # Also log tool_use blocks
+                                elif hasattr(block, 'type') and block.type == 'tool_use':
+                                    tool_name = getattr(block, 'name', 'unknown')
+                                    tool_id = getattr(block, 'id', 'unknown')
+                                    logger.info(f"🔧 Tool call requested: {tool_name} (id: {tool_id})")
+                            assistant_content = "\n".join(content_blocks)
+
+                            # Log assistant message
+                            if assistant_content:
+                                logger.info(f"💬 Assistant message: {assistant_content[:200]}...")
+
+                                # Append to final result (collect all assistant messages)
+                                if final_result:
+                                    final_result += "\n\n" + assistant_content
+                                else:
+                                    final_result = assistant_content
+
+                    # Log tool use messages
+                    elif message_type == "ToolUseMessage":
+                        tool_name = getattr(message, 'tool_name', getattr(message, 'name', 'unknown'))
+                        tool_id = getattr(message, 'tool_use_id', getattr(message, 'id', 'unknown'))
+                        logger.info(f"🔧 Tool used: {tool_name} (id: {tool_id})")
+
+                    # Log tool result messages - CRITICAL for MCP debugging
+                    elif message_type == "ToolResultMessage" or message_type == "UserMessage":
+                        # Tool results come back as UserMessage or ToolResultMessage
+                        content = getattr(message, 'content', None)
+                        if content:
+                            if isinstance(content, str):
+                                logger.info(f"📥 Tool/User message: {content[:200]}...")
+                            elif isinstance(content, list):
+                                for block in content:
+                                    block_type = getattr(block, 'type', type(block).__name__)
+                                    # Handle tool results - check various attribute names
+                                    tool_use_id = getattr(block, 'tool_use_id', getattr(block, 'id', None))
+                                    is_error = getattr(block, 'is_error', False)
+                                    result_content = getattr(block, 'content', getattr(block, 'text', getattr(block, 'result', None)))
+
+                                    if tool_use_id or 'tool' in block_type.lower() or 'result' in block_type.lower():
+                                        status = "❌ ERROR" if is_error else "✅"
+                                        print(f"📥 Tool result {status} (type={block_type}, id={tool_use_id}): {str(result_content)[:200]}...", flush=True)
+                                        logger.info(f"📥 Tool result {status} (type={block_type}, id={tool_use_id}): {str(result_content)[:500]}...")
+                                    else:
+                                        # Log full block for debugging
+                                        block_attrs = {k: str(getattr(block, k, '?'))[:100] for k in dir(block) if not k.startswith('_')}
+                                        logger.info(f"📥 Message block type: {block_type}, attrs: {block_attrs}")
+
+                    # Log system messages
+                    elif message_type == "SystemMessage":
+                        logger.info(f"⚙️ System message received")
+
+                    # Log any other message types
+                    else:
+                        logger.info(f"❓ Unknown message type: {message_type}")
+                        # Try to extract any useful info
+                        if hasattr(message, 'content'):
+                            logger.debug(f"  Content: {str(message.content)[:200]}...")
+
+                    total_iterations += 1
+
+            logger.info(f"✅ SDK execution completed ({total_iterations} turns)")
+
+            # Extract metrics from messages
+            total_tokens = 0
+            total_cost = 0.0
+            input_tokens_total = 0
+            output_tokens_total = 0
+
+            for msg in messages:
+                if hasattr(msg, 'usage'):
+                    usage = msg.usage
+                    # Handle both dict and object formats
+                    if isinstance(usage, dict):
+                        input_tok = usage.get('input_tokens', 0)
+                        output_tok = usage.get('output_tokens', 0)
+                    else:
+                        input_tok = getattr(usage, 'input_tokens', 0)
+                        output_tok = getattr(usage, 'output_tokens', 0)
+                    
+                    input_tokens_total += input_tok
+                    output_tokens_total += output_tok
+                    print(f"📊 Usage from {type(msg).__name__}: input={input_tok}, output={output_tok}", flush=True)
+                    logger.debug(f"Usage from {type(msg).__name__}: input={input_tok}, output={output_tok}")
+            
+            # Calculate total tokens
+            total_tokens = input_tokens_total + output_tokens_total
+
+            # Cost estimation for Sonnet 4.5 1M context
+            # Pricing: $3 per 1M input tokens, $15 per 1M output tokens
+            total_cost = (input_tokens_total * 3 / 1_000_000) + (output_tokens_total * 15 / 1_000_000)
+
+            logger.info(f"📊 Total tokens: {total_tokens} (input: {input_tokens_total}, output: {output_tokens_total})")
+            logger.info(f"💰 Estimated cost: ${total_cost:.4f}")
+
+            return {
+                'output': final_result or "No output generated",
+                'iterations_used': total_iterations,
+                'tokens_used': total_tokens,
+                'cost_estimate': total_cost,
+                'messages': messages
+            }
+
+        except Exception as e:
+            logger.error(f"Error in SDK execution: {e}")
+            # Log full traceback for debugging
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
+
+    def _build_initial_message_history(
+        self,
+        initial_context: Dict[str, List[Dict[str, Any]]],
+        run_request: Optional[str] = None,
+        run_metadata: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, str]]:
+        """
+        Build initial message history with FULL preloaded context.
+
+        Splits large context across multiple messages to bypass 40KB per-message
+        subprocess buffer limit. No truncation - all context is preserved.
+
+        Args:
+            initial_context: Dict mapping database names to lists of pages
+
+        Returns:
+            List of message dicts for conversation history
+        """
+        messages = []
+
+        # Format FULL context data
+        if initial_context:
+            formatted_context = format_context_data(initial_context)
+            context_size = len(formatted_context)
+            logger.info(f"Total context size: {context_size:,} chars (~{context_size/1024:.1f} KB)")
+
+            # Split context into chunks if needed (35KB per chunk for safety)
+            chunk_size = 35000
+            context_chunks = []
+
+            if context_size <= chunk_size:
+                # Fits in one message
+                context_chunks = [formatted_context]
+            else:
+                # Split into chunks
+                logger.info(f"Splitting context into chunks (max {chunk_size/1024:.0f}KB each)...")
+
+                # Try to split at natural boundaries (database sections)
+                current_chunk = ""
+                for line in formatted_context.split('\n'):
+                    if len(current_chunk) + len(line) + 1 > chunk_size and current_chunk:
+                        # Current chunk is full, start new one
+                        context_chunks.append(current_chunk)
+                        current_chunk = line + '\n'
+                    else:
+                        current_chunk += line + '\n'
+
+                # Add final chunk
+                if current_chunk:
+                    context_chunks.append(current_chunk)
+
+            logger.info(f"Context split into {len(context_chunks)} chunk(s)")
+
+            # Build message history with context chunks
+            for i, chunk in enumerate(context_chunks):
+                if i == 0:
+                    # First message includes header
+                    msg = f"""# Preloaded Context (Part {i+1}/{len(context_chunks)})
+
+Here is your initial working context loaded from configured sources:
+
+{chunk}"""
+                else:
+                    # Subsequent messages are continuations
+                    msg = f"""# Preloaded Context (Part {i+1}/{len(context_chunks)} - continued)
+
+{chunk}"""
+
+                messages.append({"role": "user", "content": msg})
+
+                # Add acknowledgment from assistant (except for last chunk)
+                if i < len(context_chunks) - 1:
+                    messages.append({"role": "assistant", "content": "Context received. Ready for more."})
+
+                logger.info(f"  Chunk {i+1}: {len(msg):,} chars (~{len(msg)/1024:.1f} KB)")
+
+        else:
+            # No context loaded
+            messages.append({
+                "role": "user",
+                "content": "# Preloaded Context\n\nNo initial context data loaded."
+            })
+
+        # Add final instructions message
+        run_metadata = run_metadata or {}
+        run_context_block = ""
+        if run_request:
+            meta_lines = []
+            for k in ["calendar_event_id", "calendar_event_start", "calendar_event_summary", "calendar_event_link"]:
+                if run_metadata.get(k):
+                    meta_lines.append(f"- {k}: {run_metadata.get(k)}")
+            meta_text = "\n".join(meta_lines)
+            if meta_text:
+                meta_text = "\n\nMetadata:\n" + meta_text
+            run_context_block = f"""
+---
+
+# Run Request
+
+{run_request}{meta_text}
+"""
+
+        final_instructions = f"""
+---
+
+# How to Expand Context
+
+If you need more data beyond what's preloaded above, use these query tools:
+
+1. **query_source(database, days)**: Load different time ranges
+   - Example: `query_source(database='journal', days=30)` for more history
+
+2. **query_sql(query, reasoning)**: Search for specific keywords
+   - Example: `query_sql(query='emails about budget', reasoning='need financial context')`
+
+3. **query_vector(query, reasoning)**: Semantic/conceptual search
+   - Example: `query_vector(query='team morale discussions', reasoning='understanding dynamics')`
+
+## Additional Tools Available:
+
+- File operations: Read, Write, Edit, Bash (data at `data/md/notion/{self.config.workspace}/`)
+- Search: Grep, Glob
+- Web: WebSearch, WebFetch
+
+---
+
+# Your Task
+
+Review the preloaded context above and take appropriate actions based on your system instructions.
+You can query for additional context if needed, but start by analyzing what's already provided.
+{run_context_block}
+
+Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
+"""
+        messages.append({"role": "user", "content": final_instructions})
+
+        return messages
+
+    def _build_system_prompt(self) -> str:
+        """
+        Build system prompt with instructions and schema preview (NO context data).
+
+        Context data goes in the initial user message, not here.
+        This allows the system prompt to stay lean and the agent to expand context dynamically.
+
+        Returns:
+            System prompt string
+        """
+        # Load custom prompt from file or Notion
+        custom_instructions = self._load_custom_prompt()
+
+        parts = [
+            f"You are {self.config.name}.",
+            "",
+            "# System Instructions",
+            custom_instructions,
+            "",
+            "# Available Data Sources & Permissions",
+            self._format_source_permissions(),
+            "",
+            "# Data Source Schema Preview",
+            self._build_schema_preview(),
+            "",
+            "# Query Tools",
+            "",
+            "Use these to access your data:",
+            "",
+            "1. **query_sql(query, reasoning)**: Search for EXACT TEXT/KEYWORDS",
+            "   - Example: `query_sql(query='tasks in current sprint', reasoning='need sprint status')`",
+            "",
+            "2. **query_vector(query, reasoning, top_k, min_similarity)**: Semantic/conceptual search",
+            "   - Example: `query_vector(query='project delays', reasoning='understanding blockers')`",
+            "",
+            "3. **query_source(database, days)**: Load from specific source",
+            "   - Example: `query_source(database='journal', days=30)`",
+            "",
+            "# Additional Tools",
+            "",
+            "File operations: Read, Write, Edit, Bash",
+            "Search: Glob, Grep",
+            "Web: WebSearch, WebFetch",
+            "",
+            f"File data location: `data/md/notion/{self.config.workspace}/`",
+        ]
+
+        # Add MCP tool documentation if any are configured
+        if self.config.mcp_tools:
+            parts.append("")
+            parts.append("# External Integrations (MCP Tools)")
+            parts.append("")
+            parts.append("You have access to external services via MCP tools.")
+            parts.append("⚠️ MCP tools are DEFERRED - use ToolSearch to load them first!")
+            parts.append("")
+
+            for tool_name in self.config.mcp_tools:
+                if tool_name == "notion-helper":
+                    parts.append("## Notion Helper (Simple MCP Tools)")
+                    parts.append("")
+                    parts.append("✅ USE THESE! They work reliably without parameter issues.")
+                    parts.append("")
+                    parts.append("**Available Tools:**")
+                    parts.append("- `mcp__notion-helper__search_databases`: Find database by name")
+                    parts.append("  - Params: `query` (string)")
+                    parts.append("- `mcp__notion-helper__create_page_in_database`: Create page")
+                    parts.append("  - Params: `database_id`, `title`, `content` (markdown)")
+                    parts.append("")
+                    parts.append("**Workflow:**")
+                    parts.append("```python")
+                    parts.append("# 1. Search for database")
+                    parts.append("ToolSearch(query=\"notion helper search\")")
+                    parts.append("mcp__notion-helper__search_databases(query=\"Stories\")")
+                    parts.append("")
+                    parts.append("# 2. Create page with extracted ID")
+                    parts.append("ToolSearch(query=\"notion helper create page\")")
+                    parts.append("mcp__notion-helper__create_page_in_database(")
+                    parts.append("  database_id=\"1d1d1339-6967-803f-a4d0-ec557db459f8\",")
+                    parts.append("  title=\"My Page Title\",")
+                    parts.append("  content=\"Optional markdown content\"")
+                    parts.append(")")
+                    parts.append("```")
+                    parts.append("")
+                elif tool_name == "notion":
+                    parts.append("## Notion API (MCP Tools)")
+                    parts.append("")
+                    parts.append("You have FULL read/write access to Notion via MCP tools.")
+                    parts.append("All tools are prefixed with `mcp__notion__`")
+                    parts.append("")
+                    parts.append("### 🔍 Step 1: Load Tools with ToolSearch")
+                    parts.append("")
+                    parts.append("Before using Notion tools, search for them:")
+                    parts.append("```")
+                    parts.append("ToolSearch(query=\"notion create page\")")
+                    parts.append("ToolSearch(query=\"notion search database\")")
+                    parts.append("```")
+                    parts.append("")
+                    parts.append("### 📝 Step 2: Use Loaded Tools")
+                    parts.append("")
+                    parts.append("Available Notion tools (after ToolSearch):")
+                    parts.append("- `mcp__notion__API-post-search`: Search Notion by title")
+                    parts.append("- `mcp__notion__API-query-data-source`: Query a database")
+                    parts.append("- `mcp__notion__API-retrieve-a-data-source`: Get database schema")
+                    parts.append("- `mcp__notion__API-post-page`: Create new page in database")
+                    parts.append("- `mcp__notion__API-patch-page`: Update page")
+                    parts.append("- `mcp__notion__API-retrieve-a-page`: Get page content")
+                    parts.append("")
+                    parts.append("### ✅ CORRECT Way to Create a Page")
+                    parts.append("")
+                    parts.append("**Example: Create page in Stories database**")
+                    parts.append("```python")
+                    parts.append("# Step 1: Find the database ID")
+                    parts.append("ToolSearch(query=\"notion search\")")
+                    parts.append("mcp__notion__API-post-search(")
+                    parts.append("  query=\"Stories\",")
+                    parts.append("  filter={\"value\": \"database\", \"property\": \"object\"}")
+                    parts.append(")")
+                    parts.append("# Extract database_id from the results")
+                    parts.append("")
+                    parts.append("# Step 2: Create page with OBJECT parameters")
+                    parts.append("ToolSearch(query=\"notion create page\")")
+                    parts.append("mcp__notion__API-post-page(")
+                    parts.append("  parent={\"database_id\": \"<extracted-id>\"},")
+                    parts.append("  properties={")
+                    parts.append("    \"title\": {")
+                    parts.append("      \"title\": [{\"text\": {\"content\": \"My Page Title\"}}]")
+                    parts.append("    }")
+                    parts.append("  }")
+                    parts.append(")")
+                    parts.append("```")
+                    parts.append("")
+                    parts.append("### ❌ WRONG - These cause 400 errors:")
+                    parts.append("```python")
+                    parts.append("# DON'T stringify parent or properties!")
+                    parts.append("parent='{\"database_id\": \"...\"}' ← WRONG - this is a STRING not an OBJECT")
+                    parts.append("properties='{\"title\": [...]}' ← WRONG - this is a STRING not an OBJECT")
+                    parts.append("```")
+                    parts.append("")
+                    parts.append("### 🎯 Correct Workflow for Creating Pages")
+                    parts.append("")
+                    parts.append("**Step-by-step:**")
+                    parts.append("1. Search for the database by name to get its ID:")
+                    parts.append("   ```")
+                    parts.append("   ToolSearch(query=\"notion search\")")
+                    parts.append("   mcp__notion__API-post-search(")
+                    parts.append("     query=\"Stories\",")
+                    parts.append("     filter={\"value\": \"database\", \"property\": \"object\"}")
+                    parts.append("   )")
+                    parts.append("   ```")
+                    parts.append("")
+                    parts.append("2. Extract the database ID from results (look for `id` field)")
+                    parts.append("")
+                    parts.append("3. Create the page with OBJECT parameters:")
+                    parts.append("   ```")
+                    parts.append("   ToolSearch(query=\"notion create page\")")
+                    parts.append("   mcp__notion__API-post-page(")
+                    parts.append("     parent={\"database_id\": \"<id-from-search>\"},")
+                    parts.append("     properties={")
+                    parts.append("       \"title\": {")
+                    parts.append("         \"title\": [{\"text\": {\"content\": \"Page Title\"}}]")
+                    parts.append("       }")
+                    parts.append("     }")
+                    parts.append("   )")
+                    parts.append("   ```")
+                    parts.append("")
+                    parts.append("⚠️ CRITICAL: Database IDs change! Always search first, never hardcode IDs!")
+                    parts.append("")
+                elif tool_name == "gmail":
+                    parts.append("## Gmail API (MCP Tools)")
+                    parts.append("")
+                    parts.append("You can read and send emails. Key tools:")
+                    parts.append("- `mcp__gmail__list_messages`: Search/list emails")
+                    parts.append("- `mcp__gmail__get_message`: Read specific email")
+                    parts.append("- `mcp__gmail__send_message`: Send new email")
+                    parts.append("- `mcp__gmail__create_draft`: Create email draft")
+                    parts.append("")
+
+        system_prompt = "\n".join(parts)
+
+        # Monitor size
+        logger.info(f"System prompt size: {len(system_prompt):,} chars (~{len(system_prompt)/1024:.1f} KB)")
+
+        return system_prompt
+
+    def _format_source_permissions(self) -> str:
+        """
+        Format available sources and agent permissions for system prompt.
+
+        Returns:
+            Formatted permissions string
+        """
+        sources_info = []
+
+        # Get queryable sources
+        queryable = self.config.get_queryable_sources()
+        writable = self.config.get_writable_sources()
+
+        # Format source info
+        for source in queryable:
+            permissions = ["queryable"]
+            if source in writable:
+                permissions.append("writable")
+
+            sources_info.append(f"- **{source}**: {', '.join(permissions)}")
+
+        if sources_info:
+            return "You have access to the following data sources:\n" + "\n".join(sources_info)
+        else:
+            return "No queryable sources configured."
+
+    def _build_schema_preview(self) -> str:
+        """
+        Build schema preview showing available sources with sample data.
+        Filtered by agent's queryable permissions.
+
+        This allows agents to "see over the fence" and know what data sources
+        exist beyond their initial context.
+
+        Returns:
+            Formatted schema preview string
+        """
+        from promaia.ai.prompts import generate_database_preview
+
+        # Get sources agent can query
+        queryable_sources = self.config.get_queryable_sources()
+
+        if not queryable_sources:
+            return "No queryable data sources configured."
+
+        # Generate preview for queryable sources only
+        preview = generate_database_preview(
+            workspace=self.config.workspace,
+            exclude_databases=[],  # Show all queryable sources
+            limit_to_databases=queryable_sources,  # Filter to permissions
+            max_examples=3
+        )
+
+        if preview:
+            # Monitor schema preview size
+            logger.debug(f"Schema preview size: {len(preview):,} chars (~{len(preview)/1024:.1f} KB)")
+            return preview
+        else:
+            return "No data sources available for preview."
+
+    def _build_sdk_options(self):
+        """
+        Build Claude Agent SDK options with tools and MCP servers.
+
+        Uses external stdio MCP server for Promaia query tools to bypass SDK bug.
+
+        Returns:
+            ClaudeAgentOptions configured for this agent
+        """
+        if not SDK_AVAILABLE:
+            raise RuntimeError("SDK not available")
+
+        import sys
+        from pathlib import Path
+
+        # Path to our external MCP server
+        mcp_server_path = Path(__file__).parent.parent / "mcp" / "query_tools_server.py"
+
+        # MCP servers - load from config
+        import os
+        # Ensure .env is loaded
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+        
+        # CRITICAL DISCOVERY: The Claude CLI has locally configured MCP servers
+        # When the SDK passes --mcp-config, it OVERRIDES the local config and marks them as "disabled"
+        # Solution: DON'T pass mcp_servers dict to SDK - let it use the local CLI configuration!
+        
+        mcp_servers = {}  # Start empty
+        
+        # For now, DON'T add MCP servers here - rely on Claude CLI's local config
+        # The agent config's mcp_tools list is just for documentation/permissions
+        # The actual MCP servers should be configured via: `claude mcp add notion ...`
+        
+        if self.config.mcp_tools:
+            logger.info(f"⚠️ Agent configured to use MCP tools: {self.config.mcp_tools}")
+            logger.info(f"   Using Claude CLI's locally configured MCP servers")
+            logger.info(f"   (Not passing --mcp-config to avoid 'disabled' status)")
+
+        # Allow all tools - no restriction list
+        allowed_tools_list = None
+
+        # Only use explicit list if user configured one
+        if self.config.sdk_allowed_tools:
+            allowed_tools_list = self.config.sdk_allowed_tools
+
+        # Map permission mode
+        permission_mode = self.config.sdk_permission_mode
+        if permission_mode == "acceptAll":
+            permission_mode = "bypassPermissions"
+
+        print(f"\n🔧 Configured {len(mcp_servers)} MCP server(s): {list(mcp_servers.keys())}\n", flush=True)
+        logger.info(f"Configured {len(mcp_servers)} MCP server(s): {list(mcp_servers.keys())}")
+        if allowed_tools_list:
+            logger.info(f"SDK tools restricted to: {', '.join(allowed_tools_list)}")
+        else:
+            logger.info("SDK tools: ALL (no restrictions)")
+
+        # DEBUG: Log full MCP server configurations
+        print(f"\n🔍 DEBUG: MCP Server Configuration:\n", flush=True)
+        for server_name, server_config in mcp_servers.items():
+            print(f"  Server: {server_name}", flush=True)
+            print(f"    Command: {server_config.get('command')}", flush=True)
+            print(f"    Args: {server_config.get('args')}", flush=True)
+            print(f"    Env vars: {list(server_config.get('env', {}).keys())}", flush=True)
+            logger.debug(f"MCP Server '{server_name}': {json.dumps(server_config, indent=2)}")
+            if 'env' in server_config:
+                logger.debug(f"  Env vars: {list(server_config['env'].keys())}")
+
+        return ClaudeAgentOptions(
+            system_prompt=self._build_system_prompt(),
+            allowed_tools=allowed_tools_list,
+            mcp_servers=mcp_servers,
+            setting_sources=['local', 'project'],  # Load local & project MCP config
+            permission_mode=permission_mode,
+            max_turns=self.config.max_iterations,
+            model="claude-sonnet-4-5-20250929",  # Sonnet 4.5
+        )
 
 
 # Synchronous wrapper
