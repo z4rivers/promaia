@@ -34,7 +34,10 @@ try:
     from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage
     SDK_AVAILABLE = True
     _SDK_IMPORT_DEBUG.append("✓ SDK import successful")
-    print(f"✓ Claude Agent SDK imported successfully", flush=True)
+    # Only show SDK message for agent-related commands (not chat, sync, etc.)
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] in ('agent', 'calendar'):
+        print(f"✓ Claude Agent SDK imported successfully", flush=True)
     logger.debug("Claude Agent SDK available")
     # Write to debug file
     import os
@@ -161,6 +164,20 @@ class AgentExecutor:
                 result['notion_written'] = success
             else:
                 result['notion_written'] = False
+            
+            # Step 5.5: Send to messaging platform (if configured)
+            # BUT: Skip if we're already responding within an active conversation
+            in_conversation = run_metadata and run_metadata.get('conversation_id')
+
+            if result.get('output') and self.config.messaging_enabled and not in_conversation:
+                try:
+                    messaging_success = await self._send_to_messaging_platform(result['output'])
+                    result['messaging_sent'] = messaging_success
+                except Exception as e:
+                    logger.error(f"Error sending to messaging platform: {e}", exc_info=True)
+                    result['messaging_sent'] = False
+            else:
+                result['messaging_sent'] = False
 
             # Step 6: Calculate metrics
             end_time = datetime.now(timezone.utc)
@@ -188,30 +205,11 @@ class AgentExecutor:
             timestamp = datetime.now(timezone.utc).isoformat()
             update_agent_last_run(self.config.name, timestamp)
 
-            # Write to Notion journal and update Last Run
+            # Update Last Run in Notion (but NOT journal - journal is for agent notes only)
             if self.config.notion_page_id and self.config.agent_id:
                 try:
-                    from promaia.agents.notion_journal import write_journal_entry
                     from promaia.agents.notion_config import update_last_run
 
-                    # Write journal entry
-                    journal_content = (
-                        f"Executed successfully\n"
-                        f"Duration: {metrics['duration_seconds']:.1f}s\n"
-                        f"Iterations: {metrics['iterations_used']}\n"
-                        f"Tokens: {metrics['tokens_used']}\n"
-                        f"Cost: ${metrics['cost_estimate']:.4f}"
-                    )
-
-                    await write_journal_entry(
-                        agent_id=self.config.agent_id,
-                        workspace=self.config.workspace,
-                        entry_type="Execution",
-                        content=journal_content,
-                        execution_id=execution_id
-                    )
-
-                    # Update Last Run in Notion
                     await update_last_run(
                         agent_id=self.config.agent_id,
                         workspace=self.config.workspace,
@@ -219,7 +217,10 @@ class AgentExecutor:
                     )
 
                 except Exception as e:
-                    logger.warning(f"Could not write to Notion journal: {e}")
+                    logger.warning(f"Could not update Last Run in Notion: {e}")
+            
+            # Note: Execution logs are stored in ExecutionTracker (SQLite: data/hybrid_metadata.db)
+            # The Notion journal is ONLY for agent-initiated notes via write_journal tool
 
             logger.info(f"✅ Agent '{self.config.name}' completed successfully")
             return {
@@ -238,21 +239,9 @@ class AgentExecutor:
                     status='failed',
                     error_message=str(e)
                 )
-
-            # Write error to journal
-            if self.config.notion_page_id and self.config.agent_id:
-                try:
-                    from promaia.agents.notion_journal import write_journal_entry
-
-                    await write_journal_entry(
-                        agent_id=self.config.agent_id,
-                        workspace=self.config.workspace,
-                        entry_type="Error",
-                        content=f"Execution failed: {str(e)}",
-                        execution_id=execution_id
-                    )
-                except Exception as journal_error:
-                    logger.warning(f"Could not write error to journal: {journal_error}")
+            
+            # Note: Execution errors are logged in ExecutionTracker (SQLite)
+            # The Notion journal is ONLY for agent-initiated notes
 
             return {
                 'success': False,
@@ -643,6 +632,83 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
         except Exception as e:
             logger.error(f"Error writing to Notion: {e}")
             return False
+    
+    async def _send_to_messaging_platform(self, output: str) -> bool:
+        """
+        Send agent output to configured messaging platform.
+        
+        Supports both one-way posts and conversation initiation.
+        Platform-agnostic: works with Slack, Discord, or any registered platform.
+        
+        Args:
+            output: The agent's output text
+        
+        Returns:
+            True if successful
+        """
+        try:
+            if not self.config.messaging_platform or not self.config.messaging_channel_id:
+                logger.warning("Messaging enabled but platform or channel not configured")
+                return False
+            
+            # Import conversation manager
+            from promaia.agents.conversation_manager import ConversationManager
+            
+            conv_manager = ConversationManager()
+            
+            # Register appropriate platform
+            if self.config.messaging_platform == 'slack':
+                from promaia.agents.messaging.slack_platform import SlackPlatform
+                
+                bot_token = os.environ.get('SLACK_BOT_TOKEN')
+                if not bot_token:
+                    logger.error("SLACK_BOT_TOKEN not found in environment")
+                    return False
+                
+                platform = SlackPlatform(bot_token=bot_token)
+                conv_manager.register_platform('slack', platform)
+            
+            elif self.config.messaging_platform == 'discord':
+                from promaia.agents.messaging.discord_platform import DiscordPlatform
+                
+                bot_token = os.environ.get('DISCORD_BOT_TOKEN')
+                if not bot_token:
+                    logger.error("DISCORD_BOT_TOKEN not found in environment")
+                    return False
+                
+                platform = DiscordPlatform(bot_token=bot_token)
+                conv_manager.register_platform('discord', platform)
+            
+            else:
+                logger.error(f"Unknown messaging platform: {self.config.messaging_platform}")
+                return False
+            
+            # Either start conversation or post one-way message
+            if self.config.initiate_conversation:
+                # Start interactive conversation
+                conversation = await conv_manager.start_conversation(
+                    agent_id=self.config.agent_id or self.config.name,
+                    platform=self.config.messaging_platform,
+                    channel_id=self.config.messaging_channel_id,
+                    initial_message=output,
+                    timeout_minutes=self.config.conversation_timeout_minutes,
+                    max_turns=self.config.conversation_max_turns
+                )
+                logger.info(f"💬 Started conversation on {self.config.messaging_platform}: {conversation.conversation_id}")
+            else:
+                # Just post output (one-way)
+                platform_impl = conv_manager.platforms[self.config.messaging_platform]
+                await platform_impl.send_message(
+                    channel_id=self.config.messaging_channel_id,
+                    content=platform_impl.format_message(output, self.config.name)
+                )
+                logger.info(f"📤 Posted to {self.config.messaging_platform} channel {self.config.messaging_channel_id}")
+            
+            return True
+        
+        except Exception as e:
+            logger.error(f"Error sending to messaging platform: {e}", exc_info=True)
+            return False
 
     # ==================== SDK INTEGRATION METHODS ====================
 
@@ -676,7 +742,7 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
             )
 
             # Build SDK options with tools and MCP servers
-            sdk_options = self._build_sdk_options()
+            sdk_options = self._build_sdk_options(run_metadata=run_metadata)
 
             # Execute with SDK
             messages = []
@@ -692,15 +758,26 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
             for i, msg in enumerate(initial_messages):
                 role = msg['role']
                 content = msg['content']
+
+                # Skip context-chunking acknowledgments (short assistant messages)
+                if role == 'assistant' and content == "Context received. Ready for more.":
+                    continue
+
+                # All messages should be 'user' role at this point (context + conversation history + instructions)
                 if role == 'user':
                     if i == 0:
                         full_prompt_parts.append(content)
                     else:
                         full_prompt_parts.append(f"\n---\n\n{content}")
-                # Skip assistant acknowledgments - they're just for message chunking
 
             full_prompt = "\n".join(full_prompt_parts)
             logger.info(f"📨 Combined prompt size: {len(full_prompt):,} chars (~{len(full_prompt)/1024:.1f} KB)")
+
+            # Log first 1000 chars of prompt for debugging conversation context
+            logger.info(f"📝 Prompt preview (first 1000 chars):\n{full_prompt[:1000]}...")
+            # Check if conversation context is included
+            if "# Previous Conversation Context" in full_prompt:
+                logger.info(f"✅ Prompt includes previous conversation context")
 
             # Use ClaudeSDKClient for better MCP support
             print(f"\n🚀 Creating ClaudeSDKClient with MCP servers...\n", flush=True)
@@ -930,8 +1007,49 @@ Here is your initial working context loaded from configured sources:
                 "content": "# Preloaded Context\n\nNo initial context data loaded."
             })
 
-        # Add final instructions message
+        # Add conversation history if present (for conversational agents)
         run_metadata = run_metadata or {}
+        conversation_history = run_metadata.get('conversation_history', [])
+
+        if conversation_history and len(conversation_history) > 1:
+            # Format conversation history as a single context block
+            # Exclude the last message (current user message) from history
+            history_messages = conversation_history[:-1]
+            logger.info(f"Adding {len(history_messages)} previous conversation messages to context")
+
+            conv_parts = ["""# Conversation Mode
+
+You are in an ONGOING CONVERSATION with the user. This is NOT a new interaction.
+
+## Conversation History
+
+Here is everything that's been said so far:
+"""]
+            for i, msg in enumerate(history_messages):
+                role_label = "User" if msg['role'] == 'user' else "You (your previous response)"
+                conv_parts.append(f"\n{role_label}: {msg['content']}")
+
+            conv_parts.append("""
+
+---
+
+## Instructions for Continuing the Conversation
+
+1. **Remember everything** from the conversation above
+2. **Build on previous topics** - don't start over or ask questions already answered
+3. **Reference what was said** - show you remember the context
+4. **Be natural** - this is a flowing conversation, not isolated Q&A
+5. If the user says something brief or vague, interpret it in the context of what you've been discussing
+
+IMPORTANT: This is turn #{} of an ongoing conversation. Act like you remember everything that's been said.""".format(len(history_messages) // 2 + 1))
+
+            # Add as a single context message
+            messages.append({
+                "role": "user",
+                "content": "\n".join(conv_parts)
+            })
+
+        # Add final instructions message
         run_context_block = ""
         if run_request:
             meta_lines = []
@@ -941,7 +1059,21 @@ Here is your initial working context loaded from configured sources:
             meta_text = "\n".join(meta_lines)
             if meta_text:
                 meta_text = "\n\nMetadata:\n" + meta_text
-            run_context_block = f"""
+
+            # If this is a conversation, label it clearly as the user's new message
+            in_conversation = conversation_history and len(conversation_history) > 1
+            if in_conversation:
+                run_context_block = f"""
+---
+
+# User's Current Message
+
+User: {run_request}
+
+Respond naturally to continue the conversation.{meta_text}
+"""
+            else:
+                run_context_block = f"""
 ---
 
 # Run Request
@@ -985,18 +1117,22 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 
         return messages
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, run_metadata: Optional[Dict[str, Any]] = None) -> str:
         """
         Build system prompt with instructions and schema preview (NO context data).
 
         Context data goes in the initial user message, not here.
         This allows the system prompt to stay lean and the agent to expand context dynamically.
 
+        Args:
+            run_metadata: Optional metadata for context-aware prompts (e.g., conversation mode)
+
         Returns:
             System prompt string
         """
         # Load custom prompt from file or Notion
         custom_instructions = self._load_custom_prompt()
+        run_metadata = run_metadata or {}
 
         parts = [
             f"You are {self.config.name}.",
@@ -1022,6 +1158,22 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
             "",
             "3. **query_source(database, days)**: Load from specific source",
             "   - Example: `query_source(database='journal', days=30)`",
+            "",
+            "## Query Tool Usage Guidelines",
+            "",
+            "**CRITICAL**: Only use query tools when you genuinely CANNOT answer the user's question with the current context.",
+            "",
+            "Before using a query tool, ask yourself:",
+            "1. Can I provide a reasonable answer with the current context?",
+            "2. Is the user explicitly asking for information from other sources?",
+            "3. Would my answer be incomplete or incorrect without additional data?",
+            "",
+            "If you can answer with current context (even partially), DO NOT use query tools.",
+            "",
+            "If you must expand context:",
+            "1. Explain WHY you need to search elsewhere in your reasoning",
+            "2. The system will ask the user for approval BEFORE executing",
+            "3. User may decline - be prepared to answer with available data",
             "",
             "# Additional Tools",
             "",
@@ -1162,6 +1314,29 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
                     parts.append("- `mcp__gmail__create_draft`: Create email draft")
                     parts.append("")
 
+        # TODO: Add conversation-specific guidance once end_conversation tool is working
+        # Disabled for now because SDK tool registration needs to be fixed
+        # if run_metadata.get('conversation_id'):
+        #     parts.append("")
+        #     parts.append("# Ending Conversations")
+        #     parts.append("")
+        #     parts.append("You have access to an `end_conversation` tool. Call this when:")
+        #     parts.append("- User says goodbye (bye, see you, talk later, etc.)")
+        #     parts.append("- User indicates they need to leave (gotta go, have to run, etc.)")
+        #     parts.append("- User thanks you and indicates completion (thanks, that's all, we're done, etc.)")
+        #     parts.append("- Natural end of conversation reached")
+        #     parts.append("")
+        #     parts.append("**Important**: After responding with your farewell message, call the `end_conversation` tool")
+        #     parts.append("to formally end the conversation. This lets the system know the conversation is complete.")
+        #     parts.append("")
+        #     parts.append("Example:")
+        #     parts.append("```")
+        #     parts.append("User: 'Thanks! Gotta run now, bye!'")
+        #     parts.append("You: 'Great chatting with you! Have a wonderful day!'")
+        #     parts.append("[Then call: end_conversation(reason='user said goodbye')]")
+        #     parts.append("```")
+        #     parts.append("")
+
         system_prompt = "\n".join(parts)
 
         # Monitor size
@@ -1229,11 +1404,14 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         else:
             return "No data sources available for preview."
 
-    def _build_sdk_options(self):
+    def _build_sdk_options(self, run_metadata: Optional[Dict[str, Any]] = None):
         """
         Build Claude Agent SDK options with tools and MCP servers.
 
         Uses external stdio MCP server for Promaia query tools to bypass SDK bug.
+
+        Args:
+            run_metadata: Optional metadata containing conversation context
 
         Returns:
             ClaudeAgentOptions configured for this agent
@@ -1255,21 +1433,78 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
             load_dotenv()
         except ImportError:
             pass
-        
-        # CRITICAL DISCOVERY: The Claude CLI has locally configured MCP servers
-        # When the SDK passes --mcp-config, it OVERRIDES the local config and marks them as "disabled"
-        # Solution: DON'T pass mcp_servers dict to SDK - let it use the local CLI configuration!
-        
-        mcp_servers = {}  # Start empty
-        
-        # For now, DON'T add MCP servers here - rely on Claude CLI's local config
-        # The agent config's mcp_tools list is just for documentation/permissions
-        # The actual MCP servers should be configured via: `claude mcp add notion ...`
-        
+
+        # Build MCP servers configuration based on agent's mcp_tools permissions
+        # Each agent gets its own MCP server subprocess for proper isolation and permission enforcement
+        mcp_servers = {}
+
+        # Launch Promaia MCP server if agent has permission
+        if self.config.mcp_tools and "promaia" in self.config.mcp_tools:
+            mcp_servers["promaia"] = {
+                "command": sys.executable,
+                "args": [
+                    "-m", "promaia.mcp.query_tools_server",
+                    "--workspace", self.config.workspace,
+                    "--agent-id", self.config.agent_id or self.config.name
+                ],
+                "env": {}
+            }
+            logger.info(f"✓ Configured Promaia MCP server (query tools)")
+
+        # Launch Gmail MCP server if agent has permission (write-only: send, draft, reply)
+        if self.config.mcp_tools and "gmail" in self.config.mcp_tools:
+            mcp_servers["gmail"] = {
+                "command": sys.executable,
+                "args": [
+                    "-m", "promaia.mcp.gmail_tools_server",
+                    "--workspace", self.config.workspace,
+                    "--agent-id", self.config.agent_id or self.config.name
+                ],
+                "env": {}
+            }
+            logger.info(f"✓ Configured Gmail MCP server (write-only: send/draft/reply)")
+
+        # Launch Calendar MCP server if agent has permission (write-only: create, update, delete)
+        if self.config.mcp_tools and "calendar" in self.config.mcp_tools:
+            mcp_servers["calendar"] = {
+                "command": sys.executable,
+                "args": [
+                    "-m", "promaia.mcp.calendar_tools_server",
+                    "--workspace", self.config.workspace,
+                    "--agent-id", self.config.agent_id or self.config.name
+                ],
+                "env": {}
+            }
+            logger.info(f"✓ Configured Calendar MCP server (write-only: create/update/delete)")
+
+        # Log configured MCP tools
         if self.config.mcp_tools:
-            logger.info(f"⚠️ Agent configured to use MCP tools: {self.config.mcp_tools}")
-            logger.info(f"   Using Claude CLI's locally configured MCP servers")
-            logger.info(f"   (Not passing --mcp-config to avoid 'disabled' status)")
+            configured = [tool for tool in self.config.mcp_tools if tool in mcp_servers]
+            pending = [tool for tool in self.config.mcp_tools if tool not in mcp_servers]
+            if configured:
+                logger.info(f"✓ Active MCP tools: {configured}")
+            if pending:
+                logger.info(f"⚠️ Pending MCP tools (not yet implemented): {pending}")
+
+        # Custom tools list (for SDK-native tools, not MCP)
+        custom_tools = []
+
+        # TODO: Re-enable end_conversation tool once SDK tool registration is fixed
+        # The tool needs to be registered via McpSdkServerConfig, not passed directly
+        # For now, rely on regex-based goodbye detection in conversation_manager.py
+
+        # Add end_conversation tool if we're in conversation mode
+        # run_metadata = run_metadata or {}
+        # if run_metadata.get('conversation_id') and run_metadata.get('conversation_manager'):
+        #     from promaia.agents.custom_tools import create_conversation_end_tool
+        #
+        #     conversation_id = run_metadata['conversation_id']
+        #     conversation_manager = run_metadata['conversation_manager']
+        #
+        #     end_tool = create_conversation_end_tool(conversation_manager, conversation_id)
+        #     custom_tools.append(end_tool)
+        #
+        #     logger.info(f"✅ Added end_conversation tool for conversation {conversation_id[:20]}...")
 
         # Allow all tools - no restriction list
         allowed_tools_list = None
@@ -1302,8 +1537,10 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
                 logger.debug(f"  Env vars: {list(server_config['env'].keys())}")
 
         return ClaudeAgentOptions(
-            system_prompt=self._build_system_prompt(),
+            system_prompt=self._build_system_prompt(run_metadata=run_metadata),
             allowed_tools=allowed_tools_list,
+            # tools parameter removed - was causing SDK to fail
+            # TODO: Register custom tools via McpSdkServerConfig instead
             mcp_servers=mcp_servers,
             setting_sources=['local', 'project'],  # Load local & project MCP config
             permission_mode=permission_mode,
