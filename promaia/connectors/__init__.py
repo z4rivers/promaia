@@ -23,9 +23,25 @@ try:
 except ImportError:
     discord_available = False
 
+# Try to import Slack connector (optional dependency)
+try:
+    from .slack_connector import SlackConnector
+    ConnectorRegistry.register("slack", SlackConnector)
+    slack_available = True
+except ImportError:
+    slack_available = False
+
 # Conversation connector (always available - no external dependencies)
 from .conversation_connector import ConversationConnector
 ConnectorRegistry.register("conversation", ConversationConnector)
+
+# OCR connector (always available - no external dependencies for base functionality)
+try:
+    from .ocr_connector import OCRConnector
+    ConnectorRegistry.register("ocr", OCRConnector)
+    ocr_available = True
+except ImportError:
+    ocr_available = False
 
 # Register available connectors
 ConnectorRegistry.register("notion", NotionConnector)
@@ -41,4 +57,10 @@ if gmail_available:
     __all__.append('GmailConnector')
 
 if discord_available:
-    __all__.append('DiscordConnector') 
+    __all__.append('DiscordConnector')
+
+if slack_available:
+    __all__.append('SlackConnector')
+
+if ocr_available:
+    __all__.append('OCRConnector') 

@@ -221,6 +221,41 @@ async def handle_workspace_unarchive(args):
     else:
         print(f"✗ Failed to unarchive workspace '{name}'")
 
+async def handle_workspace_setup_promaia(args):
+    """Handle 'maia workspace setup-promaia' command."""
+    from promaia.agents.notion_setup import setup_promaia_page
+
+    workspace_manager = get_workspace_manager()
+
+    # Get workspace name (use provided or default)
+    workspace_name = getattr(args, 'workspace', None) or workspace_manager.get_default_workspace()
+
+    if not workspace_name:
+        print("✗ No workspace specified and no default workspace set")
+        print("  Add a workspace first: maia workspace add <name> --api-key <token>")
+        return
+
+    # Validate workspace exists
+    workspace = workspace_manager.get_workspace(workspace_name)
+    if not workspace:
+        print(f"✗ Workspace '{workspace_name}' not found")
+        print(f"  Available workspaces: {', '.join(workspace_manager.list_workspaces())}")
+        return
+
+    try:
+        print(f"\nSetting up Promaia page for workspace: {workspace_name}")
+        promaia_page_id, main_prompt_page_id = await setup_promaia_page(workspace_name)
+
+        print(f"\n✅ Promaia page setup complete!")
+        print(f"   Promaia page ID: {promaia_page_id}")
+        print(f"   Main prompt page ID: {main_prompt_page_id}")
+        print(f"\n💡 Your main prompt will now sync from Notion automatically")
+        print(f"   The local prompt file (prompts/prompt.md) will be used as fallback")
+
+    except Exception as e:
+        print(f"\n✗ Failed to set up Promaia page: {str(e)}")
+        logger.exception("Error in setup-promaia command")
+
 def add_workspace_commands(subparsers):
     """Add workspace management commands to CLI."""
     workspace_parser = subparsers.add_parser('workspace', help='Manage Notion workspaces')
@@ -285,6 +320,11 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
     unarchive_parser = subparsers.add_parser('unarchive', help='Unarchive a workspace (re-enables syncing)')
     unarchive_parser.add_argument('name', help='Workspace name to unarchive')
     unarchive_parser.set_defaults(func=handle_workspace_unarchive)
+
+    # Setup Promaia page
+    setup_promaia_parser = subparsers.add_parser('setup-promaia', help='Set up Promaia page (main prompt and resources)')
+    setup_promaia_parser.add_argument('--workspace', '-ws', help='Workspace name (uses default if not specified)')
+    setup_promaia_parser.set_defaults(func=handle_workspace_setup_promaia)
 
     # Gmail setup (optional)
     try:

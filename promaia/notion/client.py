@@ -1,15 +1,32 @@
 """
 Notion API client initialization and configuration.
 """
-from notion_client import AsyncClient
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv  # type: ignore
+except ImportError:  # pragma: no cover
+    load_dotenv = None  # type: ignore[assignment]
 
-# Load environment variables
-load_dotenv()
+# notion_client is optional in some environments (e.g. minimal schedulers/tests).
+# Importing it at module import time makes *any* promaia import fail if the
+# dependency isn't installed. Keep imports resilient; raise only when used.
+try:
+    from notion_client import AsyncClient  # type: ignore
+except ImportError:  # pragma: no cover
+    AsyncClient = None  # type: ignore[assignment]
+
+# Load environment variables (optional dependency)
+if load_dotenv is not None:  # pragma: no cover
+    load_dotenv()
 
 def get_client(workspace: str = None):
     """Initialize and return an async Notion client for a specific workspace."""
+    if AsyncClient is None:  # pragma: no cover
+        raise ImportError(
+            "notion_client is not installed. Install it to use Notion features "
+            "(e.g. `pip install notion-client`)."
+        )
+
     # Try to get workspace-specific API key first
     if workspace:
         from promaia.config.workspaces import get_workspace_api_key

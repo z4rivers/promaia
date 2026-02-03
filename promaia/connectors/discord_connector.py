@@ -131,7 +131,9 @@ class DiscordConnector(BaseConnector):
             }
             
             for channel in channels:
-                if hasattr(channel, 'send'):  # Text channel
+                # Only include text-based channels (text=0, news=5)
+                # Exclude voice channels (2), categories (4), stage voice (13), etc.
+                if hasattr(channel, 'type') and channel.type in [discord.ChannelType.text, discord.ChannelType.news]:
                     guild_data['channels'].append({
                         'id': channel.id,
                         'name': channel.name,

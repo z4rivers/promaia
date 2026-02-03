@@ -50,9 +50,20 @@ from promaia.cli.mail_commands import add_mail_commands
 # Import Gmail commands
 from promaia.cli.gmail_commands import add_gmail_commands
 
+# Import prompt sync commands
+from promaia.cli.prompt_sync_commands import add_prompt_commands
+
 # Import agent commands
 from promaia.cli.agent_commands import add_agent_commands
-from promaia.cli.scheduled_agent_commands import add_scheduled_agent_commands
+# Note: scheduled_agent_commands lazy-loaded (below) to keep imports clean
+
+# Import team management commands
+from promaia.cli.team_commands import add_team_commands
+
+# Import conversation management commands
+from promaia.cli.conversation_commands import (
+    add_conversation_commands, add_conversation_commands_to_existing_parser
+)
 
 # Import workspace commands
 from promaia.cli.workspace_commands import (
@@ -2900,9 +2911,29 @@ def main():
     # Add Gmail commands
     add_gmail_commands(subparsers)
 
+    # Add prompt sync commands
+    add_prompt_commands(subparsers)
+
+    # Add team management commands
+    add_team_commands(subparsers)
+
+    # Add OCR commands
+    from promaia.cli.ocr_commands import register_ocr_commands
+    register_ocr_commands(subparsers)
+
+    # Add conversation management commands
+    add_conversation_commands(subparsers)
+
+    # Add 'conv' alias for conversation commands
+    conv_parser = subparsers.add_parser('conv', help='Manage conversations (alias for conversation)')
+    conv_subparsers = conv_parser.add_subparsers(dest='conversation_command', help='Conversation commands')
+    add_conversation_commands_to_existing_parser(conv_parser, conv_subparsers)
+
     # Add agent commands (both external and scheduled)
     agent_subparsers = add_agent_commands(subparsers, include_scheduled=True)
     if agent_subparsers:
+        # Lazy import to keep module loading cleaner
+        from promaia.cli.scheduled_agent_commands import add_scheduled_agent_commands
         add_scheduled_agent_commands(agent_subparsers)
 
     # Add top-level sync command (alias for database sync)
@@ -3281,6 +3312,15 @@ def main():
                 print_text(f"No function assigned to gmail command: {args.gmail_command}", style="red")
         else:
             print_text("Gmail command requires a subcommand. Use 'maia gmail --help' for options.", style="red")
+    elif args.command == "prompt":
+        # Handle prompt commands
+        if hasattr(args, 'prompt_action') and args.prompt_action:
+            if hasattr(args, 'func'):
+                args.func(args)
+            else:
+                print_text(f"No function assigned to prompt command: {args.prompt_action}", style="red")
+        else:
+            print_text("Prompt command requires a subcommand. Use 'maia prompt --help' for options.", style="red")
     elif args.command == "discord":
         # Handle Discord commands
         if hasattr(args, 'discord_command') and args.discord_command:
@@ -3290,6 +3330,24 @@ def main():
                 print_text(f"No function assigned to discord command: {args.discord_command}", style="red")
         else:
             print_text("Discord command requires a subcommand. Use 'maia discord --help' for options.", style="red")
+    elif args.command == "team":
+        # Handle team commands
+        if hasattr(args, 'team_command') and args.team_command:
+            if hasattr(args, 'func'):
+                asyncio.run(args.func(args))
+            else:
+                print_text(f"No function assigned to team command: {args.team_command}", style="red")
+        else:
+            print_text("Team command requires a subcommand. Use 'maia team --help' for options.", style="red")
+    elif args.command == "ocr":
+        # Handle OCR commands
+        if hasattr(args, 'ocr_command') and args.ocr_command:
+            if hasattr(args, 'func'):
+                asyncio.run(args.func(args))
+            else:
+                print_text(f"No function assigned to OCR command: {args.ocr_command}", style="red")
+        else:
+            print_text("OCR command requires a subcommand. Use 'maia ocr --help' for options.", style="red")
     elif args.command == "agent":
         # Handle agent commands
         if hasattr(args, 'agent_command') and args.agent_command:

@@ -286,6 +286,26 @@ class McpClient:
             full_section += "2. Use exact parameter names from the tool schema\n"
             full_section += "3. Wait for tool execution results before continuing\n"
             full_section += "4. NEVER use built-in `<web_search>` tags - only use MCP format\n\n"
+
+            # Add URL detection and fetching guidance
+            full_section += "### 🌐 URL Detection & Web Fetching Guidelines\n\n"
+            full_section += "**When user provides URLs (http://, https://, www.):**\n"
+            full_section += "1. **ALWAYS fetch the URL first** using `fetch.puppeteer_navigate(url=\"...\")`\n"
+            full_section += "2. **Then** optionally search for additional context if needed\n"
+            full_section += "3. **Never skip** fetching a URL the user explicitly provides\n\n"
+
+            full_section += "**Example - User provides URL:**\n"
+            full_section += "```\n"
+            full_section += "User: \"What's X about my brand: https://example.com\"\n"
+            full_section += "AI: I'll fetch your website first to understand your brand.\n\n"
+            full_section += "<tool_code>fetch.puppeteer_navigate(url=\"https://example.com\")</tool_code>\n"
+            full_section += "<tool_code>search.web_search(query=\"what is X in business\")</tool_code>\n"
+            full_section += "```\n\n"
+
+            full_section += "**Fetch vs Search Decision:**\n"
+            full_section += "- **Fetch**: User provides specific URL to visit\n"
+            full_section += "- **Search**: User asks general question without URL\n"
+            full_section += "- **Both**: User provides URL AND asks for additional context\n\n"
             
             return full_section
         

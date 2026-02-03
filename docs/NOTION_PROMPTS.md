@@ -1,270 +1,288 @@
-# Notion-Backed Prompts
+# Notion Prompts Integration
 
 ## Overview
 
-Promaia now supports using Notion pages as agent prompts that stay automatically synced. This allows you to:
-- **Edit prompts in Notion** using its rich editor
-- **Collaborate on prompts** with your team
-- **Keep prompts in sync** automatically during Promaia sync operations
-- **Version control** your prompts in Notion's page history
+Promaia syncs its main system prompt from Notion instead of using only the local `prompts/prompt.md` file. This allows you to:
+- Edit the prompt directly in Notion
+- Have changes take effect immediately without code changes
+- Keep your prompt organized alongside your other Promaia resources
+- Maintain different prompts per workspace
 
-## Creating a Notion-Backed Prompt
+## First-Time Setup
 
-### Method 1: During Agent Creation
+### Prerequisites
 
-When creating a new agent with `maia agent add`, you'll see the prompt selector:
+1. **Notion Integration**: Create a Notion integration at https://www.notion.so/my-integrations
+   - Give it a name (e.g., "Promaia")
+   - Copy the integration token (starts with `secret_`)
+   - Keep this token secret!
 
+2. **Workspace Configured**: Add your workspace to Promaia
+   ```bash
+   maia workspace add koii --api-key secret_your_notion_token
+   ```
+
+### Setup Steps
+
+#### 1. Duplicate the Promaia Template
+
+The Promaia template page contains:
+- **Main prompt** - Your AI assistant's system prompt
+- **Agents** database - For scheduled agents
+- Other Promaia resources
+
+**Template URL**: https://www.notion.so/koii/Promaia-2f2d133969678183b4b4c6d6931168f5
+
+1. Open the template URL in your browser
+2. Click **"Duplicate"** in the top right corner
+3. Choose where to save it in your Notion workspace
+4. Copy the URL of your duplicated page
+
+#### 2. Share with Your Integration
+
+**Critical**: You must share the duplicated Promaia page with your Notion integration:
+
+1. Go to your duplicated Promaia page
+2. Click the **"•••" (three dots)** menu in the top right
+3. Click **"Add connections"**
+4. Select your Notion integration (e.g., "Promaia")
+5. Click **"Confirm"**
+
+This gives the integration access to the page and all its child pages (including Main prompt).
+
+#### 3. Run Setup Command
+
+```bash
+maia workspace setup-promaia --workspace koii
 ```
-↑↓:Navigate N:New E:Edit P:Notion ENTER:Select ESC:Cancel
+
+Or if you have a default workspace set:
+```bash
+maia workspace setup-promaia
 ```
 
-Press **P** to create a prompt from a Notion page:
+The command will:
+1. Open the template in your browser
+2. Ask you to paste your duplicated page URL
+3. Discover child pages (especially "Main prompt")
+4. Store the configuration in your workspace
 
-1. Paste your Notion page URL
-2. Optionally provide a filename (or press ENTER to auto-generate)
-3. Promaia fetches the page content and creates a synced prompt file
+#### 4. Verify Setup
 
-### Method 2: Manual Creation
+Your prompt will now sync from Notion automatically! To verify:
 
-You can also create Notion-backed prompts programmatically:
+```bash
+maia workspace info koii
+```
 
-```python
-from promaia.cli.notion_prompt_manager import create_notion_prompt
+You should see the Promaia page ID and Main prompt page ID in the output.
 
-prompt_file = await create_notion_prompt(
-    notion_url="https://www.notion.so/your-page-id",
-    filename="my_agent_prompt",  # Optional
-    workspace="your_workspace"   # Optional
-)
+## Notion Page Structure
+
+### Required Pages
+
+Your Promaia page should contain at least:
+
+- **Main prompt** (child page) - The system prompt that Promaia uses
+
+### Supported Content Blocks
+
+The Main prompt page can contain:
+
+- **Paragraphs** - Regular text
+- **Bulleted lists** - For bullet points
+- **Numbered lists** - For sequential items
+- **Headings** (H1, H2, H3) - For sections
+- **Code blocks** - For examples
+
+### Formatting
+
+- **Bold text** is preserved as `**bold**` in markdown
+- Empty lines are preserved for spacing
+- Block order is maintained from top to bottom
+
+## Configuration
+
+### Environment Variables
+
+Enable/disable Notion prompt fetching:
+
+```bash
+# Enable (default)
+export PROMAIA_USE_NOTION_PROMPTS=true
+
+# Disable (use local file only)
+export PROMAIA_USE_NOTION_PROMPTS=false
+```
+
+### Workspace-Specific Prompts
+
+Each workspace can have its own Promaia page and Main prompt:
+
+```bash
+# Set up for workspace "koii"
+maia workspace setup-promaia --workspace koii
+
+# Set up for workspace "trass"
+maia workspace setup-promaia --workspace trass
+```
+
+The workspace configuration is stored in `promaia.config.json`:
+
+```json
+{
+  "workspaces": {
+    "koii": {
+      "api_key": "secret_...",
+      "promaia_page_id": "2f2d1339...",
+      "main_prompt_page_id": "2f4d1339..."
+    }
+  }
+}
 ```
 
 ## How It Works
 
-### Metadata Storage
+### Prompt Loading Flow
 
-Notion-backed prompts store metadata at the top of the markdown file:
+1. **Notion First**: Promaia tries to fetch from the workspace's Main prompt page
+2. **Local Fallback**: If Notion fetch fails, uses local `prompts/prompt.md`
+3. **Variable Substitution**: Replaces `{today_date}` and `{current_time}` with current values
+4. **Context Appended**: Adds database context and query tools
 
-```markdown
-<!-- notion_prompt_metadata
-{
-  "notion_page_id": "abc123def456...",
-  "notion_url": "https://www.notion.so/...",
-  "last_synced": "2026-01-22T10:30:00Z",
-  "sync_enabled": true
-}
--->
+### When Prompts Sync
 
-# Your Prompt Content
-[Rest of the Notion page content as markdown...]
-```
+Prompts are fetched from Notion:
+- Every time you start a new chat session
+- When the AI needs to create a system prompt
+- When loading context for agents
 
-### Automatic Syncing
+**Note**: Prompts are NOT cached between sessions, so changes in Notion take effect immediately.
 
-Notion-backed prompts are automatically synced:
+## Benefits
 
-1. **During chat sync**: When you run `maia chat --sources ...`, prompts are synced first
-2. **Before agent execution**: Scheduled agents sync their prompts before running
-3. **Manual sync**: Use `maia agent sync-prompts` to sync all prompts
+### Live Editing
+Edit your prompt in Notion's rich editor without touching code files.
 
-### Sync Behavior
+### Version History
+Notion automatically tracks all changes with timestamps and revision history.
 
-- Prompts with `sync_enabled: true` are updated on every sync
-- Prompts with `sync_enabled: false` are skipped
-- Only the content is updated; metadata is preserved
-- Failed syncs don't break your workflow (old content is used)
+### Collaboration
+Share prompt editing with team members by sharing the Notion page.
 
-## Supported Notion URL Formats
+### Organization
+Keep your prompt alongside other Promaia resources (agents, instructions, journal).
 
-The system recognizes various Notion URL formats:
-
-```
-https://www.notion.so/Page-Title-abc123def456
-https://notion.so/abc123def456
-https://www.notion.so/workspace/abc123def456
-https://www.notion.so/workspace/Page-Title-abc123def456?v=...
-```
-
-## CLI Commands
-
-### Sync All Prompts
-
-```bash
-# Sync all Notion-backed prompts
-maia agent sync-prompts
-
-# Sync with specific workspace context
-maia agent sync-prompts --workspace koii
-```
-
-### Check Prompt Status
-
-View which prompts are Notion-backed:
-
-```bash
-ls -la ~/.promaia/agent_prompts/
-```
-
-Files with Notion metadata at the top are synced prompts.
-
-## Use Cases
-
-### Team Collaboration
-
-Store your agent prompts in a shared Notion workspace:
-
-```
-Team Workspace
-└── Agent Prompts
-    ├── Daily Summary Agent
-    ├── Email Draft Assistant
-    └── Code Review Agent
-```
-
-Everyone can edit prompts in Notion, and Promaia keeps them synced locally.
-
-### Prompt Evolution
-
-Use Notion's version history to:
-- Track prompt changes over time
-- Experiment with different prompt versions
-- Roll back to previous versions if needed
-
-### Rich Prompt Editing
-
-Use Notion's features for better prompts:
-- **Toggle blocks** for optional sections
-- **Callouts** for important instructions
-- **Tables** for structured data
-- **Code blocks** with syntax highlighting
-- **Embedded content** (images, videos, etc.)
-
-## Advanced Usage
-
-### Disable Sync for a Prompt
-
-Edit the metadata at the top of the file:
-
-```markdown
-<!-- notion_prompt_metadata
-{
-  ...
-  "sync_enabled": false
-}
--->
-```
-
-This prompt will no longer be updated from Notion.
-
-### Programmatic Access
-
-Get prompt content without metadata:
-
-```python
-from promaia.cli.notion_prompt_manager import get_prompt_content
-from pathlib import Path
-
-prompt_file = Path("~/.promaia/agent_prompts/my_prompt.md").expanduser()
-clean_content = get_prompt_content(prompt_file)
-```
-
-Check if a prompt is Notion-backed:
-
-```python
-from promaia.cli.notion_prompt_manager import is_notion_backed
-
-if is_notion_backed(prompt_file):
-    print("This prompt syncs with Notion!")
-```
-
-### Parse Notion URLs
-
-```python
-from promaia.cli.notion_prompt_manager import parse_notion_url
-
-page_id = parse_notion_url("https://www.notion.so/My-Page-abc123")
-# Returns: "abc123..." (32-character hex ID)
-```
+### Safety
+Always has local `prompts/prompt.md` as a fallback if Notion is unavailable.
 
 ## Troubleshooting
 
-### "Could not parse Notion URL"
+### "Could not find Main prompt page"
 
-Ensure your URL is in one of the supported formats. The page ID should be visible in the URL.
+**Cause**: The Promaia page doesn't contain a child page named "Main prompt"
 
-### "Failed to fetch Notion page"
+**Solution**:
+- Ensure you duplicated the correct template
+- Check that the child page is named "Main prompt" (case-insensitive)
+- Make sure the page is shared with your integration
 
-Check:
-- You have internet connectivity
-- Your Notion API key is configured in the workspace
-- The page is accessible with your API credentials
-- The page isn't in the trash
+### "Failed to fetch prompt from Notion"
 
-### Sync Failures
+**Cause**: Integration doesn't have access to the page
 
-If a prompt fails to sync:
-- The old content remains intact (safe fallback)
-- Check the sync output for specific error messages
-- Use `maia agent sync-prompts` to retry
+**Solution**:
+- Share the Promaia page with your integration (see "Share with Your Integration" above)
+- Verify your API key is correct: `maia workspace test koii`
+- Check that the page IDs are correct: `maia workspace info koii`
 
-### Permission Issues
+### "Page not found" (404 error)
 
-Ensure your Notion integration has:
-- Read access to the pages you want to use as prompts
-- Access to the specific workspace containing the pages
+**Cause**: Page ID is incorrect or page was deleted
 
-## Best Practices
+**Solution**:
+- Run setup again: `maia workspace setup-promaia`
+- Ensure the Promaia page still exists in your Notion workspace
+- Check that it's shared with your integration
 
-1. **Organize prompts in Notion**: Keep all agent prompts in a dedicated Notion database or page
-2. **Use descriptive titles**: Name your Notion pages clearly so you can identify them later
-3. **Test after editing**: After editing a prompt in Notion, sync and test your agent
-4. **Version control metadata**: Keep the Notion URL in the metadata for future reference
-5. **Regular syncs**: Run `maia agent sync-prompts` periodically to stay up to date
+### Prompt doesn't update
 
-## Examples
+**Cause**: Changes made in Notion aren't reflecting in Promaia
 
-### Daily Summary Agent
+**Solution**:
+- Start a new chat session (prompts load fresh each session)
+- Check that `PROMAIA_USE_NOTION_PROMPTS=true` (default)
+- Verify the page ID is correct: `maia workspace info koii`
 
-Create a Notion page with your agent prompt:
+### Using local prompt instead
 
-```markdown
-# Daily Summary Agent
+**Cause**: Notion fetching is disabled or failing silently
 
-Create a concise daily summary of my work activities.
+**Solution**:
+- Check environment variable: `echo $PROMAIA_USE_NOTION_PROMPTS`
+- Look for warnings in logs: `tail -f promaia.log`
+- Test workspace connection: `maia workspace test koii`
 
-## Sources to Review
-- Journal entries from the past 24 hours
-- Recent Gmail conversations
-- Discord messages from work channels
+## Files Modified
 
-## Output Format
-- **Key Highlights**: Main achievements
-- **Decisions Made**: Important choices
-- **Action Items**: Tasks for tomorrow
+- `promaia/ai/prompts.py` - Added workspace-aware fetch logic
+- `promaia/notion/prompts.py` - Notion fetching module with MCP client
+- `promaia/agents/notion_setup.py` - Setup flow for Promaia page discovery
+- `promaia/cli/workspace_commands.py` - CLI command for `setup-promaia`
+- `promaia/config/workspaces.py` - Added `promaia_page_id` and `main_prompt_page_id` fields
 
-## Style Guidelines
-- Be concise but informative
-- Focus on actionable insights
-- Group related items together
-```
+## Example Workflow
 
-Then create the agent:
+### Initial Setup
 
 ```bash
-maia agent add
-# Follow prompts, press P when asked for prompt
-# Paste your Notion URL
-# Complete the agent setup
+# 1. Add workspace
+maia workspace add koii --api-key secret_your_token
+
+# 2. Set up Promaia page (opens template in browser)
+maia workspace setup-promaia --workspace koii
+
+# 3. Paste duplicated page URL when prompted
+# (System discovers Main prompt and other pages)
+
+# 4. Verify
+maia workspace info koii
 ```
 
-The agent will always use the latest version of your Notion prompt!
-
-## Integration with Regular Chat
-
-Notion prompts also work with regular chat sessions:
+### Daily Use
 
 ```bash
-# Syncs prompts before starting chat
-maia chat --sources journal:7,gmail:30
+# Start chat - prompt syncs from Notion automatically
+maia chat
+
+# Edit prompt in Notion using rich editor
+
+# Start new chat - changes take effect immediately
+maia chat
 ```
 
-All Notion-backed prompts in `~/.promaia/agent_prompts/` are synced automatically.
+### Multi-Workspace
+
+```bash
+# Set up for work workspace
+maia workspace setup-promaia --workspace work
+
+# Set up for personal workspace
+maia workspace setup-promaia --workspace personal
+
+# Each workspace has its own prompt
+maia chat --workspace work    # Uses work prompt
+maia chat --workspace personal  # Uses personal prompt
+```
+
+## Advanced: Custom Promaia Structure
+
+If you want to customize your Promaia page structure:
+
+1. Duplicate the template
+2. Add/remove pages as needed
+3. Keep the "Main prompt" child page (required)
+4. Share with integration
+5. Run `maia workspace setup-promaia`
+
+The system will discover your custom structure and use the Main prompt page.

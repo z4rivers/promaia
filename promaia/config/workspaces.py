@@ -27,6 +27,10 @@ class WorkspaceConfig:
         self.archived = config_data.get("archived", False)
         self.archived_at = config_data.get("archived_at")
         self.archived_reason = config_data.get("archived_reason", "")
+        self.agents_database_id = config_data.get("agents_database_id")
+        self.agents_page_id = config_data.get("agents_page_id")  # The parent Promaia Agents page
+        self.promaia_page_id = config_data.get("promaia_page_id")  # The main Promaia page (template root)
+        self.main_prompt_page_id = config_data.get("main_prompt_page_id")  # The Main prompt subpage
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert workspace config to dictionary."""
@@ -44,6 +48,22 @@ class WorkspaceConfig:
                 result["archived_at"] = self.archived_at
             if self.archived_reason:
                 result["archived_reason"] = self.archived_reason
+
+        # Include agents_database_id if set
+        if self.agents_database_id:
+            result["agents_database_id"] = self.agents_database_id
+
+        # Include agents_page_id if set
+        if self.agents_page_id:
+            result["agents_page_id"] = self.agents_page_id
+
+        # Include promaia_page_id if set
+        if self.promaia_page_id:
+            result["promaia_page_id"] = self.promaia_page_id
+
+        # Include main_prompt_page_id if set
+        if self.main_prompt_page_id:
+            result["main_prompt_page_id"] = self.main_prompt_page_id
 
         return result
 

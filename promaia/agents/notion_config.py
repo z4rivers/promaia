@@ -108,7 +108,9 @@ async def load_system_prompt(
         blocks = await get_block_content(system_prompt_page_id)
 
         # Convert to markdown
-        system_prompt = page_to_markdown(blocks, title="")
+        # page_to_markdown signature is (blocks, properties=None, include_properties=True, ...)
+        # Older call sites used a "title" kwarg which is not supported.
+        system_prompt = page_to_markdown(blocks, properties=None, include_properties=False)
 
         return system_prompt
 

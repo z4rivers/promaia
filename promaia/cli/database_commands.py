@@ -19,6 +19,141 @@ from promaia.connectors.base import QueryFilter, DateRangeFilter
 
 logger = logging.getLogger(__name__)
 
+# Helper for better input handling with keyboard shortcuts
+async def prompt_input(text: str, default: str = "") -> str:
+    """Enhanced input with proper keyboard shortcut support (Option+Delete, etc.)."""
+    try:
+        from prompt_toolkit import PromptSession
+        session = PromptSession()
+        result = await session.prompt_async(text, default=default)
+        return result
+    except ImportError:
+        # Fallback to regular input if prompt_toolkit not available
+        return input(text)
+
+
+async def checkbox_selector(title: str, items: list, item_formatter=None) -> list:
+    """
+    Interactive checkbox selector using prompt_toolkit.
+    
+    Args:
+        title: Title to display at top
+        items: List of items (dicts or any objects)
+        item_formatter: Optional function to format each item for display
+                       Takes (index, item) and returns a string
+    
+    Returns:
+        List of selected items
+    
+    Controls:
+        ↑/↓: Navigate
+        SPACE: Toggle selection
+        ENTER: Confirm
+        ESC: Cancel
+        a: Select all
+        n: Select none
+    """
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.layout.containers import HSplit, Window, VSplit
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.layout.layout import Layout
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.keys import Keys
+    
+    if not items:
+        return []
+    
+    # Default formatter
+    if item_formatter is None:
+        item_formatter = lambda idx, item: f"{idx + 1}. {str(item)}"
+    
+    # State
+    selected_states = [False] * len(items)
+    current_focus = 0
+    confirmed = False
+    
+    def get_item_display(idx):
+        checkbox = "[✓]" if selected_states[idx] else "[ ]"
+        item_text = item_formatter(idx, items[idx])
+        style = "reverse" if idx == current_focus else ""
+        return [(style, f"  {checkbox} {item_text}")]
+    
+    def get_status():
+        selected_count = sum(selected_states)
+        return f"  {title} | Selected: {selected_count}/{len(items)} | ↑↓ Navigate  SPACE Toggle  ENTER Confirm  ESC Cancel  A All  N None"
+    
+    # Build windows for each item
+    item_windows = [
+        Window(
+            FormattedTextControl(lambda idx=i: get_item_display(idx)),
+            height=1
+        )
+        for i in range(len(items))
+    ]
+    
+    status_window = Window(
+        FormattedTextControl(get_status),
+        height=1
+    )
+    
+    container = HSplit([
+        status_window,
+        Window(height=1),  # Spacer
+        *item_windows
+    ])
+    
+    layout = Layout(container)
+    bindings = KeyBindings()
+    
+    @bindings.add(Keys.Up)
+    def move_up(event):
+        nonlocal current_focus
+        if current_focus > 0:
+            current_focus -= 1
+    
+    @bindings.add(Keys.Down)
+    def move_down(event):
+        nonlocal current_focus
+        if current_focus < len(items) - 1:
+            current_focus += 1
+    
+    @bindings.add(' ')
+    def toggle(event):
+        selected_states[current_focus] = not selected_states[current_focus]
+    
+    @bindings.add('a')
+    def select_all(event):
+        for i in range(len(selected_states)):
+            selected_states[i] = True
+    
+    @bindings.add('n')
+    def select_none(event):
+        for i in range(len(selected_states)):
+            selected_states[i] = False
+    
+    @bindings.add(Keys.Enter)
+    def confirm(event):
+        nonlocal confirmed
+        confirmed = True
+        event.app.exit()
+    
+    @bindings.add(Keys.Escape)
+    def cancel(event):
+        event.app.exit()
+    
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        full_screen=False,
+        mouse_support=False,
+    )
+    
+    await app.run_async()
+    
+    if confirmed:
+        return [items[i] for i, selected in enumerate(selected_states) if selected]
+    return []
+
 async def remove_channel_from_config(db_config, channel_name: str, db_manager) -> bool:
     """
     Remove a Discord channel from database configuration by mapping channel name to ID.
@@ -206,6 +341,85 @@ async def _add_discord_channels_interactive(db_config, workspace, db_name):
     print(f"✅ Successfully added {len(channels_to_add)} channels")
     print(f"💡 Run 'maia database sync {db_name}' to sync the channels")
 
+async def _add_slack_channels_interactive(db_config, workspace, db_name):
+    """Helper function to interactively add Slack channels to a database."""
+    import os
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    db_manager = get_database_manager()
+
+    print(f"🔍 Loading available channels for Slack workspace...")
+
+    # Get Slack bot token from environment
+    bot_token = os.environ.get("SLACK_BOT_TOKEN")
+    
+    if not bot_token:
+        print(f"✗ No Slack bot token found in environment")
+        print(f"💡 Add SLACK_BOT_TOKEN to your .env file and restart terminal")
+        return
+
+    try:
+        from promaia.connectors.slack_connector import SlackConnector
+        
+        connector_config = db_config.to_dict()
+        connector_config['bot_token'] = bot_token
+        
+        connector = SlackConnector(connector_config)
+        await connector.connect()
+        
+        channels_data = await connector.discover_accessible_channels()
+        channels = channels_data.get("channels", [])
+        
+        if not channels:
+            print(f"✗ No accessible channels found")
+            return
+        
+        # Use interactive checkbox selector
+        print(f"\n📋 Found {len(channels)} Slack channels")
+        print("   Use ↑↓ to navigate, SPACE to select, ENTER to confirm, ESC to cancel")
+        print("   Press 'a' to select all, 'n' to select none\n")
+        
+        def format_channel(idx, channel):
+            name = channel.get('name', 'unknown')
+            is_private = channel.get('is_private', False)
+            prefix = "🔒" if is_private else "#"
+            return f"{prefix} {name}"
+        
+        selected_channels = await checkbox_selector(
+            title=f"Select Slack channels to sync",
+            items=channels,
+            item_formatter=format_channel
+        )
+        
+        if not selected_channels:
+            print("✓ No channels selected")
+            return
+        
+        # Extract channel IDs
+        channel_ids = [ch['id'] for ch in selected_channels]
+        
+        print(f"\n➕ Adding {len(channel_ids)} channel(s) to database '{db_name}':")
+        for ch in selected_channels:
+            privacy = "🔒" if ch.get('is_private') else "#"
+            print(f"   {privacy} {ch.get('name')} ({ch.get('id')})")
+        
+        # Update config
+        if len(channel_ids) == 1:
+            db_config.property_filters['channel_id'] = channel_ids[0]
+        else:
+            db_config.property_filters['channel_id'] = channel_ids
+        
+        db_manager.save_config()
+        print(f"✓ Added {len(channel_ids)} channel(s) to '{db_name}'")
+        
+    except ImportError as e:
+        print(f"✗ Slack integration not available: {e}")
+        print(f"   Install with: pip install slack-sdk")
+    except Exception as e:
+        print(f"✗ Error loading channels: {e}")
+
 async def handle_database_add(args):
     """Handle 'maia database add' command."""
     db_manager = get_database_manager()
@@ -214,38 +428,59 @@ async def handle_database_add(args):
     workspace = getattr(args, 'workspace', None)
     
     # Interactive configuration
-    name = args.name or input("Database name: ")
+    if not args.name:
+        print("\n💡 Database name: A short nickname to identify this data source")
+        print("   Examples: 'acme-slack', 'team-discord', 'personal-gmail', 'work-notion'")
+        name = await prompt_input("Database name: ")
+    else:
+        name = args.name
 
     # Source type selection with menu
     if args.source_type:
         source_type = args.source_type
     else:
-        print("Available source types:")
+        print("\nAvailable source types:")
         print("  1. notion (default)")
         print("  2. discord")
         print("  3. gmail")
-        choice = input("Select source type (1-3) or press Enter for notion: ").strip()
+        print("  4. slack")
+        choice = (await prompt_input("Select source type (1-4) or press Enter for notion: ")).strip()
 
         source_type_map = {
             "1": "notion",
             "2": "discord",
             "3": "gmail",
+            "4": "slack",
             "notion": "notion",
             "discord": "discord",
             "gmail": "gmail",
+            "slack": "slack",
             "": "notion"  # default
         }
         source_type = source_type_map.get(choice.lower(), "notion")
 
-    # Use appropriate label for ID field based on source type
-    id_label = {
-        "discord": "Server ID",
-        "gmail": "Gmail Account",
-        "notion": "Database ID"
-    }.get(source_type, "Database ID")
-
-    database_id = args.database_id or input(f"{id_label}: ")
-    description = args.description or input("Description (optional): ")
+    # Use appropriate label and prompt for ID field based on source type
+    if source_type == "slack":
+        # For Slack, we don't need the actual workspace ID - bot token is enough
+        # Auto-generate a universally unique internal identifier (user never sees this)
+        import uuid
+        database_id = args.database_id or str(uuid.uuid4())
+    elif source_type == "discord":
+        print("\n💡 Server ID: Your Discord server's unique ID")
+        print("   Example: '1291943271509135412'")
+        print("   How to find: Right-click server → Copy Server ID (enable Developer Mode in settings first)")
+        database_id = args.database_id or await prompt_input("Server ID: ")
+    elif source_type == "gmail":
+        print("\n💡 Gmail Account: The Gmail address to sync")
+        print("   Examples: 'you@gmail.com', 'team@company.com'")
+        database_id = args.database_id or await prompt_input("Gmail Account: ")
+    else:  # notion
+        print("\n💡 Database ID: Found in your Notion database URL")
+        print("   Example: '259700448ad145849e67fa1040a0e120'")
+        print("   Where to find: Open database in Notion → Copy link → Extract ID from URL")
+        database_id = args.database_id or await prompt_input("Database ID: ")
+    
+    description = args.description or (await prompt_input("\nDescription (optional - what's in this database?): ")).strip()
     
     if not workspace:
         # Get available workspaces and prompt
@@ -254,15 +489,31 @@ async def handle_database_add(args):
         workspaces = workspace_manager.list_workspaces()
         default_workspace = workspace_manager.get_default_workspace()
         
+        print("\n💡 Workspace: Group related databases by context")
+        print("   Examples: 'personal', 'work', 'acme-corp', 'side-project'")
+        
         if workspaces:
-            print(f"Available workspaces: {', '.join(workspaces)}")
+            print("\nAvailable workspaces:")
+            for idx, ws in enumerate(workspaces, 1):
+                default_marker = " (default)" if ws == default_workspace else ""
+                print(f"  {idx}. {ws}{default_marker}")
+            
             if default_workspace:
-                workspace = input(f"Workspace ({default_workspace}): ") or default_workspace
+                choice = (await prompt_input(f"Select workspace (1-{len(workspaces)}) or press Enter for {default_workspace}: ")).strip()
             else:
-                workspace = input("Workspace: ")
+                choice = (await prompt_input(f"Select workspace (1-{len(workspaces)}): ")).strip()
+            
+            if not choice and default_workspace:
+                workspace = default_workspace
+            elif choice.isdigit() and 1 <= int(choice) <= len(workspaces):
+                workspace = workspaces[int(choice) - 1]
+            elif choice in workspaces:
+                workspace = choice
+            else:
+                workspace = default_workspace or workspaces[0] if workspaces else "koii"
         else:
-            print("No workspaces configured. Using 'personal' workspace.")
-            workspace = "personal"
+            print("   No workspaces configured yet.")
+            workspace = (await prompt_input("Workspace name (default: koii): ")).strip() or "koii"
     
     config = {
         "source_type": source_type,
@@ -315,16 +566,26 @@ async def handle_database_add(args):
             # For Discord databases, offer to select channels
             if source_type == "discord":
                 print("\n📋 Would you like to select Discord channels to sync?")
-                channel_choice = input("Select channels now? (y/N): ").strip().lower()
+                channel_choice = (await prompt_input("Select channels now? (y/N): ")).strip().lower()
 
                 if channel_choice in ['y', 'yes']:
                     try:
                         await _add_discord_channels_interactive(db_config, workspace, name)
+                    except Exception as e:
+                        print(f"⚠ Warning: Could not load Discord channels: {e}")
+            
+            elif source_type == "slack":
+                print("\n📋 Would you like to select Slack channels to sync?")
+                channel_choice = (await prompt_input("Select channels now? (y/N): ")).strip().lower()
+
+                if channel_choice in ['y', 'yes']:
+                    try:
+                        await _add_slack_channels_interactive(db_config, workspace, name)
                     except Exception as ch_e:
                         print(f"⚠ Warning: Could not add channels: {ch_e}")
-                        print(f"💡 You can add channels later with: maia database add-channels {name}")
+                        print(f"💡 You can add channels later manually in the config")
                 else:
-                    print(f"💡 You can add channels later with: maia database add-channels {name}")
+                    print(f"💡 You can add channels later manually in the config")
         else:
             print(f"✗ Failed to add database '{name}' (may already exist)")
 
@@ -452,7 +713,7 @@ async def handle_database_remove_channels(args):
         
         # Confirm removal
         if not args.force:
-            response = input(f"\nThis will:\n1. Remove channels from config\n2. Delete all stored data for these channels\n\nContinue? (y/N): ")
+            response = await prompt_input(f"\nThis will:\n1. Remove channels from config\n2. Delete all stored data for these channels\n\nContinue? (y/N): ")
             if response.lower() not in ['y', 'yes']:
                 print("Operation cancelled")
                 return
@@ -583,7 +844,7 @@ async def handle_database_remove_with_data_purge(args):
     
     # Confirm removal
     if not getattr(args, 'force', False):
-        response = input(f"This will:\n1. Remove database '{original_name}' from config\n2. Delete all locally stored data for this database\n\nContinue? (y/N): ")
+        response = await prompt_input(f"This will:\n1. Remove database '{original_name}' from config\n2. Delete all locally stored data for this database\n\nContinue? (y/N): ")
         if response.lower() not in ['y', 'yes']:
             print("Operation cancelled")
             return
@@ -653,7 +914,7 @@ async def handle_database_remove_interactive(args):
         for db_name in selected_databases:
             print(f"   - {db_name}")
         
-        response = input(f"\nThis will:\n1. Remove databases from config\n2. Delete all locally stored data for these databases\n\nContinue? (y/N): ")
+        response = await prompt_input(f"\nThis will:\n1. Remove databases from config\n2. Delete all locally stored data for these databases\n\nContinue? (y/N): ")
         if response.lower() not in ['y', 'yes']:
             print("Operation cancelled")
             return
@@ -749,7 +1010,7 @@ async def handle_channel_remove_interactive(args):
         for channel_spec in selected_channels:
             print(f"   - {channel_spec}")
         
-        response = input(f"\nThis will:\n1. Remove channels from database config\n2. Delete all locally stored data for these channels\n\nContinue? (y/N): ")
+        response = await prompt_input(f"\nThis will:\n1. Remove channels from database config\n2. Delete all locally stored data for these channels\n\nContinue? (y/N): ")
         if response.lower() not in ['y', 'yes']:
             print("Operation cancelled")
             return

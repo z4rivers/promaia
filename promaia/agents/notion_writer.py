@@ -4,8 +4,15 @@ Notion Output Writer - Writes agent execution results to Notion pages.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
-from notion_client import AsyncClient
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+# notion_client is an optional dependency in some environments (e.g. minimal schedulers/tests).
+# Import it lazily/optionally so that importing promaia doesn't fail hard.
+try:
+    from notion_client import AsyncClient  # type: ignore
+except ImportError:  # pragma: no cover
+    AsyncClient = Any  # type: ignore[misc,assignment]
+
 from promaia.notion.client import get_client
 
 logger = logging.getLogger(__name__)

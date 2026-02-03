@@ -7,6 +7,23 @@ import os
 from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
+from enum import Enum
+
+
+class SourcePermission(Enum):
+    """Permission levels for data sources"""
+    READ_INITIAL = "read_initial"  # Load in initial context boundary
+    QUERY = "query"                # Can query dynamically at runtime
+    WRITE = "write"                # Can write/modify via MCP tools
+
+
+@dataclass
+class SourceAccess:
+    """Access configuration for a single source"""
+    source_name: str               # e.g., "journal", "gmail", "tasks"
+    initial_days: Optional[int]    # Days to load initially (None = all)
+    permissions: List[SourcePermission]  # What agent can do
+    max_query_days: Optional[int] = None  # Max days for query_source (safety limit)
 
 
 @dataclass
@@ -38,6 +55,23 @@ class AgentConfig:
     created_at: Optional[str] = None
     last_run_at: Optional[str] = None
     calendar_event_ids: Optional[str] = None  # Comma-separated event IDs from Google Calendar
+    calendar_id: Optional[str] = None  # Dedicated Google Calendar ID for this agent
+
+    # NEW: Source-level permissions (replaces databases eventually)
+    source_access: Optional[List[SourceAccess]] = None
+
+    # NEW: SDK-related fields
+    sdk_enabled: bool = True  # Use SDK for execution
+    sdk_permission_mode: str = "bypassPermissions"  # or "default", "acceptEdits", "plan"
+    sdk_allowed_tools: Optional[List[str]] = None  # Override default tools
+    
+    # NEW: Messaging platform configuration (platform-agnostic)
+    messaging_platform: Optional[str] = None  # "slack" or "discord"
+    messaging_channel_id: Optional[str] = None  # Platform-specific channel ID
+    messaging_enabled: bool = False  # Enable messaging integration
+    initiate_conversation: bool = False  # Start conversation vs one-way post
+    conversation_timeout_minutes: int = 15  # Minutes before timeout
+    conversation_max_turns: Optional[int] = None  # Max turns (None = unlimited)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -61,13 +95,9 @@ class AgentConfig:
         if not self.databases:
             errors.append("At least one database must be selected")
 
-        if not self.prompt_file:
-            errors.append("Prompt file is required")
+        # Prompt file is optional - uses default or Notion System Prompt
 
-        # Check scheduling: either schedule or interval_minutes must be set
-        if not self.schedule and not self.interval_minutes:
-            errors.append("Either schedule or interval_minutes must be set")
-
+        # Scheduling is optional - agents triggered by calendar events or interval
         if self.interval_minutes is not None and self.interval_minutes <= 0:
             errors.append("Interval must be positive")
 
@@ -77,10 +107,71 @@ class AgentConfig:
         if self.max_iterations <= 0:
             errors.append("Max iterations must be positive")
 
-        if not self.output_notion_page_id:
-            errors.append("Output Notion page ID is required")
+        # Output page is optional - agents respond contextually
 
         return errors
+
+    def get_initial_context_sources(self) -> Dict[str, Optional[int]]:
+        """Get sources to load in initial context boundary"""
+        if self.source_access:
+            return {
+                access.source_name: access.initial_days
+                for access in self.source_access
+                if SourcePermission.READ_INITIAL in access.permissions
+            }
+        else:
+            # Fall back to old databases format
+            return self._parse_legacy_databases()
+
+    def _parse_legacy_databases(self) -> Dict[str, Optional[int]]:
+        """Parse legacy databases field into dict of source -> days"""
+        result = {}
+        for source_spec in self.databases:
+            if ':' in source_spec:
+                database_name, days_str = source_spec.split(':', 1)
+                days = None if days_str == 'all' else int(days_str)
+            else:
+                database_name = source_spec
+                days = None
+            result[database_name] = days
+        return result
+
+    def get_queryable_sources(self) -> List[str]:
+        """Get sources agent can query dynamically"""
+        if self.source_access:
+            return [
+                access.source_name
+                for access in self.source_access
+                if SourcePermission.QUERY in access.permissions
+            ]
+        else:
+            # Legacy: all initial sources are queryable
+            return [db.split(':')[0] for db in self.databases]
+
+    def get_writable_sources(self) -> List[str]:
+        """Get sources agent can write to via MCP"""
+        if self.source_access:
+            return [
+                access.source_name
+                for access in self.source_access
+                if SourcePermission.WRITE in access.permissions
+            ]
+        else:
+            return []  # Legacy mode: no write permissions
+
+    def can_query_source(self, source_name: str, days: int) -> bool:
+        """Check if agent can query this source with given time range"""
+        if not self.source_access:
+            return True  # Legacy mode: allow all queries
+
+        for access in self.source_access:
+            if access.source_name == source_name:
+                if SourcePermission.QUERY not in access.permissions:
+                    return False
+                if access.max_query_days and days > access.max_query_days:
+                    return False
+                return True
+        return False
 
 
 def get_config_file_path() -> Path:

@@ -83,6 +83,51 @@ def format_email_preview(body: str, attachments: list, max_body_length: int = 40
     return "\n".join(lines)
 
 
+def detect_urls_in_text(text: str) -> List[str]:
+    """Detect URLs in user input text.
+
+    Args:
+        text: User input text
+
+    Returns:
+        List of URLs found in the text
+    """
+    # URL pattern that matches http://, https://, and www. URLs
+    url_pattern = r'(?:https?://|www\.)[^\s<>"\'{}\[\]\\^`|]+'
+    urls = re.findall(url_pattern, text, re.IGNORECASE)
+    return urls
+
+
+def check_and_suggest_web_tools(user_input: str, context_state: dict, style: Style) -> None:
+    """Check if user input contains URLs or search requests and suggest enabling web tools.
+
+    Args:
+        user_input: The user's input text
+        context_state: Current context state
+        style: Prompt style for display
+    """
+    # Skip if this is a command
+    if user_input.strip().startswith('/'):
+        return
+
+    urls = detect_urls_in_text(user_input)
+    has_search_keywords = any(keyword in user_input.lower() for keyword in
+                               ['search', 'look up', 'find online', 'search internet', 'search web', 'google'])
+
+    mcp_servers = context_state.get('mcp_servers', [])
+
+    # Suggest fetch if URLs detected and fetch not enabled
+    if urls and 'fetch' not in mcp_servers:
+        print_text("💡 Tip: I detected URLs in your query. Enable web fetching with /mcp fetch to visit these URLs.",
+                  style="cyan")
+        print_text(f"   URLs found: {', '.join(urls[:3])}", style="dim cyan")
+
+    # Suggest search if search keywords detected and search not enabled
+    if has_search_keywords and 'search' not in mcp_servers and not urls:
+        print_text("💡 Tip: I detected a search request. Enable web search with /mcp search to search the internet.",
+                  style="cyan")
+
+
 # --- API Client Initialization ---
 
 def get_api_preference():
@@ -556,15 +601,20 @@ def print_help_message(query_command, total_pages, model_name=None, source_break
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail /queries", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /mail /queries /clear /mute /unmute", style="dim")
     print_text("  /s - Sync databases in current context", style="dim")
     print_text("  Ctrl+L - Quick inline sync (all or specific databases)", style="dim")
+    print_text("  /clear - Clear all context (blank slate)", style="dim")
+    print_text("  /mute - Temporarily hide context from AI", style="dim")
+    print_text("  /unmute - Restore muted context", style="dim")
     print_text("  /e - Edit context (sources, filters, natural language)", style="dim")
     print_text("  /save - Save current conversation to history", style="dim")
     print_text("  /model - Switch AI model (Claude, GPT-4o, Gemini, Llama)", style="dim")
     print_text("  /temp - Adjust creativity (0.0=focused, 2.0=creative)", style="dim")
     print_text("  /m [n] - Manually edit artifact [n] with keyboard (defaults to latest)", style="dim")
     print_text("  /mail - Toggle AI-assisted email sending", style="dim")
+    print_text("  /mcp search - Toggle internet search capabilities", style="dim")
+    print_text("  /mcp fetch - Toggle URL fetching capabilities", style="dim")
     print_text("  /queries - List AI-generated queries in this session", style="dim")
     print_text("  /remove-query N - Remove query #N from context", style="dim")
     print_text("")
@@ -584,7 +634,7 @@ def print_welcome_message(query_command, total_pages, model_name=None, source_br
                 
     if model_name:
         print_text(f"Model: {model_name}", style="dim")
-    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail /queries", style="dim")
+    print_text("Available commands: /quit /debug /push /help /s /e /save /model /temp /m /mail /queries /clear /mute /unmute", style="dim")
     print_text("Keyboard shortcuts: Ctrl+O (edit context) • Ctrl+L (quick sync) • Ctrl+B (browser)", style="dim")
     print_text("")
 
@@ -1000,7 +1050,7 @@ def save_context_log(context_state, system_prompt, total_pages_loaded, current_a
     
     try:
         timestamp = now_utc().strftime("%Y%m%d-%H%M%S")
-        context_filename = f"context_logs/chat_context_logs/{timestamp}_{log_type}_prompt.txt"
+        context_filename = f"context_logs/chat_context_logs/{timestamp}_{log_type}_prompt.md"
 
         # Ensure context logs directory exists
         os.makedirs("context_logs/chat_context_logs", exist_ok=True)
@@ -1241,9 +1291,19 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         )
         
         if not selected_sources:
-            print_text("ℹ️  No sources selected from browser. Using only the regular sources.", style="yellow")
-            # Keep browser selections empty - only use regular sources
-            browse_selections = []
+            # Check if there are any regular sources loaded
+            if not sources or len(sources) == 0:
+                # Allow clearing context via browser - user selected nothing and has no regular sources
+                print_text("🗑️  No sources selected. Context has been cleared.", style="yellow")
+                browse_selections = []
+                combined_multi_source_data = {}
+                initial_multi_source_data = {}
+                context_state['sources'] = []
+                total_pages_loaded = 0
+            else:
+                # Keep browser selections empty - only use regular sources
+                print_text("ℹ️  No sources selected from browser. Using only the regular sources.", style="yellow")
+                browse_selections = []
         else:
             # Store ALL browser selections for persistence (not just additional ones)
             browse_selections = selected_sources.copy()  # Store all selected sources
@@ -2209,9 +2269,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
         initial_multi_source_data = new_multi_source_data
         total_pages_loaded = new_total_pages_loaded
         
+        # Apply mute handling - use empty context if muted (but keep data loaded)
+        context_data_for_prompt = {} if context_state.get('context_muted') else new_multi_source_data
+        
         # Generate new system prompt
         mcp_tools_info = context_state.get('mcp_tools_info')
-        system_prompt = build_system_prompt_with_mode(new_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+        system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
         context_state['system_prompt'] = system_prompt
         
         # Save context log when MCP servers are connected (for transparency)
@@ -3190,9 +3253,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                             context_state['initial_multi_source_data'] = current_data
                             context_state['total_pages_loaded'] = total_pages_loaded
                             
+                            # Apply mute handling - use empty context if muted
+                            context_data_for_prompt = {} if context_state.get('context_muted') else current_data
+                            
                             # Update the system prompt with the remaining data
                             mcp_tools_info = context_state.get('mcp_tools_info')
-                            system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                            system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                             context_state['system_prompt'] = system_prompt
                             
                             debug_print(f"After NL removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -4078,9 +4144,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                         context_state['initial_multi_source_data'] = current_data
                         context_state['total_pages_loaded'] = total_pages_loaded
 
+                        # Apply mute handling - use empty context if muted
+                        context_data_for_prompt = {} if context_state.get('context_muted') else current_data
+
                         # Update the system prompt with the remaining data
                         mcp_tools_info = context_state.get('mcp_tools_info')
-                        system_prompt = build_system_prompt_with_mode(current_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                        system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                         context_state['system_prompt'] = system_prompt
 
                         debug_print(f"After query removal: {len(current_data)} sources, {total_pages_loaded} pages")
@@ -5087,9 +5156,12 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 context_state['initial_multi_source_data'] = initial_multi_source_data
                 context_state['total_pages_loaded'] = total_pages_loaded
 
+                # Apply mute handling - use empty context if muted
+                context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
                 # Regenerate system prompt
                 mcp_tools_info = context_state.get('mcp_tools_info')
-                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                 context_state['system_prompt'] = system_prompt
 
                 # Display updated context in welcome message format
@@ -5665,6 +5737,45 @@ The user will type `/send` to trigger the actual sending process.
                 pending_input_text = None  # Clear after using
             else:
                 user_input = session.prompt("You: ", style=style)
+
+            # Check for URLs or search keywords and suggest enabling web tools
+            check_and_suggest_web_tools(user_input, context_state, style)
+
+            # /clear - Clear all context
+            if user_input.strip().lower() in ['/clear', '/c']:
+                print_text("🗑️  Clearing all context...", style="yellow")
+                initial_multi_source_data = {}
+                combined_multi_source_data = {}
+                context_state['sources'] = []
+                context_state['browse_selections'] = []
+                total_pages_loaded = 0
+                print_text("✅ Context cleared. You're now in a blank slate.", style="green")
+                continue
+
+            # /mute - Mute context (temporarily hide but keep loaded)
+            if user_input.strip().lower() == '/mute':
+                if context_state.get('context_muted'):
+                    print_text("ℹ️  Context is already muted", style="yellow")
+                else:
+                    context_state['context_muted'] = True
+                    context_state['muted_sources'] = context_state.get('sources', []).copy()
+                    context_state['muted_data'] = combined_multi_source_data.copy()
+                    print_text("🔇 Context muted (hidden from AI, but preserved)", style="yellow")
+                    print_text(f"   Muted {len(context_state['muted_sources'])} sources with {total_pages_loaded} pages", style="dim")
+                continue
+
+            # /unmute - Restore muted context
+            if user_input.strip().lower() == '/unmute':
+                if not context_state.get('context_muted'):
+                    print_text("ℹ️  Context is not muted", style="yellow")
+                else:
+                    context_state['context_muted'] = False
+                    context_state['sources'] = context_state.get('muted_sources', [])
+                    combined_multi_source_data = context_state.get('muted_data', {})
+                    total_pages_loaded = sum(len(pages) for pages in combined_multi_source_data.values())
+                    print_text("🔊 Context unmuted (restored)", style="green")
+                    print_text(f"   Restored {len(context_state['sources'])} sources with {total_pages_loaded} pages", style="dim")
+                continue
 
             if user_input.strip().lower() in ['/quit', '/exit', '/q']:
                 # Save chat messages if in draft mode
@@ -6586,8 +6697,11 @@ The user will type `/send` to trigger the actual sending process.
                                 mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
+                                # Apply mute handling - use empty context if muted
+                                context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                                system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                 context_state['system_prompt'] = system_prompt
 
                                 # Save context log when MCP servers are connected (for transparency)
@@ -6627,8 +6741,11 @@ The user will type `/send` to trigger the actual sending process.
                                     mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
                                     context_state['mcp_tools_info'] = mcp_tools_info
 
+                                    # Apply mute handling - use empty context if muted
+                                    context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
                                     # Regenerate system prompt with new tools
-                                    system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                                    system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                     context_state['system_prompt'] = system_prompt
 
                                     # Save context log when MCP servers are connected (for transparency)
@@ -6679,8 +6796,11 @@ The user will type `/send` to trigger the actual sending process.
                                 mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
                                 context_state['mcp_tools_info'] = mcp_tools_info
 
+                                # Apply mute handling - use empty context if muted
+                                context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
                                 # Regenerate system prompt with new tools
-                                system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                                system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                                 context_state['system_prompt'] = system_prompt
 
                                 print_text("🔍 Internet search disabled and MCP servers reconnected", style="bold yellow")
@@ -6698,13 +6818,125 @@ The user will type `/send` to trigger the actual sending process.
                             mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
                             context_state['mcp_tools_info'] = mcp_tools_info
 
+                            # Apply mute handling - use empty context if muted
+                            context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
                             # Regenerate system prompt with new tools
-                            system_prompt = build_system_prompt_with_mode(initial_multi_source_data, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                            system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
                             context_state['system_prompt'] = system_prompt
 
                             print_text("🔍 Internet search disabled - web search tools removed", style="bold yellow")
                     else:
                         print_text("🔍 Internet search disabled", style="bold yellow")
+
+                continue
+            elif user_input.strip().lower() == '/mcp fetch':
+                # Toggle URL fetching functionality
+                current_fetch = 'fetch' in (context_state.get('mcp_servers') or [])
+
+                if not current_fetch:
+                    # Enable fetch - add fetch MCP server
+                    if 'fetch' not in (context_state.get('mcp_servers') or []):
+                        if context_state.get('mcp_servers') is None:
+                            context_state['mcp_servers'] = ['fetch']
+                        else:
+                            context_state['mcp_servers'].append('fetch')
+
+                        # Reconnect MCP servers to include fetch
+                        if context_state.get('mcp_client'):
+                            try:
+                                import asyncio
+                                from promaia.config.mcp_servers import get_mcp_manager
+                                from promaia.mcp.client import McpClient
+                                from promaia.mcp.execution import McpToolExecutor
+
+                                # Disconnect existing servers
+                                asyncio.run(context_state['mcp_client'].disconnect_all())
+
+                                # Reconnect with fetch server included
+                                mcp_manager = get_mcp_manager()
+                                mcp_client = McpClient()
+
+                                connected_servers = []
+                                for server_name in context_state['mcp_servers']:
+                                    server_config = mcp_manager.get_server(server_name)
+                                    if server_config:
+                                        success = asyncio.run(mcp_client.connect_to_server(server_config))
+                                        if success:
+                                            connected_servers.append(server_name)
+
+                                # Update context with new MCP client
+                                context_state['mcp_client'] = mcp_client
+                                context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+
+                                # Update system prompt with new tools
+                                mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                                context_state['mcp_tools_info'] = mcp_tools_info
+
+                                # Apply mute handling - use empty context if muted
+                                context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
+                                # Regenerate system prompt with new tools
+                                system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                                context_state['system_prompt'] = system_prompt
+
+                                # Save context log
+                                save_context_log(context_state, system_prompt, total_pages_loaded, current_api, "mcp_connection")
+
+                                print_text("🌐 URL fetching enabled!", style="bold green")
+                                print_text("💡 You can now ask the AI to visit URLs by providing them in your query", style="cyan")
+                            except Exception as e:
+                                print_text(f"Error enabling fetch: {e}", style="bold red")
+                        else:
+                            print_text("🌐 URL fetching marked for enable (will connect on first use)", style="bold green")
+                else:
+                    # Disable fetch - remove fetch MCP server
+                    if context_state.get('mcp_servers') and 'fetch' in context_state['mcp_servers']:
+                        context_state['mcp_servers'].remove('fetch')
+
+                        # Reconnect MCP servers without fetch
+                        if context_state.get('mcp_client'):
+                            try:
+                                import asyncio
+                                from promaia.config.mcp_servers import get_mcp_manager
+                                from promaia.mcp.client import McpClient
+                                from promaia.mcp.execution import McpToolExecutor
+
+                                # Disconnect existing servers
+                                asyncio.run(context_state['mcp_client'].disconnect_all())
+
+                                # Reconnect without fetch server
+                                mcp_manager = get_mcp_manager()
+                                mcp_client = McpClient()
+
+                                connected_servers = []
+                                for server_name in context_state['mcp_servers']:
+                                    server_config = mcp_manager.get_server(server_name)
+                                    if server_config:
+                                        success = asyncio.run(mcp_client.connect_to_server(server_config))
+                                        if success:
+                                            connected_servers.append(server_name)
+
+                                # Update context with new MCP client
+                                context_state['mcp_client'] = mcp_client
+                                context_state['mcp_executor'] = McpToolExecutor(mcp_client)
+
+                                # Update system prompt with new tools
+                                mcp_tools_info = mcp_client.format_tools_for_prompt(connected_servers, compact=True)
+                                context_state['mcp_tools_info'] = mcp_tools_info
+
+                                # Apply mute handling - use empty context if muted
+                                context_data_for_prompt = {} if context_state.get('context_muted') else initial_multi_source_data
+
+                                # Regenerate system prompt with new tools
+                                system_prompt = build_system_prompt_with_mode(context_data_for_prompt, mcp_tools_info, mode_system_prompt, mode, include_query_tools=True, workspace=context_state.get('workspace'))
+                                context_state['system_prompt'] = system_prompt
+
+                                print_text("🌐 URL fetching disabled", style="bold yellow")
+                            except Exception as e:
+                                print_text(f"Error disabling fetch: {e}", style="bold red")
+                        else:
+                            print_text("🌐 URL fetching disabled", style="bold yellow")
 
                 continue
             elif user_input.strip().lower().startswith('/mail'):

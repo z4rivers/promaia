@@ -443,6 +443,25 @@ class QueryToolExecutor:
         workspace = parameters.get('workspace', self.context_state.get('workspace'))
         max_results = parameters.get('max_results')
         
+        # Check if user explicitly specified sources (strict mode)
+        explicitly_loaded_sources = self.context_state.get('sources', [])
+        is_strict_mode = len(explicitly_loaded_sources) > 0
+        
+        if is_strict_mode:
+            # Warn that we're expanding beyond explicit sources
+            logger.warning(
+                f"Query tool called in strict mode (user specified -s sources). "
+                f"AI query: '{query}'. Explicitly loaded: {explicitly_loaded_sources}"
+            )
+            # Add warning to reasoning for user to see
+            original_reasoning = parameters.get('reasoning', '')
+            parameters['reasoning'] = (
+                f"⚠️ EXPANDING BEYOND EXPLICIT SOURCES\n"
+                f"You loaded: {', '.join(explicitly_loaded_sources)}\n"
+                f"AI wants to search: {query}\n\n"
+                f"{original_reasoning}"
+            )
+        
         # Create query label
         query_label = f"Query {query_index}" if query_index else "SQL Query"
 
@@ -503,6 +522,25 @@ class QueryToolExecutor:
         top_k = parameters.get('top_k', self.context_state.get('top_k', 60))
         # Very low default threshold (0.2) for semantic search to cast a wide net for fuzzy searches
         min_similarity = parameters.get('min_similarity', self.context_state.get('threshold', 0.2))
+        
+        # Check if user explicitly specified sources (strict mode)
+        explicitly_loaded_sources = self.context_state.get('sources', [])
+        is_strict_mode = len(explicitly_loaded_sources) > 0
+        
+        if is_strict_mode:
+            # Warn that we're expanding beyond explicit sources
+            logger.warning(
+                f"Query tool called in strict mode (user specified -s sources). "
+                f"AI query: '{query}'. Explicitly loaded: {explicitly_loaded_sources}"
+            )
+            # Add warning to reasoning for user to see
+            original_reasoning = parameters.get('reasoning', '')
+            parameters['reasoning'] = (
+                f"⚠️ EXPANDING BEYOND EXPLICIT SOURCES\n"
+                f"You loaded: {', '.join(explicitly_loaded_sources)}\n"
+                f"AI wants to search: {query}\n\n"
+                f"{original_reasoning}"
+            )
         
         # Create query label
         query_label = f"Query {query_index}" if query_index else "Vector Search"

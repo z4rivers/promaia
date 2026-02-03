@@ -10,6 +10,49 @@ logger = logging.getLogger(__name__)
 
 PROMPT_FILE_PATH = "prompts/prompt.md"
 ARTIFACT_GUIDELINES_PATH = "prompts/artifact_guidelines.md"
+NOTION_PROMPT_PAGE_ID = "292d1339-6967-80a5-84ed-cc171358ccb7"  # Main prompt page ID
+
+
+def fetch_prompt_from_notion(workspace: Optional[str] = None) -> Optional[str]:
+    """
+    Fetch the main prompt. Uses synced local file for speed.
+
+    The prompt is synced from Notion during database sync operations.
+    This function just loads the local cached version for fast access.
+
+    Args:
+        workspace: Optional workspace name. If not provided, uses default workspace.
+
+    Returns:
+        Prompt text from local file, or None if not available
+    """
+    try:
+        # Use environment variable to enable/disable Notion prompts
+        use_notion_prompts = os.getenv("PROMAIA_USE_NOTION_PROMPTS", "true").lower() == "true"
+
+        if not use_notion_prompts:
+            logger.debug("Notion prompts disabled via PROMAIA_USE_NOTION_PROMPTS env var")
+            return None
+
+        # Import here to avoid circular dependencies
+        from promaia.notion.prompts import get_main_prompt_from_file
+
+        # Load from local synced file (fast!)
+        prompt_text = get_main_prompt_from_file()
+        if prompt_text:
+            logger.debug("Loaded prompt from synced local file")
+            return prompt_text
+        else:
+            logger.debug("No synced prompt file found, will use default prompts/prompt.md")
+            return None
+
+    except ImportError:
+        logger.debug("Notion prompts module not available, using local file")
+        return None
+    except Exception as e:
+        logger.warning(f"Error loading prompt from local file: {e}")
+        return None
+
 
 def format_context_data(
     multi_source_data: Dict[str, List[Dict[str, Any]]],
@@ -146,13 +189,18 @@ def create_system_prompt(
     today_str = today.strftime("%Y-%m-%d")
     current_time_str = today.strftime("%H:%M")
 
-    try:
-        with open(PROMPT_FILE_PATH, 'r', encoding='utf-8') as f:
-            base_prompt = f.read()
-        logger.debug(f"Loaded system prompt from {PROMPT_FILE_PATH}")
-    except FileNotFoundError:
-        logger.error(f"System prompt file not found at {PROMPT_FILE_PATH}. Using a fallback prompt.")
-        base_prompt = "You are a helpful AI assistant. Today's date is {today_date}."
+    # Try to fetch from Notion first
+    base_prompt = fetch_prompt_from_notion(workspace=workspace)
+
+    # Fall back to local file if Notion fails
+    if not base_prompt:
+        try:
+            with open(PROMPT_FILE_PATH, 'r', encoding='utf-8') as f:
+                base_prompt = f.read()
+            logger.debug(f"Loaded system prompt from {PROMPT_FILE_PATH}")
+        except FileNotFoundError:
+            logger.error(f"System prompt file not found at {PROMPT_FILE_PATH}. Using a fallback prompt.")
+            base_prompt = "You are a helpful AI assistant. Today's date is {today_date}."
 
     base_prompt = base_prompt.replace("{today_date}", today_str)
     base_prompt = base_prompt.replace("{current_time}", current_time_str)
@@ -188,7 +236,12 @@ def _is_discord_database(database_name: str) -> bool:
     return 'discord' in database_name.lower() or database_name.lower().endswith('.ds')
 
 
-def generate_database_preview(workspace: Optional[str] = None, exclude_databases: Optional[List[str]] = None) -> str:
+def generate_database_preview(
+    workspace: Optional[str] = None,
+    exclude_databases: Optional[List[str]] = None,
+    limit_to_databases: Optional[List[str]] = None,
+    max_examples: int = 3
+) -> str:
     """
     Generate a preview/map of available databases with sample content.
 
@@ -198,6 +251,8 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
     Args:
         workspace: Optional workspace to filter databases (None for all)
         exclude_databases: List of database names already in loaded context (to avoid duplication)
+        limit_to_databases: Only include these databases (permission filter)
+        max_examples: Number of sample entries per database (default: 3)
 
     Returns:
         Formatted database preview string with samples
@@ -235,6 +290,21 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
         if not databases:
             return ""
 
+        # Filter out databases from archived workspaces
+        from promaia.config.workspaces import get_workspace_manager
+        workspace_manager = get_workspace_manager()
+        
+        active_databases = []
+        for db_name, db_workspace in databases:
+            workspace_obj = workspace_manager.get_workspace(db_workspace)
+            if workspace_obj and not workspace_obj.archived:
+                active_databases.append((db_name, db_workspace))
+        
+        databases = active_databases
+
+        if not databases:
+            return ""
+
         preview = "## Available Data Sources"
         if workspace:
             preview += f" (Workspace: {workspace})"
@@ -259,6 +329,10 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
         for db_name, db_workspace in databases:
             # Skip if already in loaded context
             if db_name in exclude_databases:
+                continue
+
+            # Skip if not in allowed list (permission filter)
+            if limit_to_databases and db_name not in limit_to_databases:
                 continue
 
             # Get count
@@ -292,14 +366,14 @@ def generate_database_preview(workspace: Optional[str] = None, exclude_databases
                 except:
                     date_max = "unknown"
 
-            # Get 3 most recent samples
+            # Get most recent samples (configurable)
             cursor.execute("""
                 SELECT page_id, title, created_time, metadata
                 FROM unified_content
                 WHERE database_name = ? AND workspace = ?
                 ORDER BY created_time DESC
-                LIMIT 3
-            """, (db_name, db_workspace))
+                LIMIT ?
+            """, (db_name, db_workspace, max_examples))
             samples = cursor.fetchall()
 
             # Determine emoji based on database type

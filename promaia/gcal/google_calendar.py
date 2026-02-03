@@ -9,10 +9,11 @@ This allows agents to be managed like team members on your calendar:
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -162,16 +163,39 @@ class GoogleCalendarManager:
                 # Event lasts 5 minutes (just a placeholder)
                 end_datetime = start_datetime + timedelta(minutes=5)
 
+                # Get local timezone
+                # Use time.tzname to get local timezone (e.g., 'PST', 'EST')
+                # Or detect IANA timezone (e.g., 'America/Los_Angeles')
+                import subprocess
+                try:
+                    # Try to get IANA timezone on macOS/Linux
+                    if os.path.exists('/etc/localtime'):
+                        tz_result = subprocess.run(['readlink', '/etc/localtime'],
+                                                  capture_output=True, text=True)
+                        if tz_result.returncode == 0:
+                            # Extract timezone from path like /var/db/timezone/zoneinfo/America/Los_Angeles
+                            tz_path = tz_result.stdout.strip()
+                            if 'zoneinfo/' in tz_path:
+                                local_timezone = tz_path.split('zoneinfo/')[-1]
+                            else:
+                                local_timezone = 'America/Los_Angeles'  # Default fallback
+                        else:
+                            local_timezone = 'America/Los_Angeles'
+                    else:
+                        local_timezone = 'America/Los_Angeles'
+                except:
+                    local_timezone = 'America/Los_Angeles'
+
                 event = {
                     'summary': f'🤖 {agent_name}',
                     'description': self._format_agent_description(agent_config),
                     'start': {
                         'dateTime': start_datetime.isoformat(),
-                        'timeZone': 'UTC',
+                        'timeZone': local_timezone,
                     },
                     'end': {
                         'dateTime': end_datetime.isoformat(),
-                        'timeZone': 'UTC',
+                        'timeZone': local_timezone,
                     },
                     'recurrence': [
                         f'RRULE:FREQ=WEEKLY;BYDAY={weekday}'
@@ -331,38 +355,180 @@ class GoogleCalendarManager:
         cal_id = calendar_id or self.calendar_id
 
         try:
-            # Get upcoming events
-            now = datetime.utcnow()
+            # Get upcoming events using timezone-aware datetime
+            now = datetime.now(timezone.utc)
             time_max = now + timedelta(hours=hours_ahead)
+
+            # Since each agent has its own dedicated calendar, any event on that
+            # calendar should trigger the agent - no need for promaia_agent property
+            # Format times properly for RFC3339 (Google Calendar API requirement)
+            time_min_str = now.isoformat().replace('+00:00', 'Z')
+            time_max_str = time_max.isoformat().replace('+00:00', 'Z')
+
+            logger.debug(f"Querying calendar {cal_id} for events from {time_min_str} to {time_max_str}")
 
             events_result = self.service.events().list(
                 calendarId=cal_id,
-                timeMin=now.isoformat() + 'Z',
-                timeMax=time_max.isoformat() + 'Z',
-                privateExtendedProperty='promaia_agent=true',
+                timeMin=time_min_str,
+                timeMax=time_max_str,
                 singleEvents=True,  # Expand recurring events
                 orderBy='startTime'
             ).execute()
 
             events = events_result.get('items', [])
+            logger.debug(f"Found {len(events)} events in the specified time range")
 
-            # Extract agent info
+            # Extract event info - any event on the agent's calendar triggers it
             upcoming = []
             for event in events:
+                # Get extended properties if they exist (for backward compatibility)
                 props = event.get('extendedProperties', {}).get('private', {})
-                if props.get('promaia_agent') == 'true':
-                    upcoming.append({
-                        'event_id': event['id'],
-                        'agent_name': props.get('agent_name'),
-                        'start': event['start'].get('dateTime'),
-                        'summary': event.get('summary'),
-                    })
+
+                upcoming.append({
+                    'event_id': event['id'],
+                    'agent_name': props.get('agent_name'),  # May be None for manual events
+                    'start': event['start'].get('dateTime') or event['start'].get('date'),
+                    'summary': event.get('summary'),
+                    'description': event.get('description', ''),
+                    'html_link': event.get('htmlLink', ''),
+                })
 
             return upcoming
 
         except Exception as e:
             logger.error(f"Error getting upcoming runs: {e}")
             return []
+
+    def create_agent_calendar(
+        self,
+        agent_name: str,
+        description: str = ""
+    ) -> Optional[str]:
+        """
+        Create a dedicated calendar for an agent.
+
+        Args:
+            agent_name: Name of the agent (used as calendar summary)
+            description: Calendar description
+
+        Returns:
+            Calendar ID if successful, None otherwise
+        """
+        if not self.service:
+            if not self.authenticate():
+                return None
+
+        try:
+            calendar = {
+                'summary': agent_name,
+                'description': description or f"Automated schedule for {agent_name} agent",
+                'timeZone': 'UTC'
+            }
+
+            result = self.service.calendars().insert(body=calendar).execute()
+            calendar_id = result.get('id')
+
+            logger.info(f"Created calendar '{agent_name}' with ID: {calendar_id}")
+            return calendar_id
+
+        except Exception as e:
+            logger.error(f"Error creating calendar: {e}")
+            return None
+
+    def delete_agent_calendar(self, calendar_id: str) -> bool:
+        """
+        Delete an agent's calendar.
+
+        Args:
+            calendar_id: Calendar ID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.service:
+            if not self.authenticate():
+                return False
+
+        try:
+            self.service.calendars().delete(calendarId=calendar_id).execute()
+            logger.info(f"Deleted calendar: {calendar_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error deleting calendar: {e}")
+            return False
+
+    def list_agent_calendars(self) -> List[Dict[str, Any]]:
+        """
+        List all calendars (can be filtered for agent calendars if needed).
+
+        Returns:
+            List of calendar dictionaries with id, summary, description
+        """
+        if not self.service:
+            if not self.authenticate():
+                return []
+
+        try:
+            calendar_list = self.service.calendarList().list().execute()
+            calendars = calendar_list.get('items', [])
+
+            # Return simplified calendar info
+            return [
+                {
+                    'id': cal.get('id'),
+                    'summary': cal.get('summary'),
+                    'description': cal.get('description', ''),
+                    'primary': cal.get('primary', False)
+                }
+                for cal in calendars
+            ]
+
+        except Exception as e:
+            logger.error(f"Error listing calendars: {e}")
+            return []
+
+    def share_calendar(
+        self,
+        calendar_id: str,
+        email: str,
+        role: str = 'reader'
+    ) -> bool:
+        """
+        Share a calendar with a user.
+
+        Args:
+            calendar_id: Calendar ID to share
+            email: Email address to share with
+            role: Permission role ('reader', 'writer', 'owner')
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.service:
+            if not self.authenticate():
+                return False
+
+        try:
+            rule = {
+                'scope': {
+                    'type': 'user',
+                    'value': email
+                },
+                'role': role
+            }
+
+            self.service.acl().insert(
+                calendarId=calendar_id,
+                body=rule
+            ).execute()
+
+            logger.info(f"Shared calendar {calendar_id} with {email} as {role}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sharing calendar: {e}")
+            return False
 
 
 def get_calendar_manager() -> GoogleCalendarManager:

@@ -45,26 +45,37 @@ async def write_journal_entry(
     try:
         client = get_client(workspace)
 
-        # Truncate content to Notion's limit (2000 chars for rich_text)
-        truncated_content = content[:1900] if len(content) > 1900 else content
-        if len(content) > 1900:
-            truncated_content += "... (truncated)"
-
-        # Create journal entry
+        # Create journal entry properties (NO Content property - that goes in page body)
         properties = {
             "Date": {"date": {"start": datetime.utcnow().isoformat()}},
-            "Type": {"select": {"name": entry_type}},
-            "Content": {"rich_text": [{"text": {"content": truncated_content}}]}
+            "Type": {"select": {"name": entry_type}}
         }
 
         # Add execution ID if provided
         if execution_id is not None:
             properties["Execution ID"] = {"number": execution_id}
 
-        await client.pages.create({
-            "parent": {"database_id": agent.journal_db_id},
-            "properties": properties
-        })
+        # Split content into chunks of ~2000 chars per paragraph block (Notion's limit)
+        # This allows for much longer journal entries without truncation
+        children = []
+        chunk_size = 1900
+
+        for i in range(0, len(content), chunk_size):
+            chunk = content[i:i + chunk_size]
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": chunk}}]
+                }
+            })
+
+        # Create page with content as body blocks
+        await client.pages.create(
+            parent={"database_id": agent.journal_db_id},
+            properties=properties,
+            children=children
+        )
 
         logger.info(f"Wrote {entry_type} entry to journal for agent '{agent_id}'")
 
@@ -117,10 +128,25 @@ async def get_recent_journal_entries(
         for page in response["results"]:
             props = page["properties"]
 
+            # Read content from page blocks instead of Content property
+            page_id = page["id"]
+            content = ""
+            try:
+                # Fetch page blocks to get content
+                blocks_response = await client.blocks.children.list(block_id=page_id)
+                for block in blocks_response.get("results", []):
+                    if block["type"] == "paragraph":
+                        paragraph = block.get("paragraph", {})
+                        rich_text = paragraph.get("rich_text", [])
+                        for text_obj in rich_text:
+                            content += text_obj.get("text", {}).get("content", "")
+            except Exception as e:
+                logger.warning(f"Could not load blocks for journal entry {page_id}: {e}")
+
             entry = {
                 "date": props.get("Date", {}).get("date", {}).get("start"),
                 "type": props.get("Type", {}).get("select", {}).get("name"),
-                "content": props.get("Content", {}).get("rich_text", [{}])[0].get("text", {}).get("content", ""),
+                "content": content,
                 "execution_id": props.get("Execution ID", {}).get("number")
             }
 

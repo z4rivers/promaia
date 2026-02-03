@@ -93,16 +93,22 @@ class AgentExecutor:
         self.tracker = ExecutionTracker()
         self.notion_writer = NotionOutputWriter(workspace=agent_config.workspace)
 
-    async def execute(self, run_request: Optional[str] = None, run_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def execute(
+        self,
+        run_request: Optional[str] = None,
+        run_metadata: Optional[Dict[str, Any]] = None,
+        cached_context: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    ) -> Dict[str, Any]:
         """
         Execute the agent.
 
         Args:
             run_request: Optional run-specific instruction (e.g., calendar event description)
             run_metadata: Optional metadata (e.g., calendar event id, start time)
+            cached_context: Optional pre-loaded context to reuse (performance optimization)
 
         Returns:
-            Execution result with status, metrics, and output
+            Execution result with status, metrics, output, and context for caching
         """
         execution_id = None
         start_time = datetime.now(timezone.utc)
@@ -120,9 +126,13 @@ class AgentExecutor:
             execution_id = self.tracker.start_execution(self.config.name)
             logger.info(f"🤖 Starting agent '{self.config.name}' (execution {execution_id})")
 
-            # Step 1: Load initial context
-            logger.info(f"📚 Loading context from {len(self.config.databases)} source(s)...")
-            initial_context = await self._load_initial_context()
+            # Step 1: Load initial context (or use cached)
+            if cached_context:
+                logger.info(f"📚 Using cached context (performance optimization)")
+                initial_context = cached_context
+            else:
+                logger.info(f"📚 Loading context from {len(self.config.databases)} source(s)...")
+                initial_context = await self._load_initial_context()
 
             if not initial_context:
                 logger.warning("No context data loaded")
@@ -227,7 +237,8 @@ class AgentExecutor:
                 'success': True,
                 'execution_id': execution_id,
                 'metrics': metrics,
-                'output': result.get('output')
+                'output': result.get('output'),
+                'cached_context': initial_context  # Return for conversation caching
             }
 
         except Exception as e:
@@ -293,6 +304,47 @@ class AgentExecutor:
 
             except Exception as e:
                 logger.error(f"  ✗ Failed to load '{source_spec}': {e}")
+
+        # Automatically load agent's own journal entries (last 7 days)
+        # This gives agents access to their own notes, learnings, and insights
+        if self.config.journal_db_id:
+            try:
+                from promaia.agents.notion_journal import get_recent_journal_entries
+
+                journal_entries = await get_recent_journal_entries(
+                    agent_id=self.config.agent_id or self.config.name,
+                    workspace=self.config.workspace,
+                    limit=20  # Last 20 entries (roughly ~7 days for active agents)
+                )
+
+                if journal_entries:
+                    # Format journal entries as "pages" for context
+                    journal_pages = []
+                    for entry in journal_entries:
+                        journal_pages.append({
+                            "page_id": f"journal_{entry['date']}",
+                            "title": f"{entry['type']} - {entry['date']}",
+                            "content": entry['content'],
+                            "database": "agent_journal",
+                            "properties": {
+                                "Date": entry['date'],
+                                "Type": entry['type']
+                            }
+                        })
+
+                    context["agent_journal"] = self._shrink_pages_for_prompt(
+                        database_name="agent_journal",
+                        pages=journal_pages,
+                        max_pages=20,
+                        max_chars_per_entry=DEFAULT_MAX_CHARS_PER_ENTRY,
+                    )
+                    logger.info(f"  ✓ Loaded {len(journal_entries)} entries from agent's journal")
+                else:
+                    logger.info(f"  ⚠ No journal entries found for agent")
+
+            except Exception as e:
+                logger.warning(f"  ⚠ Could not load agent journal: {e}")
+                # Non-critical, continue without journal context
 
         return context
 

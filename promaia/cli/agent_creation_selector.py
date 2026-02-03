@@ -23,6 +23,111 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Discord Channel Enrichment
+# ============================================================================
+
+async def fetch_discord_channels(workspace: str, db_configs: List[Dict]) -> List[Dict]:
+    """
+    Enrich Discord databases with channel information.
+
+    Args:
+        workspace: Workspace name for auth context
+        db_configs: List of database configurations
+
+    Returns:
+        Enriched database configs with channels array for Discord sources
+    """
+    import json
+    from pathlib import Path
+
+    enriched = []
+
+    # Load Discord credentials for this workspace
+    credentials_file = Path("credentials") / workspace / "discord_credentials.json"
+    bot_token = None
+
+    if credentials_file.exists():
+        try:
+            with open(credentials_file, 'r') as f:
+                creds_data = json.load(f)
+                bot_token = creds_data.get('bot_token')
+        except Exception as e:
+            logger.warning(f"Could not load Discord credentials: {e}")
+
+    for db in db_configs:
+        if db.get('source_type') != 'discord':
+            enriched.append(db)
+            continue
+
+        # Skip if no bot token available
+        if not bot_token:
+            logger.warning(f"No Discord credentials found for workspace {workspace}")
+            enriched.append(db)
+            continue
+
+        # Fetch channels from Discord API
+        try:
+            from promaia.connectors.discord_connector import DiscordConnector
+            from promaia.config.databases import get_database_manager
+
+            # Get full database config to get database_id (server_id)
+            db_manager = get_database_manager()
+            db_name = db.get('name')
+            full_db_config = None
+
+            # Find the database configuration
+            for workspace_db in db_manager.get_workspace_databases(workspace):
+                if workspace_db.get_qualified_name() == db_name:
+                    full_db_config = workspace_db
+                    break
+
+            if not full_db_config:
+                logger.warning(f"Could not find full config for {db_name}")
+                enriched.append(db)
+                continue
+
+            # Create connector config
+            connector_config = {
+                'source_type': 'discord',
+                'database_id': full_db_config.database_id,  # This is the server_id
+                'workspace': workspace,
+                'bot_token': bot_token
+            }
+
+            connector = DiscordConnector(connector_config)
+            await connector.connect()
+
+            # Get guild data with channels
+            guild_data = await connector._get_guild_data()
+
+            if guild_data and guild_data.get('channels'):
+                # Add channels to database entry (already filtered to text-only in connector)
+                db_with_channels = {
+                    **db,
+                    'channels': [
+                        {
+                            'id': ch['id'],
+                            'name': ch['name'],
+                            'days': db.get('default_days', 7),
+                            'selected': False
+                        }
+                        for ch in guild_data.get('channels', [])
+                    ]
+                }
+                enriched.append(db_with_channels)
+            else:
+                # Add without channels - user can select server-wide
+                enriched.append(db)
+
+        except Exception as e:
+            logger.warning(f"Could not fetch channels for {db.get('name')}: {e}")
+            # Add without channels - user can select server-wide
+            enriched.append(db)
+
+    return enriched
+
+
+# ============================================================================
 # Styling Utilities
 # ============================================================================
 
@@ -183,14 +288,14 @@ async def select_databases(
     available_databases: List[Dict[str, Any]]
 ) -> Optional[List[Tuple[str, str]]]:
     """
-    Interactive database selector with inline day editing.
+    Interactive database selector with inline day editing and Discord channel hierarchy.
 
     Args:
         workspace: Workspace name
-        available_databases: List of database configs with 'name' and 'default_days'
+        available_databases: List of database configs with 'name', 'default_days', and optional 'channels'
 
     Returns:
-        List of tuples like [("journal", "7"), ("stories", "all")] or None if cancelled
+        List of tuples like [("journal", "7"), ("discord_server#channel_id", "7")] or None if cancelled
     """
     console = Console()
 
@@ -198,19 +303,61 @@ async def select_databases(
         console.print("❌ No databases available", style="red")
         return None
 
-    # Create TextArea widgets for each database
-    text_areas = []
-    enabled_states = []
-    database_names = []
-    source_windows = []
+    # Expand Discord databases with channels into flat list
+    entries = []  # List of {'name': str, 'display_name': str, 'days': int, 'is_channel': bool, 'parent_idx': int, 'channel_id': str}
 
     for db in available_databases:
         db_name = db['name']
         default_days = db.get('default_days', 7)
-        database_names.append(db_name)
+        channels = db.get('channels', [])
 
+        if channels:
+            # Discord server with channels - add parent entry
+            parent_idx = len(entries)
+            entries.append({
+                'name': db_name,
+                'display_name': db_name,
+                'days': default_days,
+                'is_channel': False,
+                'is_parent': True,
+                'parent_idx': None,
+                'channel_id': None,
+                'default_include': db.get('default_include', True)
+            })
+
+            # Add channel entries
+            for channel in channels:
+                entries.append({
+                    'name': f"{db_name}#{channel['id']}",  # Format: server#channel_id
+                    'display_name': f"  #{channel['name']}",  # Indented with #
+                    'days': channel.get('days', default_days),
+                    'is_channel': True,
+                    'is_parent': False,
+                    'parent_idx': parent_idx,
+                    'channel_id': channel['id'],
+                    'default_include': False  # Channels start unselected
+                })
+        else:
+            # Regular database (no channels)
+            entries.append({
+                'name': db_name,
+                'display_name': db_name,
+                'days': default_days,
+                'is_channel': False,
+                'is_parent': False,
+                'parent_idx': None,
+                'channel_id': None,
+                'default_include': db.get('default_include', True)
+            })
+
+    # Create TextArea widgets for each entry
+    text_areas = []
+    enabled_states = []
+    source_windows = []
+
+    for idx, entry in enumerate(entries):
         # Create text area for days input
-        days_text = str(default_days) if default_days != "all" else "all"
+        days_text = str(entry['days']) if entry['days'] != "all" else "all"
         text_area = TextArea(
             text=days_text,
             height=1,
@@ -222,12 +369,14 @@ async def select_databases(
         text_area.buffer.cursor_position = len(days_text)
         text_areas.append(text_area)
 
-        # Start with default_include if available
-        is_enabled = db.get('default_include', True)
+        # Start with default_include
+        is_enabled = entry.get('default_include', True)
         enabled_states.append(is_enabled)
 
-        # Create window for this database entry
+        # Create window for this entry
         prefix_text = _get_entry_prefix(is_enabled)
+        display_name = entry['display_name']
+
         source_window = VSplit([
             Window(
                 FormattedTextControl(text=prefix_text),
@@ -235,8 +384,8 @@ async def select_databases(
                 dont_extend_width=True,
             ),
             Window(
-                FormattedTextControl(text=f"{db_name}: "),
-                width=len(db_name) + 2,
+                FormattedTextControl(text=f"{display_name}: "),
+                width=len(display_name) + 2,
                 dont_extend_width=True,
             ),
             text_area,
@@ -305,9 +454,43 @@ async def select_databases(
     @bindings.add(' ')  # Spacebar
     def toggle_database(event):
         nonlocal current_focus
+        entry = entries[current_focus]
+
+        # Toggle current entry
         enabled_states[current_focus] = not enabled_states[current_focus]
 
-        # Update prefix display
+        # If this is a parent with channels, toggle all children too
+        if entry.get('is_parent'):
+            new_state = enabled_states[current_focus]
+            for idx, child_entry in enumerate(entries):
+                if child_entry.get('parent_idx') == current_focus:
+                    enabled_states[idx] = new_state
+                    # Update child prefix display
+                    prefix_text = _get_entry_prefix(enabled_states[idx])
+                    source_windows[idx].children[0].content.text = prefix_text
+
+        # If this is a channel, update parent state
+        if entry.get('is_channel') and entry.get('parent_idx') is not None:
+            parent_idx = entry['parent_idx']
+            # Check if all children are selected or none are selected
+            children_indices = [i for i, e in enumerate(entries) if e.get('parent_idx') == parent_idx]
+            all_selected = all(enabled_states[i] for i in children_indices)
+            none_selected = not any(enabled_states[i] for i in children_indices)
+
+            # Update parent checkbox (use ⊟ for partial selection)
+            if all_selected:
+                enabled_states[parent_idx] = True
+                prefix_text = _get_entry_prefix(True)
+            elif none_selected:
+                enabled_states[parent_idx] = False
+                prefix_text = _get_entry_prefix(False)
+            else:
+                # Partial selection - show intermediate state
+                prefix_text = "⊟      "
+
+            source_windows[parent_idx].children[0].content.text = prefix_text
+
+        # Update current prefix display
         prefix_text = _get_entry_prefix(enabled_states[current_focus])
         source_windows[current_focus].children[0].content.text = prefix_text
 
@@ -339,9 +522,13 @@ async def select_databases(
     await app.run_async()
 
     if confirmed:
-        # Return enabled databases with their days values
+        # Return enabled databases/channels with their days values
         result = []
-        for i, (text_area, enabled, db_name) in enumerate(zip(text_areas, enabled_states, database_names)):
+        for i, (text_area, enabled, entry) in enumerate(zip(text_areas, enabled_states, entries)):
+            # Skip parent entries if they have channels (only include actual channels)
+            if entry.get('is_parent'):
+                continue
+
             if enabled:
                 days_value = text_area.text.strip()
                 # Validate days value
@@ -357,7 +544,8 @@ async def select_databases(
                     except ValueError:
                         days_value = '7'  # Fallback to default
 
-                result.append((db_name, days_value))
+                # Use entry['name'] which includes channel ID for Discord: "server#channel_id"
+                result.append((entry['name'], days_value))
 
         if not result:
             console.print("❌ No databases selected", style="red")
@@ -863,7 +1051,7 @@ async def select_notion_page(workspace: str) -> Optional[str]:
 # MCP Tools Selector
 # ============================================================================
 
-async def select_mcp_tools(available_tools: List[str]) -> List[str]:
+async def select_mcp_tools(available_tools: List[str], preselected: Optional[List[str]] = None) -> List[str]:
     """
     Interactive MCP tools selector.
 
@@ -879,7 +1067,8 @@ async def select_mcp_tools(available_tools: List[str]) -> List[str]:
         return []
 
     # State management
-    enabled_states = [False for _ in available_tools]  # Start with nothing selected
+    preselected = preselected or []
+    enabled_states = [(t in preselected) for t in available_tools]
     current_focus = 0
     should_exit = False
     confirmed = False

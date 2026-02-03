@@ -54,12 +54,21 @@ class PromaiaBot(commands.Bot):
         self.workspace = workspace
         self.config = self._load_config()
 
-        # Track conversation context per channel
+        # Track conversation context per channel (legacy)
         self.conversation_context: Dict[int, List[Dict]] = {}
 
         # Load AI interface
         from promaia.chat.interface import ChatInterface
         self.ai = ChatInterface()
+        
+        # Initialize unified conversation manager
+        from promaia.agents.conversation_manager import ConversationManager
+        from promaia.agents.messaging.discord_platform import DiscordPlatform
+        
+        self.conv_manager = ConversationManager()
+        
+        # Register Discord platform (will be initialized with actual token when bot starts)
+        self.discord_platform = None  # Lazy init after bot login
 
     def _load_config(self) -> Dict[str, Any]:
         """Load bot configuration from credentials file."""
@@ -86,6 +95,16 @@ class PromaiaBot(commands.Bot):
         """Called when bot successfully connects to Discord."""
         logger.info(f"Promaia bot logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} servers")
+
+        # Initialize Discord platform for conversation manager
+        from promaia.agents.messaging.discord_platform import DiscordPlatform
+        
+        if not self.discord_platform:
+            bot_token = os.environ.get('DISCORD_BOT_TOKEN') or self.config.get('bot_token')
+            if bot_token:
+                self.discord_platform = DiscordPlatform(bot_token=bot_token)
+                self.conv_manager.register_platform('discord', self.discord_platform)
+                logger.info("Discord platform registered with conversation manager")
 
         # Set bot status
         await self.change_presence(
@@ -125,31 +144,65 @@ class PromaiaBot(commands.Bot):
     async def _handle_ai_request(self, message: discord.Message):
         """
         Process a message that requests AI assistance.
+        
+        First checks for active conversation managed by unified conversation manager.
+        Falls back to legacy behavior if no active conversation.
 
         Args:
             message: Discord message to process
         """
         try:
+            # Extract the actual query (remove mention/command prefix)
+            query = message.content
+
+            # Remove bot mentions
+            query = query.replace(f'<@{self.user.id}>', '').strip()
+            query = query.replace(f'<@!{self.user.id}>', '').strip()
+
+            # Remove command prefixes
+            for prefix in ['!maia', '!promaia', 'maia', 'promaia']:
+                if query.lower().startswith(prefix):
+                    query = query[len(prefix):].strip()
+                    break
+
+            if not query:
+                await message.reply("How can I help you?")
+                return
+            
+            # Check if this is part of an active conversation (unified manager)
+            conversation = await self.conv_manager.get_active_conversation(
+                platform='discord',
+                channel_id=str(message.channel.id),
+                user_id=str(message.author.id)
+            )
+            
+            if conversation:
+                # Process through unified conversation manager
+                logger.info(f"Processing message in managed conversation {conversation.conversation_id}")
+                
+                async with message.channel.typing():
+                    response = await self.conv_manager.handle_user_message(
+                        conversation_id=conversation.conversation_id,
+                        user_message=query,
+                        user_id=str(message.author.id)
+                    )
+                
+                # Send response
+                if len(response) > 2000:
+                    chunks = self._split_message(response)
+                    for chunk in chunks:
+                        await message.reply(chunk)
+                else:
+                    await message.reply(response)
+                
+                return
+            
+            # No active conversation - use legacy behavior
+            logger.debug("No active conversation, using legacy AI request handling")
+            
             # Show typing indicator
             async with message.channel.typing():
-                # Extract the actual query (remove mention/command prefix)
-                query = message.content
-
-                # Remove bot mentions
-                query = query.replace(f'<@{self.user.id}>', '').strip()
-                query = query.replace(f'<@!{self.user.id}>', '').strip()
-
-                # Remove command prefixes
-                for prefix in ['!maia', '!promaia', 'maia', 'promaia']:
-                    if query.lower().startswith(prefix):
-                        query = query[len(prefix):].strip()
-                        break
-
-                if not query:
-                    await message.reply("How can I help you?")
-                    return
-
-                # Get conversation context for this channel
+                # Get conversation context for this channel (legacy)
                 channel_id = message.channel.id
                 if channel_id not in self.conversation_context:
                     self.conversation_context[channel_id] = []

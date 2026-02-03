@@ -1057,6 +1057,187 @@ async def handle_calendar_list(args):
         console.print(f"❌ Error: {e}", style="red")
 
 
+async def handle_calendar_monitor(args):
+    """
+    Run a foreground calendar monitor that triggers agents from calendar events.
+
+    Usage:
+        maia agent calendar-monitor
+        maia agent calendar-monitor --interval 1 --window 120
+    """
+    import logging
+    from promaia.gcal.agent_calendar_monitor import run_foreground
+
+    # Ensure logs are visible in the console
+    logging.basicConfig(
+        level=logging.INFO if not getattr(args, "debug", False) else logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    interval = getattr(args, "interval", 1)
+    window = getattr(args, "window", 120)
+
+    try:
+        await run_foreground(check_interval_minutes=interval, trigger_window_minutes=window)
+    except KeyboardInterrupt:
+        print("\n🛑 Calendar monitor stopped")
+
+
+async def handle_run_next_calendar_event(args):
+    """
+    Run the agent for the next upcoming calendar event immediately (for testing).
+
+    Supports both simple execution (default) and orchestrated multi-step goals.
+    Use --orchestrate flag for complex goals that need task decomposition.
+
+    Usage:
+        maia agent run-next
+        maia agent run-next --orchestrate
+    """
+    from promaia.utils.display import print_text
+    from promaia.gcal import get_calendar_manager
+    from promaia.agents.executor import AgentExecutor
+    from rich.console import Console
+
+    console = Console()
+
+    # Check if orchestrated mode requested
+    use_orchestrator = getattr(args, 'orchestrate', False)
+
+    print_text("\n🔍 Finding next calendar event...\n", style="bold cyan")
+
+    try:
+        calendar_mgr = get_calendar_manager()
+        agents = load_agents()
+        agents_with_calendars = [a for a in agents if a.calendar_id and a.enabled]
+
+        if not agents_with_calendars:
+            console.print("❌ No enabled agents with calendar integration", style="red")
+            return
+
+        # Find the next upcoming event across all agent calendars
+        next_event = None
+        next_agent = None
+        next_time = None
+
+        for agent in agents_with_calendars:
+            upcoming = calendar_mgr.get_upcoming_agent_runs(
+                hours_ahead=24,  # Look 24 hours ahead
+                calendar_id=agent.calendar_id,
+            )
+
+            for event in upcoming:
+                start_raw = event.get("start")
+                if not start_raw:
+                    continue
+
+                from datetime import datetime
+                start_time = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+
+                if next_time is None or start_time < next_time:
+                    next_time = start_time
+                    next_event = event
+                    next_agent = agent
+
+        if not next_event:
+            console.print("❌ No upcoming calendar events found in the next 24 hours", style="yellow")
+            console.print("\nTip: Create an event in your agent's Google Calendar", style="dim")
+            return
+
+        # Show what we found
+        summary = next_event.get("summary") or "No title"
+        description = (next_event.get("description") or "").strip()
+        link = next_event.get("html_link") or ""
+        event_id = next_event.get("event_id")
+
+        console.print(f"📅 Found event: [bold]{summary}[/bold]")
+        console.print(f"   Agent: [cyan]{next_agent.name}[/cyan]")
+        console.print(f"   Scheduled: {next_time.strftime('%Y-%m-%d %H:%M')}")
+        if link:
+            console.print(f"   Link: {link}")
+        if description:
+            console.print(f"   Description: {description[:100]}...")
+
+        console.print(f"\n🚀 Running agent immediately...\n")
+
+        # Build run request and metadata
+        run_request = description or summary
+        if not run_request:
+            run_request = "Run based on your system instructions."
+
+        run_metadata = {
+            "calendar_event_id": event_id,
+            "calendar_event_start": next_event.get("start"),
+            "calendar_event_summary": summary,
+            "calendar_event_link": link,
+        }
+
+        if use_orchestrator:
+            # Use orchestrator for multi-step goal execution
+            from promaia.agents.orchestrator import Orchestrator
+
+            console.print("🎯 Using orchestrator for goal decomposition...", style="dim")
+
+            orchestrator = Orchestrator(next_agent)
+            result = await orchestrator.run_goal(
+                goal=run_request,
+                metadata=run_metadata,
+            )
+
+            if result.get("success"):
+                console.print(f"\n✅ Goal completed successfully!", style="green")
+                console.print(f"   Tasks completed: {result.get('tasks_completed', 0)}")
+                console.print(f"   Tasks failed: {result.get('tasks_failed', 0)}")
+                console.print(f"   Goal ID: {result.get('goal_id', 'N/A')[:8]}...")
+
+                # Show task results
+                results = result.get('results', {})
+                if results:
+                    console.print(f"\n📝 Task results:")
+                    for task_id, task_result in results.items():
+                        console.print(f"\n   Task {task_id[:8]}:")
+                        if isinstance(task_result, dict):
+                            if task_result.get('transcript'):
+                                console.print(f"   Conversation with {task_result.get('message_count', 0)} messages")
+                            else:
+                                preview = str(task_result)[:200]
+                                console.print(f"   {preview}...")
+                        else:
+                            preview = str(task_result)[:200]
+                            console.print(f"   {preview}...")
+            else:
+                console.print(f"\n❌ Goal failed: {result.get('error')}", style="red")
+
+        else:
+            # Simple execution (existing behavior)
+            executor = AgentExecutor(next_agent)
+            result = await executor.execute(
+                run_request=run_request,
+                run_metadata=run_metadata,
+            )
+
+            if result.get("success"):
+                metrics = result.get("metrics") or {}
+                console.print(f"\n✅ Agent completed successfully!", style="green")
+                console.print(f"   Iterations: {metrics.get('iterations_used', 0)}")
+                console.print(f"   Tokens: {metrics.get('tokens_used', 0):,}")
+                console.print(f"   Cost: ${metrics.get('cost_estimate', 0):.4f}")
+                console.print(f"   Duration: {metrics.get('duration_seconds', 0):.1f}s")
+
+                if result.get('output'):
+                    console.print(f"\n📝 Output preview:")
+                    output_preview = result['output'][:500]
+                    console.print(f"   {output_preview}...")
+            else:
+                console.print(f"\n❌ Agent failed: {result.get('error')}", style="red")
+
+    except Exception as e:
+        console.print(f"\n❌ Error: {e}", style="red")
+        import traceback
+        traceback.print_exc()
+
+
 async def handle_calendar_share(args):
     """
     Share an agent's calendar with a team member.
@@ -1399,10 +1580,12 @@ async def handle_agent_edit(args):
         # Enrich Discord databases
         available_databases = await fetch_discord_channels(agent.workspace, available_databases)
 
-        selected_databases = await select_databases(available_databases)
+        # select_databases expects (workspace, available_databases)
+        selected_databases = await select_databases(agent.workspace, available_databases)
         if selected_databases:
-            agent.databases = selected_databases
-            console.print(f"✓ Updated databases: [cyan]{', '.join(selected_databases)}[/cyan]", style="dim")
+            # Convert selection tuples [("db", "7"), ...] into legacy "db:days" strings
+            agent.databases = [f"{db_name}:{days}" for db_name, days in selected_databases]
+            console.print(f"✓ Updated databases: [cyan]{', '.join(agent.databases)}[/cyan]", style="dim")
 
     if choice in ["4", "8"]:
         console.print("\nSelect schedule...")
@@ -1413,7 +1596,24 @@ async def handle_agent_edit(args):
 
     if choice in ["5", "8"]:
         console.print("\nSelect MCP tools...")
-        selected_tools = await select_mcp_tools(agent.mcp_tools)
+        # Load available MCP servers from mcp_servers.json
+        available_tools = []
+        try:
+            import json
+            from pathlib import Path
+            mcp_config_file = Path("mcp_servers.json")
+            if mcp_config_file.exists():
+                with open(mcp_config_file, "r") as f:
+                    mcp_config = json.load(f)
+                    servers = mcp_config.get("servers", {})
+                    available_tools = [
+                        name for name, config in servers.items()
+                        if config.get("enabled", True)
+                    ]
+        except Exception as e:
+            logger.warning(f"Could not load MCP servers: {e}")
+
+        selected_tools = await select_mcp_tools(available_tools, preselected=agent.mcp_tools)
         if selected_tools is not None:  # Allow empty list
             agent.mcp_tools = selected_tools
             tools_display = ', '.join(selected_tools) if selected_tools else "None"
@@ -1613,6 +1813,18 @@ def add_scheduled_agent_commands(agent_subparsers):
     calendar_list_parser = agent_subparsers.add_parser('calendar-list', help='List agents on Google Calendar')
     calendar_list_parser.set_defaults(func=handle_calendar_list)
 
+    calendar_monitor_parser = agent_subparsers.add_parser('calendar-monitor', help='Foreground monitor: trigger agents from calendar events (shows live logs)')
+    calendar_monitor_parser.add_argument('--interval', '-i', type=int, default=1, help='Check interval in minutes (default: 1)')
+    calendar_monitor_parser.add_argument('--window', '-w', type=int, default=120, help='Trigger window in minutes before/after start (default: 120)')
+    calendar_monitor_parser.add_argument('--debug', action='store_true', help='Enable debug logs')
+    calendar_monitor_parser.set_defaults(func=handle_calendar_monitor)
+
     calendar_share_parser = agent_subparsers.add_parser('calendar-share', help='Share agent calendar with team member')
     calendar_share_parser.add_argument('name', help='Agent name')
     calendar_share_parser.set_defaults(func=handle_calendar_share)
+
+    # Run next calendar event (for testing)
+    run_next_parser = agent_subparsers.add_parser('run-next', help='Run the next calendar event\'s agent immediately (for testing)')
+    run_next_parser.add_argument('--orchestrate', '-o', action='store_true',
+                                  help='Use orchestrator for multi-step goal decomposition')
+    run_next_parser.set_defaults(func=handle_run_next_calendar_event)
