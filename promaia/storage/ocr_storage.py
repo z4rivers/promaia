@@ -1,15 +1,19 @@
 """
 OCR-specific storage helpers for Promaia.
 
-Manages OCR uploads table in hybrid_metadata.db and provides
-convenience functions for storing and querying OCR results.
+Manages OCR uploads table and provides convenience functions 
+for storing and querying OCR results.
+
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+
+from psycopg2 import extras
+from promaia.storage.postgres_db import pg_connect, get_postgres_db
 
 # Avoid circular import - ProcessedDocument will be passed as parameter
 
@@ -17,73 +21,23 @@ logger = logging.getLogger(__name__)
 
 
 class OCRStorage:
-    """Manages OCR uploads in hybrid storage."""
+    """Manages OCR uploads in PostgreSQL storage."""
 
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         """
         Initialize OCR storage.
 
         Args:
-            db_path: Path to hybrid metadata database
+            db_path: Deprecated - kept for backward compatibility.
         """
         self.db_path = db_path
+        self.db = get_postgres_db()
         self._ensure_table_exists()
 
     def _ensure_table_exists(self):
-        """Create ocr_uploads table if it doesn't exist."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS ocr_uploads (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE,  -- Notion page ID (if synced)
-                    workspace TEXT NOT NULL,
-                    database_name TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    file_path TEXT NOT NULL,  -- Markdown file path
-
-                    -- Image paths
-                    source_image_path TEXT NOT NULL,  -- Original image
-                    processed_image_path TEXT,  -- Moved to processed/failed directory
-
-                    -- OCR results
-                    ocr_confidence REAL,
-                    ocr_engine TEXT,
-                    language TEXT,
-                    text_length INTEGER,
-
-                    -- Status
-                    status TEXT,  -- pending, completed, failed, review_needed
-
-                    -- Timestamps
-                    upload_date TEXT,
-                    processing_date TEXT,
-                    created_time TEXT NOT NULL,
-                    last_edited_time TEXT,
-                    synced_time TEXT,
-
-                    -- Additional metadata
-                    metadata TEXT,  -- JSON for additional fields
-
-                    UNIQUE(source_image_path)
-                )
-            """)
-
-            # Create index on workspace and status for faster queries
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ocr_workspace_status
-                ON ocr_uploads(workspace, status)
-            """)
-
-            # Create index on processing_date
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ocr_processing_date
-                ON ocr_uploads(processing_date)
-            """)
-
-            conn.commit()
-            logger.debug("OCR uploads table initialized")
+        """Verify ocr_uploads table exists."""
+        if not self.db.table_exists('ocr_uploads'):
+            logger.warning("ocr_uploads table not found. Run: python -m promaia.storage.db_init init")
 
     def store_processed_document(
         self,
@@ -105,7 +59,7 @@ class OCRStorage:
             True if successful
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 # Prepare data
@@ -120,16 +74,33 @@ class OCRStorage:
                     "processing_time": doc.ocr_result.processing_time if doc.ocr_result else 0,
                 }
 
-                # Insert or replace
+                # Insert or update on conflict
                 cursor.execute("""
-                    INSERT OR REPLACE INTO ocr_uploads (
+                    INSERT INTO ocr_uploads (
                         page_id, workspace, database_name, title, file_path,
                         source_image_path, processed_image_path,
                         ocr_confidence, ocr_engine, language, text_length,
                         status, upload_date, processing_date,
                         created_time, last_edited_time, synced_time,
                         metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_image_path) DO UPDATE SET
+                        page_id = EXCLUDED.page_id,
+                        workspace = EXCLUDED.workspace,
+                        database_name = EXCLUDED.database_name,
+                        title = EXCLUDED.title,
+                        file_path = EXCLUDED.file_path,
+                        processed_image_path = EXCLUDED.processed_image_path,
+                        ocr_confidence = EXCLUDED.ocr_confidence,
+                        ocr_engine = EXCLUDED.ocr_engine,
+                        language = EXCLUDED.language,
+                        text_length = EXCLUDED.text_length,
+                        status = EXCLUDED.status,
+                        upload_date = EXCLUDED.upload_date,
+                        processing_date = EXCLUDED.processing_date,
+                        last_edited_time = EXCLUDED.last_edited_time,
+                        synced_time = EXCLUDED.synced_time,
+                        metadata = EXCLUDED.metadata
                 """, (
                     page_id,
                     workspace,
@@ -151,7 +122,6 @@ class OCRStorage:
                     json.dumps(metadata)
                 ))
 
-                conn.commit()
                 logger.debug(f"Stored OCR document: {title}")
                 return True
 
@@ -171,16 +141,15 @@ class OCRStorage:
             True if successful
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute("""
                     UPDATE ocr_uploads
-                    SET page_id = ?, synced_time = ?
-                    WHERE source_image_path = ?
+                    SET page_id = %s, synced_time = %s
+                    WHERE source_image_path = %s
                 """, (page_id, datetime.now().isoformat(), source_image_path))
 
-                conn.commit()
                 return cursor.rowcount > 0
 
         except Exception as e:
@@ -198,13 +167,12 @@ class OCRStorage:
             Upload record dict or None
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with pg_connect() as conn:
+                cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
 
                 cursor.execute("""
                     SELECT * FROM ocr_uploads
-                    WHERE source_image_path = ?
+                    WHERE source_image_path = %s
                 """, (image_path,))
 
                 row = cursor.fetchone()
@@ -230,20 +198,19 @@ class OCRStorage:
             List of upload records
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with pg_connect() as conn:
+                cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
 
                 if status:
                     cursor.execute("""
                         SELECT * FROM ocr_uploads
-                        WHERE workspace = ? AND status = ?
+                        WHERE workspace = %s AND status = %s
                         ORDER BY processing_date DESC
                     """, (workspace, status))
                 else:
                     cursor.execute("""
                         SELECT * FROM ocr_uploads
-                        WHERE workspace = ?
+                        WHERE workspace = %s
                         ORDER BY processing_date DESC
                     """, (workspace,))
 
@@ -265,10 +232,10 @@ class OCRStorage:
             Dict with statistics
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
-                where_clause = "WHERE workspace = ?" if workspace else ""
+                where_clause = "WHERE workspace = %s" if workspace else ""
                 params = (workspace,) if workspace else ()
 
                 # Get counts by status
@@ -323,15 +290,14 @@ class OCRStorage:
             True if successful
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute("""
                     DELETE FROM ocr_uploads
-                    WHERE source_image_path = ?
+                    WHERE source_image_path = %s
                 """, (image_path,))
 
-                conn.commit()
                 return cursor.rowcount > 0
 
         except Exception as e:

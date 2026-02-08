@@ -7,10 +7,12 @@ in the unified_content view.
 """
 import os
 import re
-import sqlite3
 import logging
 from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
+
+from promaia.storage.postgres_db import pg_connect
+import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
@@ -74,20 +76,19 @@ class ContentSearcher:
                        limit: int = 1000) -> List[Dict[str, Any]]:
         """Get file paths and metadata from database."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with pg_connect() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 # Build query
                 where_conditions = ["file_path IS NOT NULL", "file_path != ''"]
                 params = []
                 
                 if workspace:
-                    where_conditions.append("workspace = ?")
+                    where_conditions.append("workspace = %s")
                     params.append(workspace)
                 
                 if database_names:
-                    db_placeholders = ','.join('?' * len(database_names))
+                    db_placeholders = ','.join(['%s'] * len(database_names))
                     where_conditions.append(f"database_name IN ({db_placeholders})")
                     params.extend(database_names)
                 
@@ -100,7 +101,7 @@ class ContentSearcher:
                     FROM unified_content 
                     WHERE {where_clause}
                     ORDER BY last_edited_time DESC
-                    LIMIT ?
+                    LIMIT %s
                 """
                 
                 params.append(limit)

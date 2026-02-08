@@ -1,13 +1,17 @@
 """
 Task Manager - Storage and lifecycle management for external agent tasks.
+
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+from promaia.storage.postgres_db import get_postgres_db, pg_connect
+import psycopg2.extras
 from .models import AgentTask, TaskResult, TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
@@ -15,89 +19,47 @@ logger = logging.getLogger(__name__)
 
 class TaskManager:
     """
-    Manages external agent tasks in SQLite database.
+    Manages external agent tasks in PostgreSQL database.
 
     Handles task submission, status tracking, result storage,
     and querying of tasks and results.
     """
 
     def __init__(self, db_path: str = "data/hybrid_metadata.db", timeout: float = 30.0):
+        """
+        Initialize task manager.
+        
+        Args:
+            db_path: Deprecated - kept for backward compatibility.
+            timeout: Not used with PostgreSQL pooling.
+        """
         self.db_path = db_path
         self.timeout = timeout
+        self.db = get_postgres_db()
         self._ensure_tables()
 
+    @contextmanager
     def _get_connection(self):
-        """Get SQLite connection with proper timeout settings."""
-        conn = sqlite3.connect(self.db_path, timeout=self.timeout)
-        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
-        return conn
+        """Get a PostgreSQL connection from the pool."""
+        conn = None
+        try:
+            conn = self.db._pool.getconn()
+            conn.autocommit = False
+            yield conn
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                self.db._pool.putconn(conn)
 
     def _ensure_tables(self):
-        """Create agent_tasks and agent_results tables if they don't exist."""
+        """Verify agent_tasks and agent_results tables exist."""
         try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-
-                # Agent tasks table
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS agent_tasks (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        task_id TEXT UNIQUE NOT NULL,
-                        task_type TEXT NOT NULL,
-                        workspace TEXT NOT NULL,
-                        instructions TEXT NOT NULL,
-                        context TEXT NOT NULL,
-                        metadata TEXT,
-
-                        status TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        expires_at TEXT,
-                        started_at TEXT,
-                        completed_at TEXT,
-
-                        related_draft_id TEXT,
-                        related_thread_id TEXT,
-                        progress_notes TEXT,
-
-                        UNIQUE(task_id)
-                    )
-                """)
-
-                # Agent results table
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS agent_results (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        task_id TEXT NOT NULL,
-                        status TEXT NOT NULL,
-                        result_data TEXT NOT NULL,
-                        metadata TEXT,
-
-                        error_message TEXT,
-                        created_at TEXT NOT NULL,
-
-                        agent_name TEXT,
-                        agent_version TEXT,
-                        execution_time_seconds REAL,
-
-                        FOREIGN KEY (task_id) REFERENCES agent_tasks(task_id)
-                    )
-                """)
-
-                # Create indexes for common queries
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_tasks_status
-                    ON agent_tasks(status)
-                """)
-
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_tasks_workspace
-                    ON agent_tasks(workspace, status)
-                """)
-
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_tasks_type
-                    ON agent_tasks(task_type, status)
-                """)
+            if not self.db.table_exists('agent_tasks'):
+                logger.warning("agent_tasks table not found. Run: python -m promaia db init")
 
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_tasks_draft
@@ -135,7 +97,7 @@ class TaskManager:
                         task_id, task_type, workspace, instructions, context, metadata,
                         status, created_at, expires_at, started_at, completed_at,
                         related_draft_id, related_thread_id, progress_notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     task.task_id,
                     task.task_type.value,
@@ -165,10 +127,9 @@ class TaskManager:
         """Get a specific task by ID."""
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-                cursor.execute("SELECT * FROM agent_tasks WHERE task_id = ?", (task_id,))
+                cursor.execute("SELECT * FROM agent_tasks WHERE task_id = %s", (task_id,))
                 row = cursor.fetchone()
 
                 if row:
@@ -200,28 +161,27 @@ class TaskManager:
         """
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
                 query = "SELECT * FROM agent_tasks WHERE 1=1"
                 params = []
 
                 if workspace:
-                    query += " AND workspace = ?"
+                    query += " AND workspace = %s"
                     params.append(workspace)
 
                 if status:
-                    query += " AND status = ?"
+                    query += " AND status = %s"
                     params.append(status.value)
 
                 if task_type:
-                    query += " AND task_type = ?"
+                    query += " AND task_type = %s"
                     params.append(task_type.value)
 
                 query += " ORDER BY created_at DESC"
 
                 if limit:
-                    query += " LIMIT ?"
+                    query += " LIMIT %s"
                     params.append(limit)
 
                 cursor.execute(query, params)
@@ -258,7 +218,7 @@ class TaskManager:
                 now = datetime.now(timezone.utc).isoformat()
 
                 # Get current task to update timestamps and notes
-                cursor.execute("SELECT started_at, completed_at, progress_notes FROM agent_tasks WHERE task_id = ?", (task_id,))
+                cursor.execute("SELECT started_at, completed_at, progress_notes FROM agent_tasks WHERE task_id = %s", (task_id,))
                 row = cursor.fetchone()
 
                 if not row:
@@ -281,8 +241,8 @@ class TaskManager:
 
                 cursor.execute("""
                     UPDATE agent_tasks
-                    SET status = ?, started_at = ?, completed_at = ?, progress_notes = ?
-                    WHERE task_id = ?
+                    SET status = %s, started_at = %s, completed_at = %s, progress_notes = %s
+                    WHERE task_id = %s
                 """, (status.value, started_at, completed_at, json.dumps(notes), task_id))
 
                 conn.commit()
@@ -308,7 +268,7 @@ class TaskManager:
                         task_id, status, result_data, metadata,
                         error_message, created_at,
                         agent_name, agent_version, execution_time_seconds
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     result.task_id,
                     result.status.value,
@@ -325,8 +285,8 @@ class TaskManager:
                 now = datetime.now(timezone.utc).isoformat()
                 cursor.execute("""
                     UPDATE agent_tasks
-                    SET status = ?, completed_at = ?
-                    WHERE task_id = ?
+                    SET status = %s, completed_at = %s
+                    WHERE task_id = %s
                 """, (result.status.value, now, result.task_id))
 
                 conn.commit()
@@ -340,12 +300,11 @@ class TaskManager:
         """Get the latest result for a task."""
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
                 cursor.execute("""
                     SELECT * FROM agent_results
-                    WHERE task_id = ?
+                    WHERE task_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
                 """, (task_id,))
@@ -364,12 +323,11 @@ class TaskManager:
         """Get all tasks related to a specific draft."""
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
                 cursor.execute("""
                     SELECT * FROM agent_tasks
-                    WHERE related_draft_id = ?
+                    WHERE related_draft_id = %s
                     ORDER BY created_at DESC
                 """, (draft_id,))
 
@@ -394,10 +352,10 @@ class TaskManager:
 
                 cursor.execute("""
                     UPDATE agent_tasks
-                    SET status = ?
-                    WHERE status IN (?, ?)
+                    SET status = %s
+                    WHERE status IN (%s, %s)
                     AND expires_at IS NOT NULL
-                    AND expires_at < ?
+                    AND expires_at < %s
                 """, (
                     TaskStatus.EXPIRED.value,
                     TaskStatus.PENDING.value,

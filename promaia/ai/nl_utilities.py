@@ -10,7 +10,7 @@ Enhancements over the basic NL system:
 """
 import os
 import json
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -40,24 +40,32 @@ class SchemaExplorer:
         }
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Get all tables AND views
-                cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+                cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
                 tables = [row[0] for row in cursor.fetchall()]
                 
                 # Explore each table
                 for table in tables:
                     # Get column info
-                    cursor.execute(f"PRAGMA table_info({table})")
+                    cursor.execute(f"""
+                        SELECT column_name, data_type, is_nullable, 
+                               CASE WHEN column_name IN (
+                                   SELECT column_name FROM information_schema.key_column_usage 
+                                   WHERE table_name = %s AND table_schema = 'public'
+                               ) THEN true ELSE false END as is_pk
+                        FROM information_schema.columns 
+                        WHERE table_name = %s AND table_schema = 'public'
+                    """, (table, table))
                     columns = []
                     for row in cursor.fetchall():
                         columns.append({
-                            "name": row[1],
-                            "type": row[2],
-                            "notnull": bool(row[3]),
-                            "pk": bool(row[5])
+                            "name": row[0],
+                            "type": row[1],
+                            "notnull": row[2] == 'NO',
+                            "pk": row[3]
                         })
                     
                     # Get row count
@@ -482,13 +490,11 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
     
     Args:
         result: Result dict with page_id, database_name, content_type, etc.
-        db_path: Path to the database
+        db_path: Path to the database (ignored for PostgreSQL, kept for API compatibility)
         
     Returns:
         Display text appropriate for the content type
     """
-    import sqlite3
-    
     page_id = result.get('page_id')
     database_name = result.get('database_name', '')
     content_type = result.get('content_type', database_name)
@@ -499,41 +505,40 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
     
     # Fetch type-specific display text
     try:
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
+        with pg_connect() as conn:
             cursor = conn.cursor()
             
             if content_type == 'gmail' or database_name == 'gmail':
                 # Get subject from gmail_content
                 cursor.execute(
-                    "SELECT subject FROM gmail_content WHERE page_id = ?",
+                    "SELECT subject FROM gmail_content WHERE page_id = %s",
                     (page_id,)
                 )
                 row = cursor.fetchone()
-                if row and row['subject']:
-                    return row['subject']
+                if row and row[0]:
+                    return row[0]
             
             elif content_type == 'discord' or database_name == 'discord':
                 # Get content snippet from discord_content
                 cursor.execute(
-                    "SELECT content FROM discord_content WHERE page_id = ?",
+                    "SELECT content FROM discord_content WHERE page_id = %s",
                     (page_id,)
                 )
                 row = cursor.fetchone()
-                if row and row['content']:
-                    content = row['content']
+                if row and row[0]:
+                    content = row[0]
                     # Return first 60 chars with ellipsis
                     return content[:60] + "..." if len(content) > 60 else content
             
             elif content_type == 'notion' or database_name in ['stories', 'yp', 'notion', 'projects', 'cms', 'epics', 'journal', 'awakenings']:
                 # For Notion databases, try to get title from unified_content
                 cursor.execute(
-                    "SELECT title FROM unified_content WHERE page_id = ?",
+                    "SELECT title FROM unified_content WHERE page_id = %s",
                     (page_id,)
                 )
                 row = cursor.fetchone()
-                if row and row['title']:
-                    return row['title']
+                if row and row[0]:
+                    return row[0]
     
     except Exception as e:
         # If anything fails, return a safe default

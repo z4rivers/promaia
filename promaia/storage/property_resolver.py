@@ -4,9 +4,10 @@ Property Resolver - ID-based property and option resolution for Notion propertie
 This module provides utilities to resolve between property/option names and their
 stable Notion IDs. This allows the system to be resilient to property renames.
 """
-import sqlite3
 import logging
 from typing import Optional, List, Dict, Any, Tuple
+
+from promaia.storage.postgres_db import pg_connect
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 class PropertyResolver:
     """Resolves between property/option names and IDs using the local database."""
 
-    def __init__(self, db_path: str = "data/hybrid_metadata.db"):
-        self.db_path = db_path
+    def __init__(self):
+        pass
 
     @lru_cache(maxsize=1000)
     def get_property_id(self, database_id: str, property_name: str) -> Optional[str]:
@@ -31,12 +32,12 @@ class PropertyResolver:
             The property ID if found, None otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_id
                     FROM notion_property_schema
-                    WHERE database_id = ? AND property_name = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_name = %s AND is_active = TRUE
                 """, (database_id, property_name))
 
                 result = cursor.fetchone()
@@ -59,12 +60,12 @@ class PropertyResolver:
             The property name if found, None otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_name
                     FROM notion_property_schema
-                    WHERE database_id = ? AND property_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_id = %s AND is_active = TRUE
                 """, (database_id, property_id))
 
                 result = cursor.fetchone()
@@ -88,12 +89,12 @@ class PropertyResolver:
             The option ID if found, None otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_id
                     FROM notion_select_options
-                    WHERE database_id = ? AND property_id = ? AND option_name = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_id = %s AND option_name = %s AND is_active = TRUE
                 """, (database_id, property_id, option_name))
 
                 result = cursor.fetchone()
@@ -117,12 +118,12 @@ class PropertyResolver:
             The option name if found, None otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_name
                     FROM notion_select_options
-                    WHERE database_id = ? AND property_id = ? AND option_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_id = %s AND option_id = %s AND is_active = TRUE
                 """, (database_id, property_id, option_id))
 
                 result = cursor.fetchone()
@@ -144,12 +145,12 @@ class PropertyResolver:
             The notion_type if found, None otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT notion_type
                     FROM notion_property_schema
-                    WHERE database_id = ? AND property_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_id = %s AND is_active = TRUE
                 """, (database_id, property_id))
 
                 result = cursor.fetchone()
@@ -289,12 +290,12 @@ class PropertyResolver:
             List of property dictionaries with id, name, and type
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_id, property_name, notion_type
                     FROM notion_property_schema
-                    WHERE database_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND is_active = TRUE
                 """, (database_id,))
 
                 properties = []
@@ -322,12 +323,12 @@ class PropertyResolver:
             List of option dictionaries with id, name, and color
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_id, option_name, option_color
                     FROM notion_select_options
-                    WHERE database_id = ? AND property_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND property_id = %s AND is_active = TRUE
                 """, (database_id, property_id))
 
                 options = []

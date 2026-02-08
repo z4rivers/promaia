@@ -1,19 +1,25 @@
 """
 Persistent caching system for CMS sync operations.
 Tracks content hashes to skip unchanged pages between sync runs.
+
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import hashlib
 import json
 import time
+import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 import os
 
+from promaia.storage.postgres_db import get_postgres_db
+
+logger = logging.getLogger(__name__)
+
 
 class SyncCache:
     """
-    Manages persistent cache for sync operations using SQLite.
+    Manages persistent cache for sync operations using PostgreSQL.
     Stores content hashes to detect changes and avoid unnecessary processing.
     """
 
@@ -22,38 +28,30 @@ class SyncCache:
         Initialize the sync cache.
 
         Args:
-            db_path: Path to SQLite database file. If None, uses default location.
+            db_path: Deprecated parameter, kept for backward compatibility.
+                    All data is now stored in PostgreSQL.
         """
-        if db_path is None:
-            # Use default path in the user's data directory
-            data_dir = Path.home() / ".promaia" / "cache"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(data_dir / "sync_cache.db")
+        self.db = get_postgres_db()
+        self._ensure_table()
+        logger.debug("SyncCache initialized with PostgreSQL backend")
 
-        self.db_path = db_path
-        self.conn = None
-        self._initialize_db()
-
-    def _initialize_db(self):
-        """Initialize the database schema."""
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS page_cache (
-                page_id TEXT PRIMARY KEY,
-                content_hash TEXT NOT NULL,
-                last_edited_time TEXT,
-                last_synced_at REAL NOT NULL,
-                webflow_id TEXT
-            )
-        """)
-
-        # Create index for faster lookups
-        self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_last_synced
-            ON page_cache(last_synced_at)
-        """)
-
-        self.conn.commit()
+    def _ensure_table(self):
+        """Ensure the page_cache table exists."""
+        if not self.db.table_exists('page_cache'):
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS page_cache (
+                    id SERIAL PRIMARY KEY,
+                    page_id TEXT UNIQUE NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    last_edited_time TEXT,
+                    last_synced_at DOUBLE PRECISION NOT NULL,
+                    webflow_id TEXT
+                )
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_page_cache_synced
+                ON page_cache(last_synced_at)
+            """)
 
     def compute_content_hash(self, page_data: Dict[str, Any]) -> str:
         """
@@ -89,21 +87,21 @@ class SyncCache:
         current_hash = self.compute_content_hash(page_data)
         last_edited_time = page_data.get('last_edited_time')
 
-        cursor = self.conn.execute(
+        result = self.db.fetch_one(
             """
             SELECT content_hash, last_edited_time
             FROM page_cache
-            WHERE page_id = ?
+            WHERE page_id = %s
             """,
             (page_id,)
         )
-        row = cursor.fetchone()
 
-        if not row:
+        if not result:
             # New page, should process
             return True
 
-        cached_hash, cached_time = row
+        cached_hash = result['content_hash']
+        cached_time = result['last_edited_time']
 
         # Check if content has changed
         if current_hash != cached_hash:
@@ -129,15 +127,17 @@ class SyncCache:
         last_edited_time = page_data.get('last_edited_time')
         current_time = time.time()
 
-        self.conn.execute(
-            """
-            INSERT OR REPLACE INTO page_cache
-            (page_id, content_hash, last_edited_time, last_synced_at, webflow_id)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (page_id, content_hash, last_edited_time, current_time, webflow_id)
+        self.db.upsert(
+            'page_cache',
+            {
+                'page_id': page_id,
+                'content_hash': content_hash,
+                'last_edited_time': last_edited_time,
+                'last_synced_at': current_time,
+                'webflow_id': webflow_id
+            },
+            conflict_columns=['page_id']
         )
-        self.conn.commit()
 
     def get_cached_webflow_id(self, page_id: str) -> Optional[str]:
         """
@@ -149,12 +149,11 @@ class SyncCache:
         Returns:
             Webflow item ID or None if not cached
         """
-        cursor = self.conn.execute(
-            "SELECT webflow_id FROM page_cache WHERE page_id = ?",
+        result = self.db.fetch_one(
+            "SELECT webflow_id FROM page_cache WHERE page_id = %s",
             (page_id,)
         )
-        row = cursor.fetchone()
-        return row[0] if row and row[0] else None
+        return result['webflow_id'] if result and result.get('webflow_id') else None
 
     def remove_page(self, page_id: str):
         """
@@ -163,8 +162,7 @@ class SyncCache:
         Args:
             page_id: Notion page ID
         """
-        self.conn.execute("DELETE FROM page_cache WHERE page_id = ?", (page_id,))
-        self.conn.commit()
+        self.db.execute("DELETE FROM page_cache WHERE page_id = %s", (page_id,))
 
     def cleanup_old_entries(self, days: int = 90):
         """
@@ -174,11 +172,10 @@ class SyncCache:
             days: Number of days to keep (default: 90)
         """
         cutoff_time = time.time() - (days * 24 * 60 * 60)
-        self.conn.execute(
-            "DELETE FROM page_cache WHERE last_synced_at < ?",
+        self.db.execute(
+            "DELETE FROM page_cache WHERE last_synced_at < %s",
             (cutoff_time,)
         )
-        self.conn.commit()
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """
@@ -187,29 +184,28 @@ class SyncCache:
         Returns:
             Dictionary with cache statistics
         """
-        cursor = self.conn.execute("SELECT COUNT(*) FROM page_cache")
-        total_entries = cursor.fetchone()[0]
+        total_result = self.db.fetch_one("SELECT COUNT(*) as count FROM page_cache")
+        total_entries = total_result['count'] if total_result else 0
 
-        cursor = self.conn.execute(
+        recent_result = self.db.fetch_one(
             """
-            SELECT COUNT(*) FROM page_cache
-            WHERE last_synced_at > ?
+            SELECT COUNT(*) as count FROM page_cache
+            WHERE last_synced_at > %s
             """,
             (time.time() - (24 * 60 * 60),)
         )
-        recent_entries = cursor.fetchone()[0]
+        recent_entries = recent_result['count'] if recent_result else 0
 
         return {
             'total_entries': total_entries,
             'entries_synced_last_24h': recent_entries,
-            'db_path': self.db_path
+            'backend': 'postgresql'
         }
 
     def close(self):
-        """Close the database connection."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """Close the database connection (no-op for pooled connections)."""
+        # Connection pooling handles this
+        pass
 
     def __enter__(self):
         """Context manager entry."""

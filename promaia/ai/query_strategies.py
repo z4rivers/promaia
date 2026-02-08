@@ -6,7 +6,7 @@ while keeping the shared orchestration pipeline clean.
 """
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
 import json
 
 from promaia.utils.display import print_text
@@ -316,11 +316,11 @@ SQL only (no markdown, no triple backticks):"""
             print_text(f"\n🔍 Executing query against: {self.db_path}", style="cyan")
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query)
-                results = [dict(row) for row in cursor.fetchall()]
+                columns = [desc[0] for desc in cursor.description]
+                results = [dict(zip(columns, row)) for row in cursor.fetchall()]
                 
                 if debug:
                     print_text(f"\n✅ Execution successful", style="green")
@@ -336,7 +336,7 @@ SQL only (no markdown, no triple backticks):"""
                 
                 return results, None
         
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             error_msg = f"SQL Error: {str(e)}"
             if debug:
                 print_text(f"\n❌ SQL execution error: {error_msg}", style="red")

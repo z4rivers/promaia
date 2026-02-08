@@ -73,22 +73,22 @@ def update_draft_with_artifact_metadata(draft_manager, draft_id: str, metadata: 
         return
 
     try:
-        import sqlite3
+        from promaia.storage.postgres_db import pg_connect
 
         # Build update query based on what metadata we have
         updates = []
         params = []
 
         if 'subject' in metadata and metadata['subject']:
-            updates.append('draft_subject = ?')
+            updates.append('draft_subject = %s')
             params.append(metadata['subject'])
 
         if 'to' in metadata and metadata['to']:
-            updates.append('inbound_to = ?')
+            updates.append('inbound_to = %s')
             params.append(metadata['to'])
 
         if 'cc' in metadata and metadata['cc']:
-            updates.append('inbound_cc = ?')
+            updates.append('inbound_cc = %s')
             params.append(metadata['cc'])
 
         if not updates:
@@ -99,9 +99,9 @@ def update_draft_with_artifact_metadata(draft_manager, draft_id: str, metadata: 
         params.append(draft_id)
 
         # Execute update
-        with sqlite3.connect(draft_manager.db_path) as conn:
+        with pg_connect() as conn:
             cursor = conn.cursor()
-            query = f"UPDATE email_drafts SET {', '.join(updates)} WHERE draft_id = ?"
+            query = f"UPDATE email_drafts SET {', '.join(updates)} WHERE draft_id = %s"
             cursor.execute(query, params)
             conn.commit()
 

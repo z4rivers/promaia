@@ -34,6 +34,9 @@ google_api_key.txt
 mcp_servers.json
 !mcp_servers.json.template
 
+# Postgres credentials
+.env
+
 # ============================================================================
 # DATABASES & DATA FILES
 # ============================================================================
