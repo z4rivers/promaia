@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Supabase project session pooler hostname (used as default host when no env vars set)
 SUPABASE_POOLER_HOST = 'aws-0-us-west-1.pooler.supabase.com'
-SUPABASE_PROJECT_REF = 'dulqttfidcjeujyieuqw'
+SUPABASE_PROJECT_REF = 'jbcspnoqvtvvddifuhth'
 
 
 class PostgresDB:
