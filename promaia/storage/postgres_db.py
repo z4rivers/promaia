@@ -26,7 +26,7 @@ from promaia.utils.config import load_environment
 logger = logging.getLogger(__name__)
 
 # Supabase project session pooler hostname (used as default host when no env vars set)
-SUPABASE_POOLER_HOST = 'aws-0-us-west-1.pooler.supabase.com'
+SUPABASE_POOLER_HOST = 'aws-1-us-east-1.pooler.supabase.com'
 SUPABASE_PROJECT_REF = 'jbcspnoqvtvvddifuhth'
 
 
