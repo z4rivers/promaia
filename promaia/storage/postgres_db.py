@@ -3,6 +3,11 @@ PostgreSQL Database Manager for Promaia.
 
 Provides centralized PostgreSQL connection management with connection pooling,
 replacing both Supabase and SQLite storage across the application.
+
+Supabase connection: Use DATABASE_URL env var (session pooler required on Windows
+due to IPv6 issues with direct connections). SSL is required for Supabase cloud.
+Session pooler URL format:
+  postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres
 """
 import os
 import json
@@ -11,6 +16,7 @@ import threading
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
+from urllib.parse import urlparse
 
 import psycopg2
 from psycopg2 import pool, sql, extras
@@ -19,11 +25,15 @@ from promaia.utils.config import load_environment
 
 logger = logging.getLogger(__name__)
 
+# Supabase project session pooler hostname (used as default host when no env vars set)
+SUPABASE_POOLER_HOST = 'aws-0-us-west-1.pooler.supabase.com'
+SUPABASE_PROJECT_REF = 'dulqttfidcjeujyieuqw'
+
 
 class PostgresDB:
     _instance = None
     _lock = threading.Lock()
-    
+
     def __new__(cls, *args, **kwargs):
         """Singleton pattern to ensure single connection pool."""
         if cls._instance is None:
@@ -32,8 +42,8 @@ class PostgresDB:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
-    
-    def __init__(self, 
+
+    def __init__(self,
                  host: str = None,
                  port: int = None,
                  database: str = None,
@@ -44,37 +54,69 @@ class PostgresDB:
 
         if self._initialized:
             return
-            
+
         load_environment()
-        
-        # Get connection parameters from environment or arguments
-        self.host = host or os.getenv('POSTGRES_HOST', '192.168.0.69')
-        self.port = port or int(os.getenv('POSTGRES_PORT', '5432'))
-        self.database = database or os.getenv('POSTGRES_DATABASE', 'promaia')
-        self.user = user or os.getenv('POSTGRES_USER', 'postgres')
-        self.password = password or os.getenv('POSTGRES_PASSWORD', '')
-        
+
         self.min_connections = min_connections
         self.max_connections = max_connections
         self._pool = None
-        
+        self._database_url = None
+
+        # Check for DATABASE_URL first (Supabase session pooler - preferred on Windows)
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            self._database_url = database_url
+            # Parse URL to extract host/port/db for logging
+            parsed = urlparse(database_url)
+            self.host = parsed.hostname or SUPABASE_POOLER_HOST
+            self.port = parsed.port or 5432
+            self.database = (parsed.path or '/postgres').lstrip('/')
+            self.user = parsed.username or f'postgres.{SUPABASE_PROJECT_REF}'
+            self.password = parsed.password or ''
+        else:
+            # Fall back to individual environment variables
+            self.host = host or os.getenv('POSTGRES_HOST', SUPABASE_POOLER_HOST)
+            self.port = port or int(os.getenv('POSTGRES_PORT', '5432'))
+            self.database = database or os.getenv('POSTGRES_DATABASE', 'postgres')
+            self.user = user or os.getenv('POSTGRES_USER', f'postgres.{SUPABASE_PROJECT_REF}')
+            self.password = password or os.getenv('POSTGRES_PASSWORD', '')
+
         self._initialize_pool()
         self._initialized = True
-        
+
     def _initialize_pool(self):
-        """Initialize the connection pool."""
+        """Initialize the connection pool.
+
+        Uses DATABASE_URL if set (Supabase session pooler), otherwise falls back
+        to individual connection parameters with sslmode=require for Supabase cloud.
+        """
         try:
-            self._pool = pool.ThreadedConnectionPool(
-                self.min_connections,
-                self.max_connections,
-                host=self.host,
-                port=self.port,
-                database=self.database,
-                user=self.user,
-                password=self.password,
-                connect_timeout=10
-            )
-            logger.info(f"PostgreSQL connection pool initialized: {self.host}:{self.port}/{self.database}")
+            if self._database_url:
+                # DATABASE_URL path: parse and add sslmode if not present
+                dsn = self._database_url
+                if 'sslmode' not in dsn:
+                    dsn = dsn + ('&' if '?' in dsn else '?') + 'sslmode=require'
+                self._pool = pool.ThreadedConnectionPool(
+                    self.min_connections,
+                    self.max_connections,
+                    dsn=dsn,
+                    connect_timeout=30
+                )
+                logger.info(f"PostgreSQL connection pool initialized via DATABASE_URL: {self.host}:{self.port}/{self.database}")
+            else:
+                # Individual params path: add sslmode=require for Supabase cloud
+                self._pool = pool.ThreadedConnectionPool(
+                    self.min_connections,
+                    self.max_connections,
+                    host=self.host,
+                    port=self.port,
+                    database=self.database,
+                    user=self.user,
+                    password=self.password,
+                    sslmode='require',
+                    connect_timeout=30
+                )
+                logger.info(f"PostgreSQL connection pool initialized: {self.host}:{self.port}/{self.database}")
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL pool: {e}")
             raise
