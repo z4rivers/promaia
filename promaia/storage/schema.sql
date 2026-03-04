@@ -4,6 +4,10 @@
 -- Enable UUID extension if needed
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable pgvector for semantic search (replaces ChromaDB)
+-- Requires the pgvector extension to be installed in Supabase (it is by default)
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- ============================================================
 -- CONTENT ITEMS TABLE (replaces Supabase content_items)
 -- ============================================================
@@ -577,6 +581,76 @@ SELECT
     created_time, last_edited_time, synced_time,
     file_size, checksum, metadata::TEXT
 FROM generic_content;
+
+
+-- ============================================================
+-- CONTENT EMBEDDINGS TABLE (replaces ChromaDB content collection)
+-- Uses vector(768) for gemini-embedding-001 output dimensions.
+-- HNSW index with cosine similarity matches ChromaDB's hnsw:space=cosine config.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS content_embeddings (
+    id SERIAL PRIMARY KEY,
+    page_id TEXT NOT NULL,
+    chunk_id TEXT,
+    content TEXT NOT NULL,
+    embedding vector(768) NOT NULL,
+    workspace TEXT,
+    database_name TEXT,
+    metadata JSONB DEFAULT '{}',
+    is_chunk BOOLEAN DEFAULT FALSE,
+    chunk_index INTEGER,
+    total_chunks INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(page_id, chunk_id)
+);
+
+-- HNSW index for fast approximate nearest neighbor search (cosine similarity)
+CREATE INDEX IF NOT EXISTS idx_content_embeddings_vector
+    ON content_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- GIN index for hybrid search on metadata JSONB
+CREATE INDEX IF NOT EXISTS idx_content_embeddings_metadata
+    ON content_embeddings USING gin (metadata);
+
+-- B-tree indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_content_embeddings_page_id
+    ON content_embeddings(page_id);
+CREATE INDEX IF NOT EXISTS idx_content_embeddings_workspace
+    ON content_embeddings(workspace);
+
+
+-- ============================================================
+-- PROPERTY EMBEDDINGS TABLE (replaces ChromaDB property collection)
+-- Stores embeddings for individual Notion property values.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS property_embeddings (
+    id SERIAL PRIMARY KEY,
+    page_id TEXT NOT NULL,
+    property_name TEXT NOT NULL,
+    property_type TEXT,
+    property_value TEXT NOT NULL,
+    embedding vector(768) NOT NULL,
+    workspace TEXT,
+    database_name TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(page_id, property_name)
+);
+
+-- HNSW index for fast approximate nearest neighbor search (cosine similarity)
+CREATE INDEX IF NOT EXISTS idx_property_embeddings_vector
+    ON property_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- GIN index for hybrid search on metadata JSONB
+CREATE INDEX IF NOT EXISTS idx_property_embeddings_metadata
+    ON property_embeddings USING gin (metadata);
+
+-- B-tree indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_property_embeddings_page_id
+    ON property_embeddings(page_id);
+CREATE INDEX IF NOT EXISTS idx_property_embeddings_property
+    ON property_embeddings(property_name);
 
 
 -- ============================================================
