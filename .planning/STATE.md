@@ -27,8 +27,14 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 None currently.
 
+## Upcoming Events
+
+- **Promaia re-init (within ~1 week):** Daughter is re-initializing the repo to remove personal identifiers. Before that happens, export zbrain work as patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`. After re-init, clone fresh repo, create new zbrain branch, apply patches with `git am`. Additive work (new files) applies cleanly. Modified files (vector_db.py, postgres_db.py) may need manual re-application.
+
 ## Pending Todos
 
-- [ ] Create zbrain branch and merge postgres-sql-changeover
-- [ ] Write Promaia README (research already done)
+- [x] Create zbrain branch (done — branch exists, first commit made)
+- [ ] Merge postgres-sql-changeover into zbrain
+- [ ] Write ZBRAIN.md (running changelog of all changes for daughter's visibility)
 - [ ] Update memory files with Promaia/zBrain context
+- [ ] Export patches before daughter's re-init
