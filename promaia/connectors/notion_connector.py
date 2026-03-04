@@ -4,11 +4,11 @@ Notion database connector implementation.
 import os
 import asyncio
 import json
-import sqlite3
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from promaia.storage.postgres_db import pg_connect
 from .base import BaseConnector, QueryFilter, DateRangeFilter, SyncResult
 from promaia.notion.client import notion_client
 from promaia.notion.pages import (
@@ -117,7 +117,7 @@ class NotionConnector(BaseConnector):
 
             current_time = datetime.now(timezone.utc).isoformat()
 
-            with sqlite3.connect(db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 for prop_name, prop_config in properties.items():
@@ -132,7 +132,7 @@ class NotionConnector(BaseConnector):
                     # Try to find existing property by ID first, then by name
                     cursor.execute("""
                         SELECT id FROM notion_property_schema
-                        WHERE database_id = ? AND (property_id = ? OR property_name = ?)
+                        WHERE database_id = %s AND (property_id = %s OR property_name = %s)
                     """, (self.database_id, property_id, prop_name))
 
                     existing = cursor.fetchone()
@@ -141,12 +141,12 @@ class NotionConnector(BaseConnector):
                         # Update existing property (set property_id if it was missing)
                         cursor.execute("""
                             UPDATE notion_property_schema
-                            SET property_name = ?,
-                                property_id = ?,
-                                notion_type = ?,
-                                last_seen = ?,
+                            SET property_name = %s,
+                                property_id = %s,
+                                notion_type = %s,
+                                last_seen = %s,
                                 is_active = TRUE
-                            WHERE database_id = ? AND (property_id = ? OR property_name = ?)
+                            WHERE database_id = %s AND (property_id = %s OR property_name = %s)
                         """, (prop_name, property_id, property_type, current_time,
                               self.database_id, property_id, prop_name))
                         self.logger.debug(f"Updated property: {prop_name} ({property_id})")
@@ -171,7 +171,7 @@ class NotionConnector(BaseConnector):
                             # Check if option exists
                             cursor.execute("""
                                 SELECT id FROM notion_select_options
-                                WHERE database_id = ? AND property_id = ? AND option_id = ?
+                                WHERE database_id = %s AND property_id = %s AND option_id = %s
                             """, (self.database_id, property_id, option_id))
 
                             existing_option = cursor.fetchone()
@@ -180,12 +180,12 @@ class NotionConnector(BaseConnector):
                                 # Update existing option
                                 cursor.execute("""
                                     UPDATE notion_select_options
-                                    SET option_name = ?,
-                                        option_color = ?,
-                                        property_name = ?,
-                                        last_seen = ?,
+                                    SET option_name = %s,
+                                        option_color = %s,
+                                        property_name = %s,
+                                        last_seen = %s,
                                         is_active = TRUE
-                                    WHERE database_id = ? AND property_id = ? AND option_id = ?
+                                    WHERE database_id = %s AND property_id = %s AND option_id = %s
                                 """, (option_name, option_color, prop_name, current_time,
                                       self.database_id, property_id, option_id))
 
@@ -196,7 +196,7 @@ class NotionConnector(BaseConnector):
                                     INSERT INTO notion_select_options
                                     (database_id, property_id, property_name, option_id, option_name,
                                      option_color, property_type, first_seen, last_seen, is_active)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                                 """, (self.database_id, property_id, prop_name, option_id, option_name,
                                       option_color, property_type, current_time, current_time))
 
@@ -214,7 +214,7 @@ class NotionConnector(BaseConnector):
                             # Check if relation exists
                             cursor.execute("""
                                 SELECT id FROM notion_relations
-                                WHERE database_id = ? AND property_id = ?
+                                WHERE database_id = %s AND property_id = %s
                             """, (self.database_id, property_id))
 
                             existing_relation = cursor.fetchone()
@@ -223,14 +223,14 @@ class NotionConnector(BaseConnector):
                                 # Update existing relation
                                 cursor.execute("""
                                     UPDATE notion_relations
-                                    SET property_name = ?,
-                                        target_database_id = ?,
-                                        relation_type = ?,
-                                        synced_property_id = ?,
-                                        synced_property_name = ?,
-                                        last_seen = ?,
+                                    SET property_name = %s,
+                                        target_database_id = %s,
+                                        relation_type = %s,
+                                        synced_property_id = %s,
+                                        synced_property_name = %s,
+                                        last_seen = %s,
                                         is_active = TRUE
-                                    WHERE database_id = ? AND property_id = ?
+                                    WHERE database_id = %s AND property_id = %s
                                 """, (prop_name, target_database_id, relation_type,
                                       synced_property_id, synced_property_name, current_time,
                                       self.database_id, property_id))
@@ -243,7 +243,7 @@ class NotionConnector(BaseConnector):
                                     (database_id, property_id, property_name, target_database_id,
                                      relation_type, synced_property_id, synced_property_name,
                                      first_seen, last_seen, is_active)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                                 """, (self.database_id, property_id, prop_name, target_database_id,
                                       relation_type, synced_property_id, synced_property_name,
                                       current_time, current_time))
@@ -254,19 +254,19 @@ class NotionConnector(BaseConnector):
                 cursor.execute("""
                     UPDATE notion_property_schema
                     SET is_active = FALSE
-                    WHERE database_id = ? AND last_seen < ?
+                    WHERE database_id = %s AND last_seen < %s
                 """, (self.database_id, current_time))
 
                 cursor.execute("""
                     UPDATE notion_select_options
                     SET is_active = FALSE
-                    WHERE database_id = ? AND last_seen < ?
+                    WHERE database_id = %s AND last_seen < %s
                 """, (self.database_id, current_time))
 
                 cursor.execute("""
                     UPDATE notion_relations
                     SET is_active = FALSE
-                    WHERE database_id = ? AND last_seen < ?
+                    WHERE database_id = %s AND last_seen < %s
                 """, (self.database_id, current_time))
 
                 conn.commit()

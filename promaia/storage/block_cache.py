@@ -1,17 +1,23 @@
 """
 Persistent block cache for Notion content.
 Stores block content keyed by page_id and last_edited_time to avoid redundant API calls.
+
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import json
 import time
+import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+
+from promaia.storage.postgres_db import get_postgres_db
+
+logger = logging.getLogger(__name__)
 
 
 class BlockCache:
     """
-    Manages persistent cache for Notion blocks using SQLite.
+    Manages persistent cache for Notion blocks using PostgreSQL.
     Caches block content to avoid repeated API calls for unchanged pages.
     """
 
@@ -20,43 +26,34 @@ class BlockCache:
         Initialize the block cache.
 
         Args:
-            db_path: Path to SQLite database file. If None, uses default location.
+            db_path: Deprecated parameter, kept for backward compatibility.
+                    All data is now stored in PostgreSQL.
         """
-        if db_path is None:
-            # Use default path in the user's data directory
-            data_dir = Path.home() / ".promaia" / "cache"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(data_dir / "block_cache.db")
+        self.db = get_postgres_db()
+        self._ensure_table()
+        logger.debug("BlockCache initialized with PostgreSQL backend")
 
-        self.db_path = db_path
-        self.conn = None
-        self._initialize_db()
-
-    def _initialize_db(self):
-        """Initialize the database schema."""
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS block_cache (
-                page_id TEXT NOT NULL,
-                last_edited_time TEXT NOT NULL,
-                blocks TEXT NOT NULL,
-                cached_at REAL NOT NULL,
-                PRIMARY KEY (page_id, last_edited_time)
-            )
-        """)
-
-        # Create index for faster lookups
-        self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_page_id
-            ON block_cache(page_id)
-        """)
-
-        self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_cached_at
-            ON block_cache(cached_at)
-        """)
-
-        self.conn.commit()
+    def _ensure_table(self):
+        """Ensure the block_cache table exists."""
+        if not self.db.table_exists('block_cache'):
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS block_cache (
+                    id SERIAL PRIMARY KEY,
+                    page_id TEXT NOT NULL,
+                    last_edited_time TEXT NOT NULL,
+                    blocks JSONB NOT NULL,
+                    cached_at DOUBLE PRECISION NOT NULL,
+                    UNIQUE(page_id, last_edited_time)
+                )
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_block_cache_page
+                ON block_cache(page_id)
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_block_cache_time
+                ON block_cache(cached_at)
+            """)
 
     def get_blocks(self, page_id: str, last_edited_time: str) -> Optional[List[Dict[str, Any]]]:
         """
@@ -69,23 +66,25 @@ class BlockCache:
         Returns:
             List of block objects or None if not cached or outdated
         """
-        cursor = self.conn.execute(
+        result = self.db.fetch_one(
             """
             SELECT blocks FROM block_cache
-            WHERE page_id = ? AND last_edited_time = ?
+            WHERE page_id = %s AND last_edited_time = %s
             """,
             (page_id, last_edited_time)
         )
-        row = cursor.fetchone()
-
-        if row:
-            try:
-                return json.loads(row[0])
-            except json.JSONDecodeError:
-                # Invalid JSON, remove from cache
-                self.remove_blocks(page_id, last_edited_time)
-                return None
-
+        
+        if result:
+            blocks = result['blocks']
+            # JSONB is automatically deserialized by psycopg2
+            if isinstance(blocks, str):
+                try:
+                    return json.loads(blocks)
+                except json.JSONDecodeError:
+                    self.remove_blocks(page_id, last_edited_time)
+                    return None
+            return blocks
+        
         return None
 
     def set_blocks(self, page_id: str, last_edited_time: str, blocks: List[Dict[str, Any]]):
@@ -98,17 +97,19 @@ class BlockCache:
             blocks: List of block objects to cache
         """
         current_time = time.time()
-        blocks_json = json.dumps(blocks)
+        
+        # Convert blocks to JSON if not already JSONB compatible
+        blocks_json = json.dumps(blocks) if isinstance(blocks, list) else blocks
 
-        self.conn.execute(
+        self.db.execute(
             """
-            INSERT OR REPLACE INTO block_cache
-            (page_id, last_edited_time, blocks, cached_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO block_cache (page_id, last_edited_time, blocks, cached_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (page_id, last_edited_time)
+            DO UPDATE SET blocks = EXCLUDED.blocks, cached_at = EXCLUDED.cached_at
             """,
             (page_id, last_edited_time, blocks_json, current_time)
         )
-        self.conn.commit()
 
     def remove_blocks(self, page_id: str, last_edited_time: Optional[str] = None):
         """
@@ -119,17 +120,16 @@ class BlockCache:
             last_edited_time: If specified, only removes blocks with this timestamp
         """
         if last_edited_time:
-            self.conn.execute(
-                "DELETE FROM block_cache WHERE page_id = ? AND last_edited_time = ?",
+            self.db.execute(
+                "DELETE FROM block_cache WHERE page_id = %s AND last_edited_time = %s",
                 (page_id, last_edited_time)
             )
         else:
             # Remove all cached versions for this page
-            self.conn.execute(
-                "DELETE FROM block_cache WHERE page_id = ?",
+            self.db.execute(
+                "DELETE FROM block_cache WHERE page_id = %s",
                 (page_id,)
             )
-        self.conn.commit()
 
     def cleanup_old_entries(self, days: int = 30):
         """
@@ -139,11 +139,10 @@ class BlockCache:
             days: Number of days to keep (default: 30)
         """
         cutoff_time = time.time() - (days * 24 * 60 * 60)
-        self.conn.execute(
-            "DELETE FROM block_cache WHERE cached_at < ?",
+        self.db.execute(
+            "DELETE FROM block_cache WHERE cached_at < %s",
             (cutoff_time,)
         )
-        self.conn.commit()
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """
@@ -152,40 +151,34 @@ class BlockCache:
         Returns:
             Dictionary with cache statistics
         """
-        cursor = self.conn.execute("SELECT COUNT(*) FROM block_cache")
-        total_entries = cursor.fetchone()[0]
+        total_result = self.db.fetch_one("SELECT COUNT(*) as count FROM block_cache")
+        total_entries = total_result['count'] if total_result else 0
 
-        cursor = self.conn.execute(
-            "SELECT COUNT(DISTINCT page_id) FROM block_cache"
+        unique_result = self.db.fetch_one(
+            "SELECT COUNT(DISTINCT page_id) as count FROM block_cache"
         )
-        unique_pages = cursor.fetchone()[0]
+        unique_pages = unique_result['count'] if unique_result else 0
 
-        cursor = self.conn.execute(
+        recent_result = self.db.fetch_one(
             """
-            SELECT COUNT(*) FROM block_cache
-            WHERE cached_at > ?
+            SELECT COUNT(*) as count FROM block_cache
+            WHERE cached_at > %s
             """,
             (time.time() - (24 * 60 * 60),)
         )
-        recent_entries = cursor.fetchone()[0]
-
-        # Get database size
-        cursor = self.conn.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
-        db_size_bytes = cursor.fetchone()[0]
+        recent_entries = recent_result['count'] if recent_result else 0
 
         return {
             'total_entries': total_entries,
             'unique_pages': unique_pages,
             'entries_cached_last_24h': recent_entries,
-            'db_size_mb': round(db_size_bytes / (1024 * 1024), 2),
-            'db_path': self.db_path
+            'backend': 'postgresql'
         }
 
     def close(self):
-        """Close the database connection."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """Close the database connection (no-op for pooled connections)."""
+        # Connection pooling handles this
+        pass
 
     def __enter__(self):
         """Context manager entry."""

@@ -26,9 +26,10 @@ class DatabaseRegistrySync:
         orphaned_entries = {}
         
         try:
-            import sqlite3
+            from promaia.storage.postgres_db import pg_connect
+            import psycopg2
             
-            with sqlite3.connect(self.hybrid_registry.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Get all unique database names from the unified view
@@ -44,7 +45,7 @@ class DatabaseRegistrySync:
                         entry_query = """
                             SELECT page_id, database_name, file_path, title, created_time
                             FROM unified_content 
-                            WHERE database_name = ?
+                            WHERE database_name = %s
                             LIMIT 10
                         """
                         cursor.execute(entry_query, (registry_db_name,))
@@ -113,9 +114,10 @@ class DatabaseRegistrySync:
         }
         
         try:
-            import sqlite3
+            from promaia.storage.postgres_db import pg_connect
+            import psycopg2
             
-            with sqlite3.connect(self.hybrid_registry.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # The hybrid registry uses separate tables, so we need to update each one
@@ -129,7 +131,7 @@ class DatabaseRegistrySync:
                 for table in tables_to_update:
                     # Check if table exists and has database_name column
                     check_query = f"""
-                        SELECT COUNT(*) FROM {table} WHERE database_name = ?
+                        SELECT COUNT(*) FROM {table} WHERE database_name = %s
                     """
                     try:
                         cursor.execute(check_query, (old_name,))
@@ -140,8 +142,8 @@ class DatabaseRegistrySync:
                             # Update entries in this table
                             update_query = f"""
                                 UPDATE {table} 
-                                SET database_name = ? 
-                                WHERE database_name = ?
+                                SET database_name = %s 
+                                WHERE database_name = %s
                             """
                             cursor.execute(update_query, (new_name, old_name))
                             updated_count = cursor.rowcount
@@ -150,7 +152,7 @@ class DatabaseRegistrySync:
                             if updated_count > 0:
                                 logger.info(f"Updated {updated_count} entries in {table}")
                     
-                    except sqlite3.OperationalError:
+                    except psycopg2.OperationalError:
                         # Table might not exist or have database_name column, skip
                         continue
                 
@@ -186,11 +188,11 @@ class DatabaseRegistrySync:
             if dry_run:
                 # Just count what would be updated
                 try:
-                    import sqlite3
+                    from promaia.storage.postgres_db import pg_connect
                     
-                    with sqlite3.connect(self.hybrid_registry.db_path) as conn:
+                    with pg_connect() as conn:
                         cursor = conn.cursor()
-                        count_query = "SELECT COUNT(*) FROM unified_content WHERE database_name = ?"
+                        count_query = "SELECT COUNT(*) FROM unified_content WHERE database_name = %s"
                         cursor.execute(count_query, (old_name,))
                         count_result = cursor.fetchone()
                         entry_count = count_result[0] if count_result else 0

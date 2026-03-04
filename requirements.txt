@@ -98,4 +98,7 @@ sentence-transformers==3.3.1
 # OCR dependencies
 google-cloud-vision==3.7.0
 opencv-python==4.9.0.80
+
+# PostgreSQL
+psycopg2-binary==2.9.9
 numpy==1.26.3

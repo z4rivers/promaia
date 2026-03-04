@@ -4,467 +4,96 @@ Hybrid Storage Architecture - Separate optimized tables for each content type.
 This module implements a hybrid approach where different content types 
 (Gmail, Notion databases, etc.) have their own optimized table schemas
 while maintaining a unified query interface.
+
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import os
 import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
 from pathlib import Path
+from contextlib import contextmanager
+
+from promaia.storage.postgres_db import get_postgres_db
 
 logger = logging.getLogger(__name__)
 
 class HybridContentRegistry:
-    """Hybrid storage system with separate tables for each content type."""
-    
+    """Hybrid storage system with separate tables for each content type."""     
+
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
-        self.db_path = db_path
+        """
+        Initialize hybrid storage.
+        
+        Args:
+            db_path: Deprecated - kept for backward compatibility.
+                    All data is now stored in PostgreSQL.
+        """
+        self.db_path = db_path  # Keep for backward compatibility
+        self.db = get_postgres_db()
         self.init_database()
-        self._migrate_add_cc_recipients()
-        self._migrate_add_attachments()
-        self._migrate_add_property_ids()
-        self._migrate_add_select_options_table()
-        self._migrate_add_relations_table()
-    
+
     def init_database(self):
         """Initialize the hybrid database with separate tables for each content type."""
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Create Gmail-specific table with optimized schema for individual messages
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gmail_content (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,  -- Individual message ID
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    file_path TEXT NOT NULL,
-                    
-                    -- Gmail-specific fields for individual messages
-                    subject TEXT,
-                    sender_email TEXT,
-                    sender_name TEXT,
-                    recipient_emails TEXT, -- JSON array
-                    cc_recipients TEXT, -- JSON array of CC recipients
-                    gmail_labels TEXT, -- JSON array
-                    thread_id TEXT NOT NULL,  -- Links messages in same conversation
-                    message_id TEXT UNIQUE NOT NULL,  -- Gmail's unique message identifier
-                    has_attachments BOOLEAN DEFAULT FALSE,
-                    is_unread BOOLEAN DEFAULT FALSE,
-                    body_snippet TEXT,
-                    message_content TEXT,  -- Full message content (extracted, not quoted)
-                    
-                    -- Message position in thread
-                    thread_position INTEGER DEFAULT 0,  -- 0 = first message, 1 = second, etc.
-                    is_latest_in_thread BOOLEAN DEFAULT FALSE,  -- TRUE for the most recent message in thread
-                    
-                    -- Common timestamp fields (properly typed)
-                    email_date TEXT, -- Gmail's original message date
-                    created_time TEXT,
-                    last_edited_time TEXT,  -- For threads, this is the latest message date
-                    synced_time TEXT NOT NULL,
-                    
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-                    
-                    UNIQUE(page_id),
-                    UNIQUE(message_id)
-                )
-            """)
-            
-            # Create Notion Journal table with optimized schema
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notion_journal (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    database_name TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    
-                    -- Journal-specific fields
-                    title TEXT,
-                    status TEXT, -- Published, Draft, etc.
-                    date_value TEXT, -- The "Date" property
-                    tags TEXT, -- JSON array
-                    featured BOOLEAN DEFAULT FALSE,
-                    author_name TEXT,
-                    
-                    -- Common timestamp fields
-                    created_time TEXT,
-                    last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-                    
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-                    
-                    UNIQUE(page_id)
-                )
-            """)
-            
-            # Create Notion Stories table with optimized schema
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notion_stories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    database_name TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    
-                    -- Stories-specific fields
-                    title TEXT,
-                    status TEXT, -- Done, In Progress, Backlog, etc.
-                    epic_relation TEXT, -- Related epic page_id
-                    author_name TEXT,
-                    story_points INTEGER,
-                    priority TEXT,
-                    labels TEXT, -- JSON array
-                    
-                    -- Common timestamp fields
-                    created_time TEXT,
-                    last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-                    
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-                    
-                    UNIQUE(page_id)
-                )
-            """)
-            
-            # Create CMS content table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notion_cms (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    database_name TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    
-                    -- CMS-specific fields
-                    title TEXT,
-                    status TEXT,
-                    category TEXT,
-                    featured BOOLEAN DEFAULT FALSE,
-                    author_name TEXT,
-                    slug TEXT,
-                    meta_description TEXT,
-                    tags TEXT, -- JSON array
-                    publish_date TEXT,
-                    
-                    -- Common timestamp fields
-                    created_time TEXT,
-                    last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-                    
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-                    
-                    UNIQUE(page_id)
-                )
-            """)
-            
-            # Create conversation content table for chat history
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS conversation_content (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,  -- Thread ID
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    file_path TEXT NOT NULL,
+        # Tables are created by schema.sql - just verify connection
+        try:
+            with self.db.get_cursor() as cursor:
+                # Check if tables exist, if not log a message
+                cursor.execute("""
+                    SELECT COUNT(*) FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'gmail_content'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    logger.warning("Database tables not found. Please run: python -m promaia db init")
+                else:
+                    logger.info(f"✅ Hybrid content registry connected to PostgreSQL")
+        except Exception as e:
+            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            raise
 
-                    -- Conversation-specific fields
-                    thread_id TEXT UNIQUE NOT NULL,
-                    thread_name TEXT,
-                    message_count INTEGER DEFAULT 0,
-                    context_type TEXT,  -- 'general', 'sql_query', 'search', etc.
-                    sql_query_prompt TEXT,  -- If natural language query
-
-                    -- Common timestamp fields
-                    created_time TEXT,
-                    last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-
-                    UNIQUE(page_id),
-                    UNIQUE(thread_id)
-                )
-            """)
-
-            # Create generic content table for unknown/new content types
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS generic_content (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT UNIQUE NOT NULL,
-                    workspace TEXT NOT NULL,
-                    database_id TEXT NOT NULL,  -- Immutable database identifier
-                    database_name TEXT NOT NULL,
-                    content_type TEXT NOT NULL, -- 'awakenings', 'cpj', etc.
-                    file_path TEXT NOT NULL,
-
-                    -- Basic fields
-                    title TEXT,
-
-                    -- Common timestamp fields
-                    created_time TEXT,
-                    last_edited_time TEXT,
-                    synced_time TEXT NOT NULL,
-
-                    -- File metadata
-                    file_size INTEGER,
-                    checksum TEXT,
-
-                    -- Flexible metadata for unknown properties
-                    metadata TEXT, -- JSON string for properties that don't fit above
-
-                    UNIQUE(page_id)
-                )
-            """)
-            
-            # Create notion page chunks table for large page handling
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notion_page_chunks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    page_id TEXT NOT NULL,
-                    chunk_id TEXT UNIQUE NOT NULL,
-                    chunk_index INTEGER NOT NULL,
-                    total_chunks INTEGER NOT NULL,
-                    workspace TEXT NOT NULL,
-                    database_name TEXT NOT NULL,
-
-                    -- Chunk boundaries
-                    char_start INTEGER,
-                    char_end INTEGER,
-                    estimated_tokens INTEGER,
-
-                    -- Date-based chunking metadata
-                    date_boundary TEXT,  -- YYYY-MM-DD if split by date
-
-                    -- References
-                    parent_file_path TEXT NOT NULL,
-
-                    -- Timestamps
-                    created_time TEXT,
-                    synced_time TEXT NOT NULL,
-
-                    UNIQUE(chunk_id)
-                )
-            """)
-
-            # Create notion property schema table to track property definitions
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notion_property_schema (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    database_id TEXT NOT NULL,
-                    database_name TEXT NOT NULL,
-                    table_name TEXT NOT NULL,
-                    property_name TEXT NOT NULL,
-                    column_name TEXT NOT NULL,
-                    property_type TEXT NOT NULL,
-                    notion_type TEXT NOT NULL,
-                    added_time TEXT NOT NULL,
-                    last_seen TEXT NOT NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-
-                    UNIQUE(database_id, property_name),
-                    UNIQUE(table_name, column_name)
-                )
-            """)
-
-            # Create indexes for better performance
-            self._create_indexes(cursor)
-
-            conn.commit()
-            logger.info(f"Initialized hybrid content registry at {self.db_path}")
-
-        # Build unified view dynamically to include all workspace tables
+        # Build unified view dynamically
         self.rebuild_unified_content_view()
 
     def _migrate_add_cc_recipients(self):
-        """Migration: Add cc_recipients column to gmail_content table if it doesn't exist."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Check if cc_recipients column exists
-                cursor.execute("PRAGMA table_info(gmail_content)")
-                columns = {row[1] for row in cursor.fetchall()}
-
-                if 'cc_recipients' not in columns:
-                    logger.info("Migrating gmail_content table: Adding cc_recipients column")
-                    cursor.execute("ALTER TABLE gmail_content ADD COLUMN cc_recipients TEXT")
-                    conn.commit()
-                    logger.info("Migration complete: cc_recipients column added")
-                else:
-                    logger.debug("Migration skipped: cc_recipients column already exists")
-
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            # Don't raise - allow system to continue even if migration fails
+        """Migration: Add cc_recipients column to gmail_content table if it doesn't exist.
+        
+        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        """
+        # PostgreSQL migrations are handled by schema.sql
+        logger.debug("PostgreSQL migration: cc_recipients handled by schema.sql")
 
     def _migrate_add_attachments(self):
-        """Migration: Add attachments column to gmail_content table if it doesn't exist."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Check if attachments column exists
-                cursor.execute("PRAGMA table_info(gmail_content)")
-                columns = {row[1] for row in cursor.fetchall()}
-
-                if 'attachments' not in columns:
-                    logger.info("Migrating gmail_content table: Adding attachments column")
-                    cursor.execute("ALTER TABLE gmail_content ADD COLUMN attachments TEXT")
-                    conn.commit()
-                    logger.info("Migration complete: attachments column added")
-                else:
-                    logger.debug("Migration skipped: attachments column already exists")
-
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            # Don't raise - allow system to continue even if migration fails
+        """Migration: Add attachments column to gmail_content table if it doesn't exist.
+        
+        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        """
+        # PostgreSQL migrations are handled by schema.sql
+        logger.debug("PostgreSQL migration: attachments handled by schema.sql")
 
     def _migrate_add_property_ids(self):
-        """Migration: Add property_id column to notion_property_schema table."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Check if property_id column exists
-                cursor.execute("PRAGMA table_info(notion_property_schema)")
-                columns = {row[1] for row in cursor.fetchall()}
-
-                if 'property_id' not in columns:
-                    logger.info("Migrating notion_property_schema table: Adding property_id column")
-                    cursor.execute("ALTER TABLE notion_property_schema ADD COLUMN property_id TEXT")
-                    conn.commit()
-                    logger.info("Migration complete: property_id column added")
-                else:
-                    logger.debug("Migration skipped: property_id column already exists")
-
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            # Don't raise - allow system to continue even if migration fails
+        """Migration: Add property_id column to notion_property_schema table.
+        
+        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        """
+        # PostgreSQL migrations are handled by schema.sql
+        logger.debug("PostgreSQL migration: property_id handled by schema.sql")
 
     def _migrate_add_select_options_table(self):
-        """Migration: Create notion_select_options table for tracking select/multi-select/status options."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Check if table exists
-                cursor.execute("""
-                    SELECT name FROM sqlite_master
-                    WHERE type='table' AND name='notion_select_options'
-                """)
-                table_exists = cursor.fetchone() is not None
-
-                if not table_exists:
-                    logger.info("Creating notion_select_options table")
-                    cursor.execute("""
-                        CREATE TABLE notion_select_options (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            database_id TEXT NOT NULL,
-                            property_id TEXT NOT NULL,
-                            property_name TEXT NOT NULL,
-                            option_id TEXT NOT NULL,
-                            option_name TEXT NOT NULL,
-                            option_color TEXT,
-                            property_type TEXT NOT NULL,
-                            first_seen TEXT NOT NULL,
-                            last_seen TEXT NOT NULL,
-                            is_active BOOLEAN DEFAULT TRUE,
-                            UNIQUE(database_id, property_id, option_id)
-                        )
-                    """)
-
-                    # Create indexes
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_select_options_db
-                        ON notion_select_options (database_id)
-                    """)
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_select_options_property
-                        ON notion_select_options (database_id, property_id)
-                    """)
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_select_options_option
-                        ON notion_select_options (database_id, property_id, option_id)
-                    """)
-
-                    conn.commit()
-                    logger.info("Migration complete: notion_select_options table created")
-                else:
-                    logger.debug("Migration skipped: notion_select_options table already exists")
-
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            # Don't raise - allow system to continue even if migration fails
+        """Migration: Create notion_select_options table for tracking select/multi-select/status options.
+        
+        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        """
+        # PostgreSQL migrations are handled by schema.sql
+        logger.debug("PostgreSQL migration: notion_select_options handled by schema.sql")
 
     def _migrate_add_relations_table(self):
-        """Migration: Create notion_relations table for tracking relation properties."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Check if table exists
-                cursor.execute("""
-                    SELECT name FROM sqlite_master
-                    WHERE type='table' AND name='notion_relations'
-                """)
-                table_exists = cursor.fetchone() is not None
-
-                if not table_exists:
-                    logger.info("Creating notion_relations table")
-                    cursor.execute("""
-                        CREATE TABLE notion_relations (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            database_id TEXT NOT NULL,
-                            property_id TEXT NOT NULL,
-                            property_name TEXT NOT NULL,
-                            target_database_id TEXT NOT NULL,
-                            target_database_name TEXT,
-                            relation_type TEXT,
-                            synced_property_id TEXT,
-                            synced_property_name TEXT,
-                            first_seen TEXT NOT NULL,
-                            last_seen TEXT NOT NULL,
-                            is_active BOOLEAN DEFAULT TRUE,
-                            UNIQUE(database_id, property_id)
-                        )
-                    """)
-
-                    # Create indexes
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_relations_db
-                        ON notion_relations (database_id)
-                    """)
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_relations_target
-                        ON notion_relations (target_database_id)
-                    """)
-
-                    conn.commit()
-                    logger.info("Migration complete: notion_relations table created")
-                else:
-                    logger.debug("Migration skipped: notion_relations table already exists")
-
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            # Don't raise - allow system to continue even if migration fails
+        """Migration: Create notion_relations table for tracking relation properties.
+        
+        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        """
+        # PostgreSQL migrations are handled by schema.sql
+        logger.debug("PostgreSQL migration: notion_relations handled by schema.sql")
 
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
@@ -523,15 +152,13 @@ class HybridContentRegistry:
         and creates a unified view that includes them along with legacy tables.
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Find all workspace-specific Notion tables
                 cursor.execute("""
-                    SELECT name FROM sqlite_master
-                    WHERE type='table' AND name LIKE 'notion_%'
-                    AND name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
-                    ORDER BY name
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name LIKE 'notion_%%'
+                    AND table_name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
+                    ORDER BY table_name
                 """)
 
                 notion_tables = [row[0] for row in cursor.fetchall()]
@@ -555,16 +182,16 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    NULL as status,
+                    NULL::text as status,
                     sender_email,
                     sender_name,
                     has_attachments,
                     is_unread,
-                    NULL as featured,
-                    NULL as priority,
-                    NULL as category,
+                    NULL::boolean as featured,
+                    NULL::text as priority,
+                    NULL::text as category,
                     email_date,
-                    json_object(
+                    jsonb_build_object(
                         'subject', subject,
                         'sender_email', sender_email,
                         'sender_name', sender_name,
@@ -574,7 +201,7 @@ class HybridContentRegistry:
                         'has_attachments', has_attachments,
                         'is_unread', is_unread,
                         'email_date', email_date
-                    ) as metadata
+                    )::text as metadata
                 FROM gmail_content
                 """)
 
@@ -593,30 +220,34 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    NULL as status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    NULL as featured,
-                    NULL as priority,
-                    NULL as category,
-                    NULL as email_date,
-                    json_object(
+                    NULL::text as status,
+                    NULL::text as sender_email,
+                    NULL::text as sender_name,
+                    NULL::boolean as has_attachments,
+                    NULL::boolean as is_unread,
+                    NULL::boolean as featured,
+                    NULL::text as priority,
+                    NULL::text as category,
+                    NULL::text as email_date,
+                    jsonb_build_object(
                         'thread_id', thread_id,
                         'thread_name', thread_name,
                         'message_count', message_count,
                         'context_type', context_type,
                         'sql_query_prompt', sql_query_prompt
-                    ) as metadata
+                    )::text as metadata
                 FROM conversation_content
                 """)
 
                 # 3. Add all Notion tables (workspace-specific and legacy)
                 for table_name in notion_tables:
                     # Get the table schema to determine available columns
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    columns = {row[1]: row[2] for row in cursor.fetchall()}  # column_name: type
+                    cursor.execute("""
+                        SELECT column_name, data_type 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'public' AND table_name = %s
+                    """, (table_name,))
+                    columns = {row[0]: row[1] for row in cursor.fetchall()}  # column_name: type
 
                     # Build metadata JSON based on available columns
                     metadata_fields = []
@@ -635,7 +266,7 @@ class HybridContentRegistry:
                                           'synced_time', 'file_size', 'checksum'] + common_property_columns:
                             metadata_fields.append(f"'{col_name}', {col_name}")
 
-                    metadata_json = f"json_object({', '.join(metadata_fields)})" if metadata_fields else "NULL"
+                    metadata_json = f"jsonb_build_object({', '.join(metadata_fields)})::text" if metadata_fields else "NULL::text"
 
                     # Determine content_type (use table name without notion_ prefix)
                     content_type = table_name.replace('notion_', 'notion_')
@@ -655,15 +286,15 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    {'status' if 'status' in columns else 'NULL'} as status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    {'featured' if 'featured' in columns else 'NULL'} as featured,
-                    {'priority' if 'priority' in columns else 'NULL'} as priority,
-                    {'category' if 'category' in columns else 'NULL'} as category,
-                    NULL as email_date,
+                    {'status' if 'status' in columns else "NULL::text"} as status,
+                    NULL::text as sender_email,
+                    NULL::text as sender_name,
+                    NULL::boolean as has_attachments,
+                    NULL::boolean as is_unread,
+                    {'featured' if 'featured' in columns else 'NULL::boolean'} as featured,
+                    {'priority' if 'priority' in columns else "NULL::text"} as priority,
+                    {'category' if 'category' in columns else "NULL::text"} as category,
+                    NULL::text as email_date,
                     {metadata_json} as metadata
                 FROM {table_name}
                     """
@@ -685,27 +316,26 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    json_extract(metadata, '$.status') as status,
-                    NULL as sender_email,
-                    NULL as sender_name,
-                    NULL as has_attachments,
-                    NULL as is_unread,
-                    CAST(json_extract(metadata, '$.featured') AS INTEGER) as featured,
-                    json_extract(metadata, '$.priority') as priority,
-                    json_extract(metadata, '$.category') as category,
-                    NULL as email_date,
-                    metadata
+                    metadata::jsonb->>'status' as status,
+                    NULL::text as sender_email,
+                    NULL::text as sender_name,
+                    NULL::boolean as has_attachments,
+                    NULL::boolean as is_unread,
+                    (metadata::jsonb->>'featured')::boolean as featured,
+                    metadata::jsonb->>'priority' as priority,
+                    metadata::jsonb->>'category' as category,
+                    NULL::text as email_date,
+                    metadata::text as metadata
                 FROM generic_content
                 """)
 
                 # Combine all parts with UNION ALL
-                full_view_sql = "CREATE VIEW unified_content AS\n" + "\nUNION ALL\n".join(view_parts)
+                full_view_sql = "CREATE OR REPLACE VIEW unified_content AS\n" + "\nUNION ALL\n".join(view_parts)
 
                 # Drop and recreate the view
                 cursor.execute("DROP VIEW IF EXISTS unified_content")
                 cursor.execute(full_view_sql)
 
-                conn.commit()
                 logger.info(f"✅ Rebuilt unified_content view with {len(view_parts)} sources")
 
         except Exception as e:
@@ -715,9 +345,7 @@ class HybridContentRegistry:
     def add_gmail_content(self, content_data: Dict[str, Any]) -> bool:
         """Add Gmail content with optimized schema."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self.db.get_cursor() as cursor:
                 # Extract Gmail-specific fields from metadata
                 metadata = content_data.get('metadata', {})
                 
@@ -726,13 +354,38 @@ class HybridContentRegistry:
                 last_edited_time = content_data.get('last_edited_time') or created_time
                 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO gmail_content (
+                    INSERT INTO gmail_content (
                         page_id, workspace, database_id, file_path, subject, sender_email, sender_name,
                         recipient_emails, cc_recipients, gmail_labels, thread_id, message_id,
                         has_attachments, attachments, is_unread, body_snippet, message_content,
                         thread_position, is_latest_in_thread, email_date,
                         created_time, last_edited_time, synced_time, file_size, checksum
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (page_id) DO UPDATE SET
+                        workspace = EXCLUDED.workspace,
+                        database_id = EXCLUDED.database_id,
+                        file_path = EXCLUDED.file_path,
+                        subject = EXCLUDED.subject,
+                        sender_email = EXCLUDED.sender_email,
+                        sender_name = EXCLUDED.sender_name,
+                        recipient_emails = EXCLUDED.recipient_emails,
+                        cc_recipients = EXCLUDED.cc_recipients,
+                        gmail_labels = EXCLUDED.gmail_labels,
+                        thread_id = EXCLUDED.thread_id,
+                        message_id = EXCLUDED.message_id,
+                        has_attachments = EXCLUDED.has_attachments,
+                        attachments = EXCLUDED.attachments,
+                        is_unread = EXCLUDED.is_unread,
+                        body_snippet = EXCLUDED.body_snippet,
+                        message_content = EXCLUDED.message_content,
+                        thread_position = EXCLUDED.thread_position,
+                        is_latest_in_thread = EXCLUDED.is_latest_in_thread,
+                        email_date = EXCLUDED.email_date,
+                        created_time = EXCLUDED.created_time,
+                        last_edited_time = EXCLUDED.last_edited_time,
+                        synced_time = EXCLUDED.synced_time,
+                        file_size = EXCLUDED.file_size,
+                        checksum = EXCLUDED.checksum
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -761,7 +414,6 @@ class HybridContentRegistry:
                     content_data.get('checksum')
                 ))
                 
-                conn.commit()
                 return True
                 
         except Exception as e:
@@ -771,9 +423,7 @@ class HybridContentRegistry:
     def add_conversation_content(self, content_data: Dict[str, Any]) -> bool:
         """Add conversation content with optimized schema."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Extract conversation-specific fields from metadata
                 metadata = content_data.get('metadata', {})
 
@@ -782,11 +432,26 @@ class HybridContentRegistry:
                 last_edited_time = content_data.get('last_edited_time') or created_time
 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO conversation_content (
+                    INSERT INTO conversation_content (
                         page_id, workspace, database_id, file_path,
                         thread_id, thread_name, message_count, context_type, sql_query_prompt,
                         created_time, last_edited_time, synced_time, file_size, checksum, workspaces_used
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (page_id) DO UPDATE SET
+                        workspace = EXCLUDED.workspace,
+                        database_id = EXCLUDED.database_id,
+                        file_path = EXCLUDED.file_path,
+                        thread_id = EXCLUDED.thread_id,
+                        thread_name = EXCLUDED.thread_name,
+                        message_count = EXCLUDED.message_count,
+                        context_type = EXCLUDED.context_type,
+                        sql_query_prompt = EXCLUDED.sql_query_prompt,
+                        created_time = EXCLUDED.created_time,
+                        last_edited_time = EXCLUDED.last_edited_time,
+                        synced_time = EXCLUDED.synced_time,
+                        file_size = EXCLUDED.file_size,
+                        checksum = EXCLUDED.checksum,
+                        workspaces_used = EXCLUDED.workspaces_used
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -805,7 +470,6 @@ class HybridContentRegistry:
                     metadata.get('workspaces_used')
                 ))
 
-                conn.commit()
                 return True
 
         except Exception as e:
@@ -827,17 +491,14 @@ class HybridContentRegistry:
             return []
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-
+            with self.db.get_dict_cursor() as cursor:
                 # Build query for JSON array containment
                 # Check if any requested workspace appears in the workspaces_used JSON array
                 conditions = []
                 params = []
 
                 for workspace in workspaces:
-                    conditions.append("workspaces_used LIKE ?")
+                    conditions.append("workspaces_used LIKE %s")
                     params.append(f'%"{workspace}"%')
 
                 where_clause = " OR ".join(conditions)
@@ -862,7 +523,7 @@ class HybridContentRegistry:
                 cursor.execute(query, params)
                 results = cursor.fetchall()
 
-                # Convert Row objects to dictionaries
+                # Convert RealDictRow objects to dictionaries
                 return [dict(row) for row in results]
 
         except Exception as e:
@@ -872,19 +533,15 @@ class HybridContentRegistry:
     def get_existing_message_ids_for_thread(self, thread_id: str, workspace: str = None) -> set:
         """Get existing message IDs for a thread to avoid duplicates."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                query = "SELECT message_id FROM gmail_content WHERE thread_id = ?"
-                params = [thread_id]
-                
+            with self.db.get_cursor() as cursor:
                 if workspace:
-                    query += " AND workspace = ?"
-                    params.append(workspace)
+                    query = "SELECT message_id FROM gmail_content WHERE thread_id = %s AND workspace = %s"
+                    cursor.execute(query, (thread_id, workspace))
+                else:
+                    query = "SELECT message_id FROM gmail_content WHERE thread_id = %s"
+                    cursor.execute(query, (thread_id,))
                 
-                cursor.execute(query, params)
                 results = cursor.fetchall()
-                
                 return {row[0] for row in results if row[0]}
                 
         except Exception as e:
@@ -894,29 +551,30 @@ class HybridContentRegistry:
     def update_latest_message_flags(self, thread_id: str, latest_message_id: str, workspace: str = None):
         """Update is_latest_in_thread flags for a thread."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self.db.get_cursor() as cursor:
                 # First, set all messages in thread to not latest
-                query = "UPDATE gmail_content SET is_latest_in_thread = FALSE WHERE thread_id = ?"
-                params = [thread_id]
-                
                 if workspace:
-                    query += " AND workspace = ?"
-                    params.append(workspace)
-                
-                cursor.execute(query, params)
+                    cursor.execute(
+                        "UPDATE gmail_content SET is_latest_in_thread = FALSE WHERE thread_id = %s AND workspace = %s",
+                        (thread_id, workspace)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE gmail_content SET is_latest_in_thread = FALSE WHERE thread_id = %s",
+                        (thread_id,)
+                    )
                 
                 # Then set the latest message to TRUE
-                query = "UPDATE gmail_content SET is_latest_in_thread = TRUE WHERE message_id = ?"
-                params = [latest_message_id]
-                
                 if workspace:
-                    query += " AND workspace = ?"
-                    params.append(workspace)
-                
-                cursor.execute(query, params)
-                conn.commit()
+                    cursor.execute(
+                        "UPDATE gmail_content SET is_latest_in_thread = TRUE WHERE message_id = %s AND workspace = %s",
+                        (latest_message_id, workspace)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE gmail_content SET is_latest_in_thread = TRUE WHERE message_id = %s",
+                        (latest_message_id,)
+                    )
                 
         except Exception as e:
             logger.error(f"Error updating latest message flags for thread {thread_id}: {e}")
@@ -944,13 +602,22 @@ class HybridContentRegistry:
             True if successful or already exists, False otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            with self.db.get_cursor() as cursor:
+                # Check if table exists
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = %s
+                    )
+                """, (table_name,))
+                
+                if cursor.fetchone()[0]:
+                    return True  # Table already exists
 
-                # Create table with base schema (similar to notion_journal)
+                # Create table with base schema (PostgreSQL syntax)
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id SERIAL PRIMARY KEY,
                         page_id TEXT UNIQUE NOT NULL,
                         workspace TEXT NOT NULL,
                         database_id TEXT,
@@ -961,8 +628,7 @@ class HybridContentRegistry:
                         last_edited_time TEXT,
                         synced_time TEXT NOT NULL,
                         file_size INTEGER,
-                        checksum TEXT,
-                        UNIQUE(page_id)
+                        checksum TEXT
                     )
                 """)
 
@@ -970,7 +636,6 @@ class HybridContentRegistry:
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_workspace ON {table_name} (workspace, database_name)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_page_id ON {table_name} (page_id)")
 
-                conn.commit()
                 return True
 
         except Exception as e:
@@ -994,9 +659,7 @@ class HybridContentRegistry:
             # Ensure table exists before attempting insert
             self._ensure_notion_table_exists(table_name)
 
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Extract metadata and properties
                 metadata = content_data.get('metadata', {})
                 properties = metadata.get('properties', {})
@@ -1036,17 +699,21 @@ class HybridContentRegistry:
                             columns.append(column_name)
                             values.append(value)
 
-                # Build dynamic INSERT query
-                placeholders = ', '.join(['?' for _ in columns])
+                # Build dynamic INSERT query with ON CONFLICT
+                placeholders = ', '.join(['%s' for _ in columns])
                 column_str = ', '.join(columns)
+                
+                # Build update clause for all columns except page_id
+                update_columns = [c for c in columns if c != 'page_id']
+                update_str = ', '.join([f"{c} = EXCLUDED.{c}" for c in update_columns])
 
                 query = f"""
-                    INSERT OR REPLACE INTO {table_name} ({column_str})
+                    INSERT INTO {table_name} ({column_str})
                     VALUES ({placeholders})
+                    ON CONFLICT (page_id) DO UPDATE SET {update_str}
                 """
 
                 cursor.execute(query, values)
-                conn.commit()
                 return True
 
         except Exception as e:
@@ -1057,18 +724,29 @@ class HybridContentRegistry:
     def add_generic_content(self, content_data: Dict[str, Any]) -> bool:
         """Add generic content for unknown/new content types."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self.db.get_cursor() as cursor:
                 # Ensure last_edited_time is initialized to created_time if missing
                 created_time = content_data.get('created_time')
                 last_edited_time = content_data.get('last_edited_time') or created_time
                 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO generic_content (
+                    INSERT INTO generic_content (
                         page_id, workspace, database_id, database_name, content_type, file_path, title,
                         created_time, last_edited_time, synced_time, file_size, checksum, metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (page_id) DO UPDATE SET
+                        workspace = EXCLUDED.workspace,
+                        database_id = EXCLUDED.database_id,
+                        database_name = EXCLUDED.database_name,
+                        content_type = EXCLUDED.content_type,
+                        file_path = EXCLUDED.file_path,
+                        title = EXCLUDED.title,
+                        created_time = EXCLUDED.created_time,
+                        last_edited_time = EXCLUDED.last_edited_time,
+                        synced_time = EXCLUDED.synced_time,
+                        file_size = EXCLUDED.file_size,
+                        checksum = EXCLUDED.checksum,
+                        metadata = EXCLUDED.metadata
                 """, (
                     content_data['page_id'],
                     content_data['workspace'],
@@ -1085,7 +763,6 @@ class HybridContentRegistry:
                     json.dumps(content_data.get('metadata', {}))
                 ))
                 
-                conn.commit()
                 return True
                 
         except Exception as e:
@@ -1116,11 +793,9 @@ class HybridContentRegistry:
             # Ensure table exists
             self._ensure_notion_table_exists(table_name)
 
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Check if page exists
-                cursor.execute(f"SELECT page_id FROM {table_name} WHERE page_id = ?", (page_id,))
+                cursor.execute(f"SELECT page_id FROM {table_name} WHERE page_id = %s", (page_id,))
                 if not cursor.fetchone():
                     logger.warning(f"Page {page_id} not found in {table_name}, skipping property update")
                     return False
@@ -1144,7 +819,7 @@ class HybridContentRegistry:
                     if prop_name in properties:
                         # Extract value using flexible extraction
                         value = self.extract_property_value_flexible(properties[prop_name])
-                        update_columns.append(f"{column_name} = ?")
+                        update_columns.append(f"{column_name} = %s")
                         update_values.append(value)
 
                 if not update_columns:
@@ -1152,11 +827,10 @@ class HybridContentRegistry:
                     return True  # Not an error, just nothing to update
 
                 # Build and execute UPDATE query
-                update_sql = f"UPDATE {table_name} SET {', '.join(update_columns)} WHERE page_id = ?"
+                update_sql = f"UPDATE {table_name} SET {', '.join(update_columns)} WHERE page_id = %s"
                 update_values.append(page_id)
 
                 cursor.execute(update_sql, update_values)
-                conn.commit()
 
                 logger.debug(f"✅ Updated {len(update_columns)} properties for page {page_id}")
 
@@ -1219,17 +893,14 @@ class HybridContentRegistry:
 
             EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
 
-            # Query properties from SQLite
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-
+            # Query properties from PostgreSQL
+            with self.db.get_dict_cursor() as cursor:
                 column_names = [prop['column_name'] for prop in property_schema]
                 if not column_names:
                     return False
 
                 columns_str = ', '.join(column_names)
-                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = %s"
 
                 cursor.execute(query, (page_id,))
                 row = cursor.fetchone()
@@ -1402,10 +1073,7 @@ class HybridContentRegistry:
 
                 # Query properties if we have a known table
                 if table_name and database_id:
-                    with sqlite3.connect(self.db_path) as conn:
-                        conn.row_factory = sqlite3.Row
-                        cursor = conn.cursor()
-
+                    with self.db.get_dict_cursor() as cursor:
                         # Get property schema
                         property_schema = self.get_property_schema(database_id)
 
@@ -1417,7 +1085,7 @@ class HybridContentRegistry:
                             column_names = [prop['column_name'] for prop in property_schema]
                             if column_names:
                                 columns_str = ', '.join(column_names)
-                                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+                                query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = %s"
 
                                 cursor.execute(query, (page_id,))
                                 row = cursor.fetchone()
@@ -1579,34 +1247,32 @@ class HybridContentRegistry:
                      content_type: str = None, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Query content using the unified view."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self.db.get_cursor() as cursor:
                 # Build WHERE clause
                 where_conditions = []
                 params = []
                 
                 if workspace:
-                    where_conditions.append("workspace = ?")
+                    where_conditions.append("workspace = %s")
                     params.append(workspace)
                 
                 if database_name:
-                    where_conditions.append("database_name = ?")
+                    where_conditions.append("database_name = %s")
                     params.append(database_name)
                 
                 if content_type:
-                    where_conditions.append("content_type = ?")
+                    where_conditions.append("content_type = %s")
                     params.append(content_type)
                 
                 # Add custom filters
                 if filters:
                     for key, value in filters.items():
                         if key in ['status', 'featured', 'priority', 'category']:
-                            # These can be searched in metadata JSON
-                            where_conditions.append(f"json_extract(metadata, '$.{key}') = ?")
+                            # These can be searched in metadata JSON (PostgreSQL syntax)
+                            where_conditions.append(f"metadata::jsonb->>'{key}' = %s")
                             params.append(value)
                         elif key.endswith('_date') or key.endswith('_time'):
-                            where_conditions.append(f"{key} >= ?")
+                            where_conditions.append(f"{key} >= %s")
                             params.append(value)
                 
                 where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
@@ -1643,34 +1309,68 @@ class HybridContentRegistry:
     def get_content_statistics(self) -> Dict[str, Any]:
         """Get statistics about content in each table."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self.db.get_cursor() as cursor:
                 stats = {}
                 
                 # Gmail stats
                 cursor.execute("SELECT COUNT(*) FROM gmail_content")
                 stats['gmail'] = cursor.fetchone()[0]
                 
-                # Journal stats
-                cursor.execute("SELECT COUNT(*) FROM notion_journal")
-                stats['journal'] = cursor.fetchone()[0]
+                # Journal stats - check if table exists first
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'notion_journal'
+                    )
+                """)
+                if cursor.fetchone()[0]:
+                    cursor.execute("SELECT COUNT(*) FROM notion_journal")
+                    stats['journal'] = cursor.fetchone()[0]
+                else:
+                    stats['journal'] = 0
                 
                 # Stories stats
-                cursor.execute("SELECT COUNT(*) FROM notion_stories")
-                stats['stories'] = cursor.fetchone()[0]
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'notion_stories'
+                    )
+                """)
+                if cursor.fetchone()[0]:
+                    cursor.execute("SELECT COUNT(*) FROM notion_stories")
+                    stats['stories'] = cursor.fetchone()[0]
+                else:
+                    stats['stories'] = 0
                 
                 # CMS stats
-                cursor.execute("SELECT COUNT(*) FROM notion_cms")
-                stats['cms'] = cursor.fetchone()[0]
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'notion_cms'
+                    )
+                """)
+                if cursor.fetchone()[0]:
+                    cursor.execute("SELECT COUNT(*) FROM notion_cms")
+                    stats['cms'] = cursor.fetchone()[0]
+                else:
+                    stats['cms'] = 0
                 
                 # Generic stats
                 cursor.execute("SELECT COUNT(*) FROM generic_content")
                 stats['generic'] = cursor.fetchone()[0]
                 
-                # Total stats
-                cursor.execute("SELECT COUNT(*) FROM unified_content")
-                stats['total'] = cursor.fetchone()[0]
+                # Total stats - check if unified_content view exists
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.views 
+                        WHERE table_schema = 'public' AND table_name = 'unified_content'
+                    )
+                """)
+                if cursor.fetchone()[0]:
+                    cursor.execute("SELECT COUNT(*) FROM unified_content")
+                    stats['total'] = cursor.fetchone()[0]
+                else:
+                    stats['total'] = stats['gmail'] + stats['journal'] + stats['stories'] + stats['cms'] + stats['generic']
                 
                 return stats
                 
@@ -1932,12 +1632,10 @@ class HybridContentRegistry:
 
             titles = []
             not_found = []
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 for page_id in page_ids:
                     cursor.execute(
-                        "SELECT title FROM unified_content WHERE page_id = ?",
+                        "SELECT title FROM unified_content WHERE page_id = %s",
                         (page_id,)
                     )
                     row = cursor.fetchone()
@@ -1959,30 +1657,26 @@ class HybridContentRegistry:
 
     def get_content_by_file_path(self, file_path: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single content entry by its file path."""
-        query = "SELECT * FROM unified_content WHERE file_path = ?"
+        query = "SELECT * FROM unified_content WHERE file_path = %s"
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with self.db.get_dict_cursor() as cursor:
                 cursor.execute(query, (file_path,))
                 row = cursor.fetchone()
                 return dict(row) if row else None
-        except sqlite3.Error as e:
-            print(f"Database error in get_content_by_file_path: {e}")
+        except Exception as e:
+            logger.error(f"Database error in get_content_by_file_path: {e}")
             return None
 
     def clear_generic_content_for_database(self, database_name: str) -> int:
         """Deletes all entries from the generic_content table for a specific database."""
-        query = "DELETE FROM generic_content WHERE database_name = ?"
+        query = "DELETE FROM generic_content WHERE database_name = %s"
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            with self.db.get_cursor() as cursor:
                 cursor.execute(query, (database_name,))
-                conn.commit()
                 # Return the number of deleted rows
                 return cursor.rowcount
-        except sqlite3.Error as e:
-            print(f"Database error while clearing generic_content for {database_name}: {e}")
+        except Exception as e:
+            logger.error(f"Database error while clearing generic_content for {database_name}: {e}")
             return 0
     
     def add_page_chunk(self, chunk_data: Dict[str, Any]) -> bool:
@@ -1999,15 +1693,27 @@ class HybridContentRegistry:
             True if successful, False otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            with self.db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT OR REPLACE INTO notion_page_chunks (
+                    INSERT INTO notion_page_chunks (
                         chunk_id, page_id, chunk_index, total_chunks,
                         workspace, database_name, char_start, char_end,
                         estimated_tokens, date_boundary, parent_file_path,
                         created_time, synced_time
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (chunk_id) DO UPDATE SET
+                        page_id = EXCLUDED.page_id,
+                        chunk_index = EXCLUDED.chunk_index,
+                        total_chunks = EXCLUDED.total_chunks,
+                        workspace = EXCLUDED.workspace,
+                        database_name = EXCLUDED.database_name,
+                        char_start = EXCLUDED.char_start,
+                        char_end = EXCLUDED.char_end,
+                        estimated_tokens = EXCLUDED.estimated_tokens,
+                        date_boundary = EXCLUDED.date_boundary,
+                        parent_file_path = EXCLUDED.parent_file_path,
+                        created_time = EXCLUDED.created_time,
+                        synced_time = EXCLUDED.synced_time
                 """, (
                     chunk_data['chunk_id'],
                     chunk_data['page_id'],
@@ -2023,7 +1729,6 @@ class HybridContentRegistry:
                     chunk_data.get('created_time'),
                     chunk_data['synced_time']
                 ))
-                conn.commit()
                 return True
         except Exception as e:
             logger.error(f"Error adding page chunk {chunk_data.get('chunk_id')}: {e}")
@@ -2040,12 +1745,10 @@ class HybridContentRegistry:
             List of chunk metadata dicts, ordered by chunk_index
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with self.db.get_dict_cursor() as cursor:
                 cursor.execute("""
                     SELECT * FROM notion_page_chunks 
-                    WHERE page_id = ?
+                    WHERE page_id = %s
                     ORDER BY chunk_index
                 """, (page_id,))
                 rows = cursor.fetchall()
@@ -2065,30 +1768,19 @@ class HybridContentRegistry:
             Dict with page metadata or None if not found
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with self.db.get_dict_cursor() as cursor:
                 cursor.execute("""
                     SELECT page_id, workspace, database_name, content_type, 
                            title, created_time, last_edited_time, synced_time
                     FROM unified_content 
-                    WHERE page_id = ?
+                    WHERE page_id = %s
                 """, (page_id,))
                 
                 row = cursor.fetchone()
                 if not row:
                     return None
                     
-                return {
-                    'page_id': row['page_id'],
-                    'workspace': row['workspace'],
-                    'database_name': row['database_name'],
-                    'content_type': row['content_type'],
-                    'title': row['title'],
-                    'created_time': row['created_time'],
-                    'last_edited_time': row['last_edited_time'],
-                    'synced_time': row['synced_time']
-                }
+                return dict(row)
         except Exception as e:
             logger.error(f"Error getting page metadata for {page_id}: {e}")
             return None
@@ -2104,10 +1796,8 @@ class HybridContentRegistry:
             True if successful, False otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM notion_page_chunks WHERE page_id = ?", (page_id,))
-                conn.commit()
+            with self.db.get_cursor() as cursor:
+                cursor.execute("DELETE FROM notion_page_chunks WHERE page_id = %s", (page_id,))
                 deleted_count = cursor.rowcount
                 if deleted_count > 0:
                     logger.debug(f"Removed {deleted_count} chunks for page {page_id}")
@@ -2210,12 +1900,10 @@ class HybridContentRegistry:
             List of property definitions
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            with self.db.get_dict_cursor() as cursor:
                 cursor.execute("""
                     SELECT * FROM notion_property_schema
-                    WHERE database_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND is_active = TRUE
                     ORDER BY added_time
                 """, (database_id,))
                 rows = cursor.fetchall()
@@ -2244,14 +1932,12 @@ class HybridContentRegistry:
         try:
             now = datetime.utcnow().isoformat()
 
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Get current schema from database
                 cursor.execute("""
                     SELECT property_name, column_name, notion_type
                     FROM notion_property_schema
-                    WHERE database_id = ? AND is_active = TRUE
+                    WHERE database_id = %s AND is_active = TRUE
                 """, (database_id,))
 
                 current_schema = {row[0]: {'column_name': row[1], 'notion_type': row[2]}
@@ -2305,7 +1991,7 @@ class HybridContentRegistry:
                     # Check if column name already exists (collision)
                     cursor.execute("""
                         SELECT property_name FROM notion_property_schema
-                        WHERE table_name = ? AND column_name = ? AND is_active = TRUE
+                        WHERE table_name = %s AND column_name = %s AND is_active = TRUE
                     """, (table_name, column_name))
 
                     existing = cursor.fetchone()
@@ -2317,7 +2003,7 @@ class HybridContentRegistry:
                             column_name = f"{original_column}_{suffix}"
                             cursor.execute("""
                                 SELECT property_name FROM notion_property_schema
-                                WHERE table_name = ? AND column_name = ? AND is_active = TRUE
+                                WHERE table_name = %s AND column_name = %s AND is_active = TRUE
                             """, (table_name, column_name))
                             existing = cursor.fetchone()
                             suffix += 1
@@ -2327,7 +2013,7 @@ class HybridContentRegistry:
                     # Check if property already exists (may be inactive)
                     cursor.execute("""
                         SELECT added_time, is_active, column_name FROM notion_property_schema
-                        WHERE database_id = ? AND property_name = ?
+                        WHERE database_id = %s AND property_name = %s
                     """, (database_id, prop_name))
 
                     existing = cursor.fetchone()
@@ -2341,9 +2027,9 @@ class HybridContentRegistry:
 
                         cursor.execute("""
                             UPDATE notion_property_schema
-                            SET property_type = ?, notion_type = ?,
-                                is_active = TRUE, last_seen = ?, table_name = ?
-                            WHERE database_id = ? AND property_name = ?
+                            SET property_type = %s, notion_type = %s,
+                                is_active = TRUE, last_seen = %s, table_name = %s
+                            WHERE database_id = %s AND property_name = %s
                         """, (sqlite_type, notion_type, now, table_name,
                               database_id, prop_name))
 
@@ -2355,7 +2041,7 @@ class HybridContentRegistry:
                             INSERT INTO notion_property_schema (
                                 database_id, database_name, table_name, property_name,
                                 column_name, property_type, notion_type, added_time, last_seen
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (database_id, database_name, table_name, prop_name,
                               column_name, sqlite_type, notion_type, now, now))
 
@@ -2371,7 +2057,7 @@ class HybridContentRegistry:
                     cursor.execute("""
                         UPDATE notion_property_schema
                         SET is_active = FALSE
-                        WHERE database_id = ? AND property_name = ?
+                        WHERE database_id = %s AND property_name = %s
                     """, (database_id, prop_name))
 
                     result['removed'].append({
@@ -2437,8 +2123,8 @@ class HybridContentRegistry:
                                 # Update schema with new type
                                 cursor.execute("""
                                     UPDATE notion_property_schema
-                                    SET notion_type = ?, last_seen = ?
-                                    WHERE database_id = ? AND property_name = ?
+                                    SET notion_type = %s, last_seen = %s
+                                    WHERE database_id = %s AND property_name = %s
                                 """, (new_type, now, database_id, prop_name))
 
                                 result['type_changed'].append({
@@ -2454,11 +2140,9 @@ class HybridContentRegistry:
                 for prop_name in actually_unchanged:
                     cursor.execute("""
                         UPDATE notion_property_schema
-                        SET last_seen = ?
-                        WHERE database_id = ? AND property_name = ?
+                        SET last_seen = %s
+                        WHERE database_id = %s AND property_name = %s
                     """, (now, database_id, prop_name))
-
-                conn.commit()
 
                 if result['added']:
                     logger.info(f"Added {len(result['added'])} properties to schema for {database_name}")
@@ -2487,60 +2171,48 @@ class HybridContentRegistry:
             True if successful, False otherwise
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
+            with self.db.get_cursor() as cursor:
                 # Add new columns
                 for prop in schema_changes.get('added', []):
                     column_name = prop['column_name']
                     sqlite_type = prop['sqlite_type']
 
-                    # Check if column already exists
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    columns = {row[1] for row in cursor.fetchall()}
+                    # Check if column already exists (PostgreSQL)
+                    cursor.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = %s
+                    """, (table_name,))
+                    columns = {row[0] for row in cursor.fetchall()}
 
                     if column_name in columns:
                         logger.warning(f"Column '{column_name}' already exists in {table_name}, skipping")
                         continue
 
-                    # Add the column
+                    # Add the column (PostgreSQL supports ADD COLUMN)
                     alter_query = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sqlite_type}"
                     logger.info(f"Adding column: {alter_query}")
 
                     try:
                         cursor.execute(alter_query)
-                    except sqlite3.OperationalError as e:
+                    except Exception as e:
                         logger.error(f"Failed to add column '{column_name}' to {table_name}: {e}")
                         continue
 
-                # Remove columns (if requested and supported)
-                # Note: SQLite doesn't support DROP COLUMN directly in older versions
-                # This is a destructive operation and should be used carefully
+                # Remove columns (if requested)
+                # PostgreSQL supports DROP COLUMN
                 if remove_columns and schema_changes.get('removed'):
                     logger.warning(f"Column removal requested for {table_name}")
+                    
+                    for prop in schema_changes['removed']:
+                        column_name = prop['column_name']
+                        drop_query = f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS {column_name}"
+                        logger.warning(f"Removing column: {drop_query}")
 
-                    # Check SQLite version
-                    cursor.execute("SELECT sqlite_version()")
-                    version = cursor.fetchone()[0]
-                    major_version = int(version.split('.')[0])
-                    minor_version = int(version.split('.')[1])
+                        try:
+                            cursor.execute(drop_query)
+                        except Exception as e:
+                            logger.error(f"Failed to drop column '{column_name}' from {table_name}: {e}")
 
-                    # DROP COLUMN supported in SQLite 3.35.0+
-                    if major_version > 3 or (major_version == 3 and minor_version >= 35):
-                        for prop in schema_changes['removed']:
-                            column_name = prop['column_name']
-                            drop_query = f"ALTER TABLE {table_name} DROP COLUMN {column_name}"
-                            logger.warning(f"Removing column: {drop_query}")
-
-                            try:
-                                cursor.execute(drop_query)
-                            except sqlite3.OperationalError as e:
-                                logger.error(f"Failed to drop column '{column_name}' from {table_name}: {e}")
-                    else:
-                        logger.warning(f"SQLite version {version} does not support DROP COLUMN. "
-                                     f"Columns marked inactive in schema but not removed from table.")
-
-                conn.commit()
                 return True
 
         except Exception as e:
@@ -2608,18 +2280,19 @@ class HybridContentRegistry:
                     self._ensure_notion_table_exists(table_name)
 
                 # Check for missing columns (properties in schema but not in table)
-                with sqlite3.connect(self.db_path) as conn:
-                    cursor = conn.cursor()
-
-                    # Get current table columns
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    existing_columns = {row[1] for row in cursor.fetchall()}
+                with self.db.get_cursor() as cursor:
+                    # Get current table columns (PostgreSQL)
+                    cursor.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = %s
+                    """, (table_name,))
+                    existing_columns = {row[0] for row in cursor.fetchall()}
 
                     # Get all active properties from schema
                     cursor.execute("""
                         SELECT column_name, property_name, notion_type, property_type
                         FROM notion_property_schema
-                        WHERE database_id = ? AND is_active = TRUE
+                        WHERE database_id = %s AND is_active = TRUE
                     """, (database_id,))
 
                     # Add missing columns to the "added" list

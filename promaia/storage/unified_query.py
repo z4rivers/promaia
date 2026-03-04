@@ -5,7 +5,7 @@ This module provides a query interface for the hybrid storage architecture with
 separate optimized tables for each content type (Gmail, Notion databases, etc.)
 unified through the unified_content view.
 """
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
 import os
 import json
 import logging
@@ -29,8 +29,7 @@ class HybridQueryInterface:
                              days: int = None, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Query content for chat interface."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row  # Use Row factory for dict-like access
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 # --- Gmail Thread Logic ---
@@ -52,16 +51,16 @@ class HybridQueryInterface:
                 if cross_workspace_sources:
                     # Include content from specified workspace OR cross-workspace databases
                     cross_workspace_list = ', '.join(f"'{s}'" for s in cross_workspace_sources)
-                    where_conditions = [f"(workspace = ? OR database_name IN ({cross_workspace_list}))"]
+                    where_conditions = [f"(workspace = %s OR database_name IN ({cross_workspace_list}))"]
                 else:
-                    where_conditions = ["workspace = ?"]
+                    where_conditions = ["workspace = %s"]
                 params = [workspace]
 
                 # Add source filtering
                 if sources:
                     source_conditions = []
                     for source in sources:
-                        source_conditions.append("database_name = ?")
+                        source_conditions.append("database_name = %s")
                         params.append(source)
                     where_conditions.append(f"({' OR '.join(source_conditions)})")
                 
@@ -84,9 +83,9 @@ class HybridQueryInterface:
                 gmail_thread_ids = set()
                 if 'gmail' in (sources or []) and cutoff_date:
                     gmail_thread_query = """
-                        SELECT DISTINCT json_extract(metadata, '$.thread_id')
+                        SELECT DISTINCT metadata->>'thread_id'
                         FROM unified_content
-                        WHERE database_name = 'gmail' AND workspace = ? AND (created_time >= ? OR last_edited_time >= ?)
+                        WHERE database_name = 'gmail' AND workspace = %s AND (created_time >= %s OR last_edited_time >= %s)
                     """
                     cursor.execute(gmail_thread_query, (workspace, cutoff_date, cutoff_date))
                     gmail_thread_ids.update(row[0] for row in cursor.fetchall() if row[0])
@@ -102,34 +101,34 @@ class HybridQueryInterface:
                 # A) Clause for non-Gmail content (with cross-workspace support)
                 if cross_workspace_sources:
                     cross_workspace_list = ', '.join(f"'{s}'" for s in cross_workspace_sources)
-                    non_gmail_conditions = ["database_name != 'gmail'", f"(workspace = ? OR database_name IN ({cross_workspace_list}))"]
+                    non_gmail_conditions = ["database_name != 'gmail'", f"(workspace = %s OR database_name IN ({cross_workspace_list}))"]
                 else:
-                    non_gmail_conditions = ["database_name != 'gmail'", "workspace = ?"]
+                    non_gmail_conditions = ["database_name != 'gmail'", "workspace = %s"]
                 non_gmail_params = [workspace]
                 
                 if sources:
                     other_sources = [s for s in sources if s != 'gmail']
                     if other_sources:
-                        source_placeholders = ','.join('?' * len(other_sources))
+                        source_placeholders = ','.join('%s' for _ in other_sources)
                         non_gmail_conditions.append(f"database_name IN ({source_placeholders})")
                         non_gmail_params.extend(other_sources)
 
                 if cutoff_date:
-                    non_gmail_conditions.append("(created_time >= ? OR last_edited_time >= ?)")
+                    non_gmail_conditions.append("(created_time >= %s OR last_edited_time >= %s)")
                     non_gmail_params.extend([cutoff_date, cutoff_date])
                 
                 # Add custom filters to non-gmail part
                 if filters:
                     for key, value in filters.items():
-                        non_gmail_conditions.append(f"{key} = ?") # simplified for now
+                        non_gmail_conditions.append(f"{key} = %s") # simplified for now
                         non_gmail_params.append(value)
                 
                 non_gmail_full_clause = f"({' AND '.join(non_gmail_conditions)})"
                 
                 # B) Clause for Gmail content
                 if gmail_thread_ids:
-                    placeholders = ','.join('?' * len(gmail_thread_ids))
-                    gmail_full_clause = f"(database_name = 'gmail' AND workspace = ? AND json_extract(metadata, '$.thread_id') IN ({placeholders}))"
+                    placeholders = ','.join('%s' for _ in gmail_thread_ids)
+                    gmail_full_clause = f"(database_name = 'gmail' AND workspace = %s AND metadata->>'thread_id' IN ({placeholders}))"
                     
                     # Combine clauses with OR
                     final_query_clause = f"{non_gmail_full_clause} OR {gmail_full_clause}"
@@ -141,7 +140,7 @@ class HybridQueryInterface:
                     # but we also need to include gmail if it was in sources and no date filter was applied
                     if 'gmail' in (sources or []) and not cutoff_date:
                          # This case should fetch all gmail content if no date filter
-                         final_query_clause = f"{non_gmail_full_clause} OR (database_name = 'gmail' AND workspace = ?)"
+                         final_query_clause = f"{non_gmail_full_clause} OR (database_name = 'gmail' AND workspace = %s)"
                          final_params.extend(non_gmail_params)
                          final_params.append(workspace)
                     else:
@@ -160,10 +159,10 @@ class HybridQueryInterface:
                 # Temporary fix for when no sources are provided, which would lead to an empty `other_sources` list and invalid SQL
                 if not sources:
                     # If no sources, we should query everything respecting the date filter if present
-                    base_conditions = ["workspace = ?"]
+                    base_conditions = ["workspace = %s"]
                     base_params = [workspace]
                     if cutoff_date:
-                        base_conditions.append("(created_time >= ? OR last_edited_time >= ?)")
+                        base_conditions.append("(created_time >= %s OR last_edited_time >= %s)")
                         base_params.extend([cutoff_date, cutoff_date])
                     
                     final_query_clause = ' AND '.join(base_conditions)
@@ -182,8 +181,9 @@ class HybridQueryInterface:
                 
                 # Convert to format expected by chat interface
                 content_list = []
+                columns = [desc[0] for desc in cursor.description]
                 for row in results:
-                    content_list.append(dict(row))
+                    content_list.append(dict(zip(columns, row)))
                 
                 return content_list
                 
@@ -194,13 +194,13 @@ class HybridQueryInterface:
     def get_content_by_id(self, page_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific content item by page ID."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT page_id, workspace, database_name, content_type, file_path, title,
                            created_time, last_edited_time, synced_time, metadata
                     FROM unified_content 
-                    WHERE page_id = ?
+                    WHERE page_id = %s
                 """, (page_id,))
                 
                 row = cursor.fetchone()
@@ -226,20 +226,20 @@ class HybridQueryInterface:
     def search_content(self, query: str, workspace: str = None, sources: List[str] = None) -> List[Dict[str, Any]]:
         """Search content by title or metadata."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
-                where_conditions = ["(title LIKE ? OR metadata LIKE ?)"]
+                where_conditions = ["(title LIKE %s OR metadata::text LIKE %s)"]
                 params = [f"%{query}%", f"%{query}%"]
                 
                 if workspace:
-                    where_conditions.append("workspace = ?")
+                    where_conditions.append("workspace = %s")
                     params.append(workspace)
                 
                 if sources:
                     source_conditions = []
                     for source in sources:
-                        source_conditions.append("database_name = ?")
+                        source_conditions.append("database_name = %s")
                         params.append(source)
                     where_conditions.append(f"({' OR '.join(source_conditions)})")
                 
@@ -295,12 +295,12 @@ class HybridQueryInterface:
     def get_database_context(self, workspace: str) -> Dict[str, Any]:
         """Get available databases for a workspace."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT database_name, COUNT(*) as count
                     FROM unified_content 
-                    WHERE workspace = ?
+                    WHERE workspace = %s
                     GROUP BY database_name
                 """, (workspace,))
                 

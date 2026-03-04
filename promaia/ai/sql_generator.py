@@ -2,7 +2,7 @@
 Schema-aware SQL generation for pattern-based natural language queries.
 Replaces Vanna.ai's complex training with focused, predictable SQL generation.
 """
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from .pattern_based_nl import QueryIntent, QueryType
@@ -18,11 +18,11 @@ class SchemaAwareSQLGenerator:
     def _load_schema_info(self):
         """Load schema information for intelligent SQL generation."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Get available tables
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
                 self.available_tables = [row[0] for row in cursor.fetchall()]
                 
                 # Check for data-type specific tables

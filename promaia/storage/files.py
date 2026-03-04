@@ -10,7 +10,8 @@ import re
 from promaia.utils.timezone_utils import now_utc
 from pathlib import Path
 import logging
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
+import psycopg2.extras
 
 # Import the new centralized path function
 from promaia.config.paths import get_project_root
@@ -655,10 +656,8 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
             return ""
 
         # Query the specialized table for this page
-        import sqlite3
-        with sqlite3.connect(registry.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        with pg_connect() as conn:
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Get property column names
             property_columns = [prop['column_name'] for prop in property_schema]
@@ -667,7 +666,7 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
 
             # Build query to fetch properties
             columns_str = ', '.join(property_columns)
-            query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = ?"
+            query = f"SELECT {columns_str} FROM {table_name} WHERE page_id = %s"
 
             cursor.execute(query, (page_id,))
             row = cursor.fetchone()
@@ -742,13 +741,12 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
         project_root = get_project_root()
         
         # Step 1: Get registry entries for the requested page_ids
-        with sqlite3.connect(registry.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        with pg_connect() as conn:
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             # Build query with placeholders for all page_ids
             # Use DISTINCT ON page_id to avoid duplicates from inconsistent database_name storage
-            placeholders = ','.join('?' * len(page_ids))
+            placeholders = ','.join(['%s'] * len(page_ids))
             query = f"""
                 SELECT page_id, workspace, database_name, database_id, content_type, 
                        title, created_time, last_edited_time, synced_time, file_path, metadata
@@ -771,7 +769,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                 if gmail_messages_in_results > 0:
                     # Get thread IDs from gmail_content table (not from metadata)
                     gmail_page_ids = [e['page_id'] for e in registry_entries if e['database_name'] == 'gmail']
-                    placeholders = ','.join('?' * len(gmail_page_ids))
+                    placeholders = ','.join(['%s'] * len(gmail_page_ids))
                     
                     thread_query = f"""
                         SELECT DISTINCT thread_id
@@ -786,7 +784,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                     if gmail_thread_ids:
                         print(f"📧 Expanding Gmail threads: {gmail_messages_in_results} messages → {len(gmail_thread_ids)} threads")
                         
-                        thread_placeholders = ','.join('?' * len(gmail_thread_ids))
+                        thread_placeholders = ','.join(['%s'] * len(gmail_thread_ids))
                         gmail_query = f"""
                             SELECT DISTINCT u.page_id, u.workspace, u.database_name, u.database_id, u.content_type,
                                    u.title, u.created_time, u.last_edited_time, u.synced_time, u.file_path, u.metadata
@@ -1091,7 +1089,7 @@ def load_database_pages_with_filters(
         # Step 1: Query registry for page_ids matching the database and date filters
         registry = get_hybrid_registry()
         
-        with sqlite3.connect(registry.db_path) as conn:
+        with pg_connect() as conn:
             cursor = conn.cursor()
             
             # Determine which date property to use from config, default to last_edited_time
@@ -1106,7 +1104,7 @@ def load_database_pages_with_filters(
                 date_filter_prop = "last_edited_time"
 
             # Query the unified_content view for this database
-            where_conditions = ["workspace = ?", "database_id = ?"]
+            where_conditions = ["workspace = %s", "database_id = %s"]
             params = [database_config.workspace, database_config.database_id]
             
             # Add date filtering if days parameter is provided
@@ -1117,7 +1115,7 @@ def load_database_pages_with_filters(
                     try:
                         days_int = int(days) if isinstance(days, str) else days
                         cutoff_date = (datetime.now() - timedelta(days=days_int)).isoformat()
-                        where_conditions.append(f"({date_filter_prop} >= ?)")
+                        where_conditions.append(f"({date_filter_prop} >= %s)")
                         params.append(cutoff_date)
                     except (ValueError, TypeError) as e:
                         print(f"Warning: Invalid days parameter '{days}': {e}")

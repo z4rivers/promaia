@@ -1,7 +1,7 @@
 """
 Execution Tracker - Storage and monitoring for agent executions.
 """
-import sqlite3
+from promaia.storage.postgres_db import pg_connect
 import json
 import logging
 from datetime import datetime, timezone
@@ -30,22 +30,20 @@ class AgentExecution:
 
 class ExecutionTracker:
     """
-    Tracks agent executions in SQLite database.
+    Tracks agent executions in PostgreSQL database.
 
     Handles execution logging, status tracking, and monitoring
     for scheduled agents.
     """
 
     def __init__(self, db_path: str = "data/hybrid_metadata.db", timeout: float = 30.0):
-        self.db_path = db_path
+        self.db_path = db_path  # Kept for API compatibility
         self.timeout = timeout
         self._ensure_tables()
 
     def _get_connection(self):
-        """Get SQLite connection with proper timeout settings."""
-        conn = sqlite3.connect(self.db_path, timeout=self.timeout)
-        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
-        return conn
+        """Get PostgreSQL connection."""
+        return pg_connect()
 
     def _ensure_tables(self):
         """Create agent_executions table if it doesn't exist."""
@@ -56,7 +54,7 @@ class ExecutionTracker:
                 # Agent executions table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS agent_executions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id SERIAL PRIMARY KEY,
                         agent_name TEXT NOT NULL,
                         started_at TEXT NOT NULL,
                         completed_at TEXT,
@@ -116,7 +114,8 @@ class ExecutionTracker:
                 cursor.execute("""
                     INSERT INTO agent_executions (
                         agent_name, started_at, status, created_at
-                    ) VALUES (?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s)
+                    RETURNING id
                 """, (
                     agent_name,
                     now,
@@ -124,7 +123,7 @@ class ExecutionTracker:
                     now
                 ))
 
-                execution_id = cursor.lastrowid
+                execution_id = cursor.fetchone()[0]
                 conn.commit()
                 logger.info(f"Started execution {execution_id} for agent '{agent_name}'")
                 return execution_id
@@ -165,15 +164,15 @@ class ExecutionTracker:
 
                 cursor.execute("""
                     UPDATE agent_executions
-                    SET completed_at = ?,
-                        status = ?,
-                        iterations_used = ?,
-                        tokens_used = ?,
-                        cost_estimate = ?,
-                        output_notion_page_id = ?,
-                        error_message = ?,
-                        context_summary = ?
-                    WHERE id = ?
+                    SET completed_at = %s,
+                        status = %s,
+                        iterations_used = %s,
+                        tokens_used = %s,
+                        cost_estimate = %s,
+                        output_notion_page_id = %s,
+                        error_message = %s,
+                        context_summary = %s
+                    WHERE id = %s
                 """, (
                     now,
                     status,
@@ -200,7 +199,7 @@ class ExecutionTracker:
                 cursor = conn.cursor()
 
                 cursor.execute("""
-                    SELECT * FROM agent_executions WHERE id = ?
+                    SELECT * FROM agent_executions WHERE id = %s
                 """, (execution_id,))
 
                 row = cursor.fetchone()
@@ -239,14 +238,14 @@ class ExecutionTracker:
                 params = []
 
                 if agent_name:
-                    query += " AND agent_name = ?"
+                    query += " AND agent_name = %s"
                     params.append(agent_name)
 
                 if status:
-                    query += " AND status = ?"
+                    query += " AND status = %s"
                     params.append(status)
 
-                query += " ORDER BY started_at DESC LIMIT ?"
+                query += " ORDER BY started_at DESC LIMIT %s"
                 params.append(limit)
 
                 cursor.execute(query, params)
@@ -275,42 +274,42 @@ class ExecutionTracker:
 
                 # Total executions
                 cursor.execute("""
-                    SELECT COUNT(*) FROM agent_executions WHERE agent_name = ?
+                    SELECT COUNT(*) FROM agent_executions WHERE agent_name = %s
                 """, (agent_name,))
                 total_runs = cursor.fetchone()[0]
 
                 # Successful executions
                 cursor.execute("""
                     SELECT COUNT(*) FROM agent_executions
-                    WHERE agent_name = ? AND status = 'completed'
+                    WHERE agent_name = %s AND status = 'completed'
                 """, (agent_name,))
                 successful_runs = cursor.fetchone()[0]
 
                 # Failed executions
                 cursor.execute("""
                     SELECT COUNT(*) FROM agent_executions
-                    WHERE agent_name = ? AND status = 'failed'
+                    WHERE agent_name = %s AND status = 'failed'
                 """, (agent_name,))
                 failed_runs = cursor.fetchone()[0]
 
                 # Average cost
                 cursor.execute("""
                     SELECT AVG(cost_estimate) FROM agent_executions
-                    WHERE agent_name = ? AND cost_estimate > 0
+                    WHERE agent_name = %s AND cost_estimate > 0
                 """, (agent_name,))
                 avg_cost = cursor.fetchone()[0] or 0.0
 
                 # Total cost
                 cursor.execute("""
                     SELECT SUM(cost_estimate) FROM agent_executions
-                    WHERE agent_name = ?
+                    WHERE agent_name = %s
                 """, (agent_name,))
                 total_cost = cursor.fetchone()[0] or 0.0
 
                 # Last run
                 cursor.execute("""
                     SELECT started_at, status FROM agent_executions
-                    WHERE agent_name = ?
+                    WHERE agent_name = %s
                     ORDER BY started_at DESC LIMIT 1
                 """, (agent_name,))
                 last_run = cursor.fetchone()

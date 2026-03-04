@@ -1,15 +1,17 @@
 """
-Draft Manager - SQLite operations for email drafts.
+Draft Manager - Database operations for email drafts.
 
-Manages the email_drafts table in hybrid_metadata.db with CRUD operations.
+Manages the email_drafts table with CRUD operations.
+Now uses PostgreSQL for centralized storage.
 """
-import sqlite3
 import json
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+
+from promaia.storage.postgres_db import get_postgres_db, pg_connect
 
 logger = logging.getLogger(__name__)
 
@@ -49,200 +51,34 @@ def get_safety_string_from_recipient(recipient: str) -> str:
 
 
 class DraftManager:
-    """SQLite operations for email drafts."""
+    """Database operations for email drafts using PostgreSQL."""
     
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
-        self.db_path = db_path
+        """
+        Initialize draft manager.
+        
+        Args:
+            db_path: Deprecated - kept for backward compatibility.
+        """
+        self.db_path = db_path  # Keep for compatibility
+        self.db = get_postgres_db()
         self._ensure_table()
     
     def _ensure_table(self):
-        """Create email_drafts and mail_sync_state tables if they don't exist."""
+        """Ensure email_drafts and mail_sync_state tables exist."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-
-                # Create mail_sync_state table for tracking last sync times
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mail_sync_state (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        workspace TEXT UNIQUE NOT NULL,
-                        last_sync_time TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    )
-                """)
-
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS email_drafts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        draft_id TEXT UNIQUE NOT NULL,
-                        workspace TEXT NOT NULL,
-                        thread_id TEXT NOT NULL,
-                        message_id TEXT NOT NULL,
-                        inbound_subject TEXT,
-                        inbound_from TEXT,
-                        inbound_snippet TEXT,
-                        inbound_date TEXT,
-                        inbound_body TEXT,
-                        
-                        -- Classification results
-                        pertains_to_me BOOLEAN DEFAULT TRUE,
-                        is_spam BOOLEAN DEFAULT FALSE,
-                        requires_response BOOLEAN DEFAULT TRUE,
-                        classification_reasoning TEXT,
-                        
-                        -- Draft response
-                        draft_subject TEXT,
-                        draft_body TEXT,
-                        draft_body_html TEXT,
-                        
-                        -- Context used for generation
-                        response_context TEXT,
-                        system_prompt TEXT,
-                        ai_model TEXT,
-                        
-                        -- Draft versioning and chat
-                        draft_number INTEGER DEFAULT 1,
-                        chat_session_id TEXT,
-                        previous_draft_id TEXT,
-                        version INTEGER DEFAULT 1,
-                        draft_history TEXT,  -- JSON array of all draft versions
-                        
-                        -- Status tracking
-                        status TEXT DEFAULT 'pending',
-                        created_time TEXT NOT NULL,
-                        reviewed_time TEXT,
-                        sent_time TEXT,
-                        completed_time TEXT,  -- When draft was marked as sent/archived (final state)
-                        
-                        -- Safety mechanism
-                        safety_string TEXT,
-                        
-                        -- Thread context
-                        thread_context TEXT,
-                        message_count INTEGER DEFAULT 1,
-                        
-                        UNIQUE(draft_id)
-                    )
-                """)
-                
-                # Create indexes for common queries
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_drafts_workspace_status 
-                    ON email_drafts(workspace, status)
-                """)
-                
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_drafts_thread_id 
-                    ON email_drafts(thread_id)
-                """)
-                
-                conn.commit()
-                
-                # Migrate existing tables to add draft_history column if missing
-                self._migrate_draft_history_column(cursor)
-                # Migrate to add completed_time column if missing
-                self._migrate_completed_time_column(cursor)
-                # Migrate to add inbound_to and inbound_cc columns if missing
-                self._migrate_recipient_columns(cursor)
-                # Migrate to add chat_messages column if missing
-                self._migrate_chat_messages_column(cursor)
-                conn.commit()
-                
-                logger.info("✅ Email drafts table initialized")
+            # Tables should be created by schema.sql
+            if not self.db.table_exists('email_drafts'):
+                logger.warning("email_drafts table not found. Run: python -m promaia db init")
+            else:
+                logger.debug("✅ email_drafts table exists")
                 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize email_drafts table: {e}")
+            logger.error(f"❌ Failed to check email_drafts table: {e}")
             raise
     
-    def _migrate_draft_history_column(self, cursor):
-        """Add draft_history column to existing tables if it doesn't exist."""
-        try:
-            # Check if draft_history column exists
-            cursor.execute("PRAGMA table_info(email_drafts)")
-            columns = [col[1] for col in cursor.fetchall()]
-            
-            if 'draft_history' not in columns:
-                logger.info("🔄 Migrating email_drafts table to add draft_history column...")
-                cursor.execute("""
-                    ALTER TABLE email_drafts 
-                    ADD COLUMN draft_history TEXT
-                """)
-                logger.info("✅ Added draft_history column")
-        except Exception as e:
-            logger.warning(f"⚠️  Draft history migration: {e}")
-    
-    def _migrate_completed_time_column(self, cursor):
-        """Add completed_time column to existing tables if it doesn't exist."""
-        try:
-            # Check if completed_time column exists
-            cursor.execute("PRAGMA table_info(email_drafts)")
-            columns = [col[1] for col in cursor.fetchall()]
-            
-            if 'completed_time' not in columns:
-                logger.info("🔄 Migrating email_drafts table to add completed_time column...")
-                cursor.execute("""
-                    ALTER TABLE email_drafts 
-                    ADD COLUMN completed_time TEXT
-                """)
-                logger.info("✅ Added completed_time column")
-                
-                # Backfill completed_time for existing sent/archived drafts
-                # Use sent_time for sent drafts, reviewed_time for archived drafts
-                cursor.execute("""
-                    UPDATE email_drafts 
-                    SET completed_time = sent_time 
-                    WHERE status = 'sent' AND sent_time IS NOT NULL
-                """)
-                cursor.execute("""
-                    UPDATE email_drafts 
-                    SET completed_time = reviewed_time 
-                    WHERE status = 'archived' AND reviewed_time IS NOT NULL AND completed_time IS NULL
-                """)
-                logger.info("✅ Backfilled completed_time for existing drafts")
-        except Exception as e:
-            logger.warning(f"⚠️  Completed time migration: {e}")
-    
-    def _migrate_recipient_columns(self, cursor):
-        """Add inbound_to and inbound_cc columns to existing tables if they don't exist."""
-        try:
-            # Check if columns exist
-            cursor.execute("PRAGMA table_info(email_drafts)")
-            columns = [col[1] for col in cursor.fetchall()]
-
-            if 'inbound_to' not in columns:
-                logger.info("🔄 Migrating email_drafts table to add inbound_to column...")
-                cursor.execute("""
-                    ALTER TABLE email_drafts
-                    ADD COLUMN inbound_to TEXT
-                """)
-                logger.info("✅ Added inbound_to column")
-
-            if 'inbound_cc' not in columns:
-                logger.info("🔄 Migrating email_drafts table to add inbound_cc column...")
-                cursor.execute("""
-                    ALTER TABLE email_drafts
-                    ADD COLUMN inbound_cc TEXT
-                """)
-                logger.info("✅ Added inbound_cc column")
-        except Exception as e:
-            logger.warning(f"⚠️  Recipient columns migration: {e}")
-
-    def _migrate_chat_messages_column(self, cursor):
-        """Add chat_messages column to existing tables if it doesn't exist."""
-        try:
-            # Check if chat_messages column exists
-            cursor.execute("PRAGMA table_info(email_drafts)")
-            columns = [col[1] for col in cursor.fetchall()]
-
-            if 'chat_messages' not in columns:
-                logger.info("🔄 Migrating email_drafts table to add chat_messages column...")
-                cursor.execute("""
-                    ALTER TABLE email_drafts
-                    ADD COLUMN chat_messages TEXT
-                """)
-                logger.info("✅ Added chat_messages column for conversation history")
-        except Exception as e:
-            logger.warning(f"⚠️  Chat messages migration: {e}")
+    # Note: Migration methods removed - schema migrations are handled by promaia/storage/schema.sql
+    # Run: python -m promaia db init
     
     def save_draft(self, draft: Dict[str, Any]) -> str:
         """
@@ -265,7 +101,7 @@ class DraftManager:
         draft_history = json.dumps(initial_history)
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
@@ -277,7 +113,7 @@ class DraftManager:
                         response_context, system_prompt, ai_model,
                         draft_number, chat_session_id, previous_draft_id, version, draft_history,
                         status, created_time, safety_string, thread_context, message_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     draft_id,
                     draft.get('workspace'),
@@ -323,15 +159,15 @@ class DraftManager:
     def get_draft(self, draft_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific draft by ID."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
-                cursor.execute("SELECT * FROM email_drafts WHERE draft_id = ?", (draft_id,))
+                cursor.execute("SELECT * FROM email_drafts WHERE draft_id = %s", (draft_id,))
                 row = cursor.fetchone()
                 
                 if row:
-                    return dict(row)
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, row))
                 return None
                 
         except Exception as e:
@@ -341,13 +177,12 @@ class DraftManager:
     def get_pending_drafts(self, workspace: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get drafts with status='pending'."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 if workspace:
                     cursor.execute(
-                        "SELECT * FROM email_drafts WHERE status = 'pending' AND workspace = ? ORDER BY created_time DESC",
+                        "SELECT * FROM email_drafts WHERE status = 'pending' AND workspace = %s ORDER BY created_time DESC",
                         (workspace,)
                     )
                 else:
@@ -356,7 +191,8 @@ class DraftManager:
                     )
                 
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
                 
         except Exception as e:
             logger.error(f"❌ Failed to get pending drafts: {e}")
@@ -385,21 +221,20 @@ class DraftManager:
                  - If None, no date filtering is applied
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 # Build base query based on include_resolved
                 if include_resolved:
-                    base_condition = "workspace = ?"
+                    base_condition = "workspace = %s"
                     params = [workspace]
                 else:
-                    base_condition = "workspace = ? AND status NOT IN ('sent', 'archived')"
+                    base_condition = "workspace = %s AND status NOT IN ('sent', 'archived')"
                     params = [workspace]
 
                 # Add status filter if provided
                 if status_filter:
-                    placeholders = ','.join('?' for _ in status_filter)
+                    placeholders = ','.join('%s' for _ in status_filter)
                     base_condition += f" AND status IN ({placeholders})"
                     params.extend(status_filter)
 
@@ -407,7 +242,7 @@ class DraftManager:
                 if days is not None:
                     cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
                     # Always show pending/unsure, filter others by date
-                    base_condition += " AND (status IN ('pending', 'unsure') OR created_time >= ?)"
+                    base_condition += " AND (status IN ('pending', 'unsure') OR created_time >= %s)"
                     params.append(cutoff_date)
 
                 # Order by status priority first (pending → unsure → skipped), then by date
@@ -427,7 +262,8 @@ class DraftManager:
                 cursor.execute(query, params)
 
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
 
         except Exception as e:
             logger.error(f"❌ Failed to get drafts for workspace {workspace}: {e}")
@@ -446,19 +282,19 @@ class DraftManager:
             List of completed drafts ordered by completed_time DESC
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute(
                     """SELECT * FROM email_drafts 
-                    WHERE workspace = ? AND status IN ('sent', 'archived') 
+                    WHERE workspace = %s AND status IN ('sent', 'archived') 
                     ORDER BY completed_time DESC, created_time DESC""",
                     (workspace,)
                 )
                 
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
                 
         except Exception as e:
             logger.error(f"❌ Failed to get history for workspace {workspace}: {e}")
@@ -467,7 +303,7 @@ class DraftManager:
     def update_draft_status(self, draft_id: str, status: str):
         """Update draft status and set completed_time for final states."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 now = datetime.now(timezone.utc).isoformat()
@@ -475,16 +311,15 @@ class DraftManager:
                 # If moving to a final state (sent/archived), set completed_time
                 if status in ['sent', 'archived']:
                     cursor.execute(
-                        "UPDATE email_drafts SET status = ?, reviewed_time = ?, completed_time = ? WHERE draft_id = ?",
+                        "UPDATE email_drafts SET status = %s, reviewed_time = %s, completed_time = %s WHERE draft_id = %s",
                         (status, now, now, draft_id)
                     )
                 else:
                     cursor.execute(
-                        "UPDATE email_drafts SET status = ?, reviewed_time = ? WHERE draft_id = ?",
+                        "UPDATE email_drafts SET status = %s, reviewed_time = %s WHERE draft_id = %s",
                         (status, now, draft_id)
                     )
                 
-                conn.commit()
                 logger.info(f"✅ Updated draft {draft_id} status to {status}")
                 
         except Exception as e:
@@ -494,61 +329,57 @@ class DraftManager:
     def update_draft_body(self, draft_id: str, new_body: str, version: int = 1):
         """Update the body of a draft."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE email_drafts SET draft_body = ?, version = ? WHERE draft_id = ?",
+                    "UPDATE email_drafts SET draft_body = %s, version = %s WHERE draft_id = %s",
                     (new_body, version, draft_id)
                 )
-                conn.commit()
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Database error updating draft body: {e}")
 
     def update_draft_body_and_subject(self, draft_id: str, draft_body: str, draft_subject: Optional[str] = None):
         """Update the body and subject of a draft."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 if draft_subject is not None:
                     cursor.execute(
-                        "UPDATE email_drafts SET draft_body = ?, draft_subject = ? WHERE draft_id = ?",
+                        "UPDATE email_drafts SET draft_body = %s, draft_subject = %s WHERE draft_id = %s",
                         (draft_body, draft_subject, draft_id)
                     )
                 else:
                     cursor.execute(
-                        "UPDATE email_drafts SET draft_body = ? WHERE draft_id = ?",
+                        "UPDATE email_drafts SET draft_body = %s WHERE draft_id = %s",
                         (draft_body, draft_id)
                     )
-                conn.commit()
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Database error updating draft body and subject: {e}")
 
     def update_inbound_body(self, draft_id: str, new_body: str):
         """Update the inbound_body of a draft."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE email_drafts SET inbound_body = ? WHERE draft_id = ?",
+                    "UPDATE email_drafts SET inbound_body = %s WHERE draft_id = %s",
                     (new_body, draft_id)
                 )
-                conn.commit()
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Database error updating inbound body: {e}")
 
     def mark_sent(self, draft_id: str):
         """Mark a draft as sent and record sent_time."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 now = datetime.now(timezone.utc).isoformat()
 
                 cursor.execute(
-                    "UPDATE email_drafts SET status = ?, sent_time = ?, completed_time = ? WHERE draft_id = ?",
+                    "UPDATE email_drafts SET status = %s, sent_time = %s, completed_time = %s WHERE draft_id = %s",
                     ('sent', now, now, draft_id)
                 )
 
-                conn.commit()
                 logger.info(f"✅ Marked draft {draft_id} as sent")
 
         except Exception as e:
@@ -567,17 +398,16 @@ class DraftManager:
             raise TypeError(f"messages must be a list, got {type(messages)}")
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 messages_json = json.dumps(messages)
 
                 cursor.execute(
-                    "UPDATE email_drafts SET chat_messages = ? WHERE draft_id = ?",
+                    "UPDATE email_drafts SET chat_messages = %s WHERE draft_id = %s",
                     (messages_json, draft_id)
                 )
 
                 rows_affected = cursor.rowcount
-                conn.commit()
 
                 if rows_affected > 0:
                     logger.info(f"✅ Saved {len(messages)} chat messages for draft {draft_id} ({len(messages_json)} bytes)")
@@ -592,11 +422,11 @@ class DraftManager:
     def load_chat_messages(self, draft_id: str) -> List[Dict[str, Any]]:
         """Load chat conversation history for a draft."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    "SELECT chat_messages FROM email_drafts WHERE draft_id = ?",
+                    "SELECT chat_messages FROM email_drafts WHERE draft_id = %s",
                     (draft_id,)
                 )
 
@@ -620,12 +450,12 @@ class DraftManager:
         This method kept for backward compatibility.
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
                     """SELECT COUNT(*) FROM email_drafts
-                       WHERE thread_id = ? AND workspace = ?
+                       WHERE thread_id = %s AND workspace = %s
                        AND status IN ('pending', 'unsure', 'skipped')""",
                     (thread_id, workspace)
                 )
@@ -654,14 +484,14 @@ class DraftManager:
             True if this exact message already has a draft (prevents duplicates)
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 # Check for ANY draft with this exact message_id
                 # This prevents re-processing the same message multiple times
                 cursor.execute(
                     """SELECT COUNT(*) FROM email_drafts
-                       WHERE thread_id = ? AND message_id = ? AND workspace = ?""",
+                       WHERE thread_id = %s AND message_id = %s AND workspace = %s""",
                     (thread_id, message_id, workspace)
                 )
 
@@ -680,12 +510,12 @@ class DraftManager:
     def get_draft_count_by_status(self, workspace: Optional[str] = None) -> Dict[str, int]:
         """Get count of drafts by status."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 if workspace:
                     cursor.execute(
-                        "SELECT status, COUNT(*) FROM email_drafts WHERE workspace = ? GROUP BY status",
+                        "SELECT status, COUNT(*) FROM email_drafts WHERE workspace = %s GROUP BY status",
                         (workspace,)
                     )
                 else:
@@ -711,16 +541,15 @@ class DraftManager:
             List of draft dictionaries
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Build query with dynamic status list
-                placeholders = ','.join('?' for _ in statuses)
+                placeholders = ','.join('%s' for _ in statuses)
                 query = f"""
                     SELECT * FROM email_drafts 
-                    WHERE workspace = ? 
-                    AND created_time >= ? 
+                    WHERE workspace = %s 
+                    AND created_time >= %s 
                     AND status IN ({placeholders})
                     ORDER BY created_time DESC
                 """
@@ -729,7 +558,8 @@ class DraftManager:
                 cursor.execute(query, params)
                 
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
                 
         except Exception as e:
             logger.error(f"❌ Failed to get refreshable drafts: {e}")
@@ -762,7 +592,7 @@ class DraftManager:
             ai_model: AI model used
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Extract thread data
@@ -774,22 +604,22 @@ class DraftManager:
                 # Update query
                 cursor.execute("""
                     UPDATE email_drafts SET
-                        status = ?,
-                        inbound_body = ?,
-                        inbound_to = ?,
-                        inbound_cc = ?,
-                        message_count = ?,
-                        pertains_to_me = ?,
-                        is_spam = ?,
-                        requires_response = ?,
-                        classification_reasoning = ?,
-                        draft_subject = ?,
-                        draft_body = ?,
-                        response_context = ?,
-                        system_prompt = ?,
-                        ai_model = ?,
-                        reviewed_time = ?
-                    WHERE draft_id = ?
+                        status = %s,
+                        inbound_body = %s,
+                        inbound_to = %s,
+                        inbound_cc = %s,
+                        message_count = %s,
+                        pertains_to_me = %s,
+                        is_spam = %s,
+                        requires_response = %s,
+                        classification_reasoning = %s,
+                        draft_subject = %s,
+                        draft_body = %s,
+                        response_context = %s,
+                        system_prompt = %s,
+                        ai_model = %s,
+                        reviewed_time = %s
+                    WHERE draft_id = %s
                 """, (
                     status,
                     inbound_body,
@@ -809,7 +639,6 @@ class DraftManager:
                     draft_id
                 ))
                 
-                conn.commit()
                 logger.debug(f"✅ Updated draft {draft_id} after refresh")
                 
         except Exception as e:
@@ -827,11 +656,11 @@ class DraftManager:
             Last sync time as datetime, or None if never synced
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    "SELECT last_sync_time FROM mail_sync_state WHERE workspace = ?",
+                    "SELECT last_sync_time FROM mail_sync_state WHERE workspace = %s",
                     (workspace,)
                 )
 
@@ -857,20 +686,22 @@ class DraftManager:
             sync_time = datetime.now(timezone.utc)
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
-                # Use INSERT OR REPLACE to handle both new and existing records
+                # Use INSERT ... ON CONFLICT to handle both new and existing records
                 cursor.execute("""
-                    INSERT OR REPLACE INTO mail_sync_state (workspace, last_sync_time, updated_at)
-                    VALUES (?, ?, ?)
+                    INSERT INTO mail_sync_state (workspace, last_sync_time, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (workspace) DO UPDATE SET
+                        last_sync_time = EXCLUDED.last_sync_time,
+                        updated_at = EXCLUDED.updated_at
                 """, (
                     workspace,
                     sync_time.isoformat(),
                     datetime.now(timezone.utc).isoformat()
                 ))
 
-                conn.commit()
                 logger.debug(f"✅ Updated last sync time for {workspace} to {sync_time.isoformat()}")
 
         except Exception as e:
@@ -898,18 +729,18 @@ class DraftManager:
         try:
             cutoff_date = (datetime.now() - timedelta(days=days_threshold)).isoformat()
 
-            with sqlite3.connect(self.db_path) as conn:
+            with pg_connect() as conn:
                 cursor = conn.cursor()
 
                 # Update skipped drafts older than threshold
                 cursor.execute("""
                     UPDATE email_drafts
                     SET status = 'archived',
-                        completed_time = ?,
-                        reviewed_time = ?
-                    WHERE workspace = ?
+                        completed_time = %s,
+                        reviewed_time = %s
+                    WHERE workspace = %s
                       AND status = 'skipped'
-                      AND created_time < ?
+                      AND created_time < %s
                 """, (
                     datetime.now(timezone.utc).isoformat(),
                     datetime.now(timezone.utc).isoformat(),
@@ -918,7 +749,6 @@ class DraftManager:
                 ))
 
                 archived_count = cursor.rowcount
-                conn.commit()
 
                 if archived_count > 0:
                     logger.info(f"🗑️  Auto-archived {archived_count} old skipped drafts for workspace '{workspace}' (older than {days_threshold} days)")
