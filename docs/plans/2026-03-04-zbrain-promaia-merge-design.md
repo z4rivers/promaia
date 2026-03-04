@@ -24,9 +24,10 @@ zBrain is Zack's personal AI operating system — proactive agents that manage h
 **What zBrain adds:**
 - Merge the postgres branch into `zbrain` as the foundation
 - Swap connection config from local Postgres to Supabase (dulqttfidcjeujyieuqw)
-- Add pgvector extension + `halfvec(768)` columns with HNSW indexes (replacing ChromaDB)
+- Add pgvector extension + `vector(768)` columns with HNSW indexes (replacing ChromaDB)
 - Add `brain` schema tables (see Feature 2) alongside existing Promaia tables
-- Google `text-embedding-004` for embeddings (covered by existing Google AI Premium)
+- Google `gemini-embedding-001` for embeddings (covered by existing Google AI Premium)
+- Re-embed all existing Promaia content with new embedding model (migration script)
 
 **Connection strategy:**
 ```
@@ -62,7 +63,7 @@ Promaia's existing tables (`content_items`, `gmail_content`, `notion_journal`, e
 -- What Zack has been thinking about, from all sources
 brain.memories (
   id, content, summary, domain, tags, entities,
-  embedding halfvec(768), source, source_id,
+  embedding vector(768), source, source_id,
   created_at, updated_at
 )
 
@@ -88,6 +89,12 @@ brain.actions (
 brain.reviews (
   id, period_start, period_end, summary,
   projects_touched, actions_completed, created_at
+)
+
+-- Chronological audit trail for all brain activity
+brain.events (
+  id, type, payload jsonb,
+  source, session_id, created_at
 )
 ```
 
@@ -133,9 +140,10 @@ When user says "I need to..." — extract the action.
 ```
 Windows Task Scheduler
   → runs every 4 hours (configurable)
-  → launches: claude-code --non-interactive --script heartbeat.py
+  → launches: python -m promaia.brain.heartbeat
 
-heartbeat.py:
+heartbeat.py (uses AgentExecutor class directly, no CLI subprocess):
+  0. Check for active user session (last activity < 15 min → scan only, skip deep work)
   1. Call `briefing` to get system state
   2. Identify most stalled project (longest since last activity)
   3. Read that project's directive from `brain.contexts`
@@ -154,6 +162,9 @@ heartbeat.py:
 - Logs everything — Zack reviews in morning briefing
 - Max runtime per session (30 min default)
 - Budget cap on API calls per heartbeat cycle
+- Max 2 commits per heartbeat cycle
+- Active user check: skip deep work if user session active within 15 min
+- All activity logged to brain.events for audit trail
 
 **Quick scan + deep work pattern:**
 - Quick scan: Check all projects (2 min) — any blockers, any stale items, any pending actions past due
@@ -203,8 +214,10 @@ Zack already has Gemini connected as MCP tools in his Claude Code setup. The int
 Phase 1: Postgres Foundation (Week 1)
 ├── Merge postgres-sql-changeover branch into zbrain
 ├── Configure Supabase connection
-├── Add pgvector extension + embedding columns
+├── Add pgvector extension + vector(768) columns with HNSW indexes
 ├── Migrate vector_db.py from ChromaDB to pgvector
+├── Re-embed all existing content with gemini-embedding-001 (migration script)
+├── Add GIN indexes on tags/entities columns for hybrid search
 ├── Verify all existing Promaia features still work
 │
 Phase 2: Brain Schema + MCP Tools (Week 1-2)

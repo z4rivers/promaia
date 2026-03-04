@@ -54,9 +54,9 @@ Mode transitions are logged so zBrain can reference them: "Earlier you were plan
 
 ### Layer 1 — Brain Schema (Postgres/Supabase)
 
-All tables from the original design doc (`brain.memories`, `brain.domains`, `brain.contexts`, `brain.actions`, `brain.reviews`) plus `brain.modes` above.
+All tables from the original design doc (`brain.memories`, `brain.domains`, `brain.contexts`, `brain.actions`, `brain.reviews`) plus `brain.modes` above, plus `brain.events` (chronological audit trail — type, payload jsonb, source, session_id, created_at).
 
-Unified search across all sources — phone captures, heartbeat research, Promaia-synced Gmail/Notion/Discord content — via a single semantic query against `brain.memories` with pgvector.
+Unified search across all sources — phone captures, heartbeat research, Promaia-synced Gmail/Notion/Discord content — via a single semantic query against `brain.memories` with pgvector. Uses `vector(768)` (not halfvec) with HNSW indexes on embeddings plus GIN indexes on tags/entities for hybrid search.
 
 ### Layer 2 — Deterministic Engine (`brain/engine.py`)
 
@@ -181,6 +181,13 @@ Supabase is the shared brain. Mobile and PC don't talk to each other — they bo
 
 ```
 Windows Task Scheduler → every 4 hours (configurable)
+  → launches: python -m promaia.brain.heartbeat
+  → Uses AgentExecutor class directly (no CLI subprocess)
+│
+├─ Phase 0: Active User Check
+│   ├─ Query last user activity timestamp
+│   ├─ If active within 15 min → scan only, skip deep work
+│   └─ If inactive → proceed normally
 │
 ├─ Phase 1: Quick Scan (2 min cap)
 │   ├─ Query all brain.contexts ordered by staleness
@@ -225,9 +232,11 @@ Windows Task Scheduler → every 4 hours (configurable)
 - Exceed per-cycle budget cap
 
 **Heartbeat ALWAYS:**
-- Logs everything with `source="heartbeat"`
+- Logs everything with `source="heartbeat"` to `brain.events` audit trail
 - Generates summary for morning briefing
 - Respects 30-minute max runtime
+- Max 2 commits per cycle
+- Checks for active user session before deep work (skip if active within 15 min)
 
 ### Standing Directives
 
@@ -363,10 +372,10 @@ These principles are drawn from research on ADHD productivity, Russell Barkley's
 Unchanged from original design doc. The workflow layer (this document) is implemented primarily in Phase 2 (brain schema + MCP tools) with the engine.py functions, and refined through Phases 3-5 as more capabilities come online.
 
 ```
-Phase 1: Postgres Foundation
+Phase 1: Postgres Foundation (includes re-embed migration, GIN indexes)
 Phase 2: Brain Schema + MCP Tools + engine.py + System Instructions
 Phase 3: Gemini Routing + Brain Ingestion Pipeline
-Phase 4: Heartbeat Agent + Guardrails
+Phase 4: Heartbeat Agent + Guardrails (Python direct, not CLI; active user check)
 Phase 5: Mobile Access (iPhone/iPad)
 ```
 
@@ -416,3 +425,24 @@ Phase 5: Mobile Access (iPhone/iPad)
 | Adaptive learning? | Yes. System auto-adjusts based on accumulated memories, observed patterns, confirmed preferences |
 | GSD integration? | Internalized patterns (decomposition, checkpointing, verification) — not file artifacts |
 | ADHD design? | Core principles baked into system instructions: no shame, minimum viable decisions, energy adaptation, body double posture |
+
+---
+
+## 12. Gemini 3.1 Pro Architectural Review (Post-Design)
+
+Design reviewed by Gemini 3.1 Pro (High thinking) on 2026-03-04. Changes incorporated:
+
+| Finding | Action Taken |
+|---------|-------------|
+| Embedding incompatibility (OpenAI 1536d vs Gemini 768d) | Added re-embed migration script to Phase 1 |
+| `halfvec` is bleeding-edge, unnecessary risk | Changed to standard `vector(768)` |
+| Heartbeat should use Python AgentExecutor, not CLI subprocess | Changed heartbeat architecture to direct Python invocation |
+| Need active-user check before heartbeat deep work | Added Phase 0 check: skip deep work if user active within 15 min |
+| Missing audit trail for debugging agent behavior | Added `brain.events` table (type, payload jsonb, source, session_id) |
+| Need hybrid search (keyword + vector) | Added GIN indexes on tags/entities columns |
+| Unlimited heartbeat commits risk git spaghetti | Capped at max 2 commits per cycle |
+
+Findings noted but deferred:
+- Mode detection: start with Haiku/Flash classifier, not regex. Revisit if latency is an issue.
+- `cull_context` function: needed but refinement for Phase 2 tuning.
+- Energy detection: infer from behavior first, ask explicitly only if uncertain.
