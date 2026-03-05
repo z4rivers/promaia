@@ -1,10 +1,10 @@
 """
-Brain MCP Server — 10 tools for zBrain.
+Brain MCP Server — 12 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over stdio.
 Claude calls these tools to get briefings, capture thoughts, search memories,
-manage project context, track actions, maintain a personal profile, and
-manage the onboarding flow.
+manage project context, track actions, maintain a personal profile,
+manage the onboarding flow, and run data ingestion channels.
 
 Tools:
     briefing        — stale projects + pending actions + recent heartbeat activity
@@ -17,6 +17,8 @@ Tools:
     profile         — read personal profile (all or by category)
     update_profile  — set a profile field with value, confidence, and source
     onboard         — manage the onboarding flow (start/status/channel_update/complete)
+    pc_scan         — scan local git repos, files, and apps for profile data
+    gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
 
 Usage:
     python -m promaia.brain.mcp_server
@@ -94,7 +96,7 @@ def get_vector_mgr():
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Enumerate all 10 brain tools."""
+    """Enumerate all 12 brain tools."""
     return [
         Tool(
             name="briefing",
@@ -347,6 +349,44 @@ async def list_tools() -> list[Tool]:
                 "required": ["action"]
             }
         ),
+        Tool(
+            name="pc_scan",
+            description=(
+                "Run the PC digital fingerprint scan. Analyzes local git repos, "
+                "file structure, and installed apps to infer profile data. "
+                "Results are stored in brain.profile with source='inferred'. "
+                "Safe to run multiple times — results are upserted."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="gmail_scan",
+            description=(
+                "Scan recent Gmail inbox to extract contacts, communication patterns, "
+                "and recurring topics. Requires Gmail OAuth to be configured first. "
+                "Stores only metadata and summaries — never raw email content."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "days_back": {
+                        "type": "integer",
+                        "description": "How many days of email to scan (default 30).",
+                        "default": 30
+                    },
+                    "max_emails": {
+                        "type": "integer",
+                        "description": "Maximum emails to process (default 100).",
+                        "default": 100
+                    }
+                },
+                "required": []
+            }
+        ),
     ]
 
 
@@ -379,6 +419,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_update_profile(arguments)
         elif name == "onboard":
             return await _handle_onboard(arguments)
+        elif name == "pc_scan":
+            return await _handle_pc_scan(arguments)
+        elif name == "gmail_scan":
+            return await _handle_gmail_scan(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
@@ -1136,6 +1180,96 @@ async def _handle_onboard(args: dict) -> list[TextContent]:
 
     else:
         return [TextContent(type="text", text=f"Unknown onboard action: '{action}'. Use: start, status, channel_update, complete")]
+
+
+async def _handle_pc_scan(args: dict) -> list[TextContent]:
+    """Run the PC digital fingerprint scan and store inferred profile data."""
+    db = get_db()
+
+    try:
+        from promaia.brain.channels.pc_scan import run_pc_scan
+        result = run_pc_scan(db=db)
+    except Exception as e:
+        logger.error(f"PC scan failed: {e}", exc_info=True)
+        return [TextContent(type="text", text=f"PC scan error: {e}")]
+
+    # Format result as readable text
+    lines = ["## PC Scan Results\n"]
+    lines.append(f"- **Repos scanned:** {result.get('repos_scanned', 0)}")
+    lines.append(f"- **Apps found:** {result.get('apps_found', 0)}")
+    lines.append(f"- **Fields updated:** {result.get('fields_updated', 0)}")
+
+    insights = result.get("insights", [])
+    if insights:
+        lines.append("\n### Insights\n")
+        for insight in insights:
+            lines.append(f"- {insight}")
+
+    # Log event to brain.events
+    try:
+        db.execute(
+            """
+            INSERT INTO brain.events (type, payload, source, session_id)
+            VALUES ('pc_scan', %s::jsonb, 'onboarding', %s)
+            """,
+            (
+                json.dumps({
+                    "repos_scanned": result.get("repos_scanned", 0),
+                    "apps_found": result.get("apps_found", 0),
+                    "fields_updated": result.get("fields_updated", 0),
+                }),
+                SESSION_ID,
+            ),
+        )
+    except Exception as e:
+        logger.warning(f"Could not log pc_scan event: {e}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def _handle_gmail_scan(args: dict) -> list[TextContent]:
+    """Scan Gmail inbox for contacts, patterns, and topics."""
+    db = get_db()
+    days_back = int(args.get("days_back", 30))
+    max_emails = int(args.get("max_emails", 100))
+
+    try:
+        from promaia.brain.channels.gmail_read import run_gmail_scan
+        result = run_gmail_scan(days_back=days_back, max_emails=max_emails, db=db)
+    except Exception as e:
+        logger.error(f"Gmail scan failed: {e}", exc_info=True)
+        return [TextContent(type="text", text=f"Gmail scan error: {e}")]
+
+    # If there was an error (e.g. OAuth not configured), return guidance
+    if result.get("error"):
+        return [TextContent(type="text", text=f"Gmail scan: {result['error']}")]
+
+    # Format result as readable text
+    lines = ["## Gmail Scan Results\n"]
+    lines.append(f"- **Emails scanned:** {result.get('emails_scanned', 0)}")
+    lines.append(f"- **Contacts found:** {result.get('contacts_found', 0)}")
+    lines.append(f"- **Fields updated:** {result.get('fields_updated', 0)}")
+
+    # Log event to brain.events
+    try:
+        db.execute(
+            """
+            INSERT INTO brain.events (type, payload, source, session_id)
+            VALUES ('gmail_scan', %s::jsonb, 'onboarding', %s)
+            """,
+            (
+                json.dumps({
+                    "emails_scanned": result.get("emails_scanned", 0),
+                    "contacts_found": result.get("contacts_found", 0),
+                    "fields_updated": result.get("fields_updated", 0),
+                }),
+                SESSION_ID,
+            ),
+        )
+    except Exception as e:
+        logger.warning(f"Could not log gmail_scan event: {e}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
 
 
 # ---------------------------------------------------------------------------
