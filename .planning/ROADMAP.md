@@ -27,7 +27,7 @@
 
 Plans:
 - [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
-- [ ] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
+- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
 - [ ] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
 
 ### Phase 2: Brain Schema and MCP Tools
@@ -83,7 +83,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---|---|---|
-| 1. Postgres Foundation | 1/3 | In progress (checkpoint) | - |
+| 1. Postgres Foundation | 2/3 | In progress | - |
 | 2. Brain Schema and MCP Tools | 0/0 | Not started | - |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 4. Heartbeat Agent | 0/0 | Not started | - |

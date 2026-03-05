@@ -8,10 +8,10 @@
 ### Storage
 
 - [x] **STOR-01**: System connects to Supabase Postgres via session pooler
-- [ ] **STOR-02**: pgvector replaces ChromaDB for all vector operations (HNSW indexes)
-- [ ] **STOR-03**: Google gemini-embedding-001 generates embeddings (768 dims)
+- [x] **STOR-02**: pgvector replaces ChromaDB for all vector operations (HNSW indexes)
+- [x] **STOR-03**: Google gemini-embedding-001 generates embeddings (768 dims)
 - [x] **STOR-04**: Existing Promaia features (sync, chat, query) work against Postgres
-- [ ] **STOR-05**: google-generativeai migrated to google-genai SDK
+- [x] **STOR-05**: google-generativeai migrated to google-genai SDK
 
 ### Brain
 
