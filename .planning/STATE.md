@@ -3,15 +3,15 @@
 ## Current Position
 
 Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
-Plan: 02-01 COMPLETE (brain schema + engine.py)
-Status: Plan 02-01 executed — 2/2 tasks, 7/7 verifications passed
-Last activity: 2026-03-05 — Brain schema SQL and deterministic engine functions complete
+Plan: 02-02 COMPLETE (brain MCP server + action extraction)
+Status: Plan 02-02 executed — 2/2 tasks, 8/8 verifications passed
+Last activity: 2026-03-05 — Brain MCP server (7 tools) and extraction.py complete
 
 ## Next Session: What to Do
 
-1. Execute Plan 02-02 (MCP Tools: briefing, capture, search, recall, context, actions)
-2. Apply brain schema to Supabase: `python -m promaia.storage.db_init init-brain`
-3. All 8 engine functions ready for MCP tool imports
+1. Apply brain schema to Supabase: `python -m promaia.storage.db_init init-brain`
+2. Execute Plan 02-03 (if exists) or move to Phase 3 (heartbeat autonomy)
+3. Configure Claude system prompt to connect to the brain MCP server
 
 ## Phase 1 Completion Summary
 
@@ -69,6 +69,7 @@ None.
 | Plan | What it did |
 |------|------------|
 | 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
+| 02-02 | Brain MCP server (7 tools), extraction.py (instructor + Gemini Flash), requirements.txt updated |
 
 ## Key Execution Decisions (2026-03-05)
 
@@ -76,9 +77,13 @@ None.
 - **Guardrail pattern fix:** Separated 'main' and 'master' into individual single-term patterns — required for correct blocking of "push to main"
 - **suggest_next staleness cap:** 2.0 ceiling prevents severely stale domains from dominating energy-adjusted scoring
 - **apply_brain_schema() autocommit:** Matches existing init_database() pattern, executes each DDL statement independently
+- **instructor fallback:** instructor.from_genai() primary; falls back to raw Gemini JSON mode + Pydantic model_validate_json() if fails
+- **Lazy DB singletons in MCP:** get_db()/get_vector_mgr() deferred to first tool call — avoids connection startup at import time
+- **Embedding failure non-fatal in capture:** Memory row persisted even if embedding generation fails (embedding=NULL)
+- **Briefing event idempotency:** Checks brain.events for same session_id + date before inserting briefing event
 
 ## Git State
 
 - Branch: `zbrain` (off `feature/agent-scheduler`)
 - Phase 1 commits: cbad997 through e5fd713 (10 commits)
-- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine)
+- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server)
