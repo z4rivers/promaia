@@ -174,3 +174,47 @@ CREATE TABLE IF NOT EXISTS brain.modes (
     context_snapshot JSONB DEFAULT '{}',
     triggered_by TEXT
 );
+
+
+-- ============================================================
+-- brain.onboarding_sessions
+-- Tracks onboarding session lifecycle: active, paused, complete.
+-- Supports multi-session, pausable onboarding experiences.
+-- metadata JSONB stores arc phase, preferences, etc.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.onboarding_sessions (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT DEFAULT 'default',
+    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'complete')),
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    last_activity TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'
+);
+
+-- B-tree index for user lookup
+CREATE INDEX IF NOT EXISTS idx_brain_onboarding_sessions_user_id
+    ON brain.onboarding_sessions (user_id);
+
+
+-- ============================================================
+-- brain.onboarding_progress
+-- Per-channel progress within an onboarding session.
+-- Channels: interview, pc_scan, gmail, photos.
+-- Tracks status, timing, and how many profile fields each channel contributed.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.onboarding_progress (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES brain.onboarding_sessions(id) NOT NULL,
+    channel TEXT NOT NULL,
+    status TEXT DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'complete', 'skipped')),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    fields_populated INTEGER DEFAULT 0,
+    notes TEXT,
+    UNIQUE(session_id, channel)
+);
+
+-- B-tree index for session lookup
+CREATE INDEX IF NOT EXISTS idx_brain_onboarding_progress_session_id
+    ON brain.onboarding_progress (session_id);
