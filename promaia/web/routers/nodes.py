@@ -7,7 +7,7 @@ import os
 # AI model clients
 from anthropic import Anthropic
 from openai import OpenAI
-import google.generativeai as genai
+from google import genai
 
 # Maia specific imports
 from promaia.storage.unified_reader import read_database_content
@@ -59,9 +59,7 @@ if os.getenv("OPENAI_API_KEY"):
 
 gemini_client = None
 if os.getenv("GOOGLE_API_KEY"):
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    # The model is initialized later with the system prompt
-    gemini_client = "configured" # Placeholder to indicate it's ready
+    gemini_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Local Llama client (using OpenAI-compatible endpoint)
 llama_client = None
@@ -171,18 +169,18 @@ def _call_gemini(system_prompt: str, user_message: str, model_data: Dict) -> str
     if not gemini_client:
         raise ValueError("Gemini client not initialized. Check GOOGLE_API_KEY.")
 
-    generation_config = genai.types.GenerationConfig(
+    from google.genai import types
+    config = types.GenerateContentConfig(
         max_output_tokens=model_data.get("max_tokens", 2048),
         temperature=model_data.get("temperature", 0.7),
-    )
-    
-    model = genai.GenerativeModel(
-        model_name=model_data.get("model", "gemini-1.5-pro-latest"),
-        generation_config=generation_config,
         system_instruction=system_prompt,
     )
 
-    response = model.generate_content(user_message)
+    response = gemini_client.models.generate_content(
+        model=model_data.get("model", "gemini-1.5-pro-latest"),
+        contents=user_message,
+        config=config,
+    )
     return response.text
 
 def _call_llama(system_prompt: str, user_message: str, model_data: Dict) -> str:

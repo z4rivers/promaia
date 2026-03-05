@@ -36,7 +36,7 @@ from promaia.storage.chat_history import ChatHistoryManager
 from promaia.storage.recents import RecentsManager
 from promaia.utils.query_parsing import parse_vs_queries_with_params
 
-import google.generativeai as genai
+from google import genai
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -191,16 +191,80 @@ openai_client = None
 if os.getenv("OPENAI_API_KEY"):
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+class GeminiModelAdapter:
+    """Adapter that wraps google-genai Client to provide the old GenerativeModel interface.
+
+    This allows existing callers (gemini_client.generate_content(...)) to work
+    without rewriting deeply-nested code paths throughout the 8700+ line file.
+    """
+
+    def __init__(self, client, model_name, system_instruction=None):
+        self._client = client
+        self._model_name = model_name
+        self._system_instruction = system_instruction
+
+    def generate_content(self, contents, generation_config=None, **kwargs):
+        """Wrap client.models.generate_content with old-style interface."""
+        call_kwargs = {
+            'model': self._model_name,
+            'contents': contents,
+        }
+        if generation_config:
+            from google.genai import types
+            config = types.GenerateContentConfig(**generation_config)
+            if self._system_instruction:
+                config.system_instruction = self._system_instruction
+            call_kwargs['config'] = config
+        elif self._system_instruction:
+            from google.genai import types
+            call_kwargs['config'] = types.GenerateContentConfig(
+                system_instruction=self._system_instruction
+            )
+        return self._client.models.generate_content(**call_kwargs)
+
+    def start_chat(self, history=None):
+        """Create a chat session adapter."""
+        return GeminiChatAdapter(self._client, self._model_name, self._system_instruction, history)
+
+
+class GeminiChatAdapter:
+    """Adapter for Gemini chat sessions using google-genai SDK."""
+
+    def __init__(self, client, model_name, system_instruction=None, history=None):
+        self._client = client
+        self._model_name = model_name
+        self._system_instruction = system_instruction
+        self._history = history or []
+
+    def send_message(self, content, generation_config=None):
+        """Send a message and get a response."""
+        call_kwargs = {
+            'model': self._model_name,
+            'contents': content,
+        }
+        if generation_config or self._system_instruction:
+            from google.genai import types
+            config_params = generation_config or {}
+            config = types.GenerateContentConfig(**config_params)
+            if self._system_instruction:
+                config.system_instruction = self._system_instruction
+            call_kwargs['config'] = config
+        return self._client.models.generate_content(**call_kwargs)
+
+
 gemini_client = None
+gemini_genai_client = None
+gemini_model_name_chat = None
 if os.getenv("GOOGLE_API_KEY"):
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    gemini_genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
     from promaia.ai.models import get_current_google_model, GOOGLE_MODELS
     # Use selected model ID if available, otherwise use default
     selected_model = os.getenv("SELECTED_MODEL_ID")
     if selected_model and "gemini" in selected_model.lower():
-        gemini_client = genai.GenerativeModel(selected_model)
+        gemini_model_name_chat = selected_model
     else:
-        gemini_client = genai.GenerativeModel(get_current_google_model())
+        gemini_model_name_chat = get_current_google_model()
+    gemini_client = GeminiModelAdapter(gemini_genai_client, gemini_model_name_chat)
 
 current_api = get_api_preference()
 os.environ["API_TYPE"] = current_api
@@ -8704,7 +8768,6 @@ def _format_openai_with_images(system_prompt, messages_for_api, current_message_
 def _format_gemini_with_images(system_prompt, messages_for_api, current_message_images):
     """Format Gemini content with image support (base64 and File API)."""
     from promaia.utils.image_processing import format_image_for_gemini
-    import google.generativeai as genai
     from promaia.ai.models import get_current_google_model
     import os
 
@@ -8718,9 +8781,8 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
     else:
         model_name = get_current_google_model()
 
-    current_gemini_model = genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=system_prompt
+    current_gemini_model = GeminiModelAdapter(
+        gemini_genai_client, model_name, system_instruction=system_prompt
     )
 
     # Build conversation history
