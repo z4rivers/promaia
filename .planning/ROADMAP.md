@@ -3,8 +3,9 @@
 ## Phases
 
 - [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
-- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
+- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+- [ ] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (INSERTED)
 - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
 - [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
 
@@ -61,6 +62,26 @@ Plans:
   5. YouTube analysis and deep research feed brain automatically
 **Plans:** TBD
 
+### Phase 03.1: Onboarding Module (INSERTED)
+
+**Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
+**Depends on:** Phase 2
+**Requirements:** [ONBOARD-01, ONBOARD-02, ONBOARD-03, ONBOARD-04, ONBOARD-05, ONBOARD-06, ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
+**Success Criteria** (what must be TRUE):
+  1. Onboarding session can be started, paused, and resumed across sessions
+  2. Profile coverage report shows per-category gap analysis
+  3. PC scan channel automatically extracts profile data from local files and git history
+  4. Gmail read channel extracts contacts and communication patterns (when OAuth configured)
+  5. Interview question bank covers all profile categories with OARS-informed questions
+  6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
+  7. Progressive profiling continues after initial interview via observation
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool
+- [ ] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools
+- [ ] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + verification
+
 ### Phase 4: Heartbeat Agent
 **Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
 **Depends on:** Phase 2
@@ -91,6 +112,7 @@ Plans:
 | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
 | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
 | 3. Gemini Routing | 0/0 | Not started | - |
+| 3.1 Onboarding Module | 0/3 | Planned | - |
 | 4. Heartbeat Agent | 0/0 | Not started | - |
 | 5. iPhone Access | 0/0 | Not started | - |
 

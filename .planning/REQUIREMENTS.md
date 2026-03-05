@@ -22,6 +22,19 @@
 - [x] **BRAIN-05**: Session briefing runs automatically on startup (stalled projects, pending actions, recent activity)
 - [x] **BRAIN-06**: Stale alerts flag projects with no activity past threshold — suggest_next() in engine.py scores by staleness ratio (02-01)
 
+### Onboarding (INSERTED — Phase 03.1)
+
+- [ ] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
+- [ ] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
+- [ ] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
+- [ ] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
+- [ ] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
+- [ ] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
+- [ ] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
+- [ ] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
+- [ ] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, ADHD-friendly
+- [ ] **ONBOARD-10**: Onboarding follows ADHD-friendly principles: short bursts, instant value, resumable, no shame
+
 ### Routing
 
 - [ ] **ROUTE-01**: Task-based model router (ai/router.py) assigns models by task type
@@ -84,12 +97,22 @@
 | BRAIN-06 | 02-01 | Complete |
 | BRAIN-04 | 02-02 | Complete |
 | BRAIN-05 | 02-02 | Complete |
+| ONBOARD-01 | 03.1-01 | Planned |
+| ONBOARD-02 | 03.1-01 | Planned |
+| ONBOARD-03 | 03.1-01 | Planned |
+| ONBOARD-04 | 03.1-02 | Planned |
+| ONBOARD-05 | 03.1-02 | Planned |
+| ONBOARD-06 | 03.1-02 | Planned |
+| ONBOARD-07 | 03.1-03 | Planned |
+| ONBOARD-08 | 03.1-03 | Planned |
+| ONBOARD-09 | 03.1-03 | Planned |
+| ONBOARD-10 | 03.1-03 | Planned |
 
 **Coverage:**
-- v1.0 requirements: 24 total
-- Mapped to phases: 6 (Phase 2, Plans 01-02)
+- v1.0 requirements: 34 total (24 original + 10 onboarding)
+- Mapped to phases: 16 (6 BRAIN complete, 10 ONBOARD planned)
 - Complete: 11 (5 STOR, 6 BRAIN)
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-05 after 02-02 execution*
+*Last updated: 2026-03-05 after 03.1 planning*
