@@ -42,7 +42,12 @@ Plans:
   5. Standing directives per project stored and queryable
   6. Stale project alerts surface in briefings
   7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension
+- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
+- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
 
 ### Phase 3: Gemini Routing
 **Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
@@ -84,7 +89,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|---|---|---|
 | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
-| 2. Brain Schema and MCP Tools | 0/0 | Not started | - |
+| 2. Brain Schema and MCP Tools | 0/3 | Planning complete | - |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 4. Heartbeat Agent | 0/0 | Not started | - |
 | 5. iPhone Access | 0/0 | Not started | - |
