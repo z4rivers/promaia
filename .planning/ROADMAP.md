@@ -75,7 +75,7 @@ Plans:
   5. Interview question bank covers all profile categories with OARS-informed questions
   6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
   7. Progressive profiling continues after initial interview via observation
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool

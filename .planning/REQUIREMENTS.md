@@ -24,9 +24,9 @@
 
 ### Onboarding (INSERTED — Phase 03.1)
 
-- [ ] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
-- [ ] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
-- [ ] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
+- [x] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
+- [x] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
+- [x] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
 - [ ] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
 - [ ] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
 - [ ] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
