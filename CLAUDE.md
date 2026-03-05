@@ -80,7 +80,7 @@ When running the full onboarding:
 4. Photos channel is manual -- offer later: "Sometime you could walk me through photos that matter to you."
 5. After each channel, update progress: `mcp__brain__onboard` action="channel_update"
 
-### ADHD-Friendly Principles
+### Design Principles
 - Short bursts (2-3 min), each independently valuable
 - Save progress automatically (every answer -> update_profile)
 - Never say "you haven't finished" -- say "pick up where you left off"
