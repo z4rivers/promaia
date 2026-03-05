@@ -23,7 +23,14 @@ import logging
 import os
 import sys
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+
+# Load .env from the project root (walk up from this file to find it)
+_project_root = Path(__file__).resolve().parents[2]
+load_dotenv(_project_root / ".env")
 
 import numpy as np
 import psycopg2.extras
