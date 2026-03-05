@@ -15,12 +15,12 @@
 
 ### Brain
 
-- [ ] **BRAIN-01**: Brain schema stores memories with embeddings (semantic search)
-- [ ] **BRAIN-02**: Domains represent life categories and projects
-- [ ] **BRAIN-03**: Standing directives per project define direction, not task lists
+- [x] **BRAIN-01**: Brain schema stores memories with embeddings (semantic search) — brain.memories with vector(768) + HNSW (02-01)
+- [x] **BRAIN-02**: Domains represent life categories and projects — brain.domains with hierarchical parent_domain FK (02-01)
+- [x] **BRAIN-03**: Standing directives per project define direction, not task lists — brain.contexts with directive + stale_threshold_days (02-01)
 - [ ] **BRAIN-04**: Actions auto-extracted from conversations with status tracking
 - [ ] **BRAIN-05**: Session briefing runs automatically on startup (stalled projects, pending actions, recent activity)
-- [ ] **BRAIN-06**: Stale alerts flag projects with no activity past threshold
+- [x] **BRAIN-06**: Stale alerts flag projects with no activity past threshold — suggest_next() in engine.py scores by staleness ratio (02-01)
 
 ### Routing
 
@@ -78,13 +78,16 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | — |
+| BRAIN-01 | 02-01 | Complete |
+| BRAIN-02 | 02-01 | Complete |
+| BRAIN-03 | 02-01 | Complete |
+| BRAIN-06 | 02-01 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 20
+- Mapped to phases: 4 (Phase 2, Plan 01)
+- Complete: 9 (5 STOR, 4 BRAIN partial)
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 after initial definition*
+*Last updated: 2026-03-05 after 02-01 execution*
