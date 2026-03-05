@@ -132,6 +132,35 @@ CREATE INDEX IF NOT EXISTS idx_brain_events_session_id
 
 
 -- ============================================================
+-- brain.profile
+-- Personal profile for the user. Key-value rows per dimension
+-- so new dimensions can be added without schema changes.
+-- Each field carries confidence (0.0-1.0), source tracking
+-- (declared/inferred/confirmed), and timestamps for decay.
+-- Embedding column enables semantic search ("what motivates me?").
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.profile (
+    id SERIAL PRIMARY KEY,
+    category TEXT NOT NULL,
+    field TEXT NOT NULL,
+    value JSONB NOT NULL,
+    confidence FLOAT DEFAULT 0.5,
+    source TEXT DEFAULT 'declared' CHECK (source IN ('declared', 'inferred', 'confirmed')),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    embedding vector(768),
+    UNIQUE(category, field)
+);
+
+-- HNSW index for semantic search over profile dimensions
+CREATE INDEX IF NOT EXISTS idx_brain_profile_embedding
+    ON brain.profile USING hnsw (embedding vector_cosine_ops);
+
+-- B-tree on category for fast filtered lookups
+CREATE INDEX IF NOT EXISTS idx_brain_profile_category
+    ON brain.profile (category);
+
+
+-- ============================================================
 -- brain.modes
 -- Session mode tracking: working, planning, capturing, reviewing.
 -- One row per mode entry. Most recent row = current mode.
