@@ -30,10 +30,10 @@
 - [x] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
 - [x] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
 - [x] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
-- [ ] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
-- [ ] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
-- [ ] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, ADHD-friendly
-- [ ] **ONBOARD-10**: Onboarding follows ADHD-friendly principles: short bursts, instant value, resumable, no shame
+- [x] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
+- [x] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
+- [x] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, design principles
+- [x] **ONBOARD-10**: Onboarding follows design principles: short bursts, instant value, resumable, no shame
 
 ### Routing
 
@@ -97,22 +97,22 @@
 | BRAIN-06 | 02-01 | Complete |
 | BRAIN-04 | 02-02 | Complete |
 | BRAIN-05 | 02-02 | Complete |
-| ONBOARD-01 | 03.1-01 | Planned |
-| ONBOARD-02 | 03.1-01 | Planned |
-| ONBOARD-03 | 03.1-01 | Planned |
-| ONBOARD-04 | 03.1-02 | Planned |
-| ONBOARD-05 | 03.1-02 | Planned |
-| ONBOARD-06 | 03.1-02 | Planned |
-| ONBOARD-07 | 03.1-03 | Planned |
-| ONBOARD-08 | 03.1-03 | Planned |
-| ONBOARD-09 | 03.1-03 | Planned |
-| ONBOARD-10 | 03.1-03 | Planned |
+| ONBOARD-01 | 03.1-01 | Complete |
+| ONBOARD-02 | 03.1-01 | Complete |
+| ONBOARD-03 | 03.1-01 | Complete |
+| ONBOARD-04 | 03.1-02 | Complete |
+| ONBOARD-05 | 03.1-02 | Complete |
+| ONBOARD-06 | 03.1-02 | Complete |
+| ONBOARD-07 | 03.1-03 | Complete |
+| ONBOARD-08 | 03.1-03 | Complete |
+| ONBOARD-09 | 03.1-03 | Complete |
+| ONBOARD-10 | 03.1-03 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 34 total (24 original + 10 onboarding)
-- Mapped to phases: 16 (6 BRAIN complete, 10 ONBOARD planned)
-- Complete: 11 (5 STOR, 6 BRAIN)
+- Mapped to phases: 26 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 2 mapped)
+- Complete: 21 (5 STOR, 6 BRAIN, 10 ONBOARD)
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-05 after 03.1 planning*
+*Last updated: 2026-03-05 after 03.1-03 complete (all ONBOARD requirements satisfied)*

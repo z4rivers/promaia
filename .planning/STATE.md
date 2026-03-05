@@ -2,17 +2,17 @@
 
 ## Current Position
 
-Phase: Phase 03.1 — Onboarding Module
-Plan: 2 of 3 complete
-Status: 03.1-02 COMPLETE — PC scan and Gmail read channels + MCP tools (2026-03-05)
-Last activity: 2026-03-05 — 03.1-02 SUMMARY.md finalized, 12 MCP tools verified
+Phase: Phase 03.1 — Onboarding Module COMPLETE
+Plan: 3 of 3 complete
+Status: 03.1-03 COMPLETE — Interview question bank, CLAUDE.md onboarding instructions, human verification approved (2026-03-05)
+Last activity: 2026-03-05 — Phase 03.1 fully complete, all 10 ONBOARD requirements satisfied
 
 ## Next Session: What to Do
 
-1. Run `/gsd:execute-phase` for Phase 03.1 Plan 03: Interview question bank + CLAUDE.md onboarding instructions
-2. After 03.1 complete: resume Phase 3 (Gemini Routing) or Phase 4 (heartbeat autonomy)
-3. Set up Gmail OAuth: `python -m promaia.cli.main workspace gmail-setup default zachary4rivers@gmail.com`
-4. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+1. Resume Phase 3 (Gemini Routing) or Phase 4 (Heartbeat Agent) — run `/gsd:plan-phase`
+2. Set up Gmail OAuth: `python -m promaia.cli.main workspace gmail-setup default zachary4rivers@gmail.com`
+3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+4. Continue onboarding conversations -- profile is growing, keep feeding it
 
 ## Phase 1 Completion Summary
 
@@ -99,6 +99,7 @@ None.
 |------|------------|
 | 03.1-01 | Onboarding state engine: 2 new tables (onboarding_sessions, onboarding_progress), onboarding.py (5 functions), onboard MCP tool (10th tool), deployed to Supabase |
 | 03.1-02 | PC scan channel (git analysis, file structure, Windows apps), Gmail read channel (contacts, patterns, topics), pc_scan + gmail_scan MCP tools (12 total) |
+| 03.1-03 | Interview question bank (16 questions, 9 categories, OARS technique), interview orchestration, CLAUDE.md onboarding instructions, human-verified APPROVED |
 
 ## Key Execution Decisions (Phase 03.1, 2026-03-05)
 
@@ -111,10 +112,14 @@ None.
 - **Gmail metadata-only format:** thread fetch with format="metadata" + metadataHeaders for privacy-first scanning
 - **Differentiated confidence:** PC scan 0.6, Gmail scan 0.5 — email patterns less direct than git timestamps
 - **Channel module pattern:** standalone run_*() functions that accept db param and return result dicts
+- **Question bank 4-phase arc:** warm_up, current_state, gap_identification, commitment -- matches motivational interviewing structure
+- **Interview module is a selector:** Provides next question, does NOT drive conversation -- Claude uses CLAUDE.md instructions for that
+- **Design Principles (not ADHD-Friendly):** Short bursts, auto-save, no shame framing are the default style, not a special accommodation
+- **User verification positive:** Onboarding captures both stated and implied information effectively
 
 ## Git State
 
 - Branch: `zbrain` (off `feature/agent-scheduler`)
 - Phase 1 commits: cbad997 through e5fd713 (10 commits)
 - Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
-- Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server), 551c08c (03.1-02 pc_scan), 613bcc7 (03.1-02 gmail_read), 0e6fa6d (03.1-02 mcp tools)
+- Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server), 551c08c (03.1-02 pc_scan), 613bcc7 (03.1-02 gmail_read), 0e6fa6d (03.1-02 mcp tools), e00e58b (03.1-03 question bank+interview), a8613e9 (03.1-03 CLAUDE.md instructions), fc9605e (03.1-03 rename Design Principles)

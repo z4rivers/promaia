@@ -5,7 +5,7 @@
 - [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
 - [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
-- [ ] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (INSERTED)
+- [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
 - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
 - [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
 
@@ -75,12 +75,12 @@ Plans:
   5. Interview question bank covers all profile categories with OARS-informed questions
   6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
   7. Progressive profiling continues after initial interview via observation
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool (2026-03-05)
 - [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
-- [ ] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + verification
+- [x] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + human-verified (2026-03-05)
 
 ### Phase 4: Heartbeat Agent
 **Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
@@ -112,7 +112,7 @@ Plans:
 | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
 | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
 | 3. Gemini Routing | 0/0 | Not started | - |
-| 3.1 Onboarding Module | 0/3 | Planned | - |
+| 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
 | 4. Heartbeat Agent | 0/0 | Not started | - |
 | 5. iPhone Access | 0/0 | Not started | - |
 
