@@ -46,8 +46,8 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
-- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
-- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
+- [x] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor (2026-03-05)
+- [x] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (2026-03-05)
 
 ### Phase 3: Gemini Routing
 **Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools

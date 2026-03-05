@@ -2,16 +2,16 @@
 
 ## Current Position
 
-Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
-Plan: 02-03 — Task 1 COMPLETE, Task 2 awaiting human-verify checkpoint
-Status: 02-03 task 1 committed (0fae709) — CLAUDE.md, .mcp.json, seed.py created
-Last activity: 2026-03-05 — System instructions, MCP registration, seed data complete
+Phase: Phase 3 — Gemini Routing (not started)
+Plan: N/A — Phase 2 fully complete, awaiting Phase 3 plan
+Status: Phase 2 COMPLETE — all 3 plans delivered and verified (2026-03-05)
+Last activity: 2026-03-05 — 02-03 SUMMARY.md finalized, user approved MCP verification checkpoint
 
 ## Next Session: What to Do
 
-1. Complete 02-03 checkpoint verification (apply schema, run seed, register MCP in Claude Code)
-2. After approval: finalize 02-03 SUMMARY.md, update STATE.md, move to Phase 3
-3. Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
+1. Run `/gsd:plan-phase` for Phase 3: Gemini Routing (ai/router.py, model routing by task type, brain ingestion from Gemini research)
+2. Phase 4 is also unblocked: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
+3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
 
 ## Phase 1 Completion Summary
 
@@ -70,7 +70,7 @@ None.
 |------|------------|
 | 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
 | 02-02 | Brain MCP server (7 tools), extraction.py (instructor + Gemini Flash), requirements.txt updated |
-| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts) — Task 2 awaiting human-verify |
+| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts), end-to-end verified — COMPLETE |
 
 ## Key Execution Decisions (2026-03-05)
 

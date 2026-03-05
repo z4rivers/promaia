@@ -14,6 +14,7 @@ provides:
   - CLAUDE.md with proactive brain system instructions (briefing/capture/context/ambient/energy)
   - .mcp.json registering brain MCP server for project-scoped stdio transport
   - promaia/brain/seed.py with 10 domains and 5 contexts (idempotent)
+  - Brain layer verified end-to-end: schema deployed, seed data populated, MCP server connected in Claude Code
 affects: [03-heartbeat, all-future-sessions]
 
 # Tech tracking
@@ -43,20 +44,20 @@ patterns-established:
 requirements-completed: [BRAIN-02, BRAIN-03, BRAIN-05]
 
 # Metrics
-duration: 2min
+duration: 3min
 completed: 2026-03-05
 ---
 
 # Phase 2 Plan 03: System Instructions, MCP Registration, and Seed Data Summary
 
-**CLAUDE.md proactive brain instructions + .mcp.json stdio registration + idempotent seed.py for 10 domains and 5 contexts — brain layer fully wired**
+**CLAUDE.md proactive brain instructions + .mcp.json stdio registration + idempotent seed.py for 10 domains and 5 contexts — brain layer fully wired and verified end-to-end**
 
 ## Performance
 
-- **Duration:** 2 min
+- **Duration:** 3 min
 - **Started:** 2026-03-05T02:22:31Z
-- **Completed:** 2026-03-05T02:24:15Z
-- **Tasks:** 1/2 (Task 2 is checkpoint:human-verify — awaiting user verification)
+- **Completed:** 2026-03-05T02:25:00Z
+- **Tasks:** 2/2
 - **Files modified:** 3
 
 ## Accomplishments
@@ -64,14 +65,16 @@ completed: 2026-03-05
 - CLAUDE.md with 5 behavior sections: session start briefing, capture on thoughts, project context loading, ambient awareness, energy adaptation — all using mcp__brain__ tool names
 - .mcp.json registering brain server as stdio transport with DATABASE_URL and GOOGLE_API_KEY env passthrough
 - seed.py that populates 10 domains (7 projects, 3 non-projects) and 5 project contexts with directives, stale thresholds, and priorities — fully idempotent
+- End-to-end verified: brain schema deployed to Supabase, seed data populated, MCP server starts and registers in Claude Code, briefing fires on session start
 
 ## Task Commits
 
 Each task was committed atomically:
 
 1. **Task 1: CLAUDE.md, .mcp.json, and seed data script** - `0fae709` (feat)
+2. **Task 2: Verify brain MCP server starts and tools respond** - checkpoint:human-verify, approved by user
 
-**Task 2 (checkpoint:human-verify):** Awaiting user verification of schema deployment, seed data, and MCP server in Claude Code.
+**Plan metadata:** (final docs commit — see below)
 
 ## Files Created/Modified
 
@@ -95,19 +98,31 @@ None.
 
 ## User Setup Required
 
-Task 2 (checkpoint:human-verify) requires user action:
+User completed end-to-end verification:
 
-1. Apply brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"`
-2. Run seed data: `python -m promaia.brain.seed`
-3. Test MCP server starts: `python -m promaia.brain.mcp_server` (hang on stdio = success, Ctrl+C to stop)
-4. Register with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
-5. New Claude Code session: verify /mcp shows brain connected, briefing fires on startup
+1. Applied brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"` — 7 brain.* tables deployed to Supabase
+2. Ran seed data: `python -m promaia.brain.seed` — 10 domains and 5 contexts populated
+3. Tested MCP server starts: `python -m promaia.brain.mcp_server` — hangs on stdio as expected
+4. Registered with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
+5. Verified in new Claude Code session: /mcp shows brain connected, briefing fires on startup, capture extracts actions
+
+All steps approved by user.
 
 ## Next Phase Readiness
 
 - Complete brain layer: schema (7 tables) + engine (8 functions) + MCP server (7 tools) + action extraction + system instructions + seed data
 - Ready for Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, max 2 commits/cycle)
-- Once Task 2 verified: all zBrain Phase 2 requirements complete
+- Phase 2 is fully complete — all 3 plans delivered and verified
+
+---
+
+## Self-Check: PASSED
+
+- `CLAUDE.md` exists at repo root — confirmed (contains mcp__brain__briefing, mcp__brain__capture)
+- `.mcp.json` exists at repo root — confirmed (contains promaia.brain.mcp_server)
+- `promaia/brain/seed.py` exists — confirmed
+- Commit `0fae709` exists — confirmed (feat(02-03) — CLAUDE.md, .mcp.json, seed.py)
+- Commit `3d026b8` exists — confirmed (docs(02-03) — partial checkpoint summary)
 
 ---
 *Phase: 02-brain-schema-and-mcp-tools*
