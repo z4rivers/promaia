@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "brain": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "promaia.brain.mcp_server"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}",
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
+      }
+    }
+  }
+}
