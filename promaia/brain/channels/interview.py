@@ -17,6 +17,7 @@ Usage:
         mark_question_answered,
     )
 """
+import json
 import logging
 from typing import Dict, List, Optional
 
@@ -269,11 +270,11 @@ def mark_question_answered(
         # Log event
         db.execute(
             """
-            INSERT INTO brain.events (event_type, detail)
-            VALUES ('interview_question', %s)
+            INSERT INTO brain.events (type, payload, source)
+            VALUES ('interview_question', %s::jsonb, 'onboarding')
             """,
             (
-                f"category={category}, fields={','.join(fields_populated)}",
+                json.dumps({"category": category, "fields": fields_populated}),
             ),
         )
 
