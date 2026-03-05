@@ -3,7 +3,7 @@
 ## Phases
 
 - [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
-- [ ] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings
+- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
 - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
 - [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
@@ -42,7 +42,7 @@ Plans:
   5. Standing directives per project stored and queryable
   6. Stale project alerts surface in briefings
   7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
@@ -89,7 +89,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|---|---|---|
 | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
-| 2. Brain Schema and MCP Tools | 2/3 | In Progress|  |
+| 2. Brain Schema and MCP Tools | 3/3 | Complete   | 2026-03-05 |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 4. Heartbeat Agent | 0/0 | Not started | - |
 | 5. iPhone Access | 0/0 | Not started | - |

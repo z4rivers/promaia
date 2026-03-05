@@ -3,15 +3,15 @@
 ## Current Position
 
 Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
-Plan: 02-02 COMPLETE (brain MCP server + action extraction)
-Status: Plan 02-02 executed — 2/2 tasks, 8/8 verifications passed
-Last activity: 2026-03-05 — Brain MCP server (7 tools) and extraction.py complete
+Plan: 02-03 — Task 1 COMPLETE, Task 2 awaiting human-verify checkpoint
+Status: 02-03 task 1 committed (0fae709) — CLAUDE.md, .mcp.json, seed.py created
+Last activity: 2026-03-05 — System instructions, MCP registration, seed data complete
 
 ## Next Session: What to Do
 
-1. Apply brain schema to Supabase: `python -m promaia.storage.db_init init-brain`
-2. Execute Plan 02-03 (if exists) or move to Phase 3 (heartbeat autonomy)
-3. Configure Claude system prompt to connect to the brain MCP server
+1. Complete 02-03 checkpoint verification (apply schema, run seed, register MCP in Claude Code)
+2. After approval: finalize 02-03 SUMMARY.md, update STATE.md, move to Phase 3
+3. Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
 
 ## Phase 1 Completion Summary
 
@@ -70,6 +70,7 @@ None.
 |------|------------|
 | 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
 | 02-02 | Brain MCP server (7 tools), extraction.py (instructor + Gemini Flash), requirements.txt updated |
+| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts) — Task 2 awaiting human-verify |
 
 ## Key Execution Decisions (2026-03-05)
 
@@ -81,9 +82,12 @@ None.
 - **Lazy DB singletons in MCP:** get_db()/get_vector_mgr() deferred to first tool call — avoids connection startup at import time
 - **Embedding failure non-fatal in capture:** Memory row persisted even if embedding generation fails (embedding=NULL)
 - **Briefing event idempotency:** Checks brain.events for same session_id + date before inserting briefing event
+- **CLAUDE.md at repo root:** Claude Code picks up CLAUDE.md from project root automatically — applies to all sessions in this repo
+- **seed.py fetch-after-upsert:** INSERT ON CONFLICT DO NOTHING, then SELECT for domain_id — cleaner than ON CONFLICT DO UPDATE RETURNING
+- **Context existence check:** brain.contexts uses explicit SELECT before INSERT (no unique constraint on domain_id to leverage ON CONFLICT)
 
 ## Git State
 
 - Branch: `zbrain` (off `feature/agent-scheduler`)
 - Phase 1 commits: cbad997 through e5fd713 (10 commits)
-- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server)
+- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
