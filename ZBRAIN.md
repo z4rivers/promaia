@@ -1,0 +1,110 @@
+# ZBRAIN.md - zBrain Changes Log
+
+This file documents all changes made on the `zbrain` branch. It exists so my daughter (commodorebob) can see exactly what was modified, what was added, and why -- making cherry-picking or reviewing changes straightforward.
+
+## What is zBrain?
+
+zBrain is a personal AI memory layer built on top of Promaia. It adds:
+- Cloud-native storage (Supabase Postgres + pgvector)
+- Proactive brain layer (memories, briefings, actions) -- coming in Phase 2
+- Gemini model routing -- coming in Phase 3
+- Heartbeat agent (autonomous overnight work) -- coming in Phase 4
+
+All changes are additive or in the `brain.*` Postgres schema (future phases). Existing Promaia features are preserved. The public API surface of vector_db.py, postgres_db.py, and other modules is unchanged.
+
+---
+
+## Phase 1: Postgres Foundation (2026-03-04)
+
+### What Changed
+
+**Merged `postgres-sql-changeover` branch**
+- Brought in PostgresDB singleton, schema.sql, db_init.py
+- This was your existing work -- I completed it by pointing at Supabase instead of local Postgres
+- Merge commit: `cbad997`
+
+**Reconfigured for Supabase**
+- `storage/postgres_db.py`: Connection now targets Supabase session pooler (was `192.168.0.69`)
+- Added `DATABASE_URL` env var support + SSL requirement (`sslmode=require`)
+- Session pooler required on Windows due to IPv6 routing issues with direct Supabase connections
+- Updated `docs/env.template` with Supabase connection vars
+- Supabase project: `jbcspnoqvtvvddifuhth` on `aws-1-us-east-1`
+
+**Replaced ChromaDB with pgvector**
+- `storage/vector_db.py`: Completely rewritten internals (same public API preserved)
+- All vector operations now use pgvector SQL against Supabase
+- Added `content_embeddings` and `property_embeddings` tables to schema.sql
+- HNSW indexes on embedding columns for fast approximate nearest neighbor search (cosine similarity)
+- GIN indexes on metadata JSONB columns for hybrid search
+- `chroma_path` parameter still accepted in constructor (ignored) for backward compatibility
+
+**Migrated google-generativeai to google-genai SDK**
+- `google-generativeai` was deprecated (EOL Aug 2025)
+- All imports updated across 6 source files
+- Embedding model changed from OpenAI text-embedding-3-small (1536 dims) to Google gemini-embedding-001 (768 dims)
+- GeminiModelAdapter class added in chat/interface.py to wrap new SDK for existing callers
+
+**Updated requirements.txt**
+- Added: google-genai>=1.65.0, pgvector>=0.4.2, numpy==1.26.3
+- Removed: chromadb, google-generativeai, sentence-transformers, posthog
+
+**Created re-embedding migration script**
+- `scripts/migrate_embeddings.py` for one-time re-embedding of all existing content
+- Reads from all 6 content tables, generates gemini-embedding-001 embeddings, stores in content_embeddings
+- Supports --dry-run, --force, and --delay flags
+- Idempotent: safe to re-run (uses UPSERT and existence checks)
+- Tables are currently empty (no sync has been run against the new Supabase project yet)
+
+### Files Modified (from upstream)
+
+| File | Change | Why |
+|------|--------|-----|
+| `promaia/storage/postgres_db.py` | Connection target: Supabase session pooler | Cloud-native, accessible from anywhere |
+| `promaia/storage/vector_db.py` | ChromaDB -> pgvector (complete rewrite) | Cloud-native vectors in same DB |
+| `promaia/storage/schema.sql` | +pgvector extension, +embedding tables, +HNSW/GIN indexes | Vector storage in Postgres |
+| `promaia/ai/nl_orchestrator.py` | google-generativeai -> google-genai | SDK deprecated |
+| `promaia/chat/interface.py` | google-generativeai -> google-genai + GeminiModelAdapter | SDK deprecated |
+| `promaia/write/interface.py` | google-generativeai -> google-genai | SDK deprecated |
+| `promaia/utils/image_processing.py` | google-generativeai -> google-genai | SDK deprecated |
+| `promaia/web/routers/nodes.py` | google-generativeai -> google-genai | SDK deprecated |
+| `promaia/web/routers/chat.py` | google-generativeai -> google-genai | SDK deprecated |
+| `requirements.txt` | +google-genai, +pgvector, -chromadb, -google-generativeai | Updated deps |
+| `docs/env.template` | +Supabase DATABASE_URL and connection vars | New connection config |
+
+### Files Added
+
+| File | Purpose |
+|------|---------|
+| `promaia/storage/db_init.py` | Database initialization script for schema deployment |
+| `scripts/migrate_embeddings.py` | One-time re-embedding migration |
+| `ZBRAIN.md` | This changelog |
+
+### Key Technical Decisions
+
+- **vector(768)** not halfvec -- matches gemini-embedding-001 output dimensions (per Gemini 3.1 Pro architectural review)
+- **HNSW with vector_cosine_ops** -- matches former ChromaDB hnsw:space=cosine configuration
+- **DATABASE_URL as primary connection method** -- session pooler required on Windows
+- **register_vector() per-connection** -- pgvector type registration is connection-scoped in psycopg2
+- **GeminiModelAdapter pattern** -- wraps new SDK to avoid rewriting 3+ deeply-nested callers in 8700-line chat/interface.py
+
+### Contribute-Back Value
+
+- **Supabase connection**: HIGH -- you wanted Postgres, this completes it with cloud hosting
+- **pgvector**: HIGH -- replaces ChromaDB with in-database vectors, one fewer service to manage
+- **google-genai migration**: HIGH -- the old SDK is deprecated (EOL Aug 2025), this is required eventually
+- **Migration script**: MEDIUM -- useful if you also switch to gemini-embedding-001
+
+### Commits (Phase 1)
+
+```
+6a4c1ec feat(01-03): create re-embedding migration script for pgvector
+4eef30d docs(01-02): complete ChromaDB-to-pgvector migration plan
+56c5006 feat(01-02): migrate google-generativeai to google-genai SDK and update requirements
+ee8bef3 feat(01-02): replace ChromaDB with pgvector in vector_db.py
+903376f fix(01-01): correct Supabase pooler region to us-east-1
+ee5987e fix(01-01): update Supabase project ref to new 'promaia' project
+7b3048e docs(01-01): complete plan 01 tasks 1-2, checkpoint reached for Supabase verification
+118534c feat(01-01): extend schema with pgvector extension and embedding tables
+c10db76 feat(01-01): merge postgres-sql-changeover and reconfigure for Supabase
+cbad997 Merge remote-tracking branch 'origin/postgres-sql-changeover' into zbrain
+```
