@@ -104,7 +104,8 @@ class VectorDBManager:
             if self.embedding_provider == "google":
                 result = self.genai_client.models.embed_content(
                     model='gemini-embedding-001',
-                    contents=text
+                    contents=text,
+                    config={'output_dimensionality': 768},
                 )
                 return result.embeddings[0].values
             else:

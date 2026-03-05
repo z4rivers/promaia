@@ -12,7 +12,7 @@ CREATE SCHEMA IF NOT EXISTS brain;
 -- brain.memories
 -- Core persistent memory store. Stores facts, notes, and
 -- observations with semantic embeddings for similarity search.
--- vector(768) matches gemini-embedding-001 output dimensions.
+-- vector(768) matches gemini-embedding-001 with output_dimensionality=768.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS brain.memories (
     id SERIAL PRIMARY KEY,
