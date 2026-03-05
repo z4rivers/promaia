@@ -27,9 +27,9 @@
 - [x] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
 - [x] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
 - [x] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
-- [ ] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
-- [ ] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
-- [ ] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
+- [x] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
+- [x] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
+- [x] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
 - [ ] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
 - [ ] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
 - [ ] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, ADHD-friendly

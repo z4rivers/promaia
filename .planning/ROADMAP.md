@@ -75,11 +75,11 @@ Plans:
   5. Interview question bank covers all profile categories with OARS-informed questions
   6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
   7. Progressive profiling continues after initial interview via observation
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
-- [ ] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool
-- [ ] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools
+- [x] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool (2026-03-05)
+- [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
 - [ ] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + verification
 
 ### Phase 4: Heartbeat Agent
