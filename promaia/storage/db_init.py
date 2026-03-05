@@ -2,9 +2,10 @@
 Database initialization and management commands for Promaia.
 
 Usage:
-    python -m promaia.storage.db_init init     # Initialize database
-    python -m promaia.storage.db_init status   # Check connection status
-    python -m promaia.storage.db_init reset    # Drop and recreate all tables (DANGER!)
+    python -m promaia.storage.db_init init          # Initialize public schema
+    python -m promaia.storage.db_init init-brain     # Apply brain schema (idempotent)
+    python -m promaia.storage.db_init status         # Check connection status
+    python -m promaia.storage.db_init reset          # Drop and recreate all tables (DANGER!)
 """
 import os
 import sys
@@ -207,31 +208,92 @@ def create_database():
         return False
 
 
+def get_brain_schema_path() -> Path:
+    """Get path to the brain schema.sql file."""
+    return Path(__file__).parent.parent / "brain" / "schema.sql"
+
+
+def apply_brain_schema():
+    """Apply the brain schema idempotently.
+
+    Reads promaia/brain/schema.sql, splits statements by semicolons,
+    and executes each within a transaction. Safe to run multiple times
+    (all DDL uses CREATE IF NOT EXISTS).
+
+    Returns True on success, False on failure.
+    """
+    from promaia.storage.postgres_db import get_postgres_db
+
+    logger.info("Applying brain schema...")
+
+    try:
+        db = get_postgres_db()
+
+        schema_path = get_brain_schema_path()
+        if not schema_path.exists():
+            logger.error(f"Brain schema file not found: {schema_path}", file=sys.stderr)
+            return False
+
+        with open(schema_path, 'r') as f:
+            sql = f.read()
+
+        # Split on semicolons and filter empty/comment-only statements
+        stmts = [s.strip() for s in sql.split(';') if s.strip()]
+
+        with db.get_connection() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cursor:
+                for stmt in stmts:
+                    # Skip pure comment blocks
+                    non_comment = '\n'.join(
+                        line for line in stmt.splitlines()
+                        if not line.strip().startswith('--')
+                    ).strip()
+                    if not non_comment:
+                        continue
+                    try:
+                        cursor.execute(stmt)
+                    except Exception as e:
+                        if 'already exists' not in str(e).lower():
+                            logger.warning(f"Brain schema statement warning: {e}")
+
+        print("Brain schema applied successfully.", file=sys.stderr)
+        return True
+
+    except Exception as e:
+        logger.error(f"Brain schema application failed: {e}")
+        return False
+
+
 def main():
     """Main entry point for database management."""
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
-    
+
     command = sys.argv[1].lower()
-    
+
     if command == 'init':
         create_database()
         success = init_database()
         sys.exit(0 if success else 1)
-    
+
+    elif command == 'init-brain':
+        success = apply_brain_schema()
+        sys.exit(0 if success else 1)
+
     elif command == 'status':
         success = check_status()
         sys.exit(0 if success else 1)
-    
+
     elif command == 'reset':
         success = reset_database()
         sys.exit(0 if success else 1)
-    
+
     elif command == 'create':
         success = create_database()
         sys.exit(0 if success else 1)
-    
+
     else:
         print(f"Unknown command: {command}")
         print(__doc__)
