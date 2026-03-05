@@ -47,6 +47,13 @@
 - [ ] **DOCS-02**: Every commit has clear message explaining what changed and why
 - [ ] **DOCS-03**: Modified upstream files documented in ZBRAIN.md with reasoning
 
+### Self-Maintenance
+
+- [ ] **MAINT-01**: Dependency intelligence monitors stack for updates (PyPI, GitHub releases)
+- [ ] **MAINT-02**: Evaluates update relevance — flags new capabilities that enable features, not just version bumps (Green Hat thinking)
+- [ ] **MAINT-03**: Catches deprecations early — alerts before EOL dates hit (prevents google-generativeai situation)
+- [ ] **MAINT-04**: Logs findings to brain.events with actionable recommendations
+
 ## v1.1 Requirements (Deferred)
 
 - **CAL-01**: Google Calendar integration for time management
@@ -74,7 +81,7 @@
 | — | — | — |
 
 **Coverage:**
-- v1.0 requirements: 20 total
+- v1.0 requirements: 24 total
 - Mapped to phases: 0
 - Unmapped: 20
 
