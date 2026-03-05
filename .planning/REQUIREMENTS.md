@@ -43,9 +43,9 @@
 
 ### Documentation
 
-- [ ] **DOCS-01**: ZBRAIN.md in repo root — running changelog of all changes for daughter's visibility
-- [ ] **DOCS-02**: Every commit has clear message explaining what changed and why
-- [ ] **DOCS-03**: Modified upstream files documented in ZBRAIN.md with reasoning
+- [x] **DOCS-01**: ZBRAIN.md in repo root — running changelog of all changes for daughter's visibility
+- [x] **DOCS-02**: Every commit has clear message explaining what changed and why
+- [x] **DOCS-03**: Modified upstream files documented in ZBRAIN.md with reasoning
 
 ### Self-Maintenance
 
