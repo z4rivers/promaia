@@ -2,7 +2,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB
+- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
 - [ ] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
 - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
@@ -28,7 +28,7 @@
 Plans:
 - [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
 - [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
-- [ ] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
+- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
 
 ### Phase 2: Brain Schema and MCP Tools
 **Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
@@ -83,7 +83,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---|---|---|
-| 1. Postgres Foundation | 2/3 | In progress | - |
+| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
 | 2. Brain Schema and MCP Tools | 0/0 | Not started | - |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 4. Heartbeat Agent | 0/0 | Not started | - |
