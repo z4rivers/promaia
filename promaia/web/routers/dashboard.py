@@ -17,15 +17,7 @@ logger = logging.getLogger(__name__)
 templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 templates = Jinja2Templates(directory=templates_dir)
 
-VALID_SKINS = [
-    "stone-garden",
-    "ink-wash",
-    "evening-garden",
-    "data-temple",
-    "superflat",
-    "neo-tokyo",
-]
-DEFAULT_SKIN = "superflat"
+SKIN = "superflat"
 
 
 def _format_day(dt: datetime) -> str:
@@ -154,11 +146,8 @@ def _get_brain_data() -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, skin: str = None):
+async def dashboard(request: Request):
     """Render the main dashboard with live brain data."""
-    if skin not in VALID_SKINS:
-        skin = DEFAULT_SKIN
-
     hour = datetime.now().hour
     if hour < 12:
         greeting = "Good morning"
@@ -173,9 +162,7 @@ async def dashboard(request: Request, skin: str = None):
     brain = _get_brain_data()
 
     context = {
-        "request": request,
-        "skin": skin,
-        "valid_skins": VALID_SKINS,
+        **_base_context(request),
         "greeting": greeting,
         "date_str": date_str,
         "user_name": "Zack",
@@ -185,18 +172,12 @@ async def dashboard(request: Request, skin: str = None):
     return templates.TemplateResponse("dashboard.html", context)
 
 
-def _resolve_skin(skin: str) -> str:
-    return skin if skin in VALID_SKINS else DEFAULT_SKIN
-
-
-def _base_context(request: Request, skin: str) -> dict:
-    return {"request": request, "skin": skin, "valid_skins": VALID_SKINS}
+def _base_context(request: Request) -> dict:
+    return {"request": request, "skin": SKIN}
 
 
 @router.get("/projects", response_class=HTMLResponse)
-async def projects_page(request: Request, skin: str = None):
-    """Render the projects detail page."""
-    skin = _resolve_skin(skin)
+async def projects_page(request: Request):
     try:
         from promaia.storage.postgres_db import get_postgres_db
         db = get_postgres_db()
@@ -250,15 +231,13 @@ async def projects_page(request: Request, skin: str = None):
         projects = []
 
     return templates.TemplateResponse("projects.html", {
-        **_base_context(request, skin),
+        **_base_context(request),
         "projects": projects,
     })
 
 
 @router.get("/email", response_class=HTMLResponse)
-async def email_page(request: Request, skin: str = None):
-    """Render the email intelligence page."""
-    skin = _resolve_skin(skin)
+async def email_page(request: Request):
     emails = []
     stats = {"total": 0, "unread": 0, "today": 0}
     email_account = "zachary4rivers@gmail.com"
@@ -310,7 +289,7 @@ async def email_page(request: Request, skin: str = None):
         logger.warning(f"Email data unavailable: {e}")
 
     return templates.TemplateResponse("email.html", {
-        **_base_context(request, skin),
+        **_base_context(request),
         "emails": emails,
         "stats": stats,
         "email_account": email_account,
@@ -318,9 +297,7 @@ async def email_page(request: Request, skin: str = None):
 
 
 @router.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request, skin: str = None):
-    """Render the personal profile page."""
-    skin = _resolve_skin(skin)
+async def profile_page(request: Request):
     categories = {}
     trait_count = 0
     declared_count = 0
@@ -374,7 +351,7 @@ async def profile_page(request: Request, skin: str = None):
         logger.warning(f"Profile data unavailable: {e}")
 
     return templates.TemplateResponse("profile.html", {
-        **_base_context(request, skin),
+        **_base_context(request),
         "user_name": "Zack",
         "categories": categories,
         "trait_count": trait_count,

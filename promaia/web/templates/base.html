@@ -5,22 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Promaia{% endblock %}</title>
 
-    <!-- Skin-specific fonts: only load what's needed -->
+    <!-- Superflat fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    {% if skin == 'stone-garden' %}
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-    {% elif skin == 'ink-wash' %}
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-    {% elif skin == 'evening-garden' %}
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700;9..144,800&family=Nunito:wght@400;500;600;700&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
-    {% elif skin == 'data-temple' %}
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
-    {% elif skin == 'superflat' %}
     <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    {% elif skin == 'neo-tokyo' %}
-    <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;700;800&family=Syne:wght@400;500;600;700;800&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-    {% endif %}
 
     <!-- Page base styles: loads BEFORE skin CSS so skins always win -->
     {% block head %}{% endblock %}
@@ -63,46 +51,10 @@
             }
         }
 
-        /* Skin switcher: minimal base — skins restyle completely */
-        .skin-switcher {
-            position: fixed;
-            top: 16px; right: 16px;
-            display: flex;
-            gap: 2px;
-            padding: 3px;
-            z-index: 100;
-            font-size: 11px;
-        }
-        .skin-switcher__pill {
-            padding: 4px 10px;
-            white-space: nowrap;
-            cursor: pointer;
-        }
-        @media (max-width: 900px) {
-            .skin-switcher { top: auto; bottom: 16px; font-size: 10px; }
-        }
     </style>
 </head>
 <body class="{{ skin }}" data-skin="{{ skin }}">
     <div class="atmosphere" aria-hidden="true"></div>
-
-    <nav class="skin-switcher" aria-label="Theme selector">
-        {% set skin_labels = {
-            "stone-garden": "Stone Garden",
-            "ink-wash": "Ink Wash",
-            "evening-garden": "Evening Garden",
-            "data-temple": "Data Temple",
-            "superflat": "Superflat",
-            "neo-tokyo": "Neo-Tokyo"
-        } %}
-        {% for s in valid_skins %}
-        <a href="?skin={{ s }}"
-           class="skin-switcher__pill {% if s == skin %}skin-switcher__pill--active{% endif %}"
-           title="{{ skin_labels[s] }}">
-            {{ skin_labels[s] }}
-        </a>
-        {% endfor %}
-    </nav>
 
     <div class="page-shell">
         {% block content %}{% endblock %}
