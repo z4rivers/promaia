@@ -1,0 +1,97 @@
+/*
+ * Evening Garden — Nendo / Oki Sato
+ * "!" moment. Playful minimalism, friendly warmth.
+ * Twilight warmth, wisteria accent, amber glow.
+ */
+
+:root {
+    /* Fonts */
+    --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    --font-heading: 'Space Grotesk', 'Inter', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Colors */
+    --bg-primary: #F8F4F0;
+    --bg-secondary: #F0EBE5;
+    --bg-card: #FFFEFA;
+    --bg-card-hover: #FFFFFF;
+    --text-primary: #3A3A3A;
+    --text-secondary: #6B6560;
+    --text-muted: #9B9490;
+    --accent-primary: #8B81C3;
+    --accent-success: #7BA87B;
+    --accent-warning: #D5B88D;
+    --accent-info: #6B9EBB;
+    --border-subtle: #E8E2DA;
+    --border-visible: #D5CFC7;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Radius — slightly more rounded for playfulness */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 300ms ease;
+}
+
+/* Evening Garden: warm glow on hover */
+.card {
+    box-shadow: 0 1px 3px rgba(58, 58, 58, 0.04);
+}
+
+.card:hover {
+    box-shadow: 0 6px 20px rgba(139, 129, 195, 0.1);
+    border-color: #C8C0E0;
+}
+
+/* Wisteria quote accent */
+.quote-block {
+    border-left-color: #8B81C3;
+}
+
+.quote-block:hover {
+    border-left-color: #D5B88D;
+    box-shadow: 0 2px 12px rgba(213, 184, 141, 0.08);
+}
+
+/* Greeting: rounded, warm */
+.greeting {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Brain status: wisteria tint */
+.brain-status .metric {
+    color: #8B81C3;
+}
+
+/* Warm amber accents on status */
+.project-status--active {
+    background: rgba(123, 168, 123, 0.12);
+    color: #5C8A5C;
+}
+
+/* Skin switcher */
+.skin-switcher {
+    background: #F0EBE5;
+    border-color: #E0DBD3;
+    border-radius: 20px;
+}
+
+.skin-switcher__pill {
+    border-radius: 14px;
+}
+
+.skin-switcher__pill--active {
+    background: #FFFEFA;
+}

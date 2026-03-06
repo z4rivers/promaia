@@ -1,5 +1,5 @@
 """
-Brain MCP Server — 14 tools for zBrain.
+Brain MCP Server — 15 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over stdio.
 Claude calls these tools to get briefings, capture thoughts, search memories,
@@ -20,6 +20,7 @@ Tools:
     onboard         — manage the onboarding flow (start/status/channel_update/complete)
     pc_scan         — scan local git repos, files, and apps for profile data
     gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
+    gmail_query     — search stored Gmail content by sender, subject, or full-text
     activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
     timeline        — reference timeline of life events (add/list/query)
 
@@ -419,6 +420,39 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="gmail_query",
+            description=(
+                "Search stored Gmail content in the database. "
+                "Query by sender, subject keywords, date range, or full-text search. "
+                "Returns matching emails with subject, sender, date, and snippet. "
+                "Use this to find specific emails or review communication history."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Full-text search across subject and message content.",
+                    },
+                    "sender": {
+                        "type": "string",
+                        "description": "Filter by sender email (partial match).",
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": "Only search emails from the last N days.",
+                        "default": 30
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results to return (default 20).",
+                        "default": 20
+                    },
+                },
+                "required": []
+            }
+        ),
+        Tool(
             name="activate",
             description=(
                 "MuninnDB cognitive retrieval using the ACTIVATE pipeline. "
@@ -549,6 +583,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_pc_scan(arguments)
         elif name == "gmail_scan":
             return await _handle_gmail_scan(arguments)
+        elif name == "gmail_query":
+            return await _handle_gmail_query(arguments)
         elif name == "activate":
             return await _handle_activate(arguments)
         elif name == "timeline":
@@ -1720,6 +1756,76 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
         )
     except Exception as e:
         logger.warning(f"Could not log gmail_scan event: {e}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def _handle_gmail_query(args: dict) -> list[TextContent]:
+    """Query stored Gmail content from the gmail_content table."""
+    db = get_db()
+    query_text = args.get("query", "")
+    sender = args.get("sender", "")
+    days_back = args.get("days_back", 30)
+    limit = min(args.get("limit", 20), 50)
+
+    conditions = []
+    params = []
+
+    if query_text:
+        conditions.append(
+            "(subject ILIKE %s OR message_content ILIKE %s OR body_snippet ILIKE %s)"
+        )
+        like = f"%{query_text}%"
+        params.extend([like, like, like])
+
+    if sender:
+        conditions.append("sender_email ILIKE %s")
+        params.append(f"%{sender}%")
+
+    if days_back:
+        conditions.append(
+            "email_date >= (NOW() - INTERVAL '%s days')::text"
+        )
+        params.append(days_back)
+
+    where = " AND ".join(conditions) if conditions else "TRUE"
+    sql = f"""
+        SELECT subject, sender_email, sender_name, email_date,
+               body_snippet, thread_id, is_unread, gmail_labels
+        FROM gmail_content
+        WHERE {where}
+        ORDER BY email_date DESC
+        LIMIT %s
+    """
+    params.append(limit)
+
+    try:
+        rows = db.fetch_all(sql, tuple(params))
+    except Exception as e:
+        return [TextContent(type="text", text=f"Gmail query error: {e}")]
+
+    if not rows:
+        parts = []
+        if query_text:
+            parts.append(f"matching '{query_text}'")
+        if sender:
+            parts.append(f"from '{sender}'")
+        return [TextContent(
+            type="text",
+            text=f"No emails found {' '.join(parts)} in the last {days_back} days."
+        )]
+
+    lines = [f"**Gmail Query Results** ({len(rows)} emails)\n"]
+    for r in rows:
+        date = r.get("email_date", "")[:10] if r.get("email_date") else "?"
+        sender_display = r.get("sender_name") or r.get("sender_email", "?")
+        unread = " [unread]" if r.get("is_unread") else ""
+        snippet = (r.get("body_snippet") or "")[:120]
+        lines.append(f"- **{r.get('subject', '(no subject)')}**{unread}")
+        lines.append(f"  From: {sender_display} | {date}")
+        if snippet:
+            lines.append(f"  > {snippet}")
+        lines.append("")
 
     return [TextContent(type="text", text="\n".join(lines))]
 

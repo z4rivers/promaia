@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Promaia — Dashboard{% endblock %}
+
+{% block head %}
+<style>
+    /* Dashboard Layout */
+    .dashboard {
+        padding-top: var(--space-lg);
+    }
+
+    /* Header Zone */
+    .header-zone {
+        margin-bottom: var(--space-2xl);
+    }
+
+    .greeting {
+        font-family: var(--font-display);
+        font-size: clamp(1.75rem, 4vw, 2.5rem);
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+    }
+
+    .header-date {
+        font-family: var(--font-body);
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+        margin-top: var(--space-xs);
+    }
+
+    .brain-status {
+        display: flex;
+        gap: var(--space-md);
+        align-items: center;
+        margin-top: var(--space-md);
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        letter-spacing: 0.03em;
+    }
+
+    .brain-status .metric {
+        font-family: var(--font-display);
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--accent-primary);
+    }
+
+    .brain-status__sep {
+        color: var(--border-visible);
+        user-select: none;
+    }
+
+    /* Primary Zone: CSS Grid 2-column */
+    .primary-zone {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-xl);
+        margin-bottom: var(--space-2xl);
+    }
+
+    @media (min-width: 768px) {
+        .primary-zone {
+            grid-template-columns: 2fr 1fr;
+        }
+    }
+
+    /* Section Headers */
+    .section-header {
+        font-family: var(--font-heading);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-bottom: var(--space-md);
+    }
+
+    /* Cards */
+    .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-md) var(--space-lg);
+        transition: all var(--transition-fast);
+    }
+
+    .card:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--border-visible);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .card--accent {
+        border-left: 3px solid var(--accent-primary);
+    }
+
+    .card + .card {
+        margin-top: var(--space-sm);
+    }
+
+    /* Action Items */
+    .action-item {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .action-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-top: 7px;
+        flex-shrink: 0;
+    }
+
+    .action-indicator--active {
+        background: var(--accent-success);
+    }
+
+    .action-indicator--pending {
+        background: var(--accent-warning);
+    }
+
+    .action-text {
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+
+    .action-domain {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 2px;
+    }
+
+    /* Project Cards */
+    .project-name {
+        font-family: var(--font-heading);
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+
+    .project-detail {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+
+    .project-status {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        margin-top: var(--space-xs);
+    }
+
+    .project-status--active {
+        background: color-mix(in srgb, var(--accent-success) 15%, transparent);
+        color: var(--accent-success);
+    }
+
+    .project-status--resting {
+        background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+        color: var(--text-muted);
+    }
+
+    /* Context Column */
+    .context-card {
+        text-align: center;
+        padding: var(--space-lg);
+    }
+
+    .mode-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-bottom: var(--space-xs);
+    }
+
+    .mode-value {
+        font-family: var(--font-display);
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--accent-primary);
+    }
+
+    .calendar-placeholder {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        font-style: italic;
+        padding: var(--space-md);
+        text-align: center;
+    }
+
+    /* Secondary Zone */
+    .secondary-zone {
+        margin-bottom: var(--space-2xl);
+    }
+
+    .quote-block {
+        border-left: 3px solid var(--accent-primary);
+        padding: var(--space-md) var(--space-lg);
+        background: var(--bg-card);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        transition: all var(--transition-fast);
+    }
+
+    .quote-block:hover {
+        background: var(--bg-card-hover);
+        border-left-color: var(--accent-info);
+    }
+
+    .quote-block + .quote-block {
+        margin-top: var(--space-sm);
+    }
+
+    .quote-content {
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        line-height: 1.5;
+    }
+
+    .quote-meta {
+        display: flex;
+        gap: var(--space-md);
+        margin-top: var(--space-xs);
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+    }
+
+    /* Footer */
+    .footer-zone {
+        padding-top: var(--space-xl);
+        border-top: 1px solid var(--border-subtle);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-md);
+    }
+
+    .status-text {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        letter-spacing: 0.02em;
+    }
+
+    .footer-prompt {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        font-style: italic;
+    }
+
+    /* Ma: breathing space utility */
+    .ma {
+        margin-bottom: var(--space-xl);
+    }
+
+    .ma-sm {
+        margin-bottom: var(--space-md);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="dashboard">
+
+    <!-- Header Zone -->
+    <header class="header-zone">
+        <h1 class="greeting">{{ greeting }}, {{ user_name }}</h1>
+        <p class="header-date">{{ date_str }}</p>
+        <div class="brain-status">
+            <span><span class="metric">{{ brain_status.memories }}</span> memories</span>
+            <span class="brain-status__sep">&middot;</span>
+            <span><span class="metric">{{ brain_status.actions }}</span> actions</span>
+            <span class="brain-status__sep">&middot;</span>
+            <span><span class="metric">{{ brain_status.contexts }}</span> contexts</span>
+        </div>
+    </header>
+
+    <!-- Primary Zone: 2-column grid -->
+    <section class="primary-zone">
+
+        <!-- Left Column: Today -->
+        <div class="column-today">
+            <h2 class="section-header">Today</h2>
+
+            <div class="ma-sm">
+                {% for action in actions %}
+                <div class="card card--accent">
+                    <div class="action-item">
+                        <span class="action-indicator action-indicator--{{ action.status }}"></span>
+                        <div>
+                            <div class="action-text">{{ action.text }}</div>
+                            <div class="action-domain">{{ action.domain }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not actions %}
+                <div class="card">
+                    <p class="status-text">No active actions. A clear mind.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <h2 class="section-header" style="margin-top: var(--space-xl);">Projects</h2>
+            {% for project in projects %}
+            <div class="card">
+                <div class="project-name">{{ project.name }}</div>
+                <div class="project-detail">{{ project.detail }}</div>
+                <span class="project-status project-status--{{ project.status }}">{{ project.status }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Right Column: Context -->
+        <div class="column-context">
+            <h2 class="section-header">Context</h2>
+
+            <div class="card context-card ma-sm">
+                <div class="mode-label">Current Mode</div>
+                <div class="mode-value">Building</div>
+            </div>
+
+            <div class="card context-card">
+                <div class="mode-label">Energy</div>
+                <div class="mode-value">Focused</div>
+            </div>
+
+            <h2 class="section-header" style="margin-top: var(--space-xl);">Upcoming</h2>
+            <div class="card">
+                <p class="calendar-placeholder">Calendar not connected</p>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- Secondary Zone: Recent Brain Activity -->
+    <section class="secondary-zone">
+        <h2 class="section-header">Recent Brain Activity</h2>
+
+        {% for memory in recent_memories %}
+        <div class="quote-block">
+            <div class="quote-content">{{ memory.content }}</div>
+            <div class="quote-meta">
+                <span>{{ memory.domain }}</span>
+                <span>{{ memory.created_at }}</span>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not recent_memories %}
+        <div class="quote-block">
+            <p class="status-text">No recent captures yet.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- Footer Zone -->
+    <footer class="footer-zone">
+        <span class="status-text">Last sync: moments ago</span>
+        <span class="footer-prompt">What is essential is invisible to the eye.</span>
+    </footer>
+
+</main>
+{% endblock %}

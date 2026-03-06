@@ -1,0 +1,186 @@
+/*
+ * Neo-Tokyo — Akira / Ghost in the Shell
+ * Holographic panels, atmospheric depth, tension between traditional and cyber.
+ * Deep void bg, washi-warm text, Akira red, neon jade, HUD orange.
+ */
+
+:root {
+    /* Fonts */
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-heading: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Colors */
+    --bg-primary: #0A0A0F;
+    --bg-secondary: #111118;
+    --bg-card: rgba(30, 30, 46, 0.85);
+    --bg-card-hover: rgba(38, 38, 58, 0.92);
+    --text-primary: #F5F0E8;
+    --text-secondary: #B0A898;
+    --text-muted: #706860;
+    --accent-primary: #DA1D1F;
+    --accent-success: #00D4AA;
+    --accent-warning: #FF6B35;
+    --accent-info: #6C5CE7;
+    --border-subtle: rgba(245, 240, 232, 0.06);
+    --border-visible: rgba(245, 240, 232, 0.12);
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 300ms ease;
+}
+
+/* Cards: glassmorphism panels */
+.card {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(245, 240, 232, 0.04);
+    border: 1px solid rgba(245, 240, 232, 0.06);
+}
+
+.card:hover {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(218, 29, 31, 0.06);
+    border-color: rgba(218, 29, 31, 0.2);
+    transform: translateY(-2px);
+}
+
+.card--accent {
+    border-left: 3px solid #DA1D1F;
+}
+
+/* Greeting: dramatic, warm text on void */
+.greeting {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #F5F0E8;
+    text-shadow: 0 0 40px rgba(218, 29, 31, 0.15);
+}
+
+.header-date {
+    color: #706860;
+}
+
+/* Brain status: jade metric glow */
+.brain-status .metric {
+    color: #00D4AA;
+    text-shadow: 0 0 10px rgba(0, 212, 170, 0.2);
+}
+
+.brain-status__sep {
+    color: rgba(245, 240, 232, 0.15);
+}
+
+/* Section headers: HUD style */
+.section-header {
+    color: #706860;
+    letter-spacing: 0.15em;
+}
+
+/* Quote blocks: holographic accent */
+.quote-block {
+    border-left-color: #6C5CE7;
+    background: rgba(30, 30, 46, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.quote-block:hover {
+    border-left-color: #00D4AA;
+    background: rgba(38, 38, 58, 0.8);
+    box-shadow: 0 0 16px rgba(0, 212, 170, 0.06);
+}
+
+/* Action indicators: neon glow */
+.action-indicator--active {
+    background: #00D4AA;
+    box-shadow: 0 0 8px rgba(0, 212, 170, 0.5);
+}
+
+.action-indicator--pending {
+    background: #FF6B35;
+    box-shadow: 0 0 8px rgba(255, 107, 53, 0.4);
+}
+
+/* Project status */
+.project-status--active {
+    background: rgba(0, 212, 170, 0.1);
+    color: #00D4AA;
+}
+
+.project-status--resting {
+    background: rgba(112, 104, 96, 0.15);
+    color: #706860;
+}
+
+/* Context cards: deeper panel */
+.context-card {
+    background: rgba(20, 20, 32, 0.9);
+}
+
+.mode-value {
+    color: #DA1D1F;
+    text-shadow: 0 0 12px rgba(218, 29, 31, 0.25);
+}
+
+/* Footer */
+.footer-zone {
+    border-top-color: rgba(245, 240, 232, 0.06);
+}
+
+.footer-prompt {
+    color: #706860;
+    font-style: normal;
+    letter-spacing: 0.02em;
+}
+
+/* Skin switcher: dark holographic panel */
+.skin-switcher {
+    background: rgba(17, 17, 24, 0.95);
+    border-color: rgba(245, 240, 232, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.skin-switcher__pill {
+    color: #706860;
+}
+
+.skin-switcher__pill:hover {
+    color: #F5F0E8;
+    background: rgba(245, 240, 232, 0.05);
+}
+
+.skin-switcher__pill--active {
+    background: rgba(218, 29, 31, 0.15);
+    color: #DA1D1F;
+    box-shadow: 0 0 8px rgba(218, 29, 31, 0.1);
+}
+
+/* Subtle atmospheric gradient */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    background:
+        radial-gradient(ellipse at 20% 0%, rgba(108, 92, 231, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(218, 29, 31, 0.04) 0%, transparent 50%);
+}

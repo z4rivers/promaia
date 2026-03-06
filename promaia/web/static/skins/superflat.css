@@ -1,0 +1,184 @@
+/*
+ * Superflat — Murakami / Persona 5
+ * Bold outlines, zero shadows, pop energy, confident color.
+ * Flat white bg, deep navy cards, Murakami pink, neon yellow, electric violet.
+ */
+
+:root {
+    /* Fonts */
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-heading: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Colors */
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F5F5F5;
+    --bg-card: #1A1A2E;
+    --bg-card-hover: #22223A;
+    --text-primary: #1A1A2E;
+    --text-secondary: #4A4A5A;
+    --text-muted: #8888A0;
+    --accent-primary: #FF3366;
+    --accent-success: #00CC88;
+    --accent-warning: #FFE700;
+    --accent-info: #8B00FF;
+    --border-subtle: #E0E0E8;
+    --border-visible: #1A1A2E;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Radius — crisp but not sharp */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Transitions */
+    --transition-fast: 120ms ease;
+    --transition-normal: 250ms ease;
+}
+
+/* Superflat signature: bold borders replace shadows */
+.card {
+    box-shadow: none;
+    border: 2px solid #1A1A2E;
+    background: #FFFFFF;
+    color: #1A1A2E;
+}
+
+.card:hover {
+    box-shadow: none;
+    background: #F8F8FF;
+    transform: translateY(-2px);
+    border-color: #FF3366;
+}
+
+.card--accent {
+    border-left: 4px solid #FF3366;
+}
+
+/* Greeting: big, bold, pop */
+.greeting {
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #1A1A2E;
+}
+
+/* Brain status: pink metric pop */
+.brain-status .metric {
+    color: #FF3366;
+    font-weight: 700;
+}
+
+.brain-status__sep {
+    color: #CCCCDD;
+}
+
+/* Section headers: uppercase bold */
+.section-header {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    color: #8B00FF;
+}
+
+/* Quote blocks: pop accent border */
+.quote-block {
+    border: 2px solid #E0E0E8;
+    border-left: 4px solid #FF3366;
+    border-radius: var(--radius-md);
+    background: #FFFFFF;
+}
+
+.quote-block:hover {
+    border-color: #8B00FF;
+    border-left-color: #8B00FF;
+    background: #FAF5FF;
+}
+
+/* Action indicators: bold pop */
+.action-indicator--active {
+    background: #00CC88;
+}
+
+.action-indicator--pending {
+    background: #FFE700;
+    border: 1px solid #CCBB00;
+}
+
+/* Project status */
+.project-status--active {
+    background: rgba(0, 204, 136, 0.12);
+    color: #00AA70;
+    border: 1px solid rgba(0, 204, 136, 0.3);
+}
+
+.project-status--resting {
+    background: rgba(136, 136, 160, 0.1);
+    color: #8888A0;
+    border: 1px solid rgba(136, 136, 160, 0.2);
+}
+
+/* Context cards: inverted on navy */
+.context-card {
+    background: #1A1A2E;
+    color: #FFFFFF;
+    border-color: #1A1A2E;
+}
+
+.context-card:hover {
+    background: #22223A;
+    border-color: #FF3366;
+}
+
+.context-card .mode-label {
+    color: #8888BB;
+}
+
+.context-card .mode-value {
+    color: #FF3366;
+}
+
+.context-card .calendar-placeholder {
+    color: #6666AA;
+}
+
+/* Footer */
+.footer-zone {
+    border-top: 2px solid #1A1A2E;
+}
+
+.footer-prompt {
+    color: #8B00FF;
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* Skin switcher: clean white + borders */
+.skin-switcher {
+    background: #FFFFFF;
+    border: 2px solid #1A1A2E;
+    border-radius: var(--radius-lg);
+}
+
+.skin-switcher__pill {
+    color: #8888A0;
+    font-weight: 500;
+}
+
+.skin-switcher__pill:hover {
+    color: #FF3366;
+    background: transparent;
+}
+
+.skin-switcher__pill--active {
+    background: #1A1A2E;
+    color: #FFFFFF;
+}

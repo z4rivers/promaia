@@ -1,0 +1,70 @@
+/*
+ * Stone Garden — Muji / Kenya Hara
+ * Empty vessel. Calm, receptive. Nothing unnecessary.
+ * Warm off-whites, muted grays, soft indigo accent.
+ */
+
+:root {
+    /* Fonts */
+    --font-display: 'Inter', sans-serif;
+    --font-heading: 'Inter', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Colors */
+    --bg-primary: #F4F0E8;
+    --bg-secondary: #EDE8DE;
+    --bg-card: #FAFAF6;
+    --bg-card-hover: #FFFFFF;
+    --text-primary: #2C2C2C;
+    --text-secondary: #5A574F;
+    --text-muted: #8F837A;
+    --accent-primary: #487CA5;
+    --accent-success: #6B8F6B;
+    --accent-warning: #B8945A;
+    --accent-info: #7A9BB5;
+    --border-subtle: #E2DDD3;
+    --border-visible: #CFC9BD;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 300ms ease;
+}
+
+/* Stone Garden: cards use minimal shadow, never flashy */
+.card {
+    box-shadow: 0 1px 2px rgba(44, 44, 44, 0.04);
+}
+
+.card:hover {
+    box-shadow: 0 2px 8px rgba(44, 44, 44, 0.07);
+}
+
+/* Greeting: understated */
+.greeting {
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+/* Skin switcher blends into the warm background */
+.skin-switcher {
+    background: #EDE8DE;
+    border-color: #DDD8CE;
+}
+
+.skin-switcher__pill--active {
+    background: #FAFAF6;
+}

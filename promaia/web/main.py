@@ -8,7 +8,10 @@ load_dotenv(dotenv_path=dotenv_path)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from promaia.web.routers import chat as chat_router
+from promaia.web.routers import mcp as mcp_router
+from promaia.web.routers import dashboard as dashboard_router
 import uvicorn
 
 app = FastAPI(
@@ -46,8 +49,16 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Static files
+_web_dir = os.path.dirname(os.path.abspath(__file__))
+_static_dir = os.path.join(_web_dir, "static")
+if os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 # Include routers
 app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(mcp_router.router, prefix="/api", tags=["MCP"])
+app.include_router(dashboard_router.router, tags=["Dashboard"])
 
 @app.get("/api/health", tags=["Health"])
 async def health_check():

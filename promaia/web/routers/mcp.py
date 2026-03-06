@@ -35,10 +35,10 @@ async def list_mcp_servers():
         
         # Import here to avoid circular imports
         from ...mcp.client import McpClient
-        from ...config.mcp_servers import get_mcp_server_configs
-        
+        from ...config.mcp_servers import get_mcp_manager
+
         # Get configured servers
-        server_configs = get_mcp_server_configs()
+        server_configs = list(get_mcp_manager().get_enabled_servers().values())
         
         # Create MCP client if we don't have one
         client = McpClient()
