@@ -169,7 +169,7 @@ async def get_initial_message():
         response = await asyncio.to_thread(
             gemini_genai_client.models.generate_content,
             model=gemini_model_name,
-            contents=[{'role': 'user', 'parts': [enhanced_instruction]}],
+            contents=enhanced_instruction,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt_str,
                 temperature=1.0,  # Higher temperature for more creativity and variety
@@ -382,7 +382,9 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
     if not model_id:
         model_id = gemini_model_name
 
-    # Build conversation history for Gemini
+    from google.genai import types
+
+    # Build conversation history for Gemini using proper Content objects
     gemini_messages = []
     for msg in message_history:
         role = 'user' if msg.role == 'user' else 'model'
@@ -398,27 +400,26 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
 
         parts = []
         if text_content:
-            parts.append(text_content)
+            parts.append(types.Part.from_text(text=text_content))
 
         # Add images to message parts
         for img in msg_images:
             parts.append(format_image_for_gemini(img.data, img.media_type))
 
-        gemini_messages.append({'role': role, 'parts': parts})
+        gemini_messages.append(types.Content(role=role, parts=parts))
 
     # Add current user message with images
     current_parts = []
     if user_message:
-        current_parts.append(user_message)
+        current_parts.append(types.Part.from_text(text=user_message))
 
     for img in images:
         current_parts.append(format_image_for_gemini(img.data, img.media_type))
 
-    gemini_messages.append({'role': 'user', 'parts': current_parts})
+    gemini_messages.append(types.Content(role='user', parts=current_parts))
 
     debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {len(images)} images")
 
-    from google.genai import types
     response = await asyncio.to_thread(
         gemini_genai_client.models.generate_content,
         model=model_id,

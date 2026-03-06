@@ -1,16 +1,15 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables BEFORE importing routers (they read env vars at module level)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+dotenv_path = os.path.join(PROJECT_ROOT, '.env')
+load_dotenv(dotenv_path=dotenv_path)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from promaia.web.routers import chat as chat_router
 import uvicorn
-import os # For dotenv
-from dotenv import load_dotenv
-
-# Load environment variables from .env file in the project root
-# This assumes your .env file is in the root of the 'maia' project directory
-# (i.e., parent of the 'maia' package directory)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-dotenv_path = os.path.join(PROJECT_ROOT, '.env')
-load_dotenv(dotenv_path=dotenv_path)
 
 app = FastAPI(
     title="Maia Web API",
