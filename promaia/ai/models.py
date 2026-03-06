@@ -1,21 +1,18 @@
 ANTHROPIC_MODELS = {
-    "opus": "claude-opus-4-5",
-    "sonnet": "claude-sonnet-4-5",
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5-20251001",
 }
 
 GOOGLE_MODELS = {
-    # Gemini 3 models (latest generation)
+    # Gemini 3.1 models (current generation — March 2026)
+    "pro": "gemini-3.1-pro-preview",
+    "flash-lite": "gemini-3.1-flash-lite-preview",
+    # Gemini 3 models (still current)
     "flash": "gemini-3-flash-preview",
-    "pro": "gemini-3-pro-preview",
-    # Gemini 2.5 models
+    # Gemini 2.5 models (legacy)
     "2.5-pro": "gemini-2.5-pro-preview-05-06",
     "2.5-flash": "gemini-2.5-flash-preview-05-20",
-    # Gemini 2.0 models
-    "2.0-flash": "gemini-2.0-flash-exp",
-    "2.0-flash-thinking": "gemini-2.0-flash-thinking-exp-1219",
-    # Experimental models
-    "exp-1206": "gemini-exp-1206",
-    "exp-1121": "gemini-exp-1121",
 } 
 
 # Local Llama models (commonly used models with Ollama or similar local setups)
@@ -33,32 +30,25 @@ LLAMA_MODELS = {
 # Display names for models (maps model IDs to human-readable names)
 MODEL_DISPLAY_NAMES = {
     # Anthropic models
+    "claude-opus-4-6": "Claude Opus 4.6",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
     "claude-opus-4-5": "Claude Opus 4.5",
-    "claude-opus-4-5-20251101": "Claude Opus 4.5",
-    "claude-opus-4-1-20250805": "Claude Opus 4.1",
-    "claude-opus-4-20250514": "Claude Opus 4",
     "claude-sonnet-4-5": "Claude Sonnet 4.5",
-    "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
     "claude-sonnet-4-20250514": "Claude Sonnet 4",
     "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
+
+    # Google models - Gemini 3.1
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
+    "gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash-Lite",
 
     # Google models - Gemini 3
     "gemini-3-flash-preview": "Gemini 3 Flash",
     "gemini-3-flash": "Gemini 3 Flash",
-    "gemini-3-pro-preview": "Gemini 3 Pro",
-    "gemini-3-pro": "Gemini 3 Pro",
 
-    # Google models - Gemini 2.5
+    # Google models - Gemini 2.5 (legacy)
     "gemini-2.5-pro-preview-05-06": "Gemini 2.5 Pro",
     "gemini-2.5-flash-preview-05-20": "Gemini 2.5 Flash",
-
-    # Google models - Gemini 2.0
-    "gemini-2.0-flash-exp": "Gemini 2.0 Flash",
-    "gemini-2.0-flash-thinking-exp-1219": "Gemini 2.0 Flash Thinking",
-
-    # Google experimental models
-    "gemini-exp-1206": "Gemini Exp (Dec 2024)",
-    "gemini-exp-1121": "Gemini Exp (Nov 2024)",
 
     # OpenAI models
     "gpt-4o": "GPT-4o",
@@ -96,7 +86,7 @@ def get_model_display_name(model_id: str, api_type: str = None) -> str:
         api_fallbacks = {
             "anthropic": "Claude",
             "openai": "GPT-4o",
-            "gemini": "Gemini 3 Flash",
+            "gemini": "Gemini 3.1 Pro",
             "llama": f"Local Llama ({model_id})"
         }
         return api_fallbacks.get(api_type, model_id)
@@ -106,7 +96,7 @@ def get_model_display_name(model_id: str, api_type: str = None) -> str:
 
 def get_current_anthropic_model() -> str:
     """Get the current default Anthropic model ID."""
-    return ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929")
+    return ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-6")
 
 def get_current_google_model() -> str:
     """Get the current default Google model ID."""
@@ -119,4 +109,4 @@ def get_current_google_model() -> str:
             return GOOGLE_MODELS[env_model]
         # Otherwise assume it's a full model ID
         return env_model
-    return GOOGLE_MODELS.get("flash", "gemini-3-flash") 
+    return GOOGLE_MODELS.get("flash", "gemini-3-flash-preview") 

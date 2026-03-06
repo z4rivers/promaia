@@ -4,22 +4,27 @@
 
 {% block head %}
 <style>
-    /* Dashboard Layout */
+    /*
+     * Dashboard base layout.
+     * All values use CSS custom properties so skins can override structure,
+     * not just color. Skins load AFTER this block and win the cascade.
+     */
+
     .dashboard {
-        padding-top: var(--space-lg);
+        padding-top: var(--space-lg, 24px);
     }
 
-    /* Header Zone */
+    /* === Header Zone === */
     .header-zone {
-        margin-bottom: var(--space-2xl);
+        margin-bottom: var(--section-gap, 48px);
     }
 
     .greeting {
-        font-family: var(--font-display);
-        font-size: clamp(1.75rem, 4vw, 2.5rem);
-        font-weight: 600;
+        font-family: var(--font-display, var(--font-heading, 'Inter', sans-serif));
+        font-size: var(--greeting-size, clamp(1.75rem, 4vw, 2.5rem));
+        font-weight: var(--greeting-weight, 600);
         line-height: 1.2;
-        letter-spacing: -0.02em;
+        letter-spacing: var(--greeting-tracking, -0.02em);
         color: var(--text-primary);
     }
 
@@ -27,24 +32,25 @@
         font-family: var(--font-body);
         font-size: 0.95rem;
         color: var(--text-secondary);
-        margin-top: var(--space-xs);
+        margin-top: var(--space-xs, 4px);
     }
 
     .brain-status {
         display: flex;
-        gap: var(--space-md);
+        gap: var(--space-md, 16px);
         align-items: center;
-        margin-top: var(--space-md);
-        font-family: var(--font-mono);
+        flex-wrap: wrap;
+        margin-top: var(--space-md, 16px);
+        font-family: var(--font-mono, 'JetBrains Mono', monospace);
         font-size: 0.8rem;
         color: var(--text-muted);
         letter-spacing: 0.03em;
     }
 
     .brain-status .metric {
-        font-family: var(--font-display);
-        font-size: 1.1rem;
-        font-weight: 600;
+        font-family: var(--font-display, var(--font-heading));
+        font-size: var(--metric-size, 1.1rem);
+        font-weight: var(--metric-weight, 600);
         color: var(--accent-primary);
     }
 
@@ -53,65 +59,66 @@
         user-select: none;
     }
 
-    /* Primary Zone: CSS Grid 2-column */
+    /* === Primary Zone: overridable grid === */
     .primary-zone {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: var(--space-xl);
-        margin-bottom: var(--space-2xl);
+        grid-template-columns: var(--grid-primary, 1fr);
+        gap: var(--grid-gap, var(--space-xl, 32px));
+        margin-bottom: var(--section-gap, 48px);
     }
 
     @media (min-width: 768px) {
         .primary-zone {
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: var(--grid-primary-lg, 2fr 1fr);
         }
     }
 
-    /* Section Headers */
+    /* === Section Headers === */
     .section-header {
         font-family: var(--font-heading);
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: var(--section-header-size, 0.75rem);
+        font-weight: var(--section-header-weight, 600);
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: var(--section-header-tracking, 0.1em);
         color: var(--text-muted);
-        margin-bottom: var(--space-md);
+        margin-bottom: var(--space-md, 16px);
     }
 
-    /* Cards */
+    /* === Cards: fully skinnable === */
     .card {
         background: var(--bg-card);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-md);
-        padding: var(--space-md) var(--space-lg);
-        transition: all var(--transition-fast);
+        border: var(--card-border, 1px solid var(--border-subtle));
+        border-radius: var(--card-radius, var(--radius-md, 8px));
+        padding: var(--card-padding, 16px 24px);
+        transition: all var(--transition-fast, 150ms ease);
+        box-shadow: var(--card-shadow, none);
     }
 
     .card:hover {
         background: var(--bg-card-hover);
-        border-color: var(--border-visible);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        border-color: var(--card-hover-border, var(--border-visible));
+        transform: var(--card-hover-transform, translateY(-1px));
+        box-shadow: var(--card-hover-shadow, 0 4px 12px rgba(0,0,0,0.06));
     }
 
     .card--accent {
-        border-left: 3px solid var(--accent-primary);
+        border-left: var(--accent-border, 3px solid var(--accent-primary));
     }
 
     .card + .card {
-        margin-top: var(--space-sm);
+        margin-top: var(--card-gap, 8px);
     }
 
-    /* Action Items */
+    /* === Action Items === */
     .action-item {
         display: flex;
         align-items: flex-start;
-        gap: var(--space-sm);
+        gap: var(--space-sm, 8px);
     }
 
     .action-indicator {
-        width: 8px;
-        height: 8px;
+        width: var(--indicator-size, 8px);
+        height: var(--indicator-size, 8px);
         border-radius: 50%;
         margin-top: 7px;
         flex-shrink: 0;
@@ -137,7 +144,7 @@
         margin-top: 2px;
     }
 
-    /* Project Cards */
+    /* === Project Cards === */
     .project-name {
         font-family: var(--font-heading);
         font-weight: 600;
@@ -158,8 +165,8 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
         padding: 2px 8px;
-        border-radius: var(--radius-sm);
-        margin-top: var(--space-xs);
+        border-radius: var(--radius-sm, 4px);
+        margin-top: var(--space-xs, 4px);
     }
 
     .project-status--active {
@@ -172,10 +179,10 @@
         color: var(--text-muted);
     }
 
-    /* Context Column */
+    /* === Context Column === */
     .context-card {
         text-align: center;
-        padding: var(--space-lg);
+        padding: var(--space-lg, 24px);
     }
 
     .mode-label {
@@ -184,11 +191,11 @@
         text-transform: uppercase;
         letter-spacing: 0.1em;
         color: var(--text-muted);
-        margin-bottom: var(--space-xs);
+        margin-bottom: var(--space-xs, 4px);
     }
 
     .mode-value {
-        font-family: var(--font-display);
+        font-family: var(--font-display, var(--font-heading));
         font-size: 1.25rem;
         font-weight: 600;
         color: var(--accent-primary);
@@ -198,30 +205,30 @@
         font-size: 0.85rem;
         color: var(--text-muted);
         font-style: italic;
-        padding: var(--space-md);
+        padding: var(--space-md, 16px);
         text-align: center;
     }
 
-    /* Secondary Zone */
+    /* === Secondary Zone === */
     .secondary-zone {
-        margin-bottom: var(--space-2xl);
+        margin-bottom: var(--section-gap, 48px);
     }
 
     .quote-block {
         border-left: 3px solid var(--accent-primary);
-        padding: var(--space-md) var(--space-lg);
+        padding: var(--space-md, 16px) var(--space-lg, 24px);
         background: var(--bg-card);
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        transition: all var(--transition-fast);
+        border-radius: 0 var(--card-radius, var(--radius-md, 8px)) var(--card-radius, var(--radius-md, 8px)) 0;
+        transition: all var(--transition-fast, 150ms ease);
     }
 
     .quote-block:hover {
         background: var(--bg-card-hover);
-        border-left-color: var(--accent-info);
+        border-left-color: var(--accent-info, var(--accent-primary));
     }
 
     .quote-block + .quote-block {
-        margin-top: var(--space-sm);
+        margin-top: var(--card-gap, 8px);
     }
 
     .quote-content {
@@ -232,22 +239,42 @@
 
     .quote-meta {
         display: flex;
-        gap: var(--space-md);
-        margin-top: var(--space-xs);
+        gap: var(--space-md, 16px);
+        margin-top: var(--space-xs, 4px);
         font-family: var(--font-mono);
         font-size: 0.7rem;
         color: var(--text-muted);
     }
 
-    /* Footer */
+    /* === Navigation === */
+    .nav-zone {
+        display: flex;
+        gap: var(--space-lg, 24px);
+        margin-bottom: var(--space-xl, 32px);
+        padding-top: var(--space-xl, 32px);
+        border-top: 1px solid var(--border-subtle);
+    }
+
+    .nav-zone a {
+        color: var(--accent-primary);
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        transition: opacity 150ms ease;
+    }
+
+    .nav-zone a:hover {
+        opacity: 0.7;
+    }
+
+    /* === Footer === */
     .footer-zone {
-        padding-top: var(--space-xl);
+        padding-top: var(--space-xl, 32px);
         border-top: 1px solid var(--border-subtle);
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: var(--space-md);
+        gap: var(--space-md, 16px);
     }
 
     .status-text {
@@ -263,14 +290,10 @@
         font-style: italic;
     }
 
-    /* Ma: breathing space utility */
-    .ma {
-        margin-bottom: var(--space-xl);
-    }
-
-    .ma-sm {
-        margin-bottom: var(--space-md);
-    }
+    /* === Ma: breathing space (skins override magnitude) === */
+    .ma { margin-bottom: var(--ma, 32px); }
+    .ma-sm { margin-bottom: var(--ma-sm, 16px); }
+    .ma-lg { margin-bottom: var(--ma-lg, 64px); }
 </style>
 {% endblock %}
 
@@ -290,7 +313,7 @@
         </div>
     </header>
 
-    <!-- Primary Zone: 2-column grid -->
+    <!-- Primary Zone: 2-column grid (skins override grid-template) -->
     <section class="primary-zone">
 
         <!-- Left Column: Today -->
@@ -299,7 +322,7 @@
 
             <div class="ma-sm">
                 {% for action in actions %}
-                <div class="card card--accent">
+                <div class="card card--accent" data-type="action">
                     <div class="action-item">
                         <span class="action-indicator action-indicator--{{ action.status }}"></span>
                         <div>
@@ -310,7 +333,7 @@
                 </div>
                 {% endfor %}
                 {% if not actions %}
-                <div class="card">
+                <div class="card" data-type="empty">
                     <p class="status-text">No active actions. A clear mind.</p>
                 </div>
                 {% endif %}
@@ -318,7 +341,7 @@
 
             <h2 class="section-header" style="margin-top: var(--space-xl);">Projects</h2>
             {% for project in projects %}
-            <div class="card">
+            <div class="card" data-type="project" data-status="{{ project.status }}">
                 <div class="project-name">{{ project.name }}</div>
                 <div class="project-detail">{{ project.detail }}</div>
                 <span class="project-status project-status--{{ project.status }}">{{ project.status }}</span>
@@ -330,18 +353,18 @@
         <div class="column-context">
             <h2 class="section-header">Context</h2>
 
-            <div class="card context-card ma-sm">
+            <div class="card context-card ma-sm" data-type="context">
                 <div class="mode-label">Current Mode</div>
                 <div class="mode-value">Building</div>
             </div>
 
-            <div class="card context-card">
+            <div class="card context-card" data-type="context">
                 <div class="mode-label">Energy</div>
                 <div class="mode-value">Focused</div>
             </div>
 
             <h2 class="section-header" style="margin-top: var(--space-xl);">Upcoming</h2>
-            <div class="card">
+            <div class="card" data-type="calendar">
                 <p class="calendar-placeholder">Calendar not connected</p>
             </div>
         </div>
@@ -353,7 +376,7 @@
         <h2 class="section-header">Recent Brain Activity</h2>
 
         {% for memory in recent_memories %}
-        <div class="quote-block">
+        <div class="quote-block" data-type="memory">
             <div class="quote-content">{{ memory.content }}</div>
             <div class="quote-meta">
                 <span>{{ memory.domain }}</span>
@@ -362,17 +385,17 @@
         </div>
         {% endfor %}
         {% if not recent_memories %}
-        <div class="quote-block">
+        <div class="quote-block" data-type="empty">
             <p class="status-text">No recent captures yet.</p>
         </div>
         {% endif %}
     </section>
 
     <!-- Navigation -->
-    <nav class="footer-zone" style="margin-bottom: var(--space-xl);">
-        <a href="/projects?skin={{ skin }}" style="color: var(--accent-primary); font-family: var(--font-mono); font-size: 0.8rem;">Projects</a>
-        <a href="/email?skin={{ skin }}" style="color: var(--accent-primary); font-family: var(--font-mono); font-size: 0.8rem;">Email</a>
-        <a href="/profile?skin={{ skin }}" style="color: var(--accent-primary); font-family: var(--font-mono); font-size: 0.8rem;">Profile</a>
+    <nav class="nav-zone">
+        <a href="/projects?skin={{ skin }}">Projects</a>
+        <a href="/email?skin={{ skin }}">Email</a>
+        <a href="/profile?skin={{ skin }}">Profile</a>
     </nav>
 
     <!-- Footer Zone -->

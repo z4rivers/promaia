@@ -1,21 +1,29 @@
 /*
  * Superflat — Murakami / Persona 5
- * Bold outlines, zero shadows, pop energy, confident color.
- * Flat white bg, deep navy cards, Murakami pink, neon yellow, electric violet.
+ *
+ * "Bold outlines, zero shadows, pop energy, confident color."
+ * Flat 2D graphics. No depth simulation. Psychedelic chromatic palette.
+ *
+ * One hero element per section that DOMINATES. 2-3px bold borders
+ * replace shadows. Pop-in animations (instant appear). Persona 5's
+ * confidence: every screen has a strong visual identity. Blank space
+ * as confrontation (Nara). Rebellion against blandness.
+ *
+ * Ref: young-japanese-design-brief.md §2 (Underground Art), §5 rule #4
  */
 
 :root {
-    /* Fonts */
+    /* === Typography: bold, almost aggressive === */
     --font-display: 'Space Grotesk', sans-serif;
     --font-heading: 'Space Grotesk', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Colors */
+    /* === Colors: Superflat Pop palette === */
     --bg-primary: #FFFFFF;
     --bg-secondary: #F5F5F5;
-    --bg-card: #1A1A2E;
-    --bg-card-hover: #22223A;
+    --bg-card: #FFFFFF;
+    --bg-card-hover: #F8F8FF;
     --text-primary: #1A1A2E;
     --text-secondary: #4A4A5A;
     --text-muted: #8888A0;
@@ -26,7 +34,7 @@
     --border-subtle: #E0E0E8;
     --border-visible: #1A1A2E;
 
-    /* Spacing */
+    /* === Spacing: confident, structured === */
     --space-xs: 4px;
     --space-sm: 8px;
     --space-md: 16px;
@@ -34,151 +42,359 @@
     --space-xl: 32px;
     --space-2xl: 48px;
 
-    /* Radius — crisp but not sharp */
+    /* === Layout: asymmetric, hero-first === */
+    --page-max-width: 1100px;
+    --page-pad-y: 24px;
+    --page-pad-x: 20px;
+    --page-pad-y-lg: 48px;
+    --page-pad-x-lg: 36px;
+    --grid-primary-lg: 2fr 1fr;
+    --grid-gap: 24px;
+    --section-gap: 48px;
+
+    /* === Cards: bold borders, ZERO shadows === */
+    --card-border: 2px solid #1A1A2E;
+    --card-radius: 8px;
+    --card-padding: 16px 20px;
+    --card-shadow: none;
+    --card-hover-shadow: none;
+    --card-hover-border: #FF3366;
+    --card-hover-transform: translateY(-2px);
+    --card-gap: 8px;
+    --accent-border: 4px solid #FF3366;
+
+    /* === Radius: crisp, not sharp === */
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
 
-    /* Transitions */
+    /* === Motion: snappy pop-in === */
     --transition-fast: 120ms ease;
-    --transition-normal: 250ms ease;
+    --transition-normal: 200ms ease;
+
+    /* === Ma === */
+    --ma: 32px;
+    --ma-sm: 16px;
+    --ma-lg: 56px;
+
+    /* === Typography: BOLD hierarchy === */
+    --greeting-size: clamp(2rem, 5vw, 3.5rem);
+    --greeting-weight: 700;
+    --greeting-tracking: -0.04em;
+    --metric-size: 1.3rem;
+    --metric-weight: 700;
+    --section-header-size: 0.8rem;
+    --section-header-weight: 700;
+    --section-header-tracking: 0.12em;
 }
 
-/* Superflat signature: bold borders replace shadows */
-.card {
-    box-shadow: none;
-    border: 2px solid #1A1A2E;
+/* === Body: flat white stage === */
+body.superflat {
     background: #FFFFFF;
-    color: #1A1A2E;
 }
 
-.card:hover {
-    box-shadow: none;
-    background: #F8F8FF;
-    transform: translateY(-2px);
-    border-color: #FF3366;
+/* === Bold diagonal accent stripe === */
+body.superflat .atmosphere {
+    background:
+        linear-gradient(135deg, transparent 48%, rgba(255, 51, 102, 0.04) 48%, rgba(255, 51, 102, 0.04) 52%, transparent 52%);
 }
 
-.card--accent {
-    border-left: 4px solid #FF3366;
-}
-
-/* Greeting: big, bold, pop */
-.greeting {
+/* === Greeting: MASSIVE, confident === */
+.superflat .greeting {
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.04em;
     color: #1A1A2E;
+    line-height: 1.05;
 }
 
-/* Brain status: pink metric pop */
-.brain-status .metric {
+.superflat .header-date {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: #8888A0;
+    margin-top: 8px;
+}
+
+/* === Brain status: pink metric pop === */
+.superflat .brain-status {
+    margin-top: 20px;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #1A1A2E;
+    border-radius: 8px;
+    border: 2px solid #1A1A2E;
+}
+
+.superflat .brain-status span {
+    color: #8888BB;
+}
+
+.superflat .brain-status .metric {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.2rem;
     color: #FF3366;
-    font-weight: 700;
 }
 
-.brain-status__sep {
-    color: #CCCCDD;
+.superflat .brain-status__sep {
+    color: #3A3A5E;
 }
 
-/* Section headers: uppercase bold */
-.section-header {
+/* === Section headers: uppercase bold, violet === */
+.superflat .section-header {
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     font-size: 0.8rem;
     letter-spacing: 0.12em;
     color: #8B00FF;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #1A1A2E;
+    display: inline-block;
 }
 
-/* Quote blocks: pop accent border */
-.quote-block {
-    border: 2px solid #E0E0E8;
-    border-left: 4px solid #FF3366;
-    border-radius: var(--radius-md);
+/* === Cards: bold borders replace shadows entirely === */
+.superflat .card {
     background: #FFFFFF;
+    border: 2px solid #1A1A2E;
+    border-radius: 8px;
+    box-shadow: none;
+    padding: 16px 20px;
+    transition: border-color 120ms ease, transform 120ms ease;
 }
 
-.quote-block:hover {
+.superflat .card:hover {
+    border-color: #FF3366;
+    box-shadow: none;
+    background: #FFFFFF;
+    transform: translateY(-2px);
+}
+
+.superflat .card--accent {
+    border-left: 5px solid #FF3366;
+}
+
+.superflat .card--accent:hover {
+    border-left-color: #8B00FF;
+}
+
+/* === First card in each section: HERO treatment (Persona 5 confidence) === */
+.superflat .column-today .card:first-of-type {
+    padding: 24px;
+    border-width: 3px;
+}
+
+.superflat .column-today .card:first-of-type .action-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.superflat .column-today .card:first-of-type .action-indicator {
+    width: 12px;
+    height: 12px;
+}
+
+/* === Context cards: INVERTED (dark on light — Superflat's flat depth) === */
+.superflat .context-card {
+    background: #1A1A2E;
+    color: #FFFFFF;
+    border: 2px solid #1A1A2E;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+}
+
+.superflat .context-card:hover {
+    border-color: #FF3366;
+    background: #22223A;
+}
+
+.superflat .context-card .mode-label {
+    color: #8888BB;
+}
+
+.superflat .context-card .mode-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: #FF3366;
+}
+
+.superflat .context-card .calendar-placeholder {
+    color: #6666AA;
+}
+
+/* === Quote blocks: bold pop border === */
+.superflat .quote-block {
+    border: 2px solid #E0E0E8;
+    border-left: 5px solid #FF3366;
+    border-radius: 8px;
+    background: #FFFFFF;
+    padding: 14px 20px;
+}
+
+.superflat .quote-block:hover {
     border-color: #8B00FF;
     border-left-color: #8B00FF;
     background: #FAF5FF;
 }
 
-/* Action indicators: bold pop */
-.action-indicator--active {
+.superflat .quote-content {
+    font-size: 0.88rem;
+    color: #1A1A2E;
+}
+
+/* === Action indicators: bold pop dots === */
+.superflat .action-indicator--active {
     background: #00CC88;
+    border: 2px solid #1A1A2E;
+    width: 10px;
+    height: 10px;
 }
 
-.action-indicator--pending {
+.superflat .action-indicator--pending {
     background: #FFE700;
-    border: 1px solid #CCBB00;
+    border: 2px solid #1A1A2E;
+    width: 10px;
+    height: 10px;
 }
 
-/* Project status */
-.project-status--active {
-    background: rgba(0, 204, 136, 0.12);
-    color: #00AA70;
-    border: 1px solid rgba(0, 204, 136, 0.3);
+/* === Project status: bold badge pills === */
+.superflat .project-name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
 }
 
-.project-status--resting {
-    background: rgba(136, 136, 160, 0.1);
-    color: #8888A0;
-    border: 1px solid rgba(136, 136, 160, 0.2);
+.superflat .project-status {
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-weight: 500;
 }
 
-/* Context cards: inverted on navy */
-.context-card {
-    background: #1A1A2E;
+.superflat .project-status--active {
+    background: #00CC88;
     color: #FFFFFF;
-    border-color: #1A1A2E;
+    border: 2px solid #1A1A2E;
 }
 
-.context-card:hover {
-    background: #22223A;
+.superflat .project-status--resting {
+    background: #E0E0E8;
+    color: #8888A0;
+    border: 2px solid #C8C8D8;
+}
+
+/* === Navigation: bold pill links === */
+.superflat .nav-zone {
+    border-top: 3px solid #1A1A2E;
+    padding-top: 24px;
+}
+
+.superflat .nav-zone a {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: #1A1A2E;
+    padding: 6px 16px;
+    border: 2px solid #1A1A2E;
+    border-radius: 8px;
+    transition: all 120ms ease;
+}
+
+.superflat .nav-zone a:hover {
+    background: #FF3366;
     border-color: #FF3366;
+    color: #FFFFFF;
+    opacity: 1;
+    transform: translateY(-1px);
 }
 
-.context-card .mode-label {
-    color: #8888BB;
+/* === Footer: bold divider === */
+.superflat .footer-zone {
+    border-top: 3px solid #1A1A2E;
 }
 
-.context-card .mode-value {
-    color: #FF3366;
-}
-
-.context-card .calendar-placeholder {
-    color: #6666AA;
-}
-
-/* Footer */
-.footer-zone {
-    border-top: 2px solid #1A1A2E;
-}
-
-.footer-prompt {
+.superflat .footer-prompt {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 500;
+    font-size: 0.82rem;
     color: #8B00FF;
     font-style: normal;
-    font-weight: 500;
 }
 
-/* Skin switcher: clean white + borders */
-.skin-switcher {
+/* === Skin switcher: bold bordered === */
+.superflat .skin-switcher {
     background: #FFFFFF;
     border: 2px solid #1A1A2E;
-    border-radius: var(--radius-lg);
+    border-radius: 8px;
 }
 
-.skin-switcher__pill {
+.superflat .skin-switcher__pill {
     color: #8888A0;
-    font-weight: 500;
+    font-weight: 600;
+    border-radius: 4px;
 }
 
-.skin-switcher__pill:hover {
+.superflat .skin-switcher__pill:hover {
     color: #FF3366;
     background: transparent;
 }
 
-.skin-switcher__pill--active {
+.superflat .skin-switcher__pill--active {
     background: #1A1A2E;
     color: #FFFFFF;
+    box-shadow: none;
+}
+
+/* === Pop-in animation: instant scale, Persona 5 style === */
+@keyframes pop-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.superflat .card,
+.superflat .quote-block,
+.superflat .context-card {
+    animation: pop-in 200ms ease both;
+}
+
+.superflat .card:nth-child(1) { animation-delay: 0ms; }
+.superflat .card:nth-child(2) { animation-delay: 50ms; }
+.superflat .card:nth-child(3) { animation-delay: 100ms; }
+.superflat .card:nth-child(4) { animation-delay: 150ms; }
+.superflat .card:nth-child(5) { animation-delay: 200ms; }
+.superflat .card:nth-child(6) { animation-delay: 250ms; }
+
+/* === Color-shift hover: hue rotation on accent borders === */
+@keyframes hue-shift {
+    0% { border-left-color: #FF3366; }
+    33% { border-left-color: #8B00FF; }
+    66% { border-left-color: #00CC88; }
+    100% { border-left-color: #FF3366; }
+}
+
+.superflat .card--accent:hover {
+    animation: hue-shift 2s linear infinite;
+}
+
+/* === Bold graphic stripe across bottom === */
+.superflat .footer-zone::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to right, #FF3366, #8B00FF, #00CC88, #FFE700, #FF3366);
+}
+
+.superflat .footer-zone {
+    position: relative;
+    padding-bottom: 20px;
 }

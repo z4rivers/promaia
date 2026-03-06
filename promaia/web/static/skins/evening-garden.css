@@ -1,21 +1,29 @@
 /*
  * Evening Garden — Nendo / Oki Sato
- * "!" moment. Playful minimalism, friendly warmth.
- * Twilight warmth, wisteria accent, amber glow.
+ *
+ * "A small '!' moment" — surprise within simplicity.
+ * Playful minimalism. Thin, clean lines that converge into something
+ * friendly and unexpected. Not austere but warm.
+ *
+ * Rounded forms, twilight warmth, wisteria-to-amber transitions.
+ * Progressive disclosure. One delight per view. Hover reveals depth.
+ * Spice in simplicity — humor or something akin to spice.
+ *
+ * Ref: japanese-design-brief.md §1.6, §2.6 (Datsuzoku - break from routine)
  */
 
 :root {
-    /* Fonts */
+    /* === Typography: Space Grotesk for playful geometry === */
     --font-display: 'Space Grotesk', 'Inter', sans-serif;
     --font-heading: 'Space Grotesk', 'Inter', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Colors */
+    /* === Colors: Sakura evening palette — wisteria + amber === */
     --bg-primary: #F8F4F0;
     --bg-secondary: #F0EBE5;
     --bg-card: #FFFEFA;
-    --bg-card-hover: #FFFFFF;
+    --bg-card-hover: #FFF8F2;
     --text-primary: #3A3A3A;
     --text-secondary: #6B6560;
     --text-muted: #9B9490;
@@ -23,75 +31,322 @@
     --accent-success: #7BA87B;
     --accent-warning: #D5B88D;
     --accent-info: #6B9EBB;
-    --border-subtle: #E8E2DA;
-    --border-visible: #D5CFC7;
+    --border-subtle: #EAE4DC;
+    --border-visible: #D8D0C8;
 
-    /* Spacing */
+    /* === Spacing: balanced, room for surprise === */
     --space-xs: 4px;
     --space-sm: 8px;
     --space-md: 16px;
     --space-lg: 24px;
-    --space-xl: 32px;
-    --space-2xl: 48px;
+    --space-xl: 36px;
+    --space-2xl: 56px;
 
-    /* Radius — slightly more rounded for playfulness */
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
+    /* === Layout === */
+    --page-max-width: 1060px;
+    --page-pad-y: 28px;
+    --page-pad-x: 20px;
+    --page-pad-y-lg: 56px;
+    --page-pad-x-lg: 36px;
+    --grid-primary-lg: 2fr 1fr;
+    --grid-gap: 32px;
+    --section-gap: 56px;
 
-    /* Transitions */
-    --transition-fast: 150ms ease;
-    --transition-normal: 300ms ease;
+    /* === Cards: pillowy, rounded, inviting === */
+    --card-border: 1px solid #EAE4DC;
+    --card-radius: 16px;
+    --card-padding: 20px 24px;
+    --card-shadow: 0 1px 3px rgba(58, 58, 58, 0.04);
+    --card-hover-shadow: 0 8px 24px rgba(139, 129, 195, 0.12);
+    --card-hover-border: #D0C8E0;
+    --card-hover-transform: translateY(-3px);
+    --card-gap: 10px;
+    --accent-border: 3px solid #8B81C3;
+
+    /* === Radius: generous, friendly === */
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+
+    /* === Motion: playful, with personality === */
+    --transition-fast: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    --transition-normal: 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* === Ma === */
+    --ma: 36px;
+    --ma-sm: 18px;
+    --ma-lg: 72px;
+
+    /* === Typography scale === */
+    --greeting-size: clamp(1.75rem, 4vw, 2.5rem);
+    --greeting-weight: 700;
+    --greeting-tracking: -0.02em;
+    --metric-size: 1.15rem;
+    --metric-weight: 600;
+    --section-header-size: 0.72rem;
+    --section-header-weight: 600;
+    --section-header-tracking: 0.1em;
 }
 
-/* Evening Garden: warm glow on hover */
-.card {
-    box-shadow: 0 1px 3px rgba(58, 58, 58, 0.04);
+/* === Body: warm twilight ground === */
+body.evening-garden {
+    background: #F8F4F0;
 }
 
-.card:hover {
-    box-shadow: 0 6px 20px rgba(139, 129, 195, 0.1);
-    border-color: #C8C0E0;
+/* === Subtle twilight gradient in background === */
+body.evening-garden .atmosphere {
+    background:
+        radial-gradient(ellipse at 20% 0%, rgba(139, 129, 195, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(213, 184, 141, 0.06) 0%, transparent 50%);
 }
 
-/* Wisteria quote accent */
-.quote-block {
-    border-left-color: #8B81C3;
-}
-
-.quote-block:hover {
-    border-left-color: #D5B88D;
-    box-shadow: 0 2px 12px rgba(213, 184, 141, 0.08);
-}
-
-/* Greeting: rounded, warm */
-.greeting {
+/* === Greeting: warm, rounded, friendly === */
+.evening-garden .greeting {
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     letter-spacing: -0.02em;
+    color: #3A3A3A;
 }
 
-/* Brain status: wisteria tint */
-.brain-status .metric {
+.evening-garden .header-date {
+    font-size: 0.9rem;
+    color: #9B9490;
+    margin-top: 6px;
+}
+
+/* === Brain status: wisteria-tinted metrics === */
+.evening-garden .brain-status {
+    margin-top: 16px;
+    gap: 16px;
+}
+
+.evening-garden .brain-status .metric {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
     color: #8B81C3;
 }
 
-/* Warm amber accents on status */
-.project-status--active {
+.evening-garden .brain-status__sep {
+    color: #D8D0C8;
+}
+
+/* === Section headers: friendly, with subtle bottom accent === */
+.evening-garden .section-header {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    color: #9B9490;
+    position: relative;
+    display: inline-block;
+}
+
+.evening-garden .section-header::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 24px;
+    height: 2px;
+    background: #D5B88D;
+    border-radius: 1px;
+    transition: width 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.evening-garden .column-today:hover .section-header::after,
+.evening-garden .column-context:hover .section-header::after {
+    width: 48px;
+    background: #8B81C3;
+}
+
+/* === Cards: pillowy with wisteria hover glow === */
+.evening-garden .card {
+    background: #FFFEFA;
+    border: 1px solid #EAE4DC;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(58, 58, 58, 0.04);
+    transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.evening-garden .card:hover {
+    background: #FFF8F2;
+    border-color: #D0C8E0;
+    box-shadow: 0 8px 24px rgba(139, 129, 195, 0.12);
+    transform: translateY(-3px);
+}
+
+.evening-garden .card--accent {
+    border-left: 3px solid #8B81C3;
+}
+
+.evening-garden .card--accent:hover {
+    border-left-color: #D5B88D;
+}
+
+/* === Context cards: warm center, inviting === */
+.evening-garden .context-card {
+    background: linear-gradient(135deg, #FFFEFA 0%, #FFF5EE 100%);
+    border: 1px solid #EAE4DC;
+    border-radius: 20px;
+    padding: 28px 24px;
+    text-align: center;
+}
+
+.evening-garden .context-card:hover {
+    box-shadow: 0 8px 28px rgba(139, 129, 195, 0.15);
+}
+
+.evening-garden .mode-label {
+    color: #B0A8A0;
+    font-size: 0.65rem;
+}
+
+.evening-garden .mode-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.3rem;
+    color: #8B81C3;
+    transition: color 300ms ease;
+}
+
+.evening-garden .context-card:hover .mode-value {
+    color: #D5B88D;
+}
+
+/* === Quote blocks: wisteria pillar, amber hover === */
+.evening-garden .quote-block {
+    border-left: 3px solid #8B81C3;
+    background: #FFFEFA;
+    border-radius: 0 16px 16px 0;
+    padding: 16px 24px;
+}
+
+.evening-garden .quote-block:hover {
+    border-left-color: #D5B88D;
+    background: #FFF8F2;
+    box-shadow: 0 4px 16px rgba(213, 184, 141, 0.1);
+    transform: translateX(4px);
+}
+
+/* === Action indicators: soft colored dots === */
+.evening-garden .action-indicator--active {
+    background: #7BA87B;
+    box-shadow: 0 0 8px rgba(123, 168, 123, 0.3);
+}
+
+.evening-garden .action-indicator--pending {
+    background: #D5B88D;
+    box-shadow: 0 0 8px rgba(213, 184, 141, 0.3);
+}
+
+/* === Project status: pill-shaped === */
+.evening-garden .project-status {
+    border-radius: 12px;
+    padding: 2px 10px;
+}
+
+.evening-garden .project-status--active {
     background: rgba(123, 168, 123, 0.12);
     color: #5C8A5C;
 }
 
-/* Skin switcher */
-.skin-switcher {
+.evening-garden .project-status--resting {
+    background: rgba(155, 148, 144, 0.1);
+    color: #9B9490;
+}
+
+/* === Navigation: rounded pill links === */
+.evening-garden .nav-zone {
+    border-top: 1px solid #EAE4DC;
+    padding-top: 28px;
+}
+
+.evening-garden .nav-zone a {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #8B81C3;
+    padding: 4px 14px;
+    border-radius: 20px;
+    transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.evening-garden .nav-zone a:hover {
+    background: rgba(139, 129, 195, 0.1);
+    color: #6B61A3;
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+/* === Footer: playful prompt === */
+.evening-garden .footer-zone {
+    border-top: 1px solid #EAE4DC;
+}
+
+.evening-garden .footer-prompt {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.82rem;
+    color: #8B81C3;
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* === Skin switcher: rounded, warm === */
+.evening-garden .skin-switcher {
     background: #F0EBE5;
     border-color: #E0DBD3;
+    border-radius: 24px;
+}
+
+.evening-garden .skin-switcher__pill {
     border-radius: 20px;
+    color: #B0A8A0;
 }
 
-.skin-switcher__pill {
-    border-radius: 14px;
+.evening-garden .skin-switcher__pill:hover {
+    color: #8B81C3;
+    background: rgba(139, 129, 195, 0.08);
 }
 
-.skin-switcher__pill--active {
+.evening-garden .skin-switcher__pill--active {
     background: #FFFEFA;
+    color: #6B61A3;
+    box-shadow: 0 2px 8px rgba(139, 129, 195, 0.12);
+}
+
+/* === Stagger animation: cards enter with personality === */
+@keyframes garden-enter {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.evening-garden .card,
+.evening-garden .quote-block {
+    animation: garden-enter 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.evening-garden .card:nth-child(1) { animation-delay: 0ms; }
+.evening-garden .card:nth-child(2) { animation-delay: 60ms; }
+.evening-garden .card:nth-child(3) { animation-delay: 120ms; }
+.evening-garden .card:nth-child(4) { animation-delay: 180ms; }
+.evening-garden .card:nth-child(5) { animation-delay: 240ms; }
+.evening-garden .card:nth-child(6) { animation-delay: 300ms; }
+
+.evening-garden .quote-block:nth-child(1) { animation-delay: 50ms; }
+.evening-garden .quote-block:nth-child(2) { animation-delay: 110ms; }
+.evening-garden .quote-block:nth-child(3) { animation-delay: 170ms; }
+.evening-garden .quote-block:nth-child(4) { animation-delay: 230ms; }
+
+/* === The "!" moment: footer prompt has a subtle pulse === */
+@keyframes gentle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.evening-garden .footer-prompt {
+    animation: gentle-pulse 4s ease-in-out infinite;
 }

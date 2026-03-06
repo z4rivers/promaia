@@ -1,91 +1,351 @@
 /*
  * Ink Wash — Yanagi Sori
- * Nameless design, functional beauty.
- * Monochrome with blue-black ink tones. Ink on rice paper.
+ *
+ * "True beauty is not made, it is born naturally."
+ * Nameless design. Functional beauty from perfect usefulness.
+ *
+ * DENSE but organized. The "Japanese newspaper" approach — high information
+ * density is a trust signal when hierarchy is clear. Monochrome ink tones.
+ * Strong left-border quote blocks (ink pillar effect). Code-block style
+ * data displays. Monospace for all data.
+ *
+ * Ref: japanese-design-brief.md §1.3, §3.3 (information density), §3.4 (cards)
  */
 
 :root {
-    /* Fonts */
+    /* === Typography: Noto Sans JP dominates, ink-weight headings === */
     --font-display: 'Noto Sans JP', 'Inter', sans-serif;
     --font-heading: 'Noto Sans JP', 'Inter', sans-serif;
     --font-body: 'Noto Sans JP', 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Colors */
+    /* === Colors: Sumi (Ink) palette — monochrome with blue-black === */
     --bg-primary: #FAFAF8;
     --bg-secondary: #F2F2EF;
     --bg-card: #FFFFFF;
-    --bg-card-hover: #F7F7F4;
+    --bg-card-hover: #F8F8F5;
     --text-primary: #1C1C1C;
     --text-secondary: #4A4A4A;
-    --text-muted: #8A8A8A;
+    --text-muted: #7A7A7A;
     --accent-primary: #004C71;
-    --accent-success: #838B3A;
-    --accent-warning: #A68B3C;
-    --accent-info: #3A6B8B;
+    --accent-success: #4A6A4A;
+    --accent-warning: #8A6A2A;
+    --accent-info: #3A5A7A;
     --border-subtle: #E8E8E4;
-    --border-visible: #D0D0CC;
+    --border-visible: #C8C8C4;
 
-    /* Spacing */
+    /* === Spacing: tight — density is intentional === */
     --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 16px;
-    --space-lg: 24px;
-    --space-xl: 32px;
-    --space-2xl: 48px;
+    --space-sm: 6px;
+    --space-md: 12px;
+    --space-lg: 18px;
+    --space-xl: 24px;
+    --space-2xl: 36px;
 
-    /* Radius */
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    /* === Layout: compact, information-rich === */
+    --page-max-width: 1080px;
+    --page-pad-y: 20px;
+    --page-pad-x: 16px;
+    --page-pad-y-lg: 36px;
+    --page-pad-x-lg: 28px;
+    --grid-primary-lg: 3fr 1fr;
+    --grid-gap: 20px;
+    --section-gap: 32px;
 
-    /* Transitions */
-    --transition-fast: 150ms ease;
+    /* === Cards: flat, ink-line borders === */
+    --card-border: 1px solid #E8E8E4;
+    --card-radius: 0;
+    --card-padding: 12px 16px;
+    --card-shadow: none;
+    --card-hover-shadow: none;
+    --card-hover-border: #C8C8C4;
+    --card-hover-transform: none;
+    --card-gap: 4px;
+    --accent-border: 3px solid #004C71;
+
+    /* === Radius: zero — sharp, ruled edges like paper === */
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+
+    /* === Motion: minimal — ink doesn't animate === */
+    --transition-fast: 200ms ease;
     --transition-normal: 300ms ease;
+
+    /* === Ma: reduced — density, not emptiness === */
+    --ma: 24px;
+    --ma-sm: 12px;
+    --ma-lg: 48px;
+
+    /* === Typography scale: ink-weight hierarchy === */
+    --greeting-size: clamp(1.3rem, 2.5vw, 1.75rem);
+    --greeting-weight: 600;
+    --greeting-tracking: -0.02em;
+    --metric-size: 1rem;
+    --metric-weight: 600;
+    --section-header-size: 0.65rem;
+    --section-header-weight: 600;
+    --section-header-tracking: 0.12em;
 }
 
-/* Ink wash: very flat, barely-there shadows */
-.card {
+/* === Body: rice paper white === */
+body.ink-wash {
+    background: #FAFAF8;
+}
+
+/* === Greeting: ink-weight, direct === */
+.ink-wash .greeting {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #1C1C1C;
+}
+
+.ink-wash .header-date {
+    font-size: 0.8rem;
+    color: #7A7A7A;
+    margin-top: 4px;
+}
+
+/* === Brain status: monospace data readout, dense === */
+.ink-wash .brain-status {
+    margin-top: 12px;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: #7A7A7A;
+    font-family: 'JetBrains Mono', monospace;
+    background: #F2F2EF;
+    padding: 8px 12px;
+    border-left: 3px solid #C8C8C4;
+}
+
+.ink-wash .brain-status .metric {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    font-size: 0.82rem;
+    color: #004C71;
+}
+
+.ink-wash .brain-status__sep {
+    color: #C8C8C4;
+}
+
+/* === Section headers: ruled, structured === */
+.ink-wash .section-header {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-weight: 600;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    color: #7A7A7A;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #E8E8E4;
+}
+
+/* === Cards: flat, ruled — newspaper column feel === */
+.ink-wash .card {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #E8E8E4;
+    border-radius: 0;
+    padding: 10px 0;
     box-shadow: none;
-    border-color: #E8E8E4;
 }
 
-.card:hover {
-    box-shadow: 0 1px 4px rgba(28, 28, 28, 0.05);
-    transform: translateY(0);
+.ink-wash .card:hover {
+    background: transparent;
+    border-bottom-color: #C8C8C4;
+    box-shadow: none;
+    transform: none;
 }
 
-/* Quote blocks: ink-style left border */
-.quote-block {
-    border-left-color: #004C71;
-    background: #F7F7F4;
+.ink-wash .card--accent {
+    border-left: 3px solid #004C71;
+    padding-left: 12px;
+    border-bottom: 1px solid #E8E8E4;
 }
 
-.quote-block:hover {
+.ink-wash .card--accent:hover {
     border-left-color: #1C1C1C;
 }
 
-/* Greeting: ink-weight */
-.greeting {
-    font-weight: 600;
-    letter-spacing: -0.02em;
-}
-
-/* Status dots: muted to match the restrained palette */
-.action-indicator--active {
-    background: #838B3A;
-}
-
-.action-indicator--pending {
-    background: #A68B3C;
-}
-
-/* Skin switcher */
-.skin-switcher {
+/* === Context cards: ink-bordered box === */
+.ink-wash .context-card {
     background: #F2F2EF;
-    border-color: #E4E4E0;
+    border: 1px solid #D8D8D4;
+    border-radius: 0;
+    padding: 16px;
+    text-align: left;
 }
 
-.skin-switcher__pill--active {
+.ink-wash .mode-label {
+    color: #7A7A7A;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+}
+
+.ink-wash .mode-value {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #1C1C1C;
+}
+
+/* === Quote blocks: strong ink pillar === */
+.ink-wash .quote-block {
+    border-left: 4px solid #1C1C1C;
+    background: transparent;
+    padding: 8px 16px;
+    border-radius: 0;
+}
+
+.ink-wash .quote-block:hover {
+    border-left-color: #004C71;
+    background: #F8F8F5;
+}
+
+.ink-wash .quote-content {
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: #2A2A2A;
+}
+
+.ink-wash .quote-meta {
+    font-size: 0.65rem;
+    color: #999999;
+    gap: 12px;
+}
+
+/* === Action text: compact, monospace domain === */
+.ink-wash .action-text {
+    font-size: 0.88rem;
+    color: #1C1C1C;
+}
+
+.ink-wash .action-domain {
+    font-size: 0.65rem;
+    color: #999999;
+}
+
+/* === Status indicators: ink dots, muted === */
+.ink-wash .action-indicator--active {
+    background: #4A6A4A;
+}
+
+.ink-wash .action-indicator--pending {
+    background: #8A6A2A;
+}
+
+/* === Project status: inline text, not badges === */
+.ink-wash .project-name {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.ink-wash .project-detail {
+    font-size: 0.78rem;
+    color: #5A5A5A;
+}
+
+.ink-wash .project-status {
+    font-size: 0.58rem;
+    padding: 0;
+    background: transparent;
+    color: #7A7A7A;
+}
+
+.ink-wash .project-status--active {
+    background: transparent;
+    color: #4A6A4A;
+}
+
+.ink-wash .project-status--resting {
+    background: transparent;
+    color: #AAAAAA;
+}
+
+/* === Navigation: ruled separator, ink links === */
+.ink-wash .nav-zone {
+    border-top: 2px solid #1C1C1C;
+    padding-top: 16px;
+    gap: 20px;
+}
+
+.ink-wash .nav-zone a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #004C71;
+    letter-spacing: 0.05em;
+}
+
+/* === Footer: monospace, editorial === */
+.ink-wash .footer-zone {
+    border-top: 1px solid #D8D8D4;
+    padding-top: 16px;
+}
+
+.ink-wash .footer-prompt {
+    font-size: 0.78rem;
+    color: #999999;
+    font-style: normal;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* === Skin switcher: ruled, editorial === */
+.ink-wash .skin-switcher {
+    background: #F2F2EF;
+    border: 1px solid #D8D8D4;
+    border-radius: 0;
+}
+
+.ink-wash .skin-switcher__pill {
+    border-radius: 0;
+    color: #999999;
+}
+
+.ink-wash .skin-switcher__pill:hover {
+    color: #1C1C1C;
+    background: transparent;
+}
+
+.ink-wash .skin-switcher__pill--active {
     background: #FFFFFF;
+    color: #1C1C1C;
+    box-shadow: none;
+    border-bottom: 2px solid #004C71;
+}
+
+/* === Ink wash texture: subtle blue-black gradient at edges === */
+body.ink-wash::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        linear-gradient(to right, rgba(0, 76, 113, 0.03) 0%, transparent 8%),
+        linear-gradient(to left, rgba(0, 76, 113, 0.03) 0%, transparent 8%),
+        linear-gradient(to bottom, rgba(0, 76, 113, 0.02) 0%, transparent 4%);
+}
+
+/* === Dense grid: 3:1 ratio with tighter gap === */
+@media (min-width: 768px) {
+    .ink-wash .primary-zone {
+        grid-template-columns: 3fr 1fr;
+        gap: 20px;
+    }
+}
+
+/* === Ink wash unique: horizontal ruled lines through page === */
+.ink-wash .column-today {
+    position: relative;
+}
+
+.ink-wash .secondary-zone {
+    padding-top: 24px;
+    border-top: 2px solid #1C1C1C;
 }

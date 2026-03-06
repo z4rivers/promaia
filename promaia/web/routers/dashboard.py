@@ -25,7 +25,7 @@ VALID_SKINS = [
     "superflat",
     "neo-tokyo",
 ]
-DEFAULT_SKIN = "stone-garden"
+DEFAULT_SKIN = "superflat"
 
 
 def _format_day(dt: datetime) -> str:

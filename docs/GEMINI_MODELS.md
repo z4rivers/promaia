@@ -1,194 +1,54 @@
 # Gemini Model Configuration
 
-This document explains how to use different Gemini models (including Gemini 2.0) with MAIA.
+How to use different Gemini models with Promaia.
 
 ## Available Gemini Models
 
-MAIA now supports multiple Gemini model variants:
+### Gemini 3.1 (Current Generation — March 2026)
+- **pro** → `gemini-3.1-pro-preview` - Advanced reasoning, agentic workflows, coding (default)
+- **flash-lite** → `gemini-3.1-flash-lite-preview` - Cost-efficient, high-volume tasks
 
-### Gemini 2.5 (Current Generation)
-- **pro** → `gemini-2.5-pro-preview-05-06` - Gemini 2.5 Pro (default)
-- **flash** → `gemini-2.5-flash-preview-05-20` - Gemini 2.5 Flash (faster, cheaper)
+### Gemini 3 (Still Current)
+- **flash** → `gemini-3-flash-preview` - Pro-level intelligence at Flash speed/pricing
 
-### Gemini 2.0 (Newer Generation)
-- **2.0-flash** → `gemini-2.0-flash-exp` - Gemini 2.0 Flash (experimental)
-- **2.0-flash-thinking** → `gemini-2.0-flash-thinking-exp-1219` - Gemini 2.0 with extended reasoning
+### Gemini 2.5 (Legacy)
+- **2.5-pro** → `gemini-2.5-pro-preview-05-06`
+- **2.5-flash** → `gemini-2.5-flash-preview-05-20`
 
-### Experimental Models
-- **exp-1206** → `gemini-exp-1206` - December 2024 experimental model
-- **exp-1121** → `gemini-exp-1121` - November 2024 experimental model
+### Embedding
+- **gemini-embedding-001** - 768-dimensional vectors for semantic search
 
-## Configuration Methods
+### Deprecated (DO NOT USE)
+- `gemini-3-pro-preview` — **Shut down March 9, 2026**
+- `gemini-2.0-flash-exp` — Superseded by 3.1 Flash-Lite
+- `gemini-2.0-flash-thinking-exp-1219` — Superseded
 
-### Method 1: Environment Variable (Recommended)
+## Configuration
 
-Set the `GOOGLE_DEFAULT_MODEL` environment variable in your `.env` file or shell:
-
-```bash
-# Use a key name (easier)
-export GOOGLE_DEFAULT_MODEL='2.0-flash'
-
-# Or use the full model ID
-export GOOGLE_DEFAULT_MODEL='gemini-2.0-flash-exp'
-```
-
-**Key Names:**
-```bash
-GOOGLE_DEFAULT_MODEL='pro'                    # Gemini 2.5 Pro (default)
-GOOGLE_DEFAULT_MODEL='flash'                  # Gemini 2.5 Flash
-GOOGLE_DEFAULT_MODEL='2.0-flash'              # Gemini 2.0 Flash
-GOOGLE_DEFAULT_MODEL='2.0-flash-thinking'     # Gemini 2.0 Flash Thinking
-GOOGLE_DEFAULT_MODEL='exp-1206'               # Experimental (Dec 2024)
-GOOGLE_DEFAULT_MODEL='exp-1121'               # Experimental (Nov 2024)
-```
-
-**Full Model IDs:**
-```bash
-GOOGLE_DEFAULT_MODEL='gemini-2.5-pro-preview-05-06'
-GOOGLE_DEFAULT_MODEL='gemini-2.5-flash-preview-05-20'
-GOOGLE_DEFAULT_MODEL='gemini-2.0-flash-exp'
-GOOGLE_DEFAULT_MODEL='gemini-2.0-flash-thinking-exp-1219'
-GOOGLE_DEFAULT_MODEL='gemini-exp-1206'
-GOOGLE_DEFAULT_MODEL='gemini-exp-1121'
-```
-
-### Method 2: Update .env File
-
-Add or update the line in your `.env` file:
+Set `GOOGLE_DEFAULT_MODEL` in `.env`:
 
 ```bash
-GOOGLE_DEFAULT_MODEL='2.0-flash'
+# Key names (resolved via GOOGLE_MODELS dict)
+GOOGLE_DEFAULT_MODEL='pro'          # Gemini 3.1 Pro (default)
+GOOGLE_DEFAULT_MODEL='flash'        # Gemini 3 Flash
+GOOGLE_DEFAULT_MODEL='flash-lite'   # Gemini 3.1 Flash-Lite (cheapest)
+GOOGLE_DEFAULT_MODEL='2.5-pro'      # Gemini 2.5 Pro (legacy)
+
+# Or use full model IDs directly
+GOOGLE_DEFAULT_MODEL='gemini-3.1-pro-preview'
 ```
 
-Then restart your MAIA session.
-
-## Usage Examples
-
-### Using Gemini 2.0 Flash
-
-```bash
-# Set the environment variable
-export GOOGLE_DEFAULT_MODEL='2.0-flash'
-
-# Start MAIA chat
-maia chat
-```
-
-### Using Gemini 2.0 Flash Thinking (Extended Reasoning)
-
-```bash
-# Set the environment variable
-export GOOGLE_DEFAULT_MODEL='2.0-flash-thinking'
-
-# Start MAIA chat
-maia chat
-```
-
-### Using Experimental Models
-
-```bash
-# Try the latest experimental model
-export GOOGLE_DEFAULT_MODEL='exp-1206'
-
-# Start MAIA chat
-maia chat
-```
-
-## Model Selection in Chat
-
-When you start a chat session, you can still switch models using the `/model` command:
-
-```
-You: /model
-
-Available models:
-  1. Claude Sonnet 4.5
-  2. GPT-4o
-  3. Gemini 2.0 Flash (current)
-  4. Llama 3
-
-Select model (1-4): 3
-```
-
-The model shown for Gemini will reflect your `GOOGLE_DEFAULT_MODEL` setting.
-
-## Quick Switching Models
-
-You can also set the environment variable for a single command:
-
-```bash
-# Use Gemini 2.0 for one chat session
-GOOGLE_DEFAULT_MODEL='2.0-flash' maia chat
-
-# Use Gemini 2.5 Pro for another
-GOOGLE_DEFAULT_MODEL='pro' maia chat -w koii
-```
-
-## Model Comparison
+## Model Selection Guide
 
 | Model | Speed | Cost | Best For |
 |-------|-------|------|----------|
-| Gemini 2.5 Pro | Medium | Medium | General purpose, complex tasks |
-| Gemini 2.5 Flash | Fast | Low | Quick responses, simple tasks |
-| Gemini 2.0 Flash | Very Fast | Very Low | Speed-optimized tasks |
-| Gemini 2.0 Flash Thinking | Slow | Medium | Complex reasoning, problem-solving |
-| Experimental | Varies | Varies | Testing new features |
+| Gemini 3.1 Pro | Medium | Medium | Complex reasoning, agentic workflows, coding |
+| Gemini 3 Flash | Fast | Low | General purpose, balanced speed/quality |
+| Gemini 3.1 Flash-Lite | Very Fast | Very Low | High-volume extraction, simple tasks |
 
-## Checking Current Model
+## Internal Usage
 
-To see which model is currently active:
-
-```bash
-# In chat, the model is displayed in the header
-🐙 maia chat
-Model: Gemini 2.0 Flash
-
-# Or check with /model command
-You: /model
-```
-
-## Troubleshooting
-
-### Model Not Found Error
-
-If you get an error like "Model not found", the model ID might be incorrect or not yet available in your region.
-
-**Solution:** Use one of the verified model IDs listed above.
-
-### API Key Issues
-
-Make sure your `GOOGLE_API_KEY` is set correctly:
-
-```bash
-echo $GOOGLE_API_KEY
-```
-
-If empty, set it in your `.env` file:
-
-```bash
-GOOGLE_API_KEY='your_google_api_key_here'
-```
-
-### Model Access Restrictions
-
-Some experimental models may require waitlist access or have regional restrictions.
-
-**Solution:** Check Google AI Studio for model availability in your account.
-
-## Additional Resources
-
-- [Google AI Studio](https://ai.google.dev/)
-- [Gemini API Documentation](https://ai.google.dev/docs)
-- [MAIA Environment Variables](./env.template)
-
-## Notes
-
-- Gemini 2.0 models are experimental and may change
-- Model availability varies by region
-- Pricing and rate limits differ by model
-- Default model (if not specified) is Gemini 2.5 Pro
-
-
-
-
-
+- **Brain action extraction** (`promaia/brain/extraction.py`): Uses `gemini-3.1-flash-lite-preview`
+- **Embeddings** (`promaia/storage/vector_db.py`): Uses `gemini-embedding-001` (768 dims)
+- **Chat/NL** (`promaia/ai/nl_orchestrator.py`): Uses `GOOGLE_DEFAULT_MODEL` setting
+- **Web routers**: Uses `GOOGLE_DEFAULT_MODEL` setting

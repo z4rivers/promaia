@@ -480,8 +480,36 @@ def _find_attention_items(messages: List[Dict], result: Dict, user_email: str) -
 
 def _extract_profile_intelligence(messages: List[Dict], result: Dict, db) -> None:
     """Extract contacts, communication patterns, and topics for brain profile."""
-    # Contacts
+    # Contacts -- merge with existing profile data instead of overwriting
     contact_freq: Dict[str, Dict] = {}
+
+    # Load existing contacts first
+    try:
+        rows = db.fetch_all(
+            "SELECT value FROM brain.profile WHERE category = 'relationships' AND field = 'email_contacts'"
+        )
+        if rows:
+            existing = rows[0]["value"] if isinstance(rows[0], dict) else rows[0][0]
+            if isinstance(existing, str):
+                existing = json.loads(existing)
+            if isinstance(existing, list):
+                for c in existing:
+                    email = c.get("email", "").lower()
+                    if email:
+                        contact_freq[email] = {
+                            "name": c.get("name", ""),
+                            "email": email,
+                            "frequency": c.get("frequency", 0),
+                            "last_contact": None,
+                        }
+                        if c.get("last_contact"):
+                            try:
+                                contact_freq[email]["last_contact"] = datetime.fromisoformat(c["last_contact"])
+                            except (ValueError, TypeError):
+                                pass
+    except Exception as e:
+        logger.debug(f"Could not load existing contacts: {e}")
+
     for msg in messages:
         if _classify_message(msg) != "human":
             continue
@@ -508,7 +536,7 @@ def _extract_profile_intelligence(messages: List[Dict], result: Dict, db) -> Non
     result["contacts_found"] = len(contact_freq)
 
     if contact_freq:
-        top_contacts = sorted(contact_freq.values(), key=lambda c: c["frequency"], reverse=True)[:15]
+        top_contacts = sorted(contact_freq.values(), key=lambda c: c["frequency"], reverse=True)[:30]
         for c in top_contacts:
             if c["last_contact"]:
                 c["last_contact"] = c["last_contact"].isoformat()

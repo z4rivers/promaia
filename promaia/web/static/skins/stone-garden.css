@@ -1,70 +1,294 @@
 /*
  * Stone Garden — Muji / Kenya Hara
- * Empty vessel. Calm, receptive. Nothing unnecessary.
- * Warm off-whites, muted grays, soft indigo accent.
+ *
+ * "Emptiness is not minimalism. Emptiness is a stance — a readiness to receive."
+ *
+ * The design IS the absence. Maximum whitespace. Content breathes in space
+ * meant for ten items. Cards barely exist. The dashboard is an empty vessel
+ * that lets data speak without decoration.
+ *
+ * Ref: japanese-design-brief.md §1.1, §2.1 (Ma), §2.3 (Kanso), §2.4 (Shibui)
  */
 
 :root {
-    /* Fonts */
+    /* === Typography: Inter only. Weight hierarchy, not size hierarchy === */
     --font-display: 'Inter', sans-serif;
     --font-heading: 'Inter', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Colors */
+    /* === Colors: Asagiiro (Morning Blue) palette === */
     --bg-primary: #F4F0E8;
-    --bg-secondary: #EDE8DE;
-    --bg-card: #FAFAF6;
-    --bg-card-hover: #FFFFFF;
+    --bg-secondary: #EDEADE;
+    --bg-card: #FAF9F5;
+    --bg-card-hover: #FAF9F5;
     --text-primary: #2C2C2C;
     --text-secondary: #5A574F;
     --text-muted: #8F837A;
     --accent-primary: #487CA5;
-    --accent-success: #6B8F6B;
+    --accent-success: #838B3A;
     --accent-warning: #B8945A;
     --accent-info: #7A9BB5;
-    --border-subtle: #E2DDD3;
-    --border-visible: #CFC9BD;
+    --border-subtle: #E8E3D8;
+    --border-visible: #D8D3C8;
 
-    /* Spacing */
-    --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 16px;
-    --space-lg: 24px;
-    --space-xl: 32px;
-    --space-2xl: 48px;
+    /* === Spacing: generous Ma — the emptiness IS the design === */
+    --space-xs: 6px;
+    --space-sm: 12px;
+    --space-md: 20px;
+    --space-lg: 32px;
+    --space-xl: 48px;
+    --space-2xl: 72px;
 
-    /* Radius */
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    /* === Layout: wider breathing room === */
+    --page-max-width: 960px;
+    --page-pad-y: 32px;
+    --page-pad-x: 24px;
+    --page-pad-y-lg: 72px;
+    --page-pad-x-lg: 48px;
+    --grid-primary-lg: 5fr 2fr;
+    --grid-gap: 48px;
+    --section-gap: 72px;
 
-    /* Transitions */
-    --transition-fast: 150ms ease;
-    --transition-normal: 300ms ease;
+    /* === Cards: barely there === */
+    --card-border: 1px solid transparent;
+    --card-radius: 4px;
+    --card-padding: 20px 24px;
+    --card-shadow: none;
+    --card-hover-shadow: none;
+    --card-hover-border: #E8E3D8;
+    --card-hover-transform: none;
+    --card-gap: 12px;
+    --accent-border: 2px solid #C8D5E0;
+
+    /* === Radius: barely rounded — precision, not playfulness === */
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+
+    /* === Motion: slow, nearly imperceptible === */
+    --transition-fast: 400ms ease;
+    --transition-normal: 600ms ease;
+
+    /* === Ma spacing overrides === */
+    --ma: 48px;
+    --ma-sm: 24px;
+    --ma-lg: 96px;
+
+    /* === Typography scale: restrained === */
+    --greeting-size: clamp(1.5rem, 3vw, 2rem);
+    --greeting-weight: 500;
+    --greeting-tracking: -0.01em;
+    --metric-size: 1rem;
+    --metric-weight: 500;
+    --section-header-size: 0.7rem;
+    --section-header-weight: 500;
+    --section-header-tracking: 0.15em;
+    --indicator-size: 6px;
 }
 
-/* Stone Garden: cards use minimal shadow, never flashy */
-.card {
-    box-shadow: 0 1px 2px rgba(44, 44, 44, 0.04);
+/* === Body: warm paper ground === */
+body.stone-garden {
+    background: #F4F0E8;
 }
 
-.card:hover {
-    box-shadow: 0 2px 8px rgba(44, 44, 44, 0.07);
-}
-
-/* Greeting: understated */
-.greeting {
+/* === Greeting: understated, not heroic === */
+.stone-garden .greeting {
     font-weight: 500;
     letter-spacing: -0.01em;
+    color: #3A3A3A;
 }
 
-/* Skin switcher blends into the warm background */
-.skin-switcher {
-    background: #EDE8DE;
-    border-color: #DDD8CE;
+.stone-garden .header-date {
+    font-size: 0.85rem;
+    color: #9E9690;
+    margin-top: 8px;
 }
 
-.skin-switcher__pill--active {
-    background: #FAFAF6;
+/* === Brain status: whisper-quiet data === */
+.stone-garden .brain-status {
+    margin-top: 24px;
+    gap: 24px;
+    font-size: 0.75rem;
+    color: #A09890;
 }
+
+.stone-garden .brain-status .metric {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: #5A7A9A;
+}
+
+.stone-garden .brain-status__sep {
+    color: #D8D3C8;
+}
+
+/* === Section headers: barely visible structure === */
+.stone-garden .section-header {
+    font-weight: 500;
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    color: #B0A898;
+    margin-bottom: 20px;
+}
+
+/* === Cards: paper-thin presence === */
+.stone-garden .card {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    padding: 16px 20px;
+}
+
+.stone-garden .card:hover {
+    background: rgba(255, 255, 255, 0.4);
+    border-color: #E8E3D8;
+    box-shadow: none;
+    transform: none;
+}
+
+.stone-garden .card--accent {
+    border-left: 2px solid #C8D5E0;
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.stone-garden .card--accent:hover {
+    border-left-color: #487CA5;
+}
+
+/* === Context cards: centered stillness === */
+.stone-garden .context-card {
+    background: transparent;
+    border: 1px solid #E8E3D8;
+    padding: 32px 24px;
+}
+
+.stone-garden .mode-label {
+    color: #B0A898;
+    font-size: 0.65rem;
+}
+
+.stone-garden .mode-value {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 1.15rem;
+    color: #5A7A9A;
+}
+
+/* === Quote blocks: minimal ink line === */
+.stone-garden .quote-block {
+    border-left: 2px solid #D0D0C8;
+    background: transparent;
+    padding: 16px 24px;
+    border-radius: 0;
+}
+
+.stone-garden .quote-block:hover {
+    border-left-color: #487CA5;
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.stone-garden .quote-content {
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: #4A4A4A;
+}
+
+/* === Action indicators: subtle dots === */
+.stone-garden .action-indicator {
+    width: 6px;
+    height: 6px;
+    margin-top: 8px;
+}
+
+.stone-garden .action-indicator--active {
+    background: #838B3A;
+}
+
+.stone-garden .action-indicator--pending {
+    background: #B8945A;
+}
+
+/* === Project status: text-weight, not badge-weight === */
+.stone-garden .project-status {
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    letter-spacing: 0.1em;
+}
+
+.stone-garden .project-status--active {
+    background: transparent;
+    color: #838B3A;
+}
+
+.stone-garden .project-status--resting {
+    background: transparent;
+    color: #B0A898;
+}
+
+/* === Navigation: spaced, quiet === */
+.stone-garden .nav-zone {
+    border-top: 1px solid #E8E3D8;
+    padding-top: 32px;
+    gap: 32px;
+}
+
+.stone-garden .nav-zone a {
+    font-size: 0.75rem;
+    color: #8F837A;
+    letter-spacing: 0.05em;
+}
+
+.stone-garden .nav-zone a:hover {
+    color: #487CA5;
+}
+
+/* === Footer: receding === */
+.stone-garden .footer-zone {
+    border-top: 1px solid #E8E3D8;
+    padding-top: 32px;
+}
+
+.stone-garden .footer-prompt {
+    font-size: 0.8rem;
+    color: #B0A898;
+    font-style: italic;
+}
+
+/* === Skin switcher: dissolves into background === */
+.stone-garden .skin-switcher {
+    background: #EDEADE;
+    border-color: #E0DCD0;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.stone-garden .skin-switcher__pill {
+    border-radius: 2px;
+    color: #B0A898;
+}
+
+.stone-garden .skin-switcher__pill:hover {
+    color: #5A574F;
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.stone-garden .skin-switcher__pill--active {
+    background: rgba(255, 255, 255, 0.6);
+    color: #5A574F;
+    box-shadow: none;
+}
+
+/* === Divider between primary and secondary zones: single thin line === */
+.stone-garden .secondary-zone {
+    padding-top: 48px;
+    border-top: 1px solid #E8E3D8;
+}
+
+/*
+ * Stone Garden has NO decorative pseudo-elements.
+ * No scan lines, no particles, no textures.
+ * The absence of ornament is the ornament.
+ */
