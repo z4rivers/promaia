@@ -84,12 +84,12 @@ Foundation live: Postgres+pgvector, brain MCP server (15 tools), onboarding (98 
 **Goal:** Transform from "brain you check" into "agent that reaches you." Mobile access, cost optimization, event routing, push notifications, memory deepening.
 
 **Target features:**
-- Validate agents and fix data pipeline bugs
-- Model routing (Gemini for cheap tasks, Opus for reasoning)
-- Event bus for notification routing
-- Telegram bot for mobile access
-- Proactive push (morning briefing to phone, urgent email alerts)
-- Memory decay and association strengthening
+- Phase 5: Validate & Activate (fix agent data pipeline, kill extra skins, first real agent runs)
+- Phase 6: Cost Controls + Model Routing (Gemini for cheap tasks, Opus for reasoning, budget tracking, prompt caching)
+- Phase 7: Event Bus + Notification Layer (Postgres polling, urgency tiers, dashboard notification badge)
+- Phase 8: Telegram Bot (aiogram 3.x, Deepgram voice transcription, brain commands from phone)
+- Phase 9: Proactive Push (morning briefing auto-push, evening digest, fatigue prevention, inline replies)
+- Phase 10: Memory Deepening + Polish (decay tiers, association strengthening, profile-driven prompts, session handoff)
 
 ## Requirements
 
@@ -103,22 +103,7 @@ Foundation live: Postgres+pgvector, brain MCP server (15 tools), onboarding (98 
 
 ### Active (v2.0)
 
-_To be defined via `/gsd:new-milestone`_
-
-Carried from v1.0:
-- [ ] ROUTE-01 through ROUTE-04 -- Model routing
-- [ ] BEAT-01 through BEAT-05 -- Agent heartbeat (revised: SDK-based)
-- [ ] ACCESS-01 -- Mobile brain access
-- [ ] MAINT-01 through MAINT-04 -- Self-maintenance
-
-New for v2.0 (from revised plan):
-- [ ] Agent data pipeline fixes (gmail context, SQL dialect bugs)
-- [ ] Event bus with urgency routing (interrupt/digest/archive)
-- [ ] Telegram bot with voice transcription
-- [ ] Proactive push notifications with fatigue prevention
-- [ ] Memory decay tiers and association strengthening
-- [ ] Profile-driven prompt injection in agents
-- [ ] Budget tracking and per-agent cost caps
+See: `.planning/REQUIREMENTS.md` for full REQ-ID list
 
 ### Out of Scope
 
@@ -162,4 +147,4 @@ New for v2.0 (from revised plan):
 - **Embeddings**: gemini-embedding-001 (not OpenAI).
 
 ---
-*Last updated: 2026-03-06 after v1.0 milestone*
+*Last updated: 2026-03-06 after v2.0 milestone start*

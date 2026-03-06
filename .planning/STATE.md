@@ -2,16 +2,17 @@
 
 ## Current Position
 
-Phase: Between milestones (v1.0 complete, v2.0 not started)
-Status: v1.0 shipped. Agents running. Ready for v2.0 milestone definition.
-Last activity: 2026-03-06 -- v1.0 milestone archived, agents confirmed running via SDK
+Phase: Not started (defining requirements)
+Plan: --
+Status: Defining requirements for v2.0 Proactive Agent
+Last activity: 2026-03-06 -- Milestone v2.0 started
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU
-**Current focus:** Planning v2.0 milestone (Proactive Agent)
+**Current focus:** v2.0 Proactive Agent — defining requirements
 
 ## What's Live
 
