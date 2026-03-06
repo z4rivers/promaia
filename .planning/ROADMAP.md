@@ -37,7 +37,7 @@
   2. Agent output references actual emails, calendar events, and brain memories -- not fabricated content
   3. Gmail context appears in agent output (loaded from Postgres, not disk files)
   4. No SQL errors in agent logs related to jsonb, timestamp, or table references
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 05-01-PLAN.md -- Fix Gmail content pipeline (Postgres fallback + message body population)
@@ -114,7 +114,7 @@ Plans:
 | 02. Brain Schema + MCP | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
-| 5. Validate & Activate | v2.0 | 3/3 | Complete | 2026-03-06 |
+| 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
 | 6. Cost Controls + Model Routing | v2.0 | 0/? | Not started | - |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
