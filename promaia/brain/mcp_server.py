@@ -1,15 +1,16 @@
 """
-Brain MCP Server — 12 tools for zBrain.
+Brain MCP Server — 13 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over stdio.
 Claude calls these tools to get briefings, capture thoughts, search memories,
 manage project context, track actions, maintain a personal profile,
-manage the onboarding flow, and run data ingestion channels.
+manage the onboarding flow, run data ingestion channels, and perform
+cognitive retrieval via MuninnDB.
 
 Tools:
     briefing        — stale projects + pending actions + recent heartbeat activity
-    capture         — store memory with embedding, auto-extract actions
-    search          — semantic vector search across brain.memories
+    capture         — store memory with embedding, auto-extract actions (dual-writes to MuninnDB)
+    search          — semantic vector search + MuninnDB ACTIVATE (parallel trial)
     recall          — recent memories filtered by domain or time range
     context         — read a domain's directive and current state
     update_context  — write/upsert a domain's context
@@ -19,6 +20,7 @@ Tools:
     onboard         — manage the onboarding flow (start/status/channel_update/complete)
     pc_scan         — scan local git repos, files, and apps for profile data
     gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
+    activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
 
 Usage:
     python -m promaia.brain.mcp_server
@@ -59,6 +61,7 @@ from promaia.brain.onboarding import (
     mark_channel_progress, get_profile_coverage,
     complete_onboarding, EXPECTED_FIELDS,
 )
+from promaia.brain.muninn import get_muninn
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -96,7 +99,7 @@ def get_vector_mgr():
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Enumerate all 12 brain tools."""
+    """Enumerate all 13 brain tools."""
     return [
         Tool(
             name="briefing",
@@ -366,13 +369,22 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="gmail_scan",
             description=(
-                "Scan recent Gmail inbox to extract contacts, communication patterns, "
-                "and recurring topics. Requires Gmail OAuth to be configured first. "
-                "Stores only metadata and summaries — never raw email content."
+                "Scan Gmail inbox for cleanup, triage, and intelligence extraction. "
+                "Supports multiple accounts. Modes: 'cleanup' (categorize junk vs real), "
+                "'triage' (surface emails needing attention), 'intelligence' (extract contacts "
+                "and patterns for profile), or 'full' (all layers). "
+                "Never stores raw email content."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "account": {
+                        "type": "string",
+                        "description": (
+                            "Account label or partial match (e.g. 'zackayak'). "
+                            "Omit to scan all connected accounts."
+                        ),
+                    },
                     "days_back": {
                         "type": "integer",
                         "description": "How many days of email to scan (default 30).",
@@ -380,11 +392,60 @@ async def list_tools() -> list[Tool]:
                     },
                     "max_emails": {
                         "type": "integer",
-                        "description": "Maximum emails to process (default 100).",
-                        "default": 100
+                        "description": "Maximum emails per account to process (default 200).",
+                        "default": 200
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["cleanup", "triage", "intelligence", "full"],
+                        "description": (
+                            "Scan mode. 'cleanup': categorize junk/newsletters/human mail. "
+                            "'triage': find emails needing attention. "
+                            "'intelligence': extract contacts/patterns for brain profile. "
+                            "'full': all of the above. Default: 'full'."
+                        ),
+                        "default": "full"
+                    },
+                    "before": {
+                        "type": "string",
+                        "description": (
+                            "Only scan emails before this date (YYYY/MM/DD). "
+                            "Use with days_back to scan historical windows."
+                        ),
                     }
                 },
                 "required": []
+            }
+        ),
+        Tool(
+            name="activate",
+            description=(
+                "MuninnDB cognitive retrieval using the ACTIVATE pipeline. "
+                "Uses context-based associative recall with Hebbian learning, "
+                "temporal decay, and graph traversal -- different from vector search. "
+                "Returns memories ranked by cognitive relevance, not just similarity. "
+                "Use this when you want associative, context-driven recall rather than "
+                "keyword or semantic search."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "context": {
+                        "type": "string",
+                        "description": "Natural language context for cognitive retrieval. Describe what you're thinking about."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum results (default 10).",
+                        "default": 10
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Minimum activation score 0.0-1.0 (default 0.1, lower = more results).",
+                        "default": 0.1
+                    }
+                },
+                "required": ["context"]
             }
         ),
     ]
@@ -423,6 +484,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_pc_scan(arguments)
         elif name == "gmail_scan":
             return await _handle_gmail_scan(arguments)
+        elif name == "activate":
+            return await _handle_activate(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
@@ -614,13 +677,26 @@ async def _handle_capture(args: dict) -> list[TextContent]:
     except Exception as e:
         logger.warning(f"Could not log capture event: {e}")
 
+    # MuninnDB dual-write (best-effort -- never blocks Postgres capture)
+    try:
+        muninn = await get_muninn()
+        if muninn:
+            tags = [domain_name] if domain_name else []
+            await muninn.write(
+                concept=content[:100],
+                content=content,
+                tags=tags,
+            )
+    except Exception as e:
+        logger.warning(f"MuninnDB write failed (non-fatal): {e}")
+
     if action_count > 0:
         return [TextContent(type="text", text=f"Captured. Extracted {action_count} action(s).")]
     return [TextContent(type="text", text="Captured.")]
 
 
 async def _handle_search(args: dict) -> list[TextContent]:
-    """Semantic vector search over brain.memories."""
+    """Semantic vector search over brain.memories + MuninnDB ACTIVATE (parallel trial)."""
     db = get_db()
     query = args.get("query", "").strip()
     if not query:
@@ -628,6 +704,8 @@ async def _handle_search(args: dict) -> list[TextContent]:
 
     limit = int(args.get("limit", 10))
 
+    # --- pgvector search (existing logic, unchanged) ---
+    pg_rows = []
     try:
         vector_mgr = get_vector_mgr()
         query_embedding = vector_mgr.generate_embedding(query)
@@ -647,25 +725,123 @@ async def _handle_search(args: dict) -> list[TextContent]:
                     """,
                     (query_array, limit),
                 )
-                rows = [dict(r) for r in cur.fetchall()]
+                pg_rows = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.error(f"pgvector search failed: {e}", exc_info=True)
 
-        if not rows:
-            return [TextContent(type="text", text="No memories found matching your query.")]
+    # --- MuninnDB ACTIVATE (best-effort, parallel trial) ---
+    muninn_results = []
+    try:
+        muninn = await get_muninn()
+        if muninn:
+            response = await muninn.activate(
+                context=[query],
+                max_results=limit,
+                threshold=0.1,
+            )
+            muninn_results = response.get("activations", [])
+    except Exception as e:
+        logger.warning(f"MuninnDB activate failed (non-fatal): {e}")
 
-        lines = [f"# Search Results for: {query}\n"]
-        for i, row in enumerate(rows, 1):
+    # --- Format results with source labels ---
+    if not pg_rows and not muninn_results:
+        return [TextContent(type="text", text="No results found.")]
+
+    lines = [f"# Search Results for: {query}\n"]
+
+    if pg_rows:
+        lines.append("## pgvector Results")
+        for i, row in enumerate(pg_rows, 1):
             similarity = 1 - float(row['distance'])
             domain_label = f" [{row['domain']}]" if row.get('domain') else ""
             ts = _fmt_ts(row.get('created_at'))
             content_preview = row['content'][:200] + ("..." if len(row['content']) > 200 else "")
-            lines.append(f"**{i}.**{domain_label} (similarity: {similarity:.2f}, {ts})")
+            lines.append(f"**{i}.** [pgvector]{domain_label} (similarity: {similarity:.2f}, {ts})")
             lines.append(f"{content_preview}\n")
+
+    if muninn_results:
+        lines.append("## MuninnDB ACTIVATE Results")
+        for i, a in enumerate(muninn_results, 1):
+            score = a.get("score", 0)
+            concept = a.get("concept", "")
+            content_preview = a.get("content", "")[:200]
+            sc = a.get("score_components", {})
+            dormant = " [dormant]" if a.get("dormant") else ""
+            lines.append(
+                f"**{i}.** [muninn] (score: {score:.3f}, "
+                f"semantic={sc.get('semantic_similarity', 0):.2f}, "
+                f"hebbian={sc.get('hebbian_boost', 0):.2f}, "
+                f"decay={sc.get('decay_factor', 0):.3f}){dormant}"
+            )
+            lines.append(f"{content_preview}\n")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def _handle_activate(args: dict) -> list[TextContent]:
+    """MuninnDB ACTIVATE cognitive retrieval."""
+    context_text = args.get("context", "").strip()
+    if not context_text:
+        return [TextContent(type="text", text="Error: context is required.")]
+
+    max_results = int(args.get("max_results", 10))
+    threshold = float(args.get("threshold", 0.1))
+
+    muninn = await get_muninn()
+    if not muninn:
+        return [TextContent(
+            type="text",
+            text="MuninnDB is not available. Use 'search' for pgvector-based retrieval.",
+        )]
+
+    try:
+        response = await muninn.activate(
+            context=[context_text],
+            max_results=max_results,
+            threshold=threshold,
+        )
+
+        activations = response.get("activations", [])
+        latency = response.get("latency_ms", 0)
+        total = response.get("total_found", 0)
+
+        if not activations:
+            return [TextContent(
+                type="text",
+                text=f"No activations above threshold {threshold}. Try lowering the threshold.",
+            )]
+
+        lines = [f"# ACTIVATE Results ({total} found, {latency:.1f}ms)\n"]
+        for i, a in enumerate(activations, 1):
+            score = a.get("score", 0)
+            concept = a.get("concept", "")
+            content = a.get("content", "")[:300]
+            sc = a.get("score_components", {})
+            dormant = " [dormant]" if a.get("dormant") else ""
+
+            lines.append(f"**{i}.** (score: {score:.3f}){dormant}")
+            lines.append(f"   Concept: {concept}")
+            lines.append(f"   {content}")
+            lines.append(
+                f"   Components: semantic={sc.get('semantic_similarity', 0):.2f}, "
+                f"text={sc.get('full_text_relevance', 0):.2f}, "
+                f"hebbian={sc.get('hebbian_boost', 0):.2f}, "
+                f"decay={sc.get('decay_factor', 0):.3f}"
+            )
+            lines.append("")
+
+        # Include brief if available
+        brief = response.get("brief", [])
+        if brief:
+            lines.append("## Brief")
+            for b in brief:
+                lines.append(f"- {b.get('text', '')}")
 
         return [TextContent(type="text", text="\n".join(lines))]
 
     except Exception as e:
-        logger.error(f"search failed: {e}", exc_info=True)
-        return [TextContent(type="text", text=f"Search error: {e}")]
+        logger.error(f"activate failed: {e}", exc_info=True)
+        return [TextContent(type="text", text=f"ACTIVATE error: {e}")]
 
 
 async def _handle_recall(args: dict) -> list[TextContent]:
@@ -1228,29 +1404,119 @@ async def _handle_pc_scan(args: dict) -> list[TextContent]:
 
 
 async def _handle_gmail_scan(args: dict) -> list[TextContent]:
-    """Scan Gmail inbox for contacts, patterns, and topics."""
+    """Scan Gmail inbox for cleanup, triage, and intelligence."""
     db = get_db()
+    account = args.get("account")
     days_back = int(args.get("days_back", 30))
-    max_emails = int(args.get("max_emails", 100))
+    max_emails = int(args.get("max_emails", 200))
+    mode = args.get("mode", "full")
+    before = args.get("before")
 
     try:
-        from promaia.brain.channels.gmail_read import run_gmail_scan
-        result = run_gmail_scan(days_back=days_back, max_emails=max_emails, db=db)
+        from promaia.brain.channels.gmail_read import run_gmail_scan, discover_accounts
+    except Exception as e:
+        logger.error(f"Gmail module import failed: {e}", exc_info=True)
+        return [TextContent(type="text", text=f"Gmail scan error: {e}")]
+
+    # Show available accounts if none connected
+    accounts = discover_accounts()
+    if not accounts:
+        return [TextContent(type="text", text="No Gmail tokens found. Run OAuth setup first.")]
+
+    try:
+        result = run_gmail_scan(
+            account=account,
+            days_back=days_back,
+            max_emails=max_emails,
+            mode=mode,
+            db=db if mode in ("intelligence", "full") else None,
+            before=before,
+        )
     except Exception as e:
         logger.error(f"Gmail scan failed: {e}", exc_info=True)
         return [TextContent(type="text", text=f"Gmail scan error: {e}")]
 
-    # If there was an error (e.g. OAuth not configured), return guidance
     if result.get("error"):
         return [TextContent(type="text", text=f"Gmail scan: {result['error']}")]
 
-    # Format result as readable text
-    lines = ["## Gmail Scan Results\n"]
-    lines.append(f"- **Emails scanned:** {result.get('emails_scanned', 0)}")
-    lines.append(f"- **Contacts found:** {result.get('contacts_found', 0)}")
-    lines.append(f"- **Fields updated:** {result.get('fields_updated', 0)}")
+    # Load known relationships for cross-referencing
+    known_contacts = {}
+    try:
+        rows = db.fetch_all(
+            "SELECT field, value FROM brain.profile WHERE category = 'relationships'"
+        )
+        for row in rows:
+            val = row[1] if isinstance(row[1], dict) else {}
+            # Extract emails/names from relationship records
+            for key in ("email", "name"):
+                if key in val:
+                    known_contacts[val[key].lower()] = row[0]
+            # Handle email_contacts list
+            if isinstance(row[1], list):
+                for c in row[1]:
+                    if isinstance(c, dict) and c.get("email"):
+                        known_contacts[c["email"].lower()] = c.get("name", row[0])
+    except Exception as e:
+        logger.debug(f"Could not load known contacts: {e}")
 
-    # Log event to brain.events
+    # Format results
+    lines = [f"## Gmail Scan Results (mode: {mode})\n"]
+
+    summary = result.get("summary", {})
+    lines.append(f"**Accounts scanned:** {summary.get('accounts_scanned', 0)}")
+    lines.append(f"**Total emails scanned:** {summary.get('total_emails_scanned', 0)}")
+
+    if summary.get("total_junk_identified"):
+        lines.append(f"**Total junk identified:** {summary['total_junk_identified']}")
+
+    for email, acct in result.get("accounts", {}).items():
+        if "error" in acct:
+            lines.append(f"\n### {email}\nError: {acct['error']}")
+            continue
+
+        lines.append(f"\n### {acct.get('email', email)}")
+        lines.append(f"Emails scanned: {acct.get('emails_scanned', 0)}")
+
+        # Layer 1: Cleanup categories
+        cats = acct.get("categories", {})
+        if any(cats.values()):
+            lines.append("\n**Email Categories:**")
+            lines.append(f"  Human mail: {cats.get('human', 0)}")
+            lines.append(f"  Newsletters: {cats.get('newsletter', 0)}")
+            lines.append(f"  Promotions: {cats.get('promotion', 0)}")
+            lines.append(f"  Automated: {cats.get('automated', 0)}")
+            total = sum(cats.values())
+            junk = total - cats.get("human", 0)
+            if total > 0:
+                lines.append(f"  **Junk ratio: {junk}/{total} ({100*junk//total}%)**")
+
+        # Unsubscribe candidates
+        unsubs = acct.get("unsubscribe_candidates", [])
+        if unsubs:
+            lines.append(f"\n**Top Unsubscribe Candidates** ({len(unsubs)} senders):")
+            for u in unsubs[:10]:
+                relation = known_contacts.get(u['email'].lower(), '')
+            tag = f" (KNOWN: {relation})" if relation else ""
+            lines.append(f"  - {u['email']}{tag} ({u['count']} emails)")
+
+        # Layer 2: Attention items
+        attention = acct.get("attention_needed", [])
+        if attention:
+            lines.append(f"\n**Needs Attention** ({len(attention)} items):")
+            for a in attention[:10]:
+                status = "[unread]" if a.get("unread") else "[read]"
+                sender = a['from'] or ''
+            relation = known_contacts.get(sender.lower(), '')
+            tag = f" (KNOWN: {relation})" if relation else ""
+            lines.append(f"  - {status} {sender}{tag}: {a['subject']}")
+
+        # Layer 3: Intelligence
+        if acct.get("contacts_found"):
+            lines.append(f"\nContacts found: {acct['contacts_found']}")
+        if acct.get("fields_updated"):
+            lines.append(f"Profile fields updated: {acct['fields_updated']}")
+
+    # Log event
     try:
         db.execute(
             """
@@ -1259,9 +1525,10 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
             """,
             (
                 json.dumps({
-                    "emails_scanned": result.get("emails_scanned", 0),
-                    "contacts_found": result.get("contacts_found", 0),
-                    "fields_updated": result.get("fields_updated", 0),
+                    "mode": mode,
+                    "accounts_scanned": summary.get("accounts_scanned", 0),
+                    "total_emails_scanned": summary.get("total_emails_scanned", 0),
+                    "total_junk_identified": summary.get("total_junk_identified", 0),
                 }),
                 SESSION_ID,
             ),
