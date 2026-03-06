@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 5: Validate & Activate
+**Current focus:** Phase 5: Validate & Activate -- COMPLETE. Ready for Phase 6.
 
 ## Current Position
 
-Phase: 5 of 10 (Validate & Activate)
-Plan: 2 of 3 in current phase
-Status: Executing
-Last activity: 2026-03-06 -- Plan 05-01 complete (Gmail content pipeline fix)
+Phase: 5 of 10 (Validate & Activate) -- COMPLETE
+Plan: 3 of 3 in current phase
+Status: Phase Complete
+Last activity: 2026-03-06 -- Plan 05-03 complete (Full validation run, human approved)
 
-Progress: [############..................] 43% (v2.0 Phase 5: 2/3 plans complete)
+Progress: [##############################] 100% (v2.0 Phase 5: 3/3 plans complete)
 
 ## Performance Metrics
 
@@ -31,14 +31,15 @@ Progress: [############..................] 43% (v2.0 Phase 5: 2/3 plans complete
 | 02. Brain Schema + MCP | 3 | -- | -- |
 | 03.1 Onboarding Module | 3 | -- | -- |
 | 04. Platform Activation | 1 | -- | -- |
+| 05. Validate & Activate | 3 | ~12min | ~4min |
 
-**Recent Trend:** Starting v2.0 milestone
+**Recent Trend:** Phase 5 complete. Agent pipeline validated end-to-end.
 
 ## What's Live
 
 - Brain MCP server: 15 tools, 56+ memories, 10 domains, 98 profile traits
 - Agent scheduler: PID running, 3 agents (morning-briefing, email-triage, evening-digest)
-- Agent cost: ~$0.011/run via Claude SDK
+- Agent cost: ~$0.044/run avg via Claude SDK ($0.132 total for 3-agent validation cycle)
 - Web dashboard: localhost:8000, 5 pages, Superflat skin
 - Gmail pipeline: OAuth working, emails ingested
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - 05-02: Grounding Rules section placed before content instructions with override priority
 - 05-01: Gmail Postgres fallback activates only when md_file is None AND entry is Gmail
 - 05-01: GIN index replaces B-tree on gmail_labels for proper JSONB operator support
+- 05-03: Human-verified agent output quality -- all three agents approved with zero hallucination
+- 05-03: morning-briefing inferring "Office day" from profile data (not calendar) accepted as valid
 
 ### Pending Todos
 
@@ -77,5 +80,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-01-PLAN.md (Gmail content pipeline fix)
+Stopped at: Completed 05-03-PLAN.md (Phase 5 complete -- all agents validated)
 Resume file: None
+Next: Phase 6 -- Cost Controls + Model Routing

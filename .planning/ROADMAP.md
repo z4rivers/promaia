@@ -19,7 +19,7 @@
 
 ### v2.0 Proactive Agent
 
-- [ ] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
+- [x] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
 - [ ] **Phase 6: Cost Controls + Model Routing** - Right model per task, budget tracking, prompt caching
 - [ ] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge
 - [ ] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands
@@ -40,9 +40,9 @@
 **Plans:** 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Fix Gmail content pipeline (Postgres fallback + message body population)
-- [ ] 05-02-PLAN.md -- Agent config + prompt hardening (schedule change + anti-hallucination)
-- [ ] 05-03-PLAN.md -- Full validation run + human verification of agent output
+- [x] 05-01-PLAN.md -- Fix Gmail content pipeline (Postgres fallback + message body population)
+- [x] 05-02-PLAN.md -- Agent config + prompt hardening (schedule change + anti-hallucination)
+- [x] 05-03-PLAN.md -- Full validation run + human verification of agent output
 
 ### Phase 6: Cost Controls + Model Routing
 **Goal**: Every API call uses the cheapest model that can do the job, with per-run and daily budget enforcement
@@ -114,7 +114,7 @@ Plans:
 | 02. Brain Schema + MCP | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
-| 5. Validate & Activate | v2.0 | 1/3 | In Progress | - |
+| 5. Validate & Activate | v2.0 | 3/3 | Complete | 2026-03-06 |
 | 6. Cost Controls + Model Routing | v2.0 | 0/? | Not started | - |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
