@@ -2,140 +2,127 @@
 
 ## Current Position
 
-Phase: Phase 4 — Full Platform Activation + Dashboard Design
-Plan: Web dashboard as primary display layer (not Notion)
-Status: Dashboard wired to live Postgres. Server verified. All skins rendering. Actions & contexts populated.
-Last activity: 2026-03-08 — Dashboard wired to live brain data, contexts populated, actions seeded
+Phase: Phase 4 — Full Platform Activation
+Status: Dashboard live, brain wired, agents ready, 10 projects mapped.
+Last activity: 2026-03-08 — Dashboard + agent brain integration + project portfolio corrected
 
-## Session 2026-03-07 Accomplishments
+## What's Built & Working
 
-### Commits (4 — clean working tree)
-- `f7032f3` fix(web): dotenv load order and google-genai Content types
-- `42f7bae` feat(agents): add agent prompts and CLI prompt sync stub
-- `5647089` docs(4.x): update roadmap and state for phases 4.1-4.6 completion
-- `47696ff` docs(zbrain): add Notion API reference and working session notes
+### Web Dashboard (LIVE)
+- **Server:** `python -m promaia.web.main` → `http://localhost:8000`
+- **5 pages:** `/` `/dashboard` `/projects` `/email` `/profile`
+- **6 CSS skins:** stone-garden, ink-wash, evening-garden, data-temple, superflat, neo-tokyo
+- **All pages pull live Postgres data** — no stubs
+- Skin switching via `?skin=neo-tokyo` on any page
+- Navigation links between all pages
 
-### Research Completed (5 agents)
-1. **Gmail sync** — `gmail_content` table already exists in schema. GmailConnector ready. Need: ingest daemon (`promaia/agents/gmail_ingest.py`), query tool in brain MCP, wire to agents. 3 components.
-2. **MCP router** — Router exists at `promaia/web/routers/mcp.py` (339L). 95% done. Need: fix broken `get_mcp_server_configs()` import, register router in main.py, add brain server to mcp_servers.json. 3 fixes.
-3. **Traditional Japanese design** — Full brief at `zbrain/japanese-design-brief.md` (700L). Muji, Yanagi, Fukasawa, Noguchi, Snow Peak, Nendo principles mapped to digital dashboard.
-4. **Web architecture exploration** — Confirmed: Promaia web server is a thin REST API for mobile access. Notion+CLI were primary. CORS hints at planned Vite frontend (`localhost:5174`, `koiib.com`). We're completing the frontend slot.
-5. **Young Japanese design** — Brief at `zbrain/young-japanese-design-brief.md` (may still be writing). DJ culture, Superflat, teamLab, cyberpunk HUD, Persona 5 typography.
+### Brain Layer (LIVE)
+- 15 MCP tools via `mcp__brain__*`
+- 49+ memories, 10 domains, 10 contexts, 98 profile traits
+- Action extraction via Gemini Flash (needs paid tier — free quota exhausted)
+- `jsonref` installed to fix instructor import chain
 
-### Major Design Decision: The Verizon Pivot
-**Notion is NOT the display layer.** Notion's visual branding overwhelms content (the "Verizon problem" — everything in a Verizon store looks like Verizon, not like the products). Web dashboard via FastAPI is the user-facing display. Notion stays as agent workspace/backend.
+### Agent Scheduler (BUILT, not yet run live)
+- `promaia/agents/scheduler.py` — full asyncio daemon with PID management
+- 3 agents configured in `promaia.config.json`:
+  - `morning-briefing` (daily) — calendar, priority emails, brain state
+  - `email-triage` (every 2hr) — classify and surface attention items
+  - `evening-digest` (daily) — day recap, momentum, suggestions
+- Prompt files exist: `prompts/agent_*.md`
+- **Brain context now injected** — agents see pending actions, project states, recent memories
+- Brain MCP server registered in `mcp_servers.json`
+- SDK mode fails inside Claude Code (CLAUDECODE env var) — run as standalone daemon
 
-Architecture:
-```
-Figma/Canva (visual design) -> Skin CSS (design tokens) -> HTML/Jinja2 templates -> FastAPI renders -> User sees on phone
-                                                                                          |
-Agents write to: Postgres (data) + Notion (workspace/journals/prompts)                    |
-                      |                                                                    |
-                      +------ dashboard.py router reads Postgres, renders templates -------+
-```
+### Gmail Pipeline (BUILT)
+- `promaia/brain/gmail_ingest.py` — syncs Gmail → gmail_content table
+- `gmail_query` MCP tool (#15) in brain server
+- Run: `python -m promaia.brain.gmail_ingest --account zachary4rivers`
 
-### 6-Skin Design System (APPROVED)
+### Patches (EXPORTED)
+- 68 patches in `zbrain-patches/` — safety net before Josie/Rose re-init
 
-Traditional:
-1. **Stone Garden** (Sekitei) — Muji. Fog/stone/water. Sora + Noto Sans. Spacious.
-2. **Ink Wash** (Sumie) — Yanagi. Pure monochrome. IBM Plex Mono + Sans. Editorial tight.
-3. **Evening Garden** (Yutei) — Nendo. Cream/amber/wisteria. DM Sans + Noto Serif. Warm.
+## 10 Projects (corrected 2026-03-08)
 
-Young:
-4. **Data Temple** (Deta-dera) — Ryoji Ikeda. Black void + cyan accent. Geist Mono + Outfit. Dense terminal.
-5. **Superflat** — Murakami/Persona 5. White/black/red/yellow. Bebas Neue + DM Sans. Bold confrontation.
-6. **Neo-Tokyo** — Ghost in the Shell. Navy/cyan/magenta. Exo 2 + Inter. Glow effects, HUD.
-
-### What Gets Built (Implementation Plan)
-
-```
-promaia/web/
-  templates/           <- Jinja2 HTML (Figma-designed, 5 pages)
-    base.html          <- Shell: loads skin CSS, nav, layout
-    dashboard.html     <- Root: briefing + actions + pulse
-    projects.html      <- Domain overview
-    email.html         <- Inbox intelligence
-    profile.html       <- Personal dashboard
-  static/
-    skins/             <- 6 CSS files (one per skin, ~60-80 lines each)
-      stone_garden.css
-      ink_wash.css
-      evening_garden.css
-      data_temple.css
-      superflat.css
-      neo_tokyo.css
-    fonts/             <- Custom typography
-  routers/
-    dashboard.py       <- Routes: read Postgres -> render templates
-```
-
-## Session 2026-03-08 Accomplishments
-
-### Dashboard Wired to Live Data
-- Replaced hardcoded stubs in `dashboard.py` with real Postgres queries
-- `_get_brain_data()` queries brain.memories, brain.actions, brain.contexts in one call
-- Counts, actions, projects, and recent memories all flow from live DB
-- All 6 skins verified rendering (200 OK)
-- Server verified: `/`, `/dashboard`, `/api/health`, `/api/mcp/servers`, `/api/chat/models` all working
-
-### Data Populated
-- All 5 project contexts updated with current_state descriptions
-- 4 pending actions seeded into brain.actions
-- Fixed: installed `jsonref` dependency (instructor path was failing)
-- Discovered: Gemini free tier quota exhausted — action auto-extraction blocked until quota resets
-
-### Issues Found
-- `jsonref` was missing — instructor import chain broken (now fixed)
-- Gemini 2.0 Flash free tier quota exhausted — action extraction silently returns empty
-- Consider: paid Gemini tier or local extraction fallback
+| P | Project | Status | What |
+|---|---------|--------|------|
+| 1 | zBrain | Active | Zack's Promaia instance. Brain layer, dashboard, agents. |
+| 2 | Promaia | Active | Josie's platform. Zack is dad-contributor, guinea pig, cherry-pick features. |
+| 2 | Personal | Waiting | 2nd brain: thoughts, life, health, time, money. Open Claw-style. Most curious about. |
+| 3 | Heatpup | Resting | THE big project. 775 commits. Paused for better tools. |
+| 4 | HVAC Leads | Concept | Portland HVAC specialist marketing. Generate own leads. |
+| 5 | PURRfoot | Research | Cat-themed product line. MaybeCat + Hopecookie are marketing arms. |
+| 5 | MaybeCat | Concept | Viral marketing site for PURRfoot. |
+| 5 | Hopecookie | Concept | Cat-shaped fortune cookie for coffee/tea. MaybeCat as literal cookie. |
+| 6 | Catpool | Concept | NOT standalone. Shared answer repo between MaybeCat & Hopecookie. |
+| 7 | PetalPolicy | Concept | Flower subscriptions as relationship insurance. |
 
 ## Next Session: What to Do
 
-### Priority 1: Agent Scheduler (the heartbeat)
-- Wire Morning Briefing, Email Triage, Evening Digest agents with real data
-- Define agent schedules and triggers
-- Connect to existing agent framework in promaia/agents/
+### 1. Agent Scheduler — First Real Run
+- Start daemon: `python -m promaia.agents.scheduler` (outside Claude Code)
+- Or single agent test: executor has `execute_agent_sync()`
+- Watch for: SDK availability, MCP server resolution, Notion output
+- Key file: `promaia/agents/executor.py` (1616L) — dual-mode SDK + legacy
 
-### Priority 2: Deploy for iPhone
-- Deploy web server externally (Render, Railway, or VPS)
-- Mobile-first testing with all 6 skins
-- Voice interface consideration
+### 2. Personal Domain — Start Using It
+- This is what Zack is most curious about
+- The brain has 98 profile traits — start using them for proactive suggestions
+- Health, finances, time, life management
+- Open question: how aggressive/autonomous should it be?
 
-### Priority 3: Export Patches (safety net)
-- `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
-- Before Josie/Rose re-init Promaia repo
+### 3. Deploy for iPhone
+- FastAPI server needs external hosting for mobile access
+- Options: Render, Railway, VPS, ngrok for testing
+- All 6 skins are mobile-responsive
 
-### Priority 4: Remaining
-- Fix Anthropic chat bug in utils/ai.py
-- CLI stubs (team_commands, conversation_commands)
+### 4. Remaining
 - Gemini routing (Phase 3 — model router)
+- Fix Anthropic chat bug in utils/ai.py
+- Gemini free tier → paid tier for action extraction
 
-## Notion Page IDs (still valid — Notion stays as agent backend)
+## Architecture Reference
+
+```
+Figma/Canva → Skin CSS → Jinja2 templates → FastAPI → User (phone/desktop)
+                                                |
+Agents → Postgres (brain.*) + Notion (workspace) → dashboard.py reads & renders
+           |
+           +→ brain.memories, brain.actions, brain.contexts, brain.profile
+           +→ gmail_content (email pipeline)
+```
+
+## Key Files
+
+| File | What |
+|------|------|
+| `promaia/web/main.py` | FastAPI app, all routers registered |
+| `promaia/web/routers/dashboard.py` | All 5 page routes + live DB queries |
+| `promaia/web/templates/*.html` | 5 Jinja2 templates |
+| `promaia/web/static/skins/*.css` | 6 CSS skin files |
+| `promaia/brain/mcp_server.py` | 15 brain MCP tools |
+| `promaia/brain/gmail_ingest.py` | Gmail sync pipeline |
+| `promaia/agents/scheduler.py` | Daemon scheduler |
+| `promaia/agents/executor.py` | Agent execution (SDK + legacy + brain context) |
+| `promaia.config.json` | 3 agent configs |
+| `mcp_servers.json` | Brain MCP server registered |
+| `.planning/ROADMAP.md` | Phase tracker |
+
+## Git State
+
+- Branch: `zbrain` (off `feature/agent-scheduler`)
+- Working tree: clean
+- Latest: `a5f92fe` feat(agents): wire brain context into agent executor
+- Patches: 68 exported to `zbrain-patches/`
+
+## Known Issues
+
+- Gemini 2.0 Flash free tier quota exhausted — action auto-extraction returns empty
+- SDK mode fails inside Claude Code (CLAUDECODE env var blocks it)
+- gmail_content table has 0 rows until ingest is run
+
+## Notion Page IDs (agent backend)
 - Root: 31b72180-6675-8039-a701-f51c6423f11e
 - Brain Dashboard: 31b72180-6675-8175-bd07-cfd6adf48f40
 - Projects: 31b72180-6675-8171-ac01-cddba216788b
 - Email Triage: 31b72180-6675-81ab-9da5-cbc2aabea6a0
 - Profile: 31b72180-6675-8195-b4bf-c39367cb4525
-
-## Previous Session Context (2026-03-06)
-
-Phases 4.1-4.6 activated in one session. See git log for details.
-Key: SDK mode fails inside Claude Code (CLAUDECODE env var). Legacy mode works.
-
-## Phase History
-
-See git log. Phases 1-4.1 documented in previous STATE.md versions.
-
-## Git State
-
-- Branch: `zbrain` (off `feature/agent-scheduler`)
-- Latest commits: `47696ff` (2026-03-07 session)
-- Working tree: clean (only `.claude/settings.local.json` untracked)
-
-## Blockers
-
-None.
-
-## Upcoming Events
-
-- **Promaia re-init (within ~1 week):** Export patches before: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
