@@ -97,7 +97,7 @@ Deferred beyond v2.0.
 
 ## Traceability
 
-Updated during roadmap creation.
+Updated during v2.0 roadmap creation (2026-03-06).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -142,10 +142,10 @@ Updated during roadmap creation.
 | MEM-05 | Phase 10 | Pending |
 
 **Coverage:**
-- v2 requirements: 38 total
-- Mapped to phases: 38
+- v2 requirements: 39 total
+- Mapped to phases: 39
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-06 after initial definition*
+*Last updated: 2026-03-06 after v2.0 roadmap creation*

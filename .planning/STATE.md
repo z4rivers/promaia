@@ -1,18 +1,38 @@
-# State: zBrain
-
-## Current Position
-
-Phase: Not started (defining requirements)
-Plan: --
-Status: Defining requirements for v2.0 Proactive Agent
-Last activity: 2026-03-06 -- Milestone v2.0 started
+# Project State
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-06)
 
-**Core value:** Proactive AI assistant that reaches YOU
-**Current focus:** v2.0 Proactive Agent — defining requirements
+**Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
+**Current focus:** Phase 5: Validate & Activate
+
+## Current Position
+
+Phase: 5 of 10 (Validate & Activate)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-03-06 -- v2.0 roadmap created
+
+Progress: [##########....................] 40% (v1.0 complete, v2.0 starting)
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 10 (v1.0)
+- Average duration: --
+- Total execution time: --
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 01. Postgres Foundation | 3 | -- | -- |
+| 02. Brain Schema + MCP | 3 | -- | -- |
+| 03.1 Onboarding Module | 3 | -- | -- |
+| 04. Platform Activation | 1 | -- | -- |
+
+**Recent Trend:** Starting v2.0 milestone
 
 ## What's Live
 
@@ -22,24 +42,36 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 - Web dashboard: localhost:8000, 5 pages, Superflat skin
 - Gmail pipeline: OAuth working, emails ingested
 
-## Known Issues (carry to v2)
+## Known Issues (Phase 5 targets)
 
-- MuninnDB embeddings broken (text-embedding-004 deprecated)
-- Gmail context loading in agents (needs Postgres fallback)
-- SQL dialect bugs (jsonb operators, timestamp casting)
-- unified_content SQLite table reference leaking into Postgres
+- Gmail context loads from .md files (needs Postgres fallback)
+- SQL dialect bugs: jsonb operators, timestamp casting, unified_content table reference
 - Agent token tracking shows $0.00 in legacy mode
+- MuninnDB embeddings broken (text-embedding-004 deprecated)
 
-## Git State
+## Accumulated Context
 
-- Branch: `zbrain` (off `feature/agent-scheduler`)
-- Tag: v1.0 (pending)
-- Patches: 68 exported to `zbrain-patches/`
+### Decisions
 
-## Decisions
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-(Cleared for v2 -- full log in milestones/v1.0-ROADMAP.md)
+- v2.0: Linear phase dependency (5->6->7->8->9->10) -- each phase builds on prior
+- v2.0: Telegram over Twilio for mobile channel (free, excellent bot API)
+- v2.0: Postgres polling as event bus (zero new dependencies)
+- v2.0: Gemini for cheap agent tasks, Opus reserved for reasoning
 
-## Blockers
+### Pending Todos
 
-(None -- ready for v2 planning)
+None yet.
+
+### Blockers/Concerns
+
+- Google AI pricing: $125/mo intro rate going away. Budget projections assume $20/mo plan.
+- MuninnDB v0.3.7 needed for embedding fix (Windows binary not yet available)
+
+## Session Continuity
+
+Last session: 2026-03-06
+Stopped at: v2.0 roadmap created, ready to plan Phase 5
+Resume file: None
