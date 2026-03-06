@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 5 of 10 (Validate & Activate)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-06 -- v2.0 roadmap created
+Plan: 2 of 3 in current phase
+Status: Executing
+Last activity: 2026-03-06 -- Plan 05-02 complete (agent config + prompt hardening)
 
-Progress: [##########....................] 40% (v1.0 complete, v2.0 starting)
+Progress: [############..................] 43% (v2.0 Phase 5: 2/3 plans complete)
 
 ## Performance Metrics
 
@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - v2.0: Telegram over Twilio for mobile channel (free, excellent bot API)
 - v2.0: Postgres polling as event bus (zero new dependencies)
 - v2.0: Gemini for cheap agent tasks, Opus reserved for reasoning
+- 05-02: 480-min interval for email-triage (3x/day) rather than time-of-day scheduling
+- 05-02: Grounding Rules section placed before content instructions with override priority
 
 ### Pending Todos
 
@@ -73,5 +75,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: v2.0 roadmap created, ready to plan Phase 5
+Stopped at: Completed 05-02-PLAN.md (agent config + prompt hardening)
 Resume file: None

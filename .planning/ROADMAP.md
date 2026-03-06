@@ -114,7 +114,7 @@ Plans:
 | 02. Brain Schema + MCP | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
-| 5. Validate & Activate | v2.0 | 0/3 | Planning complete | - |
+| 5. Validate & Activate | v2.0 | 1/3 | In Progress | - |
 | 6. Cost Controls + Model Routing | v2.0 | 0/? | Not started | - |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
