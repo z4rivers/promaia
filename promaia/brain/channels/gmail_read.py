@@ -220,6 +220,7 @@ def _scan_account(
         "categories": {"human": 0, "newsletter": 0, "promotion": 0, "automated": 0, "junk": 0},
         "contacts_found": 0,
         "fields_updated": 0,
+        "anthropologist_observations": 0,
         "top_senders": [],
         "attention_needed": [],
         "unsubscribe_candidates": [],
@@ -243,6 +244,13 @@ def _scan_account(
     # Layer 3: Intelligence -- extract profile data
     if mode in ("intelligence", "full") and db:
         _extract_profile_intelligence(threads, result, db)
+
+    # Layer 4: Anthropologist -- runs AFTER cleanup, on surviving human corpus only
+    # Reads what cleanup left behind and asks: what does this reveal about this person?
+    if mode in ("intelligence", "full") and db:
+        human_msgs = [m for m in threads if _classify_message(m) == "human"]
+        if human_msgs:
+            _extract_anthropologist_observations(human_msgs, result, db)
 
     return result
 
@@ -564,6 +572,172 @@ def _extract_profile_intelligence(messages: List[Dict], result: Dict, db) -> Non
             top_topics = [w for w, _ in Counter(words).most_common(15)]
             _upsert_profile(db, "context", "email_topics", top_topics, CONFIDENCE_EMAIL)
             result["fields_updated"] = result.get("fields_updated", 0) + 1
+
+
+# ---------------------------------------------------------------------------
+# Layer 4: Anthropologist -- who is this person?
+# Runs on the post-cleanup human corpus only.
+# Asks not "what emails are here" but "what do these emails reveal about this person?"
+# ---------------------------------------------------------------------------
+
+CONFIDENCE_ANTHROPOLOGIST = 0.55  # Inferred from email patterns, not declared
+
+def _extract_anthropologist_observations(human_msgs: List[Dict], result: Dict, db) -> None:
+    """Read the surviving human corpus and write profile observations.
+
+    This function runs AFTER cleanup. It never sees spam or promotions —
+    only emails that survived. It treats those emails as evidence about
+    a person's life, relationships, work, and patterns.
+    """
+    observations_written = 0
+
+    # --- Chronotype: when does this person actually send? ---
+    # (Not when they receive — when THEY write. That's the real signal.)
+    sent_hours = []
+    for msg in human_msgs:
+        sender_email = msg.get("sender", {}).get("email", "").lower()
+        # Rough heuristic: if sender matches the account's own domain patterns
+        # we can't easily know which account owns which messages at this layer,
+        # so we use all send times as a proxy for activity rhythm
+        if msg.get("date"):
+            sent_hours.append(msg["date"].hour)
+
+    if sent_hours:
+        hour_counts = Counter(sent_hours)
+        peak_hours = [h for h, _ in hour_counts.most_common(3)]
+        peak_hours.sort()
+        # Translate to chronotype label
+        avg_peak = sum(peak_hours) / len(peak_hours)
+        if avg_peak < 10:
+            chronotype = "morning (peak activity before 10am)"
+        elif avg_peak < 14:
+            chronotype = "midday (peak activity 10am–2pm)"
+        elif avg_peak < 18:
+            chronotype = "afternoon (peak activity 2pm–6pm)"
+        else:
+            chronotype = "evening/night (peak activity after 6pm)"
+        _upsert_profile(db, "energy_patterns", "chronotype", chronotype, CONFIDENCE_ANTHROPOLOGIST)
+        _upsert_profile(db, "energy_patterns", "email_send_times",
+                        [f"{h}:00" for h in peak_hours], CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Message length pattern: brief or thorough? ---
+    bodies = [msg.get("snippet", "") or "" for msg in human_msgs if msg.get("snippet")]
+    if bodies:
+        avg_len = sum(len(b) for b in bodies) / len(bodies)
+        if avg_len < 80:
+            length_pattern = "terse — consistently short messages, prefers brevity"
+        elif avg_len < 250:
+            length_pattern = "moderate — typically a few sentences, gets to the point"
+        else:
+            length_pattern = "thorough — writes longer messages, includes context and detail"
+        _upsert_profile(db, "communication", "message_length_pattern",
+                        length_pattern, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Follow-through: does this person follow up on their own threads? ---
+    # Look for threads where they sent the first message and then sent again
+    thread_ids = [msg.get("thread_id") for msg in human_msgs if msg.get("thread_id")]
+    thread_counts = Counter(thread_ids)
+    multi_message_threads = sum(1 for c in thread_counts.values() if c > 1)
+    if thread_ids:
+        follow_through_rate = multi_message_threads / len(set(thread_ids))
+        if follow_through_rate > 0.5:
+            follow_through = "high — regularly follows up, stays in threads"
+        elif follow_through_rate > 0.25:
+            follow_through = "moderate — follows up selectively"
+        else:
+            follow_through = "low — tends to send and move on, rarely follows up"
+        _upsert_profile(db, "cognitive_style", "follow_through",
+                        follow_through, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Life texture: what domains of life appear in this inbox? ---
+    life_domains = {
+        "health": ["doctor", "medical", "clinic", "pharmacy", "health", "appointment", "lab", "therapy"],
+        "family": ["school", "daycare", "pediatric", "parent", "teacher", "pta", "kindergarten", "camp"],
+        "finance": ["invoice", "payment", "receipt", "bank", "statement", "tax", "insurance", "bill"],
+        "legal": ["attorney", "lawyer", "legal", "contract", "agreement", "notary"],
+        "travel": ["booking", "reservation", "flight", "hotel", "airbnb", "itinerary", "confirmation"],
+        "real_estate": ["mortgage", "lease", "landlord", "tenant", "property", "realtor", "hoa"],
+        "creative_work": ["design", "prototype", "feedback", "draft", "mockup", "review", "creative"],
+        "business_ops": ["invoice", "vendor", "purchase", "order", "shipping", "fulfillment"],
+    }
+    detected_domains = []
+    all_subjects = " ".join(
+        (msg.get("subject") or "").lower() for msg in human_msgs
+    )
+    for domain, keywords in life_domains.items():
+        if any(kw in all_subjects for kw in keywords):
+            detected_domains.append(domain)
+    if detected_domains:
+        _upsert_profile(db, "context", "life_domains_active",
+                        detected_domains, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Relationship roles inferred from email patterns ---
+    # Who do they initiate with vs. only reply to?
+    # (Initiation = relationship they're investing in)
+    # Simple proxy: senders who appear only in "from" position across threads
+    sender_emails = [
+        msg.get("sender", {}).get("email", "").lower()
+        for msg in human_msgs
+        if msg.get("sender", {}).get("email")
+    ]
+    if sender_emails:
+        top_senders = [email for email, _ in Counter(sender_emails).most_common(10)]
+        _upsert_profile(db, "relationships", "frequent_correspondents",
+                        top_senders, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Inbox relationship: do they process or avoid? ---
+    # Signal: ratio of unread to total, and how old the oldest unread is
+    unread_count = sum(1 for msg in human_msgs if msg.get("unread"))
+    total_count = len(human_msgs)
+    if total_count > 0:
+        unread_ratio = unread_count / total_count
+        if unread_ratio > 0.6:
+            inbox_rel = "avoidant — large backlog of unread, inbox used as archive not queue"
+        elif unread_ratio > 0.3:
+            inbox_rel = "selective processor — reads what matters, lets the rest accumulate"
+        else:
+            inbox_rel = "active processor — stays on top of inbox, low unread ratio"
+        _upsert_profile(db, "work_patterns", "inbox_relationship",
+                        inbox_rel, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    # --- Patience signal: are there chains of unanswered follow-ups from others? ---
+    # Multiple emails from same sender in short window without reply = potential dropped ball
+    subjects_with_followups = []
+    sender_recency: Dict[str, List] = {}
+    for msg in sorted(human_msgs, key=lambda m: m.get("date") or datetime.min):
+        sender = msg.get("sender", {}).get("email", "").lower()
+        if sender:
+            sender_recency.setdefault(sender, []).append(msg.get("date"))
+    chased_by = []
+    for sender, dates in sender_recency.items():
+        if len(dates) >= 3:  # 3+ emails from same person = they're chasing
+            chased_by.append(sender)
+    if chased_by:
+        _upsert_profile(db, "emotional_landscape", "inbox_chase_signals",
+                        {"senders_chasing": chased_by[:5],
+                         "note": "These senders sent 3+ emails — may indicate dropped threads"},
+                        CONFIDENCE_ANTHROPOLOGIST * 0.8)
+        observations_written += 1
+
+    # --- Subscriptions that survived cleanup = chosen interests ---
+    # (These are newsletters/lists the user didn't unsubscribe from)
+    newsletter_msgs = [m for m in human_msgs if m.get("has_unsubscribe")]
+    if newsletter_msgs:
+        newsletter_senders = list({
+            msg.get("sender", {}).get("name") or msg.get("sender", {}).get("email", "")
+            for msg in newsletter_msgs
+        })[:20]
+        _upsert_profile(db, "values_and_motivation", "chosen_subscriptions",
+                        newsletter_senders, CONFIDENCE_ANTHROPOLOGIST)
+        observations_written += 1
+
+    result["anthropologist_observations"] = observations_written
 
 
 def _extract_keywords(subjects: List[str]) -> List[str]:

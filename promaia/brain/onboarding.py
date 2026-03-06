@@ -25,37 +25,104 @@ logger = logging.getLogger(__name__)
 # Used by get_profile_coverage() to identify gaps
 # ---------------------------------------------------------------------------
 EXPECTED_FIELDS = {
-    'identity': ['name', 'preferred_name', 'pronouns', 'timezone', 'bio_blurb'],
-    'context': ['role', 'employer', 'industry', 'active_projects', 'tech_stack', 'devices'],
-    'relationships': ['people'],
-    'cognitive_style': [
-        'decision_making', 'information_density', 'need_for_cognition',
-        'need_for_closure', 'locus_of_control', 'risk_tolerance',
-        'learning_style', 'cognitive_load_threshold',
+    # --- Tier 1: Ask directly, day one ---
+    'identity': [
+        'preferred_name', 'pronouns', 'timezone',
+        'primary_device', 'primary_use', 'bio_blurb',
     ],
-    'energy_patterns': [
-        'chronotype', 'peak_focus_hours', 'sprint_duration_min',
-        'energy_drains', 'energy_sources',
+    # --- Tier 2: Ask early, slightly more personal ---
+    'context': [
+        'role', 'employer', 'industry',
+        'active_projects', 'tech_stack', 'devices',
     ],
-    'emotional_landscape': [
-        'stress_response', 'known_triggers', 'conflict_style',
-        'emotional_baseline', 'shame_sensitivity',
-    ],
-    'values_and_motivation': [
-        'values_hierarchy', 'regulatory_focus', 'motivational_drivers',
-        'purpose_statement', 'self_efficacy',
+    'relationships': [
+        'people',           # named individuals, type, notes
+        'household',        # partner, kids, caregivers
+        'key_collaborators',
     ],
     'communication': [
+        # Tier 1/2 — declared early
         'preferred_tone', 'verbosity', 'feedback_style',
         'humor_type', 'emoji_tolerance', 'preferred_channels',
+        # Tier 3 — inferred from patterns
+        'message_length_pattern', 'response_to_long_answers',
+    ],
+    # --- Tier 3: Observe and infer, confirm when confident ---
+    'cognitive_style': [
+        # Asked directly (Tier 2)
+        'decision_making', 'information_density', 'learning_style',
+        # Inferred (Tier 3)
+        'decision_speed', 'follow_through',
+        # Earned over time (Tier 5)
+        'need_for_closure', 'locus_of_control', 'risk_tolerance',
+        'regulatory_focus', 'need_for_cognition', 'cognitive_load_threshold',
+    ],
+    'energy_patterns': [
+        # Inferred (Tier 3)
+        'chronotype', 'peak_focus_hours', 'sprint_duration_min',
+        'email_send_times', 'email_activity_hours',
+        # Asked (Tier 2/3)
+        'energy_drains', 'energy_sources',
     ],
     'work_patterns': [
-        'working_hours', 'deep_work_prefs', 'meeting_tolerance',
-        'deadline_relationship',
+        # Asked (Tier 2/3)
+        'deadline_relationship', 'deep_work_prefs', 'meeting_tolerance',
+        # Inferred (Tier 3)
+        'working_hours', 'inbox_relationship',
     ],
+    # --- Tier 4: Earn over time, deeper and more personal ---
+    'values_and_motivation': [
+        'drivers', 'ambition', 'values_hierarchy',
+        'purpose_statement', 'who_they_do_it_for',
+        'motivational_drivers', 'self_efficacy',
+    ],
+    'emotional_landscape': [
+        # Tier 4
+        'patience_level', 'stress_response', 'known_triggers',
+        'pride_points', 'humor_deployment',
+        # Tier 5 (inferred only, never asked directly)
+        'conflict_style', 'emotional_baseline', 'shame_sensitivity',
+    ],
+    'personality': [
+        # Tier 4 — asked when trust exists
+        'desired_ai_personality', 'pushback_tolerance', 'touchy_topics',
+        # Tier 5 — inferred only
+        'identity_anchors',
+    ],
+    # --- Neurodivergence: user-disclosed only ---
     'neurodivergence': [
         'adhd_patterns', 'sensory_preferences', 'accommodation_notes',
     ],
+}
+
+# Which fields should NEVER be asked directly — inferred from patterns only
+INFERRED_ONLY_FIELDS = {
+    'cognitive_style': [
+        'need_for_closure', 'locus_of_control', 'risk_tolerance',
+        'regulatory_focus', 'decision_speed', 'follow_through',
+    ],
+    'emotional_landscape': [
+        'conflict_style', 'emotional_baseline', 'shame_sensitivity',
+    ],
+    'personality': ['identity_anchors'],
+    'energy_patterns': ['email_send_times', 'email_activity_hours'],
+    'communication': ['message_length_pattern', 'response_to_long_answers'],
+    'work_patterns': ['inbox_relationship'],
+}
+
+# Which tier each category primarily belongs to (for sequencing)
+FIELD_TIERS = {
+    'identity': 1,
+    'context': 2,
+    'relationships': 2,
+    'communication': 2,
+    'energy_patterns': 3,
+    'work_patterns': 3,
+    'cognitive_style': 3,
+    'values_and_motivation': 4,
+    'emotional_landscape': 4,
+    'personality': 4,
+    'neurodivergence': 4,
 }
 
 # All onboarding channels
