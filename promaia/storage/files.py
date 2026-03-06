@@ -748,13 +748,12 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
             # Use DISTINCT ON page_id to avoid duplicates from inconsistent database_name storage
             placeholders = ','.join(['%s'] * len(page_ids))
             query = f"""
-                SELECT page_id, workspace, database_name, database_id, content_type, 
+                SELECT DISTINCT ON (page_id)
+                       page_id, workspace, database_name, database_id, content_type,
                        title, created_time, last_edited_time, synced_time, file_path, metadata
-                FROM unified_content 
+                FROM unified_content
                 WHERE page_id IN ({placeholders})
-                GROUP BY page_id
-                HAVING MAX(last_edited_time)
-                ORDER BY last_edited_time DESC
+                ORDER BY page_id, last_edited_time DESC
             """
             
             cursor.execute(query, page_ids)

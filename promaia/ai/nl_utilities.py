@@ -41,8 +41,10 @@ class SchemaExplorer:
         
         try:
             with pg_connect() as conn:
+                # Reset any aborted transaction state
+                conn.rollback()
                 cursor = conn.cursor()
-                
+
                 # Get all tables AND views
                 cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
                 tables = [row[0] for row in cursor.fetchall()]
@@ -78,7 +80,7 @@ class SchemaExplorer:
                     if row_count > 0:
                         try:
                             # Get 3 recent samples to demonstrate data patterns
-                            cursor.execute(f"SELECT * FROM {table} ORDER BY rowid DESC LIMIT 3")
+                            cursor.execute(f"SELECT * FROM {table} LIMIT 3")
                             for row in cursor.fetchall():
                                 sample = {}
                                 for i, col in enumerate(columns):

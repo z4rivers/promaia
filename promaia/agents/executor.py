@@ -34,10 +34,6 @@ try:
     from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage
     SDK_AVAILABLE = True
     _SDK_IMPORT_DEBUG.append("✓ SDK import successful")
-    # Only show SDK message for agent-related commands (not chat, sync, etc.)
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] in ('agent', 'calendar'):
-        print(f"✓ Claude Agent SDK imported successfully", flush=True)
     logger.debug("Claude Agent SDK available")
     # Write to debug file
     import os
@@ -48,7 +44,6 @@ except ImportError as e:
     SDK_AVAILABLE = False
     _SDK_IMPORT_ERROR = str(e)
     _SDK_IMPORT_DEBUG.append(f"✗ ImportError: {e}")
-    print(f"✗ Claude Agent SDK import failed (ImportError): {e}", flush=True)
     logger.debug(f"Claude Agent SDK not available, will use legacy execution mode: {e}")
     # Write to debug file
     import os
@@ -60,7 +55,6 @@ except Exception as e:
     SDK_AVAILABLE = False
     _SDK_IMPORT_ERROR = f"Unexpected error importing claude_agent_sdk: {e}"
     _SDK_IMPORT_DEBUG.append(f"✗ Exception: {e}")
-    print(f"✗ Claude Agent SDK import failed (Exception): {e}", flush=True)
     logger.debug(_SDK_IMPORT_ERROR)
     # Write to debug file
     import os
@@ -138,9 +132,7 @@ class AgentExecutor:
                 logger.warning("No context data loaded")
 
             # Step 2: Execute agent (SDK or legacy mode)
-            # DEBUG: Log SDK availability
-            print(f"\n🔍 DEBUG: sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}\n", flush=True)
-            logger.info(f"🔍 DEBUG: sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}")
+            logger.info(f"sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}")
             
             if self.config.sdk_enabled and SDK_AVAILABLE:
                 logger.info("🚀 Using Claude Agent SDK for execution")
@@ -916,9 +908,9 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
                 logger.info(f"✅ Prompt includes previous conversation context")
 
             # Use ClaudeSDKClient for better MCP support
-            print(f"\n🚀 Creating ClaudeSDKClient with MCP servers...\n", flush=True)
+            logger.info("Creating ClaudeSDKClient with MCP servers...")
             async with ClaudeSDKClient(options=sdk_options) as client:
-                print(f"✓ ClaudeSDKClient created successfully\n", flush=True)
+                logger.info("ClaudeSDKClient created successfully")
                 await client.query(full_prompt)
                 async for message in client.receive_response():
                     messages.append(message)
@@ -991,7 +983,7 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
 
                                     if tool_use_id or 'tool' in block_type.lower() or 'result' in block_type.lower():
                                         status = "❌ ERROR" if is_error else "✅"
-                                        print(f"📥 Tool result {status} (type={block_type}, id={tool_use_id}): {str(result_content)[:200]}...", flush=True)
+                                        logger.info(f"Tool result {status} (type={block_type}, id={tool_use_id}): {str(result_content)[:200]}...")
                                         logger.info(f"📥 Tool result {status} (type={block_type}, id={tool_use_id}): {str(result_content)[:500]}...")
                                     else:
                                         # Log full block for debugging
@@ -1032,7 +1024,7 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
                     
                     input_tokens_total += input_tok
                     output_tokens_total += output_tok
-                    print(f"📊 Usage from {type(msg).__name__}: input={input_tok}, output={output_tok}", flush=True)
+                    logger.info(f"Usage from {type(msg).__name__}: input={input_tok}, output={output_tok}")
                     logger.debug(f"Usage from {type(msg).__name__}: input={input_tok}, output={output_tok}")
             
             # Calculate total tokens
@@ -1654,7 +1646,7 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         if permission_mode == "acceptAll":
             permission_mode = "bypassPermissions"
 
-        print(f"\n🔧 Configured {len(mcp_servers)} MCP server(s): {list(mcp_servers.keys())}\n", flush=True)
+        logger.info(f"Configured {len(mcp_servers)} MCP server(s): {list(mcp_servers.keys())}")
         logger.info(f"Configured {len(mcp_servers)} MCP server(s): {list(mcp_servers.keys())}")
         if allowed_tools_list:
             logger.info(f"SDK tools restricted to: {', '.join(allowed_tools_list)}")
@@ -1662,12 +1654,8 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
             logger.info("SDK tools: ALL (no restrictions)")
 
         # DEBUG: Log full MCP server configurations
-        print(f"\n🔍 DEBUG: MCP Server Configuration:\n", flush=True)
         for server_name, server_config in mcp_servers.items():
-            print(f"  Server: {server_name}", flush=True)
-            print(f"    Command: {server_config.get('command')}", flush=True)
-            print(f"    Args: {server_config.get('args')}", flush=True)
-            print(f"    Env vars: {list(server_config.get('env', {}).keys())}", flush=True)
+            logger.debug(f"MCP server {server_name}: cmd={server_config.get('command')}, args={server_config.get('args')}")
             logger.debug(f"MCP Server '{server_name}': {json.dumps(server_config, indent=2)}")
             if 'env' in server_config:
                 logger.debug(f"  Env vars: {list(server_config['env'].keys())}")

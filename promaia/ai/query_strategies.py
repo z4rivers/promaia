@@ -168,7 +168,7 @@ TARGET DATABASES: {', '.join(target_dbs)}{workspace_filter}
 
 IMPORTANT: The database_name column stores ONLY the nickname (e.g., "stories", not "trass.stories")
 
-Return SQLite query that:
+Return a PostgreSQL query that:
 - SELECTs: u.page_id, u.workspace, u.database_name, u.title, u.created_time (+ any other needed fields)
 - IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
 - JOINs workspace-specific tables (e.g., notion_koii_stories, notion_koii_journal) to access Notion properties
@@ -179,11 +179,12 @@ Return SQLite query that:
   - Join pattern: JOIN notion_WORKSPACE_DATABASE n ON u.page_id = n.page_id
   - Example: JOIN notion_koii_stories n ON u.page_id = n.page_id
 - Also JOINs specialized tables (gmail_content, generic_content) if needed
-- Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
+- Uses ILIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
 - Applies date filters using the rules below - CRITICAL: distinguish between content dates vs sync dates
 - LIMIT 1200
+- IMPORTANT: This is PostgreSQL, NOT SQLite. Use PostgreSQL syntax only.
 
 DATE FILTER RULES - CRITICAL DISTINCTION:
 
@@ -197,20 +198,20 @@ DATE FILTER RULES - CRITICAL DISTINCTION:
   → Use u.created_time
   → Example: "pages created last week", "recently synced content", "new entries"
 
-**How to apply date filters:**
+**How to apply date filters (PostgreSQL syntax):**
 
 For CONTENT dates (sprints, deadlines, business dates):
 - First JOIN the workspace-specific table to access properties
 - Then use the direct date column: n.date, n.due_date, n.publish_date, etc.
 - Check the sample rows above to see which date columns exist for each database
-- If days_back provided: "AND n.date >= date('now', '-N days')"
+- If days_back provided: "AND n.date >= CURRENT_DATE - INTERVAL 'N days'"
 - If start_date/end_date provided:
-  - start: "AND n.date >= 'YYYY-MM-DD'" or "AND n.date >= date('now', '-N days')"
+  - start: "AND n.date >= 'YYYY-MM-DD'" or "AND n.date >= CURRENT_DATE - INTERVAL 'N days'"
   - end: "AND n.date <= 'YYYY-MM-DD'"
 
 For SYNC dates (when content was added/created):
 - Use: u.created_time (no need to join workspace table)
-- If days_back provided: "AND u.created_time >= date('now', '-N days')"
+- If days_back provided: "AND u.created_time >= (NOW() - INTERVAL 'N days')::text"
 - If start_date/end_date provided:
   - start: "AND u.created_time >= 'YYYY-MM-DD'"
   - end: "AND u.created_time <= 'YYYY-MM-DD'"
@@ -222,13 +223,13 @@ DATE FILTER EXAMPLES:
 
 CONTENT DATE FILTERING (use workspace-specific table date column):
 - "stories in current sprint between X and Y" →
-  SQL: 
+  SQL:
   ```
   SELECT u.page_id, u.workspace, u.database_name, u.title, n.date, n.status
   FROM unified_content u
   JOIN notion_koii_stories n ON u.page_id = n.page_id
   WHERE u.database_name = 'stories'
-    AND n.date >= date('now', '-7 days')
+    AND n.date >= CURRENT_DATE - INTERVAL '7 days'
     AND n.date <= '2026-04-30'
   ```
 
@@ -239,15 +240,15 @@ CONTENT DATE FILTERING (use workspace-specific table date column):
   FROM unified_content u
   JOIN notion_koii_stories n ON u.page_id = n.page_id
   WHERE u.database_name = 'stories'
-    AND n._epics LIKE '%angl%'
+    AND n._epics ILIKE '%angl%'
     AND n.date <= '2026-04-30'
   ```
 
 SYNC DATE FILTERING (use created_time, no workspace join needed):
-- "pages created last 7 days" → 
-  SQL: "SELECT * FROM unified_content u WHERE u.created_time >= date('now', '-7 days')"
-- "recently synced stories" → 
-  SQL: "SELECT * FROM unified_content u WHERE u.database_name = 'stories' AND u.created_time >= date('now', '-7 days')"
+- "pages created last 7 days" →
+  SQL: "SELECT * FROM unified_content u WHERE u.created_time >= (NOW() - INTERVAL '7 days')::text"
+- "recently synced stories" →
+  SQL: "SELECT * FROM unified_content u WHERE u.database_name = 'stories' AND u.created_time >= (NOW() - INTERVAL '7 days')::text"
 
 DEFAULT RULE: If the query mentions sprints, deadlines, "in X period", story properties, or business date ranges → use CONTENT dates from workspace table. If it mentions "created", "synced", "added" → use created_time.
 
@@ -317,6 +318,7 @@ SQL only (no markdown, no triple backticks):"""
         
         try:
             with pg_connect() as conn:
+                conn.rollback()  # Reset any prior aborted transaction
                 cursor = conn.cursor()
                 cursor.execute(query)
                 columns = [desc[0] for desc in cursor.description]
@@ -840,16 +842,16 @@ Return ONLY the JSON object:"""
             if operator == 'not_empty':
                 where_clause = f"{property_name} IS NOT NULL AND {property_name} != ''"
             elif operator == 'equals':
-                where_clause = f"{property_name} = ?"
+                where_clause = f"{property_name} = %s"
             elif operator == 'contains':
-                where_clause = f"{property_name} LIKE ?"
+                where_clause = f"{property_name} ILIKE %s"
                 value = f"%{value}%"
             elif operator == 'greater_than':
-                where_clause = f"{property_name} > ?"
+                where_clause = f"{property_name} > %s"
             elif operator == 'less_than':
-                where_clause = f"{property_name} < ?"
+                where_clause = f"{property_name} < %s"
             else:
-                where_clause = f"{property_name} = ?"
+                where_clause = f"{property_name} = %s"
 
             # Query unified_content with property filter
             # TODO: This needs to be implemented in hybrid_storage
