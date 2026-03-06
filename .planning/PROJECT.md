@@ -2,101 +2,164 @@
 
 ## What This Is
 
-A personal AI operating system built on top of Promaia — Zack's daughter's content management and agent platform. zBrain extends Promaia with proactive memory, autonomous agents, intelligent model routing, and cloud-native storage. It's the system that remembers everything, keeps projects moving, and works while Zack sleeps.
+A personal AI operating system built on top of Promaia. zBrain extends Josie's platform with a persistent brain layer (semantic memory, autonomous agents, personal profile, proactive briefings) and cloud-native storage. The system remembers everything, keeps projects moving, and reaches Zack through his phone.
 
 ## Core Value
 
-Claude has persistent, cross-session memory across all of Zack's projects and life domains — eliminating the "amnesia problem" where every session starts from scratch.
+A proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously while you're walking the dog.
 
-## Current Milestone: v1.0 zBrain Foundation
+## Current State (v1.0 shipped 2026-03-06)
 
-**Goal:** Extend Promaia with cloud storage, proactive brain, Gemini routing, and autonomous heartbeat agent.
+Foundation live: Postgres+pgvector, brain MCP server (15 tools), onboarding (98 traits), MuninnDB sidecar, 3-agent scheduler, web dashboard. Agents run successfully via Claude SDK ($0.011/run). No mobile access yet. No cost optimization yet.
+
+## Promaia vs zBrain Attribution
+
+**This section tracks what's native Promaia vs what zBrain added. Full tables in `.planning/milestones/v1.0-ROADMAP.md`.**
+
+### New modules (zBrain created):
+
+- **`promaia/brain/mcp_server.py`** (~800L) -- FastMCP server exposing 15 tools (briefing, capture, search, recall, context, update_context, actions, profile, update_profile, onboard, pc_scan, gmail_scan, activate, timeline, gmail_query) over stdio. Each tool queries Postgres directly and returns structured results for Claude to use in conversation.
+
+- **`promaia/brain/engine.py`** (~420L) -- Deterministic brain functions: mode detection (build/research/chat/capture), guardrails (max commits per cycle, budget caps), time/session tracking, context save/restore, project staleness scoring. No LLM calls — pure logic.
+
+- **`promaia/brain/schema.sql`** (~200L) -- Seven tables in a `brain` schema: `memories` (text + vector(768) with HNSW index), `domains` (hierarchical life categories), `contexts` (per-project standing directives with stale thresholds), `actions` (extracted tasks with status tracking), `reviews` (periodic self-assessment), `events` (audit log), `modes` (session state). All with GIN indexes on tags/entities.
+
+- **`promaia/brain/extraction.py`** (~150L) -- Extracts actionable items from free text using Gemini Flash + instructor (Pydantic structured output). Identifies commitments, deadlines, and tasks from natural conversation and stores them as tracked actions.
+
+- **`promaia/brain/onboarding.py`** (~200L) -- State machine for multi-session onboarding: start, pause, resume, complete. Tracks which channels have run (interview, PC scan, Gmail scan, photos) and overall profile coverage percentage. Designed for short bursts that save progress automatically.
+
+- **`promaia/brain/channels/question_bank.py`** -- 16 interview questions across 9 categories (identity, cognitive style, energy, emotions, values, communication, work, relationships, neurodivergence), phase-ordered from warm-up to commitment. Each question maps to specific profile fields it fills.
+
+- **`promaia/brain/channels/interview.py`** -- Selects the next question based on profile coverage gaps. Prioritizes categories with the lowest fill rate so the interview adapts to what's already known.
+
+- **`promaia/brain/channels/pc_scan.py`** -- Scans local machine for personality signals: git repos (languages, commit patterns, project names), file structure, installed apps, desktop state. Extracts inferences about work patterns and interests, stores as profile traits with source="inferred".
+
+- **`promaia/brain/channels/gmail_read.py`** -- Scans Gmail inbox for contacts, communication patterns, and topic clusters. Builds relationship map (who you email most, when) and interest signals. Stores summaries only — no raw email content in profile.
+
+- **`promaia/brain/muninn.py`** (~150L) -- REST client for MuninnDB cognitive memory server (localhost:8475). Implements dual-write pattern: every brain.capture writes to both Postgres (primary, always succeeds) and MuninnDB (best-effort, never blocks). MuninnDB adds Hebbian association strengthening, temporal decay, and graph-based retrieval that pgvector alone can't do.
+
+- **`promaia/brain/gmail_ingest.py`** (~200L) -- Syncs Gmail messages into a `gmail_content` Postgres table via OAuth. Stores metadata, snippets, labels, and thread structure. Separate from Josie's `mail/` module — this feeds the brain, while `mail/` does classification and response generation.
+
+- **`promaia/brain/seed.py`** (~100L) -- Idempotent seeder that creates 10 life domains (zbrain, promaia, heatpup, personal, hvac, etc.) and 5 project contexts with standing directives. Safe to re-run.
+
+- **`promaia/web/routers/dashboard.py`** (~300L) -- Five FastAPI routes (/, /dashboard, /projects, /email, /profile) that query Postgres directly and render Jinja2 templates. Shows live brain data: memories, actions, project contexts, email summaries, profile traits.
+
+- **`promaia/web/templates/*.html`** (5 files) -- Jinja2 templates: base.html (nav, skin loading, conditional fonts), dashboard.html (memory/action widgets), projects.html (project cards from brain.contexts), email.html (gmail summaries), profile.html (trait display by category).
+
+- **`promaia/web/static/skins/superflat.css`** (~80L) -- CSS custom properties design system inspired by Murakami/Persona 5. All visual theming via `--var` properties so swapping skins only requires loading a different CSS file. Template structure stays identical.
+
+- **`prompts/agent_*.md`** (3 files) -- System prompts for morning-briefing (calendar + priorities + brain state), email-triage (classify and surface urgent items), evening-digest (day recap + momentum + suggestions). Each prompt tells the agent what brain tools to call and how to format output.
+
+- **`scripts/migrate_embeddings.py`** (~100L) -- One-time migration script that re-embeds all existing content from ChromaDB format to pgvector using gemini-embedding-001 (768 dims). Run once during Postgres cutover.
+
+- **`CLAUDE.md`** (~150L) -- System instructions loaded into every Claude session. Defines brain behavior: auto-briefing at session start, when to capture memories, ambient onboarding, energy adaptation, profile-driven tone calibration.
+
+- **`ZBRAIN.md`** -- Running changelog of every zBrain change with reasoning, so Josie can see exactly what was modified in her codebase and why.
+
+### Modified Promaia code:
+
+- **`storage/files.py`** -- Two changes: (1) Added Postgres connection pool initialization via `DATABASE_URL` env var pointing to Supabase session pooler, replacing local SQLite file paths. (2) Fixed KeyError at line 780 where `row[0]` assumed tuple but psycopg2 returns dict rows — changed to `row['thread_id']`. To re-implement: search for `DATABASE_URL` connection setup and the `load_content_by_page_ids` method.
+
+- **`storage/vector_db.py`** -- Replaced ChromaDB client with pgvector operations. Vector search now uses `SELECT ... ORDER BY embedding <=> $1 LIMIT $2` (cosine distance via pgvector's `<=>` operator) instead of ChromaDB's `.query()`. HNSW index on the embedding column handles ANN search. To re-implement: replace ChromaDB `Collection` calls with pgvector SQL queries using the `<=>` operator.
+
+- **`storage/db_init.py`** -- Added brain schema initialization: runs `brain/schema.sql` during Postgres startup to create the 7 brain tables if they don't exist. Additive — doesn't touch existing public schema tables. To re-implement: add a `CREATE SCHEMA IF NOT EXISTS brain` call and execute the schema.sql file in the db init sequence.
+
+- **`storage/postgres_db.py`** -- Changed connection config to use Supabase session pooler URL (port 5432 via `DATABASE_URL`). Original targeted local Postgres at 192.168.0.69. To re-implement: update the connection string source to read from env var.
+
+- **`chat/interface.py`** -- Created `GeminiModelAdapter` class (~80L) that wraps the new `google-genai` Client and exposes the old `GenerativeModel` interface (`.generate_content()` with compatible response.text). This avoids rewriting 3+ deeply-nested callers in the 8,700-line file. To re-implement: either use this adapter pattern again or refactor the callers to use the new SDK directly.
+
+- **`ai/*.py`** (5 files: models.py, nl_orchestrator.py, nl_utilities.py, query_strategies.py, sql_generator.py) -- Updated import paths from `google.generativeai` to `google.genai` and adjusted API call signatures for the new SDK. The old `google-generativeai` package is deprecated. To re-implement: search for `google.generativeai` imports and replace with `google.genai` equivalents; main difference is `Client()` instantiation and `types.GenerateContentConfig` instead of `GenerationConfig`.
+
+- **`agents/executor.py`** -- Two additions: (1) Brain context injection — before each agent run, loads pending actions, project contexts, and recent memories from Postgres and prepends them to the agent's initial prompt. (2) Claude Agent SDK mode — detects `SDK_AVAILABLE` flag and uses `claude_agent_sdk` for execution instead of legacy subprocess. To re-implement: look for `_load_brain_context()` method and the `ClaudeSDKClient` class.
+
+- **`connectors/gmail_connector.py`** -- Fixed OAuth token refresh flow that was failing silently. The refresh token wasn't being persisted after renewal. To re-implement: check the token refresh callback and ensure it writes back to the credentials file.
+
+- **`requirements.txt`** -- Added: `psycopg2-binary` (Postgres driver), `pgvector` (vector extension support), `jsonref` (JSON reference resolution, needed by instructor), `httpx` (async HTTP for MuninnDB client), `instructor` (structured LLM output via Pydantic). All pip-installable with no system dependencies on Windows.
+
+### Untouched Promaia (used as-is):
+- chat/ (10,900L), mail/ (5,600L), notion/ (2,250L), gcal/ (540L), agents/scheduler.py, CLI, web/routers/chat+mcp+nodes
+
+## Current Milestone: v2.0 Proactive Agent
+
+**Goal:** Transform from "brain you check" into "agent that reaches you." Mobile access, cost optimization, event routing, push notifications, memory deepening.
 
 **Target features:**
-- Postgres/pgvector on Supabase (completing daughter's started migration)
-- Proactive brain layer (briefings, action extraction, directives)
-- Gemini as first-class model (not just fallback)
-- Heartbeat agent (autonomous overnight work)
+- Validate agents and fix data pipeline bugs
+- Model routing (Gemini for cheap tasks, Opus for reasoning)
+- Event bus for notification routing
+- Telegram bot for mobile access
+- Proactive push (morning briefing to phone, urgent email alerts)
+- Memory decay and association strengthening
 
 ## Requirements
 
-### Validated
+### Validated (v1.0)
 
-<!-- Inherited from Promaia — these already work and we don't touch them -->
+- STOR-01 through STOR-05 -- Postgres+pgvector on Supabase (v1.0)
+- BRAIN-01 through BRAIN-06 -- Brain schema + MCP tools (v1.0)
+- ONBOARD-01 through ONBOARD-10 -- Onboarding module (v1.0)
+- MUNINN-01 through MUNINN-06 -- MuninnDB integration (v1.0)
+- DOCS-01 through DOCS-03 -- Documentation (v1.0)
 
-- [x] Multi-source content sync (Notion, Gmail, Discord)
-- [x] Hybrid storage with SQL + vector search
-- [x] AI-powered chat with synced content
-- [x] Natural language query orchestrator (NL → SQL/vector)
-- [x] Multi-workspace support
-- [x] Agent orchestration architecture (intent classifier, context serializer, agent spawner)
-- [x] Multi-model LLM adapter (Claude primary, OpenAI/Gemini fallback)
-- [x] CLI interface (`maia sync`, `maia chat`, `maia workspace`)
-- [x] MCP server integration (Gmail, Notion, Filesystem, Git, SQLite)
-- [x] Connector plugin architecture (BaseConnector → register new sources)
+### Active (v2.0)
 
-### Active
+_To be defined via `/gsd:new-milestone`_
 
-<!-- Current scope — zBrain v1.0 -->
+Carried from v1.0:
+- [ ] ROUTE-01 through ROUTE-04 -- Model routing
+- [ ] BEAT-01 through BEAT-05 -- Agent heartbeat (revised: SDK-based)
+- [ ] ACCESS-01 -- Mobile brain access
+- [ ] MAINT-01 through MAINT-04 -- Self-maintenance
 
-- [ ] Postgres + pgvector backend (replacing SQLite + ChromaDB)
-- [ ] Brain schema (memories, domains, contexts, actions, reviews)
-- [ ] Session briefing (auto on startup)
-- [ ] Action extraction (auto from conversations)
-- [ ] Standing directives per project
-- [ ] Stale project alerts
-- [ ] Gemini model routing (specialist, not fallback)
-- [ ] Brain ingestion from Gemini research/YouTube/docs
-- [ ] Heartbeat agent (autonomous overnight work)
-- [ ] iPhone access via cloud endpoint
+New for v2.0 (from revised plan):
+- [ ] Agent data pipeline fixes (gmail context, SQL dialect bugs)
+- [ ] Event bus with urgency routing (interrupt/digest/archive)
+- [ ] Telegram bot with voice transcription
+- [ ] Proactive push notifications with fatigue prevention
+- [ ] Memory decay tiers and association strengthening
+- [ ] Profile-driven prompt injection in agents
+- [ ] Budget tracking and per-agent cost caps
 
 ### Out of Scope
 
-<!-- Explicit boundaries for v1.0 -->
-
-- Google Calendar integration — deferred to v1.1, noted as priority
-- Email/message triage — future layer, needs brain foundation first
-- Kanban board UI — future, brain must exist before visualization
-- Obsidian sync — nice-to-have, not blocking (brain is primary, Obsidian is review layer)
-- Desktop Electron app — daughter's domain, not zBrain's focus
-- React web chat app — daughter's domain
-- OpenAI API dependency — replacing with Gemini where Promaia used OpenAI
+| Feature | Reason |
+|---------|--------|
+| Desktop Electron app | Josie's domain |
+| React web chat app | Josie's domain |
+| OpenAI API dependency | Using Gemini instead |
+| Idea-to-Repo pipeline | Deferred, scope creep |
+| Twilio voice calls | Deferred, cost + complexity |
+| Dashboard redesign | Works well enough, agents first |
 
 ## Context
 
-**Promaia (upstream):** Python-based content management platform built by Zack's daughter. 359 files, ~15K+ lines. Has connectors for Notion/Gmail/Discord, hybrid SQLite+ChromaDB storage, agent orchestration (in development), multi-model support, CLI + desktop + web interfaces. Default branch: `feature/agent-scheduler`.
+**Upstream:** Promaia by Josie (Koii Benvenutto) and Rose. Python platform, ~180 files, ~50K+ lines. Josie/Rose are re-architecting Python -> TypeScript. Zack builds on `zbrain` branch, Josie cherry-picks.
 
-**Existing Postgres work:** Daughter started `postgres-sql-changeover` branch — 586-line schema, `PostgresDB` singleton with connection pooling, migrations for all content tables. Targets local Postgres (`192.168.0.69`). zBrain will complete this, pointing at Supabase.
+**Infrastructure:** Supabase Pro ($27.49/mo), Claude Max ($199/mo), Google AI ($20/mo planned, currently on $125 intro rate going away). Agent runs ~$0.01 each via SDK.
 
-**Supabase:** Existing Pro plan ($27.49/mo), project `dulqttfidcjeujyieuqw`. Already has 37+ tables for Heatpup. zBrain uses a separate `brain` schema alongside.
-
-**Inspiration sources:** Nate Jones Open Brain (Postgres+pgvector+MCP), OpenClaw heartbeat system (autonomous agents), 5 YouTube videos analyzed in previous session.
-
-**User work patterns:** Zack is an HVAC salesperson, captures ideas by voice on iPhone while driving, bounces between topics, doesn't use calendars/to-do apps. Wants AI with drive, not another passive tool. Frustrated by AI amnesia.
-
-**Collaboration model:** Branch & contribute back. Zack builds on `zbrain` branch of `commodorebob/promaia`. Daughter cherry-picks features she wants for main platform.
-
-## Constraints
-
-- **Cost**: No new API subscriptions. Use existing Claude Max ($199/mo), Google AI Premium ($125/mo), Supabase Pro ($27.49/mo). New cost max $4/mo (Obsidian Sync).
-- **Platform**: Windows 11, Claude Code CLI. Heartbeat uses Windows Task Scheduler.
-- **Anthropic ToS**: All Claude usage through official channels (Claude Max, Claude Code CLI). No workarounds.
-- **Upstream compatibility**: Changes should be mergeable back to Promaia. Don't break existing features.
-- **Python**: Promaia is Python 3.8+. Stay in Python ecosystem for backend.
-- **iPhone day-1**: Brain must be accessible from iPhone (claude.ai) from the start. Drives cloud-first architecture.
-- **Embeddings**: Google text-embedding-004 (not OpenAI). Covered by existing Google AI Premium.
+**Branch:** `zbrain` (base: `feature/agent-scheduler`)
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Build on Promaia, not from scratch | Daughter built 70% of needed infrastructure. Collaboration opportunity. | — Pending |
-| Single `zbrain` branch | Simple git workflow, easy PR back. Not per-feature branches. | — Pending |
-| Supabase over local Postgres | iPhone day-1 requirement. Cloud-native. Already paying for Pro. | — Pending |
-| pgvector over ChromaDB | Cloud-native, no local files, SQL-queryable, same DB as content. | — Pending |
-| Gemini over OpenAI for cheap tasks | Already paying for Google AI Premium. No new API costs. | — Pending |
-| Google text-embedding-004 | Covered by existing subscription. Good quality. Not OpenAI. | — Pending |
-| Brain schema separate from Promaia tables | `brain.*` schema doesn't touch `public.*`. Clean separation. | — Pending |
+| Supabase over local Postgres | iPhone day-1 access | Good -- cloud-native works |
+| pgvector over ChromaDB | Cloud-native, SQL-queryable | Good -- simpler stack |
+| Gemini for cheap tasks | Already paying Google AI Premium | Good -- $0.01/agent run |
+| Brain as separate schema | Clean separation from Promaia | Good -- no conflicts |
+| MuninnDB as sidecar | Novel cognitive primitives (Hebbian, temporal decay, graph traversal) | Working -- embeddings waiting on upstream fix |
+| Dashboard as display layer | Web dashboard renders live data; Notion remains agent workspace | Good |
+| Superflat CSS skin | Custom properties design system, single skin, Murakami/Persona 5 aesthetic | Working |
+| Telegram over Twilio | Free, excellent bot API, async | Pending (v2) |
+| Postgres polling as event bus | Zero new dependencies | Pending (v2) |
+
+## Constraints
+
+- **Cost**: No new API subscriptions. Use existing Claude Max, Google AI Premium, Supabase Pro.
+- **Platform**: Windows 11, Claude Code CLI.
+- **Upstream compatibility**: Changes should be mergeable back to Promaia.
+- **Python**: Promaia is Python. Stay in Python for backend.
+- **Embeddings**: gemini-embedding-001 (not OpenAI).
 
 ---
-*Last updated: 2026-03-04 after initial milestone definition*
+*Last updated: 2026-03-06 after v1.0 milestone*

@@ -1,144 +1,30 @@
-# Roadmap: zBrain v1.0 Foundation
+# Roadmap: zBrain
+
+## Milestones
+
+- **v1.0 Foundation** -- Phases 01-04 (shipped 2026-03-06) [archive](milestones/v1.0-ROADMAP.md)
 
 ## Phases
 
-- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
-- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
-- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
-- [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
-- [ ] **Phase 4: Full Platform Activation** - Activate ALL Promaia modules + MuninnDB cognitive memory
-  - [x] 4.1: MuninnDB Install + Seed (cognitive memory sidecar) (2026-03-05)
-  - [ ] 4.2: Google Calendar Setup (schedule awareness)
-  - [ ] 4.3: Notion Dashboard Setup (visibility layer)
-  - [ ] 4.4: Agent Scheduler Activation (the heartbeat)
-  - [ ] 4.5: Full Email Pipeline (mail/ module + gmail_read.py)
-  - [ ] 4.6: Web/Chat Interface (iPhone access)
-  - [ ] 4.7: Information Funneling (intelligence briefs)
-  - [ ] 4.8: Webflow CMS (when needed)
-- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint (merged into 4.6)
+<details>
+<summary>v1.0 Foundation (Phases 01-04) -- SHIPPED 2026-03-06</summary>
 
-## Phase Details
+- [x] Phase 01: Postgres Foundation (3/3 plans) -- 2026-03-04
+- [x] Phase 02: Brain Schema and MCP Tools (3/3 plans) -- 2026-03-05
+- [x] Phase 03.1: Onboarding Module (3/3 plans) -- 2026-03-05
+- [x] Phase 04: Full Platform Activation (1/1 formal plan + 5 informal) -- 2026-03-06
 
-### Phase 1: Postgres Foundation
-**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
-**Depends on:** Nothing
-**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
-**Success Criteria** (what must be TRUE):
-  1. Promaia connects to Supabase Postgres via session pooler
-  2. pgvector extension enabled with vector(768) columns and HNSW indexes
-  3. All existing Promaia features (sync, chat, query) work against Postgres
-  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
-  5. Existing content re-embedded with gemini-embedding-001
-  6. GIN indexes on tags/entities for hybrid search
-  7. google-generativeai replaced with google-genai SDK
-  8. ZBRAIN.md created documenting all changes
-**Plans:** 3 plans
-
-Plans:
-- [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
-- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
-- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
-
-### Phase 2: Brain Schema and MCP Tools
-**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
-**Depends on:** Phase 1
-**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
-**Success Criteria** (what must be TRUE):
-  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
-  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
-  3. Session briefing runs automatically on startup
-  4. Action extraction detects actionable items from conversation
-  5. Standing directives per project stored and queryable
-  6. Stale project alerts surface in briefings
-  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
-**Plans:** 3/3 plans complete
-
-Plans:
-- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
-- [x] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor (2026-03-05)
-- [x] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (2026-03-05)
-
-### Phase 3: Gemini Routing
-**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
-**Depends on:** Phase 2
-**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
-**Success Criteria** (what must be TRUE):
-  1. ai/router.py routes tasks to appropriate model by type
-  2. Gemini Flash handles classification, summarization, embeddings
-  3. Claude Sonnet/Opus handles reasoning and interactive work
-  4. Gemini MCP research results automatically captured into brain.memories
-  5. YouTube analysis and deep research feed brain automatically
-**Plans:** TBD
-
-### Phase 03.1: Onboarding Module (INSERTED)
-
-**Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
-**Depends on:** Phase 2
-**Requirements:** [ONBOARD-01 through ONBOARD-10]
-**Plans:** 3/3 plans complete
-
-Plans:
-- [x] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool (2026-03-05)
-- [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
-- [x] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + human-verified (2026-03-05)
-
-### Phase 4: Full Platform Activation
-
-**Goal:** Activate ALL major Promaia modules for Zack's use case, integrate MuninnDB cognitive memory, establish the complete autonomous AI assistant stack.
-**Depends on:** Phase 2
-**Full plan:** `.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md`
-
-**Sub-phases (reordered 2026-03-06 — zero-blocker-first):**
-
-#### 4.1: MuninnDB Cognitive Memory (COMPLETE)
-**Goal:** Integrate MuninnDB as cognitive memory sidecar with dual-write capture, parallel search retrieval, and dedicated ACTIVATE tool for associative recall
-**Depends on:** Phase 2
-**Plans:** 1/1 plans complete
-
-Plans:
-- [x] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification (2026-03-05)
-
-#### 4.2: Email Pipeline Activation
-Deploy mail schema, test classifier + intent detector against live Gmail. No Notion dependency. 5,600L existing code.
-
-#### 4.3: Web/Chat Server
-Start FastAPI server, test multi-model chat, wire brain MCP tools into web interface. No Notion dependency. 2,327L existing code.
-
-#### 4.4: Notion Dashboard
-Create pages, share with zbrain integration, run agent setup, test NotionOutputWriter. 4,300L existing code.
-
-#### 4.5: Google Calendar
-Enable Calendar API, OAuth setup, test read/write. 540L existing code.
-
-#### 4.6: Agent Scheduler
-Define agents (Morning Briefing, Email Triage, Evening Digest), start scheduler daemon. Depends on 4.4 + 4.5.
-
-#### 4.7: Information Funneling
-Curate sources, filter by brain profile, intelligence briefs. Depends on 4.6.
-
-#### 4.8: Webflow CMS
-Activate when needed for publishing.
+</details>
 
 ## Progress
 
-| Phase | Plans Complete | Status | Completed |
-|-------|---|---|---|
-| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
-| 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
-| 3. Gemini Routing | 0/0 | Not started | - |
-| 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
-| 4. Full Platform Activation | 1/8 | In Progress | - |
-| 4.1 MuninnDB | 1/1 | Complete | 2026-03-05 |
-| 4.2 Email Pipeline | 1/1 | Complete | 2026-03-06 |
-| 4.3 Web/Chat Server | 1/1 | Complete | 2026-03-06 |
-| 4.4 Notion Dashboard | 1/1 | Complete | 2026-03-06 |
-| 4.5 Google Calendar | 1/1 | Complete | 2026-03-06 |
-| 4.6 Agent Scheduler | 1/1 | Complete (needs data) | 2026-03-06 |
-| 4.7 Info Funneling | - | Depends on 4.6 | - |
-| 4.8 Webflow CMS | - | When needed | - |
+| Phase | Milestone | Plans | Status | Completed |
+|-------|-----------|-------|--------|-----------|
+| 01. Postgres Foundation | v1.0 | 3/3 | Complete | 2026-03-04 |
+| 02. Brain Schema + MCP | v1.0 | 3/3 | Complete | 2026-03-05 |
+| 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
+| 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
 
 ---
-*Created: 2026-03-04 from design docs*
-*Updated: 2026-03-05 — Phase 4 added after full module audit*
-*Updated: 2026-03-05 — Phase 4.1 MuninnDB planned (1 plan)*
-*Updated: 2026-03-05 — Phase 4.1 MuninnDB complete (1/1 plans, 6 MUNINN requirements satisfied)*
+*Created: 2026-03-04*
+*v1.0 archived: 2026-03-06*
