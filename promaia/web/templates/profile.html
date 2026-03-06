@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Promaia — Profile{% endblock %}
+
+{% block head %}
+<style>
+    .profile-page {
+        padding-top: var(--space-lg);
+    }
+
+    .page-title {
+        font-family: var(--font-display);
+        font-size: clamp(1.5rem, 3.5vw, 2rem);
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: var(--space-xs);
+    }
+
+    .page-subtitle {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin-bottom: var(--space-2xl);
+    }
+
+    .profile-stats {
+        display: flex;
+        gap: var(--space-lg);
+        margin-bottom: var(--space-xl);
+        flex-wrap: wrap;
+    }
+
+    .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-md) var(--space-lg);
+        text-align: center;
+        min-width: 100px;
+    }
+
+    .stat-value {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--accent-primary);
+    }
+
+    .stat-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .category-section {
+        margin-bottom: var(--space-xl);
+    }
+
+    .category-header {
+        font-family: var(--font-heading);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-bottom: var(--space-md);
+        padding-bottom: var(--space-xs);
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .trait-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-sm) var(--space-md);
+        margin-bottom: var(--space-xs);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--space-md);
+        align-items: start;
+        transition: all var(--transition-fast);
+    }
+
+    .trait-card:hover {
+        background: var(--bg-card-hover);
+    }
+
+    .trait-field {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        color: var(--accent-primary);
+        margin-bottom: 2px;
+    }
+
+    .trait-value {
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        line-height: 1.4;
+    }
+
+    .trait-meta {
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .confidence-bar {
+        display: inline-block;
+        width: 40px;
+        height: 4px;
+        background: var(--border-subtle);
+        border-radius: 2px;
+        overflow: hidden;
+        vertical-align: middle;
+    }
+
+    .confidence-fill {
+        height: 100%;
+        background: var(--accent-primary);
+        border-radius: 2px;
+    }
+
+    .nav-link {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: var(--space-lg);
+        display: inline-block;
+    }
+
+    .nav-link:hover {
+        color: var(--accent-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="profile-page">
+
+    <a href="/dashboard?skin={{ skin }}" class="nav-link">&larr; Dashboard</a>
+
+    <h1 class="page-title">{{ user_name }}</h1>
+    <p class="page-subtitle">Personal profile — {{ trait_count }} traits across {{ category_count }} dimensions</p>
+
+    <div class="profile-stats">
+        <div class="stat-card">
+            <div class="stat-value">{{ trait_count }}</div>
+            <div class="stat-label">Traits</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ category_count }}</div>
+            <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ declared_count }}</div>
+            <div class="stat-label">Declared</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ inferred_count }}</div>
+            <div class="stat-label">Inferred</div>
+        </div>
+    </div>
+
+    {% for category, traits in categories.items() %}
+    <div class="category-section">
+        <h2 class="category-header">{{ category }}</h2>
+
+        {% for trait in traits %}
+        <div class="trait-card">
+            <div>
+                <div class="trait-field">{{ trait.field }}</div>
+                <div class="trait-value">{{ trait.display_value }}</div>
+            </div>
+            <div class="trait-meta">
+                <div>{{ trait.source_label }}</div>
+                <div>
+                    <span class="confidence-bar">
+                        <span class="confidence-fill" style="width: {{ trait.confidence_pct }}%"></span>
+                    </span>
+                    {{ trait.confidence_pct }}%
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+
+</main>
+{% endblock %}

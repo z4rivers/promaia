@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Promaia — Projects{% endblock %}
+
+{% block head %}
+<style>
+    .projects-page {
+        padding-top: var(--space-lg);
+    }
+
+    .page-title {
+        font-family: var(--font-display);
+        font-size: clamp(1.5rem, 3.5vw, 2rem);
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: var(--space-2xl);
+    }
+
+    .project-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-lg);
+        margin-bottom: var(--space-md);
+        transition: all var(--transition-fast);
+    }
+
+    .project-card:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--border-visible);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .project-card__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--space-sm);
+    }
+
+    .project-card__name {
+        font-family: var(--font-heading);
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .project-card__priority {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        letter-spacing: 0.05em;
+    }
+
+    .project-card__directive {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-bottom: var(--space-sm);
+        line-height: 1.5;
+    }
+
+    .project-card__state {
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        border-left: 3px solid var(--accent-primary);
+        padding-left: var(--space-md);
+        margin-bottom: var(--space-sm);
+    }
+
+    .project-card__meta {
+        display: flex;
+        gap: var(--space-md);
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+    }
+
+    .project-card__actions {
+        margin-top: var(--space-md);
+        padding-top: var(--space-sm);
+        border-top: 1px solid var(--border-subtle);
+    }
+
+    .action-item {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-sm);
+        padding: var(--space-xs) 0;
+    }
+
+    .action-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-warning);
+        margin-top: 7px;
+        flex-shrink: 0;
+    }
+
+    .action-text {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: var(--space-2xl);
+        color: var(--text-muted);
+        font-style: italic;
+    }
+
+    .nav-link {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: var(--space-lg);
+        display: inline-block;
+    }
+
+    .nav-link:hover {
+        color: var(--accent-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="projects-page">
+
+    <a href="/dashboard?skin={{ skin }}" class="nav-link">&larr; Dashboard</a>
+
+    <h1 class="page-title">Projects</h1>
+
+    {% for project in projects %}
+    <div class="project-card">
+        <div class="project-card__header">
+            <span class="project-card__name">{{ project.name }}</span>
+            <span class="project-card__priority">P{{ project.priority }}</span>
+        </div>
+
+        {% if project.directive %}
+        <div class="project-card__directive">{{ project.directive }}</div>
+        {% endif %}
+
+        {% if project.current_state %}
+        <div class="project-card__state">{{ project.current_state }}</div>
+        {% endif %}
+
+        <div class="project-card__meta">
+            <span>Updated {{ project.last_updated }}</span>
+            {% if project.days_stale > 14 %}
+            <span>{{ project.days_stale }} days since update</span>
+            {% endif %}
+        </div>
+
+        {% if project.actions %}
+        <div class="project-card__actions">
+            {% for action in project.actions %}
+            <div class="action-item">
+                <span class="action-dot"></span>
+                <span class="action-text">{{ action }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not projects %}
+    <div class="empty-state">No projects yet.</div>
+    {% endif %}
+
+</main>
+{% endblock %}

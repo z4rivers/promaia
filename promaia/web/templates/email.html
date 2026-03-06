@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Promaia — Email{% endblock %}
+
+{% block head %}
+<style>
+    .email-page {
+        padding-top: var(--space-lg);
+    }
+
+    .page-title {
+        font-family: var(--font-display);
+        font-size: clamp(1.5rem, 3.5vw, 2rem);
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: var(--space-xs);
+    }
+
+    .page-subtitle {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: var(--space-2xl);
+    }
+
+    .email-stats {
+        display: flex;
+        gap: var(--space-lg);
+        margin-bottom: var(--space-xl);
+        flex-wrap: wrap;
+    }
+
+    .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-md) var(--space-lg);
+        text-align: center;
+        min-width: 120px;
+    }
+
+    .stat-value {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--accent-primary);
+    }
+
+    .stat-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .section-header {
+        font-family: var(--font-heading);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-bottom: var(--space-md);
+    }
+
+    .email-row {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-md) var(--space-lg);
+        margin-bottom: var(--space-xs);
+        transition: all var(--transition-fast);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--space-md);
+        align-items: start;
+    }
+
+    .email-row:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--border-visible);
+    }
+
+    .email-row--unread {
+        border-left: 3px solid var(--accent-primary);
+    }
+
+    .email-sender {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+    }
+
+    .email-subject {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+
+    .email-snippet {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 4px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .email-date {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: var(--space-2xl);
+        color: var(--text-muted);
+        font-style: italic;
+    }
+
+    .nav-link {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: var(--space-lg);
+        display: inline-block;
+    }
+
+    .nav-link:hover {
+        color: var(--accent-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="email-page">
+
+    <a href="/dashboard?skin={{ skin }}" class="nav-link">&larr; Dashboard</a>
+
+    <h1 class="page-title">Email Intelligence</h1>
+    <p class="page-subtitle">{{ email_account }}</p>
+
+    <div class="email-stats">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">Synced</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.unread }}</div>
+            <div class="stat-label">Unread</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.today }}</div>
+            <div class="stat-label">Today</div>
+        </div>
+    </div>
+
+    <h2 class="section-header">Recent Messages</h2>
+
+    {% for email in emails %}
+    <div class="email-row {% if email.is_unread %}email-row--unread{% endif %}">
+        <div>
+            <div class="email-sender">{{ email.sender_name or email.sender_email }}</div>
+            <div class="email-subject">{{ email.subject }}</div>
+            <div class="email-snippet">{{ email.snippet }}</div>
+        </div>
+        <div class="email-date">{{ email.date }}</div>
+    </div>
+    {% endfor %}
+
+    {% if not emails %}
+    <div class="empty-state">No emails synced yet. Run the Gmail ingest pipeline to populate.</div>
+    {% endif %}
+
+</main>
+{% endblock %}
