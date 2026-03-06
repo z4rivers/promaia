@@ -95,8 +95,16 @@ class EmailPromptBuilder:
         return '\n'.join(sections)
 
     def _load_persona_prompt(self) -> str:
-        """Load persona prompt from file with date/time variables filled in."""
-        prompt_path = "prompts/maia_mail_prompt.md"
+        """Load persona prompt from file with date/time variables filled in.
+
+        Tries workspace-specific prompt first (e.g., maia_mail_prompt_zbrain.md),
+        falls back to generic prompt if not found.
+        """
+        # Try workspace-specific prompt first
+        workspace_path = f"prompts/maia_mail_prompt_{self.workspace}.md"
+        generic_path = "prompts/maia_mail_prompt.md"
+
+        prompt_path = workspace_path if os.path.exists(workspace_path) else generic_path
 
         if not os.path.exists(prompt_path):
             logger.warning(f"Persona prompt not found: {prompt_path}")
@@ -114,7 +122,7 @@ class EmailPromptBuilder:
                 current_time=now.strftime("%I:%M %p %Z")
             )
 
-            logger.info(f"✅ Loaded persona prompt from '{prompt_path}'")
+            logger.info(f"Loaded persona prompt from '{prompt_path}'")
             return persona
 
         except Exception as e:

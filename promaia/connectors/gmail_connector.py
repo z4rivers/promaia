@@ -174,11 +174,26 @@ class GmailConnector(BaseConnector):
                               This prevents blocking during automated syncs
         """
         creds = None
-        
-        # Load existing token
+
+        # Load existing token (try JSON first, then pickle for legacy tokens)
         if os.path.exists(self.token_file):
-            with open(self.token_file, 'rb') as token:
-                creds = pickle.load(token)
+            try:
+                with open(self.token_file, 'r') as token:
+                    token_data = json.load(token)
+                # JSON token — load via Credentials.from_authorized_user_info
+                # Merge client info for token refresh
+                creds_file = os.path.join(self.credentials_dir, "gmail_credentials.json")
+                if os.path.exists(creds_file):
+                    with open(creds_file, 'r') as f:
+                        client_data = json.load(f).get("installed", {})
+                    token_data.setdefault("client_id", client_data.get("client_id"))
+                    token_data.setdefault("client_secret", client_data.get("client_secret"))
+                    token_data.setdefault("token_uri", client_data.get("token_uri", "https://oauth2.googleapis.com/token"))
+                creds = Credentials.from_authorized_user_info(token_data)
+            except (json.JSONDecodeError, ValueError, KeyError):
+                # Not JSON — try pickle (legacy format)
+                with open(self.token_file, 'rb') as token:
+                    creds = pickle.load(token)
         
         # If there are no (valid) credentials available, run OAuth flow
         if not creds or not creds.valid:
@@ -1813,4 +1828,69 @@ Subject: {subject}
             
         except Exception as e:
             self.logger.error(f"❌ Failed to send reply: {e}")
-            return False 
+            return False
+
+    async def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single message by ID.
+
+        Args:
+            message_id: Gmail message ID
+
+        Returns:
+            Raw Gmail message dict or None
+        """
+        try:
+            return await self._retry_with_backoff(
+                lambda: self.service.users().messages().get(
+                    userId='me', id=message_id, format='full'
+                ).execute()
+            )
+        except HttpError as e:
+            self.logger.error(f"Failed to get message {message_id}: {e}")
+            return None
+
+    async def create_draft(
+        self,
+        to: str,
+        subject: str,
+        body_text: str,
+        cc: Optional[str] = None,
+    ) -> Optional[str]:
+        """Create a Gmail draft (not sent).
+
+        Args:
+            to: Recipient email
+            subject: Email subject
+            body_text: Plain text body
+            cc: CC recipients (optional)
+
+        Returns:
+            Draft ID if created, None on failure
+        """
+        try:
+            message = MIMEText(body_text, _charset='utf-8')
+            message['to'] = to
+            message['subject'] = subject
+            if cc:
+                message['cc'] = cc
+
+            from email import generator
+            from io import BytesIO
+            policy_no_wrap = policy.EmailPolicy(max_line_length=None)
+            fp = BytesIO()
+            g = generator.BytesGenerator(fp, policy=policy_no_wrap)
+            g.flatten(message)
+            raw = base64.urlsafe_b64encode(fp.getvalue()).decode('utf-8')
+
+            result = self.service.users().drafts().create(
+                userId='me',
+                body={'message': {'raw': raw}}
+            ).execute()
+
+            draft_id = result.get('id')
+            self.logger.info(f"Draft created: {draft_id}")
+            return draft_id
+
+        except Exception as e:
+            self.logger.error(f"Failed to create draft: {e}")
+            return None

@@ -31,6 +31,45 @@ class EmailProcessor:
         self.context_builder = ResponseContextBuilder()
         self.response_generator = ResponseGenerator()
     
+    # Senders that never need AI classification
+    _JUNK_SENDER_PATTERNS = [
+        "noreply", "no-reply", "donotreply", "do-not-reply",
+        "notifications@", "notify@", "mailer-daemon", "postmaster",
+        "newsletter@", "marketing@", "updates@", "info@",
+        "billing@", "receipts@", "orders@", "shipping@",
+        "shipment-tracking@", "order-update@", "auto-confirm@",
+        "@govdelivery.com", "@redditmail.com", "@substack.com",
+        "@qualtrics-survey.com", "@communitypass.net",
+        "@ecrmemail.", "@public.govdelivery.com",
+    ]
+
+    _JUNK_SUBJECT_PATTERNS = [
+        "unsubscribe", "your bill", "your statement",
+        "password reset", "verify your email",
+        "order confirmation", "shipping confirmation",
+        "delivery notification", "has been delivered",
+        "has been shipped", "tracking number",
+    ]
+
+    def _is_obvious_junk(self, thread: Dict[str, Any]) -> bool:
+        """Layer 1 pre-filter: detect obvious non-human email without AI.
+
+        Returns True for newsletters, notifications, and automated mail
+        that never need a response draft.
+        """
+        from_addr = (thread.get('from') or '').lower()
+        subject = (thread.get('subject') or '').lower()
+
+        for pattern in self._JUNK_SENDER_PATTERNS:
+            if pattern in from_addr:
+                return True
+
+        for pattern in self._JUNK_SUBJECT_PATTERNS:
+            if pattern in subject:
+                return True
+
+        return False
+
     async def process_new_emails(self, workspaces: List[str], hours_back: int = 72) -> int:
         """
         Process new emails for specified workspaces since last sync.
@@ -211,6 +250,11 @@ class EmailProcessor:
         # Check if user has already replied to this thread
         if thread.get('last_message_from_user', False):
             logger.info(f"  ⏭️  Skipping - last message was sent by user (already replied)")
+            return False
+
+        # Layer 1 pre-filter: skip obvious junk without calling AI
+        if self._is_obvious_junk(thread):
+            logger.info(f"  ⏭️  Pre-filtered as junk (no API call)")
             return False
 
         # Step 1: Classify

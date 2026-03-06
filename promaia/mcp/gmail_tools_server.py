@@ -115,20 +115,25 @@ async def _ensure_connected():
     global GMAIL_CONNECTOR
 
     if GMAIL_CONNECTOR is None:
-        from promaia.config.databases import get_database_config
+        from promaia.config.databases import get_database_manager
 
-        gmail_db = get_database_config(f"{WORKSPACE}.gmail") or get_database_config("gmail")
-        if not gmail_db:
+        db_manager = get_database_manager()
+        gmail_databases = [
+            db for db in db_manager.get_workspace_databases(WORKSPACE)
+            if db.source_type == "gmail"
+        ]
+
+        if not gmail_databases:
             raise RuntimeError(f"No Gmail configured for workspace {WORKSPACE}")
 
-        email = gmail_db.get("database_id")
-        config = {"database_id": email, "workspace": WORKSPACE}
+        gmail_db = gmail_databases[0]
+        config = {"database_id": gmail_db.database_id, "workspace": WORKSPACE}
 
         GMAIL_CONNECTOR = GmailConnector(config)
         if not await GMAIL_CONNECTOR.connect(allow_interactive=False):
-            raise RuntimeError(f"Failed to connect to Gmail: {email}")
+            raise RuntimeError(f"Failed to connect to Gmail: {gmail_db.database_id}")
 
-        logger.info(f"✓ Connected to Gmail: {email}")
+        logger.info(f"✓ Connected to Gmail: {gmail_db.database_id}")
 
 
 async def _handle_send_message(args: dict) -> list[TextContent]:
@@ -144,10 +149,11 @@ async def _handle_send_message(args: dict) -> list[TextContent]:
 
 async def _handle_create_draft(args: dict) -> list[TextContent]:
     """Create draft"""
-    draft_id = await GMAIL_CONNECTOR._create_draft(
+    draft_id = await GMAIL_CONNECTOR.create_draft(
         to=args["to"],
         subject=args["subject"],
-        body=args["body"]
+        body_text=args["body"],
+        cc=args.get("cc"),
     )
     return [TextContent(type="text", text=f"✓ Draft created: {draft_id}" if draft_id else "❌ Draft creation failed")]
 
@@ -155,7 +161,7 @@ async def _handle_create_draft(args: dict) -> list[TextContent]:
 async def _handle_reply_to_message(args: dict) -> list[TextContent]:
     """Send reply"""
     # Get original message for subject
-    original = await GMAIL_CONNECTOR._get_message(args["message_id"])
+    original = await GMAIL_CONNECTOR.get_message(args["message_id"])
     if not original:
         return [TextContent(type="text", text="❌ Original message not found")]
 

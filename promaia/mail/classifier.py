@@ -73,25 +73,25 @@ class EmailClassifier:
         """Get AI client from existing chat infrastructure."""
         if self.ai_client is not None:
             return self.ai_client
-        
+
         import os
-        from anthropic import Anthropic
-        from openai import OpenAI
-        
+
         # Try Anthropic first (preferred)
         if os.getenv("ANTHROPIC_API_KEY"):
+            from anthropic import Anthropic
             self.ai_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
             self.model_type = "anthropic"
             logger.info("Using Anthropic for email classification")
             return self.ai_client
-        
+
         # Fall back to OpenAI
         if os.getenv("OPENAI_API_KEY"):
+            from openai import OpenAI
             self.ai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             self.model_type = "openai"
             logger.info("Using OpenAI for email classification")
             return self.ai_client
-        
+
         raise ValueError("No AI API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY")
     
     async def classify(self, email_thread: Dict[str, Any], user_email: str, workspace: str) -> Dict[str, Any]:
