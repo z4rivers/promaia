@@ -6,8 +6,16 @@
 - [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
 - [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
-- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
-- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
+- [ ] **Phase 4: Full Platform Activation** - Activate ALL Promaia modules + MuninnDB cognitive memory
+  - [ ] 4.1: MuninnDB Install + Seed (cognitive memory sidecar)
+  - [ ] 4.2: Google Calendar Setup (schedule awareness)
+  - [ ] 4.3: Notion Dashboard Setup (visibility layer)
+  - [ ] 4.4: Agent Scheduler Activation (the heartbeat)
+  - [ ] 4.5: Full Email Pipeline (mail/ module + gmail_read.py)
+  - [ ] 4.6: Web/Chat Interface (iPhone access)
+  - [ ] 4.7: Information Funneling (intelligence briefs)
+  - [ ] 4.8: Webflow CMS (when needed)
+- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint (merged into 4.6)
 
 ## Phase Details
 
@@ -66,15 +74,7 @@ Plans:
 
 **Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
 **Depends on:** Phase 2
-**Requirements:** [ONBOARD-01, ONBOARD-02, ONBOARD-03, ONBOARD-04, ONBOARD-05, ONBOARD-06, ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
-**Success Criteria** (what must be TRUE):
-  1. Onboarding session can be started, paused, and resumed across sessions
-  2. Profile coverage report shows per-category gap analysis
-  3. PC scan channel automatically extracts profile data from local files and git history
-  4. Gmail read channel extracts contacts and communication patterns (when OAuth configured)
-  5. Interview question bank covers all profile categories with OARS-informed questions
-  6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
-  7. Progressive profiling continues after initial interview via observation
+**Requirements:** [ONBOARD-01 through ONBOARD-10]
 **Plans:** 3/3 plans complete
 
 Plans:
@@ -82,28 +82,50 @@ Plans:
 - [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
 - [x] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + human-verified (2026-03-05)
 
-### Phase 4: Heartbeat Agent
-**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
-**Depends on:** Phase 2
-**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
-**Success Criteria** (what must be TRUE):
-  1. Windows Task Scheduler runs heartbeat on configurable interval
-  2. Heartbeat scans all projects and picks most stalled for deep work
-  3. Active user check: scan-only mode if user active within 15 min
-  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
-  5. Morning summary available in next session briefing
-  6. All activity logged to brain.events with source="heartbeat"
-**Plans:** TBD
+### Phase 4: Full Platform Activation
 
-### Phase 5: iPhone Access
-**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
+**Goal:** Activate ALL major Promaia modules for Zack's use case, integrate MuninnDB cognitive memory, establish the complete autonomous AI assistant stack.
 **Depends on:** Phase 2
-**Requirements:** [ACCESS-01]
+**Full plan:** `.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md`
+
+**Sub-phases:**
+
+#### 4.1: MuninnDB Cognitive Memory
+**Goal:** Integrate MuninnDB as cognitive memory sidecar with dual-write capture, parallel search retrieval, and dedicated ACTIVATE tool for associative recall
+**Depends on:** Phase 2
+**Requirements:** [MUNINN-01, MUNINN-02, MUNINN-03, MUNINN-04, MUNINN-05, MUNINN-06]
 **Success Criteria** (what must be TRUE):
-  1. Brain MCP endpoint accessible from iPhone via cloud
-  2. Mobile capture stores thoughts in brain.memories
-  3. PC session briefing picks up mobile captures automatically
-**Plans:** TBD
+  1. MuninnDB REST client wrapper exists (promaia/brain/muninn.py)
+  2. Capture dual-writes to both Postgres and MuninnDB (MuninnDB best-effort)
+  3. Search returns labeled results from both pgvector and MuninnDB ACTIVATE
+  4. Dedicated activate MCP tool provides cognitive retrieval with score components
+  5. All existing brain.memories seeded into MuninnDB zbrain-vault
+  6. MuninnDB failures never block Postgres operations (graceful degradation)
+**Plans:** 1 plan
+
+Plans:
+- [ ] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification
+
+#### 4.2: Google Calendar
+Enable Calendar API, OAuth scope, wire to agents. Brain knows the schedule.
+
+#### 4.3: Notion Dashboard
+Set up Notion as visibility layer. Agent output pages, brain dashboard, profile view. Notion displays, MuninnDB thinks.
+
+#### 4.4: Agent Scheduler
+Activate the heartbeat. Morning Briefing, Email Triage, Evening Digest agents. Autonomous operation via scheduler daemon.
+
+#### 4.5: Full Email Pipeline
+Wire gmail_read.py into existing mail/ module (classifier, intent detector, response generator, draft manager). All 4 Gmail layers operational.
+
+#### 4.6: Web/Chat Interface (iPhone Access)
+Deploy FastAPI chat server to cloud. Brain accessible from phone. Voice capture while driving.
+
+#### 4.7: Information Funneling
+Curate information sources, filter by brain profile, form into regular intelligence briefs. Not newsletters — intelligence delivery.
+
+#### 4.8: Webflow CMS
+Activate when needed for Heatpup or other web publishing.
 
 ## Progress
 
@@ -113,9 +135,17 @@ Plans:
 | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
-| 4. Heartbeat Agent | 0/0 | Not started | - |
-| 5. iPhone Access | 0/0 | Not started | - |
+| 4. Full Platform Activation | 0/8 | In Progress | - |
+| 4.1 MuninnDB | 0/1 | Planned | - |
+| 4.2 Google Calendar | - | Ready | - |
+| 4.3 Notion Dashboard | - | Ready | - |
+| 4.4 Agent Scheduler | - | Depends on 4.2+4.3 | - |
+| 4.5 Email Pipeline | - | Ready | - |
+| 4.6 Web/Chat (iPhone) | - | Ready | - |
+| 4.7 Info Funneling | - | Depends on 4.4 | - |
+| 4.8 Webflow CMS | - | When needed | - |
 
 ---
 *Created: 2026-03-04 from design docs*
-*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
+*Updated: 2026-03-05 — Phase 4 added after full module audit*
+*Updated: 2026-03-05 — Phase 4.1 MuninnDB planned (1 plan)*

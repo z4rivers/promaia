@@ -35,6 +35,15 @@
 - [x] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, design principles
 - [x] **ONBOARD-10**: Onboarding follows design principles: short bursts, instant value, resumable, no shame
 
+### MuninnDB Cognitive Memory (Phase 4.1)
+
+- [ ] **MUNINN-01**: MuninnDB REST client wrapper exists (promaia/brain/muninn.py) using httpx, not SDK
+- [ ] **MUNINN-02**: Capture MCP tool dual-writes to Postgres AND MuninnDB (MuninnDB is best-effort, never blocks)
+- [ ] **MUNINN-03**: Search MCP tool returns results from both pgvector and MuninnDB ACTIVATE, labeled by source
+- [ ] **MUNINN-04**: Activate MCP tool (#13) provides dedicated MuninnDB cognitive retrieval with score components
+- [ ] **MUNINN-05**: All existing brain.memories seeded into MuninnDB zbrain-vault with embeddings
+- [ ] **MUNINN-06**: MuninnDB failures never block Postgres operations (graceful degradation)
+
 ### Routing
 
 - [ ] **ROUTE-01**: Task-based model router (ai/router.py) assigns models by task type
@@ -107,12 +116,19 @@
 | ONBOARD-08 | 03.1-03 | Complete |
 | ONBOARD-09 | 03.1-03 | Complete |
 | ONBOARD-10 | 03.1-03 | Complete |
+| MUNINN-01 | 4.1-01 | Planned |
+| MUNINN-02 | 4.1-01 | Planned |
+| MUNINN-03 | 4.1-01 | Planned |
+| MUNINN-04 | 4.1-01 | Planned |
+| MUNINN-05 | 4.1-01 | Planned |
+| MUNINN-06 | 4.1-01 | Planned |
 
 **Coverage:**
-- v1.0 requirements: 34 total (24 original + 10 onboarding)
-- Mapped to phases: 26 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 2 mapped)
+- v1.0 requirements: 40 total (24 original + 10 onboarding + 6 MuninnDB)
+- Mapped to phases: 32 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 6 MUNINN, 2 mapped)
 - Complete: 21 (5 STOR, 6 BRAIN, 10 ONBOARD)
+- Planned: 6 (6 MUNINN)
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-05 after 03.1-03 complete (all ONBOARD requirements satisfied)*
+*Last updated: 2026-03-05 — Added MUNINN-01 through MUNINN-06 for Phase 4.1*
