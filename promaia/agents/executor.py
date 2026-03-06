@@ -346,6 +346,90 @@ class AgentExecutor:
                 logger.warning(f"  ⚠ Could not load agent journal: {e}")
                 # Non-critical, continue without journal context
 
+        # Load brain context (memories, actions, contexts) for richer agent awareness
+        try:
+            from promaia.storage.postgres_db import get_postgres_db
+            db = get_postgres_db()
+
+            brain_pages = []
+
+            # Pending actions
+            actions = db.fetch_all(
+                """
+                SELECT a.description, a.status, d.name AS domain
+                FROM brain.actions a
+                LEFT JOIN brain.domains d ON d.id = a.domain_id
+                WHERE a.status = 'pending'
+                ORDER BY a.extracted_at DESC LIMIT 20
+                """
+            )
+            if actions:
+                action_text = "\n".join(
+                    f"- [{a.get('domain', 'general')}] {a['description']}" for a in actions
+                )
+                brain_pages.append({
+                    "page_id": "brain_actions",
+                    "title": "Pending Actions",
+                    "content": action_text,
+                    "database": "brain",
+                    "properties": {"Type": "actions", "Count": str(len(actions))},
+                })
+
+            # Project contexts
+            contexts = db.fetch_all(
+                """
+                SELECT d.name, c.directive, c.current_state, c.priority
+                FROM brain.contexts c
+                JOIN brain.domains d ON d.id = c.domain_id
+                ORDER BY c.priority ASC
+                """
+            )
+            if contexts:
+                ctx_text = "\n\n".join(
+                    f"**{c['name']}** (P{c.get('priority', 5)})\n"
+                    f"Directive: {c.get('directive', 'none')}\n"
+                    f"State: {c.get('current_state') or 'not set'}"
+                    for c in contexts
+                )
+                brain_pages.append({
+                    "page_id": "brain_contexts",
+                    "title": "Project Contexts",
+                    "content": ctx_text,
+                    "database": "brain",
+                    "properties": {"Type": "contexts", "Count": str(len(contexts))},
+                })
+
+            # Recent memories (last 7 days)
+            memories = db.fetch_all(
+                """
+                SELECT content, domain, created_at
+                FROM brain.memories
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                ORDER BY created_at DESC LIMIT 20
+                """
+            )
+            if memories:
+                mem_text = "\n\n".join(
+                    f"[{m.get('domain', 'general')}] {m['content']}" for m in memories
+                )
+                brain_pages.append({
+                    "page_id": "brain_memories",
+                    "title": "Recent Memories (7 days)",
+                    "content": mem_text,
+                    "database": "brain",
+                    "properties": {"Type": "memories", "Count": str(len(memories))},
+                })
+
+            if brain_pages:
+                context["brain"] = brain_pages
+                logger.info(
+                    f"  ✓ Loaded brain context: {len(actions)} actions, "
+                    f"{len(contexts)} contexts, {len(memories)} memories"
+                )
+
+        except Exception as e:
+            logger.warning(f"  ⚠ Could not load brain context: {e}")
+
         return context
 
     def _shrink_pages_for_prompt(

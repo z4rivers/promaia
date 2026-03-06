@@ -1,0 +1,53 @@
+{
+  "servers": {
+    "brain": {
+      "description": "Proactive brain layer — memories, actions, contexts, profile, briefings",
+      "command": [
+        "python",
+        "-m",
+        "promaia.brain.mcp_server"
+      ],
+      "args": [],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}",
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
+      },
+      "enabled": true
+    },
+    "filesystem": {
+      "description": "Access local filesystem for reading and writing files",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-filesystem"
+      ],
+      "args": [
+        "/path/to/allowed/directory"
+      ],
+      "enabled": false
+    },
+    "git": {
+      "description": "Git repository operations and information",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-git"
+      ],
+      "args": [
+        "--repository",
+        "."
+      ],
+      "enabled": false
+    },
+    "sqlite": {
+      "description": "SQLite database access and queries",
+      "command": [
+        "npx",
+        "@modelcontextprotocol/server-sqlite"
+      ],
+      "args": [
+        "--db-path",
+        "data/example.db"
+      ],
+      "enabled": false
+    }
+  }
+}
