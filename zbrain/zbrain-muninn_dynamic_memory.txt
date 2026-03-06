@@ -1,0 +1,225 @@
+zbrain — Project Context for Claude
+=====================================
+
+WHAT THIS IS
+------------
+zbrain is Zack's personal branch of Promaia, a personal AI assistant platform built by his daughter Koii Benvenutto. Zack forked Promaia to create zbrain — his own second brain implementation. He is both the sole user and the developer of zbrain. Koii may cherry-pick ideas from zbrain back into Promaia, but zbrain is Zack's independent implementation.
+
+Zack is a non-programmer who builds with AI assistance. He has learned React, TypeScript, and Git through AI-assisted development. Plain language always. No fluff.
+
+
+WHO ZACK IS
+-----------
+Day job: HVAC estimator, Climate Control Inc., Portland OR / SW Washington. Carrier dealer. 15+ years.
+Goal: Engineer a career change through entrepreneurial projects built with AI.
+
+Projects in development:
+- Heatpup — HVAC system selection tool for homeowners, system simulator for pros
+- Maybe Cat — Cat-powered answer engine. Pick a shelter cat, ask it questions, get cat answers.
+- PURRfoot — Converts a paper towel roll into an undercover pillow; makes room in bed for feet or cats
+- Hope Cookie — Fortune cookie reinvented as coffee/tea companion; different flavor profile, cat-shaped shell
+- Petal Policy — Flower subscription marketed as relationship insurance
+- Click Pedal — Satisfying foot fidget device
+
+Measures success by: Real users, real money. Ships mean nothing until they matter to someone else.
+Thinks in: Patterns, systems, wholeness. Christopher Alexander is deeply intuitive to him.
+Communication style: Direct. Plain language. High information density. No jargon.
+
+
+THE MEMORY LAYER: MUNINNDB
+--------------------------
+zbrain integrates MuninnDB as its cognitive memory substrate.
+
+GitHub: github.com/scrypster/muninndb
+Docs: muninndb.com/docs
+Released: March 5, 2026 by MJ Bonanno (@scrypster)
+License: BSL 1.1 (free for personal use) -> Apache 2.0 in 2030
+Format: Single binary, zero dependencies, MCP-native
+Patent: U.S. Provisional Patent Application filed February 26, 2026
+
+Creator profile: MJ Bonanno is a software architect and Director of Engineering at HyphenFi, a fintech lending automation platform. Deep infrastructure engineering background. MuninnDB is not a side hustle — it's a serious project from someone with the resources and credentials to build it properly.
+
+What MuninnDB is NOT:
+Not a vector store. Not a RAG wrapper. Not a graph database. Not a filing cabinet with search.
+
+What MuninnDB IS:
+A storage engine that implements cognitive memory as math primitives — the way a brain actually works. This is why it makes intuitive sense for a second brain: a real brain doesn't store data, it learns from patterns, forgets what doesn't matter, and strengthens connections between things that fire together.
+
+
+THREE CORE PRIMITIVES
+---------------------
+
+1. EBBINGHAUS DECAY (Recency)
+Memories fade over time unless reinforced. Priority score computed at query time:
+B(M) = ln(n+1) - d x ln(ageDays/(n+1))
+
+Fresh + frequently accessed memories surface first. Old + unused memories fade but never delete. Deterministic — same inputs, same score, every time.
+
+2. HEBBIAN LEARNING (Association)
+"Neurons that fire together, wire together" — as database math.
+
+When two memories are retrieved together, their association strengthens automatically. Co-activation log (50-entry ring buffer) feeds a background worker. Bidirectional weighted links between engrams. Strong associations can rescue faded memories. Links form from usage — not from manual design.
+
+This is automatic mind-mapping. You don't build the graph. The graph builds itself from how you actually use the system.
+
+3. BAYESIAN CONFIDENCE
+Every memory has a confidence score (0-1). Contradictory information lowers confidence. Consistent reinforcement raises it. The database tracks belief strength, not just existence.
+
+
+THE ACTIVATE PIPELINE
+---------------------
+Primary query type. Six parallel phases, all under 20ms:
+
+Phase 1: Embed + tokenize the context string
+Phase 2: Parallel retrieval — BM25 full-text search + HNSW vector search + decay-filtered pool
+Phase 3: RRF fusion of three result lists
+Phase 4: Hebbian boost from co-activation weights
+Phase 5: BFS graph traversal (depth 2, hop penalty scoring)
+Phase 6: Composite score + "Why" explanation builder
+
+Every ACTIVATE call is both retrieval AND a learning event. Hebbian weights update on every query. The database gets smarter with use — no application code required.
+
+One ACTIVATE call replaces: full-text search + vector search + decay logic + association scoring + graph traversal.
+
+
+KEY VOCABULARY
+--------------
+Engram: A memory trace. Contains concept, content, confidence (0-1), relevance score, and weighted associations to other engrams.
+Vault: A namespace for engrams. One vault per user, project, or context.
+muninn_guide: MCP tool that tells Claude how to use memory. Vault-aware. No manual prompting needed.
+ERF: Engram Record Format. Three tiers — Hot (L1 cache), Warm (disk), Cold (archive).
+
+
+PROTOCOLS (four interfaces, same cognitive engine)
+--------------------------------------------------
+MCP — port 8750, 35 tools, native to Claude/Cursor/VS Code
+REST — port 8475, HTTP/JSON
+gRPC — port 8477, Protobuf
+MBP — port 8474, Binary, under 10ms ACK
+
+
+API OPERATIONS (35 MCP tools)
+-----------------------------
+Write: write(), writeBatch() (up to 50 engrams), decide() (decision tracking)
+Retrieve: activate(), search(), traverse(), session()
+Manage: evolve(), consolidate(), link(), restore()
+Monitor: stats(), subscribe()
+
+
+INSTALLATION
+------------
+curl -sSL https://muninndb.com/install.sh | sh
+muninn start
+muninn init   <- guided setup, auto-connects Claude Desktop/Cursor/VS Code
+
+Web UI at localhost:8476 after install. Shows engrams, confidence scores, Hebbian weights, "Why" explanations.
+
+
+VAULT STRATEGY FOR ZBRAIN
+--------------------------
+Recommended structure:
+- zack-personal: Preferences, context, communication style, personal decisions
+- heatpup: Design decisions, user research, HVAC domain knowledge
+- climate-control: Day job — clients, projects, technical knowledge
+- maybe-cat: Cat answer engine product
+- (additional vaults per project, or single vault with tags)
+
+
+SEEDING STRATEGY
+----------------
+Most valuable early action: writeBatch 20-50 engrams as cognitive primer before first real use.
+
+Examples:
+- concept: "work context" — "Zack is HVAC estimator at Climate Control Inc., Portland OR. Carrier dealer. 15+ years. Non-programmer building with AI assistance."
+- concept: "communication style" — "Prefers plain language, no fluff, direct answers. Minimal jargon. High information density. Gets frustrated with unnecessary complexity."
+- concept: "decision framework" — "Measures success by real users and real money. Ships mean nothing until they matter to someone else."
+- concept: "design philosophy" — "Thinks in patterns and wholeness. Christopher Alexander deeply intuitive. Prefers systems that emerge from use rather than systems that require manual maintenance."
+- concept: "heatpup" — "HVAC selection tool for homeowners, system simulator for pros. React/TypeScript. Active development."
+- concept: "maybe-cat" — "Cat-powered answer engine. User picks an adoptable shelter cat. Asks it questions. Cat answers in ways only cats would."
+
+
+INTELLECTUAL FRAMEWORK
+----------------------
+MuninnDB implements what these thinkers described theoretically — not as metaphor, as math.
+
+HERMANN EBBINGHAUS (1885)
+Core idea: Memory decays predictably over time unless reinforced. The forgetting curve.
+In MuninnDB: The decay primitive. Engrams fade by math, not by deletion.
+For zbrain: Don't worry about managing what zbrain remembers. The system handles recency automatically.
+
+GEORGE MILLER (1956)
+Core idea: Human working memory holds 7 (+/-2) items. We need external systems to extend cognitive bandwidth.
+In MuninnDB: ACT-R temporal weighting surfaces the most relevant memories so zbrain doesn't flood context with everything it knows.
+For zbrain: MuninnDB is the cognitive offloading system. It handles what to surface so you don't have to manage it.
+
+DOUGLAS HOFSTADTER
+Core idea: Strange loops. Patterns that activate other patterns. Meaning emerges from recursive self-reference.
+In MuninnDB: Hebbian recursion. Engrams that fire together strengthen each other. Chains of association create emergent meaning.
+For zbrain: The longer zbrain runs, the richer the associations become. Meaning accumulates without being designed.
+
+MARVIN MINSKY — Society of Mind
+Core idea: The mind is not one thing — it's a society of competing agents. No central decider. Intelligence emerges from competition.
+In MuninnDB: Engrams actively compete for relevance via composite scoring. No single memory dominates. The most relevant surface.
+For zbrain: zbrain doesn't have one "memory." It has a society of memories that compete to be relevant.
+
+ANDY CLARK — Extended Mind Theory
+Core idea: Cognition doesn't happen only in the skull. We think with our tools, our notebooks, our environment.
+In MuninnDB: MuninnDB is outside zbrain but part of how it thinks. Not a database backend — a cognitive substrate.
+For zbrain: zbrain + MuninnDB is one thinking system. The boundary between the AI and its memory is dissolved.
+
+EDWARD DE BONO — Lateral Thinking
+Core idea: The mind is a self-organizing patterning system. Patterns form from experience, not design. Lateral thinking disrupts dominant patterns to find new paths.
+In MuninnDB: Associations emerge from usage. The graph is never manually designed — it self-organizes around what actually fires together.
+For zbrain: Don't try to architect how zbrain connects ideas. Use it. The connections will form themselves.
+
+CHRISTOPHER ALEXANDER — Centers and Wholeness
+Core idea: Living structure emerges when centers strengthen each other. Wholeness is not designed top-down — it grows from the interaction of parts.
+In MuninnDB: Hebbian weights create a living structure of associations. Each query strengthens related engrams. The whole becomes more coherent with use.
+For zbrain: This is why MuninnDB made immediate intuitive sense to Zack. It IS Alexander's architecture applied to cognitive infrastructure. Centers (engrams) strengthen each other through co-activation. Wholeness (coherent memory) emerges from use.
+
+
+THE BIG PICTURE
+---------------
+Promaia + MuninnDB is not a personal assistant with a database backend.
+It is a thinking partner with a cognitive substrate.
+
+An implementation of what de Bono, Clark, Alexander, Hofstadter, Minsky, Ebbinghaus, and Miller described theoretically — but nobody built at the infrastructure layer until March 5, 2026.
+
+There is no benchmark for cognitive memory databases because there were none before today.
+The builders here now will write the benchmarks everyone else chases.
+
+
+INTEGRATION SEQUENCE
+--------------------
+1. Install (5 min): curl -sSL https://muninndb.com/install.sh | sh
+2. Start: muninn start
+3. Connect: muninn init — select Claude Desktop
+4. First call: muninn_guide — database instructs Claude on usage, vault-aware, zero prompt engineering
+5. Seed vault: writeBatch core context (20-50 engrams)
+6. Use normally: MuninnDB activates relevant memories, strengthens associations, fades unused, manages itself
+7. Monitor: localhost:8476 web UI
+
+
+COMPARISON TO ALTERNATIVES
+---------------------------
+vs. Mem0/MemGPT/Zep/Letta: Memory wrappers using LLMs for extraction + vector stores. No engine-level cognitive primitives.
+vs. Postgres: Stores data. MuninnDB stores memory that evolves with use.
+vs. Vector DBs: Cosine similarity only. MuninnDB adds temporal weighting, Hebbian boosts, Bayesian confidence.
+vs. Graph DBs: Model relationships you define. MuninnDB learns associations from usage automatically.
+
+
+HONEST ASSESSMENT
+-----------------
+Risks worth knowing:
+- Brand new software, zero production track record
+- Single-person project, bus factor risk
+- 8 GitHub stars as of release day
+- Another binary/port/failure mode to manage
+- Complexity tax for developers who need to understand the 6-phase pipeline
+
+Why zbrain is doing it anyway:
+- Infrastructure matches how Zack already thinks (patterns, centers, wholeness)
+- A second brain should function like a brain — this is the only option that does
+- MJ Bonanno has the credentials, resources, and track record to see this through
+- Early enough to shape the implementation from the ground up
+- "The agents people will build in 2027 will have memory like this." — muninndb.com
