@@ -7,7 +7,7 @@
 - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
 - [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
 - [ ] **Phase 4: Full Platform Activation** - Activate ALL Promaia modules + MuninnDB cognitive memory
-  - [ ] 4.1: MuninnDB Install + Seed (cognitive memory sidecar)
+  - [x] 4.1: MuninnDB Install + Seed (cognitive memory sidecar) (2026-03-05)
   - [ ] 4.2: Google Calendar Setup (schedule awareness)
   - [ ] 4.3: Notion Dashboard Setup (visibility layer)
   - [ ] 4.4: Agent Scheduler Activation (the heartbeat)
@@ -101,10 +101,10 @@ Plans:
   4. Dedicated activate MCP tool provides cognitive retrieval with score components
   5. All existing brain.memories seeded into MuninnDB zbrain-vault
   6. MuninnDB failures never block Postgres operations (graceful degradation)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification
+- [x] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification (2026-03-05)
 
 #### 4.2: Google Calendar
 Enable Calendar API, OAuth scope, wire to agents. Brain knows the schedule.
@@ -135,8 +135,8 @@ Activate when needed for Heatpup or other web publishing.
 | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
 | 3. Gemini Routing | 0/0 | Not started | - |
 | 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
-| 4. Full Platform Activation | 0/8 | In Progress | - |
-| 4.1 MuninnDB | 0/1 | Planned | - |
+| 4. Full Platform Activation | 1/8 | In Progress | - |
+| 4.1 MuninnDB | 1/1 | Complete | 2026-03-05 |
 | 4.2 Google Calendar | - | Ready | - |
 | 4.3 Notion Dashboard | - | Ready | - |
 | 4.4 Agent Scheduler | - | Depends on 4.2+4.3 | - |
@@ -149,3 +149,4 @@ Activate when needed for Heatpup or other web publishing.
 *Created: 2026-03-04 from design docs*
 *Updated: 2026-03-05 — Phase 4 added after full module audit*
 *Updated: 2026-03-05 — Phase 4.1 MuninnDB planned (1 plan)*
+*Updated: 2026-03-05 — Phase 4.1 MuninnDB complete (1/1 plans, 6 MUNINN requirements satisfied)*

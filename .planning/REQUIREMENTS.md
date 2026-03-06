@@ -37,12 +37,12 @@
 
 ### MuninnDB Cognitive Memory (Phase 4.1)
 
-- [ ] **MUNINN-01**: MuninnDB REST client wrapper exists (promaia/brain/muninn.py) using httpx, not SDK
-- [ ] **MUNINN-02**: Capture MCP tool dual-writes to Postgres AND MuninnDB (MuninnDB is best-effort, never blocks)
-- [ ] **MUNINN-03**: Search MCP tool returns results from both pgvector and MuninnDB ACTIVATE, labeled by source
-- [ ] **MUNINN-04**: Activate MCP tool (#13) provides dedicated MuninnDB cognitive retrieval with score components
-- [ ] **MUNINN-05**: All existing brain.memories seeded into MuninnDB zbrain-vault with embeddings
-- [ ] **MUNINN-06**: MuninnDB failures never block Postgres operations (graceful degradation)
+- [x] **MUNINN-01**: MuninnDB REST client wrapper exists (promaia/brain/muninn.py) using httpx, not SDK
+- [x] **MUNINN-02**: Capture MCP tool dual-writes to Postgres AND MuninnDB (MuninnDB is best-effort, never blocks)
+- [x] **MUNINN-03**: Search MCP tool returns results from both pgvector and MuninnDB ACTIVATE, labeled by source
+- [x] **MUNINN-04**: Activate MCP tool (#13) provides dedicated MuninnDB cognitive retrieval with score components
+- [x] **MUNINN-05**: All existing brain.memories seeded into MuninnDB zbrain-vault with embeddings
+- [x] **MUNINN-06**: MuninnDB failures never block Postgres operations (graceful degradation)
 
 ### Routing
 

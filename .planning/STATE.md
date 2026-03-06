@@ -2,17 +2,17 @@
 
 ## Current Position
 
-Phase: Phase 03.1 — Onboarding Module COMPLETE
-Plan: 3 of 3 complete
-Status: 03.1-03 COMPLETE — Interview question bank, CLAUDE.md onboarding instructions, human verification approved (2026-03-05)
-Last activity: 2026-03-05 — Phase 03.1 fully complete, all 10 ONBOARD requirements satisfied
+Phase: Phase 4.1 — MuninnDB Cognitive Memory COMPLETE
+Plan: 4.1-01 of 4.1-01 complete (1/1)
+Status: 4.1-01 COMPLETE — MuninnDB REST client, dual-write capture, parallel search, activate tool, 32 memories seeded, human-verified (2026-03-05)
+Last activity: 2026-03-05 — Phase 4.1 MuninnDB integration complete, all 6 MUNINN requirements satisfied
 
 ## Next Session: What to Do
 
-1. Resume Phase 3 (Gemini Routing) or Phase 4 (Heartbeat Agent) — run `/gsd:plan-phase`
-2. Set up Gmail OAuth: `python -m promaia.cli.main workspace gmail-setup default zachary4rivers@gmail.com`
-3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
-4. Continue onboarding conversations -- profile is growing, keep feeding it
+1. Continue Phase 4 — next sub-phase 4.2 (Google Calendar) — run `/gsd:plan-phase`
+2. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+3. Continue onboarding conversations -- profile is growing, keep feeding it
+4. Monitor MuninnDB embedder fix -- semantic_similarity currently 0 (v1beta API issue)
 
 ## Phase 1 Completion Summary
 
@@ -117,9 +117,24 @@ None.
 - **Design Principles (not ADHD-Friendly):** Short bursts, auto-save, no shame framing are the default style, not a special accommodation
 - **User verification positive:** Onboarding captures both stated and implied information effectively
 
+## Phase 4.1 Progress (2026-03-05)
+
+| Plan | What it did |
+|------|------------|
+| 4.1-01 | MuninnDB REST client (muninn.py, 170 lines), dual-write capture, parallel pgvector+ACTIVATE search, activate MCP tool (#13), 32 memories seeded, human-verified APPROVED |
+
+## Key Execution Decisions (Phase 4.1, 2026-03-05)
+
+- **httpx REST client over SDK:** muninndb Python SDK broken on 3.14 (zero code files installed). Direct REST via httpx is reliable.
+- **write_batch vault workaround:** Batch endpoint ignores vault field (MuninnDB v0.3.6-alpha bug). Sequential individual POST calls used instead.
+- **Best-effort dual-write:** MuninnDB failure in capture never blocks Postgres or changes return value. try/except after all Postgres ops.
+- **Async lazy singleton (get_muninn):** One-time health check on first call, cached result. Prevents repeated connection attempts when MuninnDB is down.
+- **Embedder limitation accepted:** semantic_similarity=0 due to text-embedding-004 not available on v1beta API. MuninnDB config issue, not code issue. User approved.
+
 ## Git State
 
 - Branch: `zbrain` (off `feature/agent-scheduler`)
 - Phase 1 commits: cbad997 through e5fd713 (10 commits)
 - Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
 - Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server), 551c08c (03.1-02 pc_scan), 613bcc7 (03.1-02 gmail_read), 0e6fa6d (03.1-02 mcp tools), e00e58b (03.1-03 question bank+interview), a8613e9 (03.1-03 CLAUDE.md instructions), fc9605e (03.1-03 rename Design Principles)
+- Phase 4.1 commits: 180e04e (4.1-01 muninn.py), 9071754 (4.1-01 mcp_server 13 tools), d5ea814 (4.1-01 write_batch fix)
