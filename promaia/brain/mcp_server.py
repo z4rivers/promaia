@@ -63,6 +63,11 @@ from promaia.brain.onboarding import (
     mark_channel_progress, get_profile_coverage,
     complete_onboarding, EXPECTED_FIELDS,
 )
+from promaia.brain.channels.interview import (
+    get_interview_state,
+    get_next_question,
+    mark_question_answered,
+)
 from promaia.brain.muninn import get_muninn
 
 # ---------------------------------------------------------------------------
@@ -322,17 +327,18 @@ async def list_tools() -> list[Tool]:
                 "Manage the onboarding flow. Actions: "
                 "'start' begins or resumes onboarding, "
                 "'status' returns current progress and profile coverage gaps, "
+                "'next_question' returns the next interview question to ask based on profile gaps, "
                 "'channel_update' marks a channel's progress, "
                 "'complete' finalizes onboarding. "
-                "Use 'status' to know what profile areas still need exploration."
+                "Call 'next_question' at session start to get a natural question to weave into conversation."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "One of: start, status, channel_update, complete",
-                        "enum": ["start", "status", "channel_update", "complete"]
+                        "description": "One of: start, status, next_question, channel_update, complete",
+                        "enum": ["start", "status", "next_question", "channel_update", "complete"]
                     },
                     "channel": {
                         "type": "string",
@@ -681,6 +687,27 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     except Exception as e:
         logger.warning(f"briefing heartbeat query failed: {e}")
         lines.append("## Heartbeat Activity (last 24h)\n(query error)\n")
+
+    # --- Interview / Profile gaps ---
+    try:
+        interview_state = get_interview_state(db=db)
+        next_q = get_next_question(db=db)
+
+        if next_q:
+            lines.append("## Get to Know You")
+            lines.append(f"Profile {interview_state['completion_pct']}% covered — "
+                         f"{len(interview_state['categories_remaining'])} categories need attention.")
+            lines.append(f"**Next question ({next_q['category']}):** {next_q['text']}")
+            if next_q.get('ai_disclosure'):
+                lines.append(f"*Your disclosure:* {next_q['ai_disclosure']}")
+            lines.append("")
+        elif interview_state['completion_pct'] < 100:
+            lines.append("## Get to Know You")
+            lines.append(f"Profile {interview_state['completion_pct']}% covered. "
+                         "Use progressive profiling during conversation.")
+            lines.append("")
+    except Exception as e:
+        logger.warning(f"briefing interview state failed: {e}")
 
     # Log briefing event (idempotent per session day)
     try:
@@ -1531,6 +1558,37 @@ async def _handle_onboard(args: dict) -> list[TextContent]:
                 lines.append(f"- **{cat}** ({pct}% filled): missing {missing_preview}")
 
         return [TextContent(type="text", text="\n".join(lines))]
+
+    elif action == "next_question":
+        # Get interview state and next question based on profile gaps
+        try:
+            state = get_interview_state(db=db)
+            question = get_next_question(db=db)
+
+            lines = ["# Interview — Next Question\n"]
+            lines.append(f"**Phase:** {state['current_phase']}")
+            lines.append(f"**Completion:** {state['completion_pct']}%")
+            lines.append(f"**Categories covered:** {', '.join(state['categories_covered']) or 'none'}")
+            lines.append(f"**Categories remaining:** {', '.join(state['categories_remaining']) or 'none'}\n")
+
+            if question:
+                lines.append("## Ask This\n")
+                lines.append(f"**Category:** {question['category']}")
+                lines.append(f"**Question:** {question['text']}")
+                lines.append(f"**Technique:** {question.get('technique', 'open')}")
+                lines.append(f"**Fields this populates:** {', '.join(question.get('fields', []))}")
+                if question.get('follow_ups'):
+                    lines.append(f"**Follow-ups:** {' / '.join(question['follow_ups'])}")
+                if question.get('ai_disclosure'):
+                    lines.append(f"**Share about yourself:** {question['ai_disclosure']}")
+                lines.append("\n*Rephrase naturally. Don't read the question verbatim — make it conversational.*")
+            else:
+                lines.append("All interview questions covered! Profile gaps may still exist — use progressive profiling during regular conversations.")
+
+            return [TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            logger.error(f"next_question failed: {e}", exc_info=True)
+            return [TextContent(type="text", text=f"Error getting next question: {e}")]
 
     elif action == "channel_update":
         channel = args.get("channel", "").strip()
