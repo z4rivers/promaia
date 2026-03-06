@@ -10,8 +10,8 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 ### Validation & Data Pipeline
 
 - [x] **VALID-01**: Agent scheduler runs all 3 agents (morning-briefing, email-triage, evening-digest) successfully via SDK
-- [ ] **VALID-02**: Gmail context loads from Postgres (not .md files on disk) in agent executor
-- [ ] **VALID-03**: SQL dialect bugs fixed (jsonb operators, timestamp casting, unified_content table reference). Note: files.py row['thread_id'] fix already applied.
+- [x] **VALID-02**: Gmail context loads from Postgres (not .md files on disk) in agent executor
+- [x] **VALID-03**: SQL dialect bugs fixed (jsonb operators, timestamp casting, unified_content table reference). Note: files.py row['thread_id'] fix already applied.
 - [x] **VALID-04**: Agent output is coherent and surfaces real data (not hallucinated)
 
 ### Model Routing & Cost
@@ -102,8 +102,8 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | VALID-01 | Phase 5 | Complete |
-| VALID-02 | Phase 5 | Pending |
-| VALID-03 | Phase 5 | Pending |
+| VALID-02 | Phase 5 | Complete |
+| VALID-03 | Phase 5 | Complete |
 | VALID-04 | Phase 5 | Complete |
 | ROUTE-01 | Phase 6 | Pending |
 | ROUTE-02 | Phase 6 | Pending |

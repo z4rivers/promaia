@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 Phase: 5 of 10 (Validate & Activate)
 Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-06 -- Plan 05-02 complete (agent config + prompt hardening)
+Last activity: 2026-03-06 -- Plan 05-01 complete (Gmail content pipeline fix)
 
 Progress: [############..................] 43% (v2.0 Phase 5: 2/3 plans complete)
 
@@ -44,8 +44,8 @@ Progress: [############..................] 43% (v2.0 Phase 5: 2/3 plans complete
 
 ## Known Issues (Phase 5 targets)
 
-- Gmail context loads from .md files (needs Postgres fallback)
-- SQL dialect bugs: jsonb operators, timestamp casting, unified_content table reference
+- ~~Gmail context loads from .md files~~ FIXED: Postgres fallback in load_content_by_page_ids
+- ~~SQL dialect bugs: jsonb operators~~ FIXED: GIN index + type documentation
 - Agent token tracking shows $0.00 in legacy mode
 - MuninnDB embeddings broken (text-embedding-004 deprecated)
 
@@ -62,6 +62,8 @@ Recent decisions affecting current work:
 - v2.0: Gemini for cheap agent tasks, Opus reserved for reasoning
 - 05-02: 480-min interval for email-triage (3x/day) rather than time-of-day scheduling
 - 05-02: Grounding Rules section placed before content instructions with override priority
+- 05-01: Gmail Postgres fallback activates only when md_file is None AND entry is Gmail
+- 05-01: GIN index replaces B-tree on gmail_labels for proper JSONB operator support
 
 ### Pending Todos
 
@@ -75,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-02-PLAN.md (agent config + prompt hardening)
+Stopped at: Completed 05-01-PLAN.md (Gmail content pipeline fix)
 Resume file: None
