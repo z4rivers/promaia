@@ -88,44 +88,36 @@ Plans:
 **Depends on:** Phase 2
 **Full plan:** `.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md`
 
-**Sub-phases:**
+**Sub-phases (reordered 2026-03-06 — zero-blocker-first):**
 
-#### 4.1: MuninnDB Cognitive Memory
+#### 4.1: MuninnDB Cognitive Memory (COMPLETE)
 **Goal:** Integrate MuninnDB as cognitive memory sidecar with dual-write capture, parallel search retrieval, and dedicated ACTIVATE tool for associative recall
 **Depends on:** Phase 2
-**Requirements:** [MUNINN-01, MUNINN-02, MUNINN-03, MUNINN-04, MUNINN-05, MUNINN-06]
-**Success Criteria** (what must be TRUE):
-  1. MuninnDB REST client wrapper exists (promaia/brain/muninn.py)
-  2. Capture dual-writes to both Postgres and MuninnDB (MuninnDB best-effort)
-  3. Search returns labeled results from both pgvector and MuninnDB ACTIVATE
-  4. Dedicated activate MCP tool provides cognitive retrieval with score components
-  5. All existing brain.memories seeded into MuninnDB zbrain-vault
-  6. MuninnDB failures never block Postgres operations (graceful degradation)
 **Plans:** 1/1 plans complete
 
 Plans:
 - [x] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification (2026-03-05)
 
-#### 4.2: Google Calendar
-Enable Calendar API, OAuth scope, wire to agents. Brain knows the schedule.
+#### 4.2: Email Pipeline Activation
+Deploy mail schema, test classifier + intent detector against live Gmail. No Notion dependency. 5,600L existing code.
 
-#### 4.3: Notion Dashboard
-Set up Notion as visibility layer. Agent output pages, brain dashboard, profile view. Notion displays, MuninnDB thinks.
+#### 4.3: Web/Chat Server
+Start FastAPI server, test multi-model chat, wire brain MCP tools into web interface. No Notion dependency. 2,327L existing code.
 
-#### 4.4: Agent Scheduler
-Activate the heartbeat. Morning Briefing, Email Triage, Evening Digest agents. Autonomous operation via scheduler daemon.
+#### 4.4: Notion Dashboard
+Create pages, share with zbrain integration, run agent setup, test NotionOutputWriter. 4,300L existing code.
 
-#### 4.5: Full Email Pipeline
-Wire gmail_read.py into existing mail/ module (classifier, intent detector, response generator, draft manager). All 4 Gmail layers operational.
+#### 4.5: Google Calendar
+Enable Calendar API, OAuth setup, test read/write. 540L existing code.
 
-#### 4.6: Web/Chat Interface (iPhone Access)
-Deploy FastAPI chat server to cloud. Brain accessible from phone. Voice capture while driving.
+#### 4.6: Agent Scheduler
+Define agents (Morning Briefing, Email Triage, Evening Digest), start scheduler daemon. Depends on 4.4 + 4.5.
 
 #### 4.7: Information Funneling
-Curate information sources, filter by brain profile, form into regular intelligence briefs. Not newsletters — intelligence delivery.
+Curate sources, filter by brain profile, intelligence briefs. Depends on 4.6.
 
 #### 4.8: Webflow CMS
-Activate when needed for Heatpup or other web publishing.
+Activate when needed for publishing.
 
 ## Progress
 
@@ -137,12 +129,12 @@ Activate when needed for Heatpup or other web publishing.
 | 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
 | 4. Full Platform Activation | 1/8 | In Progress | - |
 | 4.1 MuninnDB | 1/1 | Complete | 2026-03-05 |
-| 4.2 Google Calendar | - | Ready | - |
-| 4.3 Notion Dashboard | - | Ready | - |
-| 4.4 Agent Scheduler | - | Depends on 4.2+4.3 | - |
-| 4.5 Email Pipeline | - | Ready | - |
-| 4.6 Web/Chat (iPhone) | - | Ready | - |
-| 4.7 Info Funneling | - | Depends on 4.4 | - |
+| 4.2 Email Pipeline | 1/1 | Complete | 2026-03-06 |
+| 4.3 Web/Chat Server | 1/1 | Complete | 2026-03-06 |
+| 4.4 Notion Dashboard | 1/1 | Complete | 2026-03-06 |
+| 4.5 Google Calendar | 1/1 | Complete | 2026-03-06 |
+| 4.6 Agent Scheduler | 1/1 | Complete (needs data) | 2026-03-06 |
+| 4.7 Info Funneling | - | Depends on 4.6 | - |
 | 4.8 Webflow CMS | - | When needed | - |
 
 ---

@@ -2,17 +2,46 @@
 
 ## Current Position
 
-Phase: Phase 4.1 — MuninnDB Cognitive Memory COMPLETE
-Plan: 4.1-01 of 4.1-01 complete (1/1)
-Status: 4.1-01 COMPLETE — MuninnDB REST client, dual-write capture, parallel search, activate tool, 32 memories seeded, human-verified (2026-03-05)
-Last activity: 2026-03-05 — Phase 4.1 MuninnDB integration complete, all 6 MUNINN requirements satisfied
+Phase: Phase 4 — Full Platform Activation
+Plan: Activation plan rewritten 2026-03-06 (zero-blocker-first order)
+Status: 4.1-4.6 activated. Agents defined and tested. Dashboard pages created.
+Last activity: 2026-03-06 — Massive activation session: email pipeline, web server, Notion, Calendar, agents
+
+## Session 2026-03-06 Accomplishments
+
+- Rewrote Phase 4 roadmap as activation plan (zero-blocker-first)
+- 4.2 Email Pipeline: DONE (other Claude session — classifier, prompts, pre-filter, e2e tested)
+- 4.3 Web Server: DONE — FastAPI running localhost:8002, Gemini chat works, 2 fixes applied
+  - Fixed: dotenv load order in main.py, google-genai types in chat.py
+  - MCP router exists but NOT yet wired into main.py
+- 4.4 Notion Dashboard: DONE — 4 pages under zBrain root, IDs in config
+  - Root: 31b72180-6675-8039-a701-f51c6423f11e
+  - Brain Dashboard: 31b72180-6675-8175-bd07-cfd6adf48f40
+  - Projects: 31b72180-6675-8171-ac01-cddba216788b
+  - Email Triage: 31b72180-6675-81ab-9da5-cbc2aabea6a0
+  - Profile: 31b72180-6675-8195-b4bf-c39367cb4525
+- 4.5 Google Calendar: DONE — OAuth token at ~/.promaia/google_calendar_token.json, 7 calendars visible
+- 4.6 Agent Scheduler: 3 agents defined, morning-briefing test-run successful (wrote to Notion!)
+  - morning-briefing (daily), email-triage (2hr), evening-digest (daily 9pm)
+  - SDK mode fails inside Claude Code (CLAUDECODE env var conflict) — works with legacy mode
+  - Agents lack real data — Gmail not synced to Postgres yet
+- All deps installed (except uvloop/jiter — need Rust on Python 3.14)
+- notion-client 2.2.1 installed
+- CLI has missing stubs (prompt_sync_commands created, team_commands/conversation_commands still missing)
+- Notion API reference doc created: zbrain/notion-api-dashboard-reference.md (1533 lines)
 
 ## Next Session: What to Do
 
-1. Continue Phase 4 — next sub-phase 4.2 (Google Calendar) — run `/gsd:plan-phase`
-2. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
-3. Continue onboarding conversations -- profile is growing, keep feeding it
-4. Monitor MuninnDB embedder fix -- semantic_similarity currently 0 (v1beta API issue)
+1. Build Notion design skill from reference doc (zbrain/notion-api-dashboard-reference.md)
+2. Redesign Notion dashboard pages to look professional (not default)
+3. Sync Gmail to Postgres so agents have real data
+4. Wire MCP router into web server main.py (brain tools via web)
+5. Start scheduler daemon outside Claude Code (so SDK mode works)
+6. Create CLI stubs for team_commands, conversation_commands (CLI currently broken)
+7. Deploy web server externally for phone access
+8. Fix Anthropic chat bug in utils/ai.py
+9. Export patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+10. Commit all session work
 
 ## Phase 1 Completion Summary
 
