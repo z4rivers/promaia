@@ -5,7 +5,14 @@ This module provides a plugin-based architecture for connecting to different dat
 """
 
 from .base import BaseConnector, ConnectorRegistry
-from .notion_connector import NotionConnector
+
+# Try to import Notion connector (optional dependency)
+try:
+    from .notion_connector import NotionConnector
+    ConnectorRegistry.register("notion", NotionConnector)
+    notion_available = True
+except ImportError:
+    notion_available = False
 
 # Try to import Gmail connector (optional dependency)
 try:
@@ -43,15 +50,14 @@ try:
 except ImportError:
     ocr_available = False
 
-# Register available connectors
-ConnectorRegistry.register("notion", NotionConnector)
-
 __all__ = [
     'BaseConnector',
     'ConnectorRegistry',
-    'NotionConnector',
     'ConversationConnector'
 ]
+
+if notion_available:
+    __all__.append('NotionConnector')
 
 if gmail_available:
     __all__.append('GmailConnector')

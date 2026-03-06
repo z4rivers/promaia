@@ -218,3 +218,37 @@ CREATE TABLE IF NOT EXISTS brain.onboarding_progress (
 -- B-tree index for session lookup
 CREATE INDEX IF NOT EXISTS idx_brain_onboarding_progress_session_id
     ON brain.onboarding_progress (session_id);
+
+
+-- ============================================================
+-- brain.timeline
+-- Reference timeline of life events — biographical anchors for
+-- contextual memory. Stores major milestones, moves, relationships,
+-- career changes, etc. with optional fuzzy dating (month/year).
+-- Used by briefings ("3 years ago today...") and for understanding
+-- what shaped the user's current situation.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.timeline (
+    id SERIAL PRIMARY KEY,
+    event_date DATE NOT NULL,
+    date_precision TEXT DEFAULT 'day' CHECK (date_precision IN ('day', 'month', 'year')),
+    title TEXT NOT NULL,
+    description TEXT,
+    category TEXT DEFAULT 'life' CHECK (category IN (
+        'life', 'career', 'relationship', 'education',
+        'health', 'location', 'project', 'milestone'
+    )),
+    significance INTEGER DEFAULT 5 CHECK (significance BETWEEN 1 AND 10),
+    domain TEXT,
+    tags TEXT[] DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- B-tree on event_date for chronological queries and anniversary detection
+CREATE INDEX IF NOT EXISTS idx_brain_timeline_event_date
+    ON brain.timeline (event_date);
+
+-- B-tree on category for filtered lookups
+CREATE INDEX IF NOT EXISTS idx_brain_timeline_category
+    ON brain.timeline (category);

@@ -1,5 +1,5 @@
 """
-Brain MCP Server — 13 tools for zBrain.
+Brain MCP Server — 14 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over stdio.
 Claude calls these tools to get briefings, capture thoughts, search memories,
@@ -21,6 +21,7 @@ Tools:
     pc_scan         — scan local git repos, files, and apps for profile data
     gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
     activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
+    timeline        — reference timeline of life events (add/list/query)
 
 Usage:
     python -m promaia.brain.mcp_server
@@ -448,6 +449,70 @@ async def list_tools() -> list[Tool]:
                 "required": ["context"]
             }
         ),
+        Tool(
+            name="timeline",
+            description=(
+                "Reference timeline of life events. Add milestones, query chronologically, "
+                "or find events near a date. Categories: life, career, relationship, education, "
+                "health, location, project, milestone. Significance 1-10 (10=most significant). "
+                "Supports fuzzy dates (month/year precision)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "list", "around"],
+                        "description": (
+                            "'add': record a life event. "
+                            "'list': list events (optional category/date filters). "
+                            "'around': find events near a specific date."
+                        )
+                    },
+                    "event_date": {
+                        "type": "string",
+                        "description": "Date as YYYY-MM-DD, YYYY-MM, or YYYY. Required for 'add' and 'around'."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Short label for the event (e.g. 'Moved to Portland'). Required for 'add'."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Longer description of the event. Optional."
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["life", "career", "relationship", "education", "health", "location", "project", "milestone"],
+                        "description": "Event category. Default: 'life'."
+                    },
+                    "significance": {
+                        "type": "integer",
+                        "description": "1-10 importance (10=most significant). Default: 5."
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain link (e.g. 'heatpup', 'promaia')."
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags for filtering."
+                    },
+                    "range_days": {
+                        "type": "integer",
+                        "description": "For 'around': how many days before/after to search (default 365).",
+                        "default": 365
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results for 'list'/'around' (default 20).",
+                        "default": 20
+                    }
+                },
+                "required": ["action"]
+            }
+        ),
     ]
 
 
@@ -486,6 +551,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_gmail_scan(arguments)
         elif name == "activate":
             return await _handle_activate(arguments)
+        elif name == "timeline":
+            return await _handle_timeline(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
@@ -842,6 +909,124 @@ async def _handle_activate(args: dict) -> list[TextContent]:
     except Exception as e:
         logger.error(f"activate failed: {e}", exc_info=True)
         return [TextContent(type="text", text=f"ACTIVATE error: {e}")]
+
+
+async def _handle_timeline(args: dict) -> list[TextContent]:
+    """Reference timeline of life events — add, list, or query around a date."""
+    db = get_db()
+    action = args.get("action", "list")
+
+    if action == "add":
+        raw_date = args.get("event_date", "").strip()
+        title = args.get("title", "").strip()
+        if not raw_date or not title:
+            return [TextContent(type="text", text="Error: event_date and title are required for 'add'.")]
+
+        # Parse fuzzy dates: YYYY, YYYY-MM, YYYY-MM-DD
+        if len(raw_date) == 4:  # YYYY
+            event_date = f"{raw_date}-01-01"
+            precision = "year"
+        elif len(raw_date) == 7:  # YYYY-MM
+            event_date = f"{raw_date}-01"
+            precision = "month"
+        else:
+            event_date = raw_date
+            precision = "day"
+
+        category = args.get("category", "life")
+        significance = int(args.get("significance", 5))
+        description = args.get("description")
+        domain = args.get("domain")
+        tags = args.get("tags", [])
+
+        db.execute(
+            """
+            INSERT INTO brain.timeline (event_date, date_precision, title, description, category, significance, domain, tags)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (event_date, precision, title, description, category, significance, domain, tags),
+        )
+        return [TextContent(type="text", text=f"Added to timeline: {title} ({event_date}, {category})")]
+
+    elif action == "list":
+        category = args.get("category")
+        limit = int(args.get("limit", 20))
+
+        if category:
+            rows = db.fetch_all(
+                "SELECT * FROM brain.timeline WHERE category = %s ORDER BY event_date",
+                (category,),
+            )
+        else:
+            rows = db.fetch_all(
+                "SELECT * FROM brain.timeline ORDER BY event_date LIMIT %s",
+                (limit,),
+            )
+
+        if not rows:
+            return [TextContent(type="text", text="No timeline events recorded yet.")]
+
+        lines = ["# Life Timeline\n"]
+        for r in rows:
+            sig = r.get("significance", 5)
+            stars = "*" * min(sig, 3) if sig >= 7 else ""
+            prec = r.get("date_precision", "day")
+            d = str(r["event_date"])
+            if prec == "year":
+                d = d[:4]
+            elif prec == "month":
+                d = d[:7]
+            cat = r.get("category", "")
+            lines.append(f"- **{d}** [{cat}] {r['title']}{' ' + stars if stars else ''}")
+            if r.get("description"):
+                lines.append(f"  {r['description']}")
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    elif action == "around":
+        raw_date = args.get("event_date", "").strip()
+        if not raw_date:
+            return [TextContent(type="text", text="Error: event_date is required for 'around'.")]
+
+        if len(raw_date) == 4:
+            center = f"{raw_date}-07-01"
+        elif len(raw_date) == 7:
+            center = f"{raw_date}-15"
+        else:
+            center = raw_date
+
+        range_days = int(args.get("range_days", 365))
+        limit = int(args.get("limit", 20))
+
+        rows = db.fetch_all(
+            """
+            SELECT *, ABS(event_date - %s::date) AS days_away
+            FROM brain.timeline
+            WHERE event_date BETWEEN %s::date - %s AND %s::date + %s
+            ORDER BY ABS(event_date - %s::date)
+            LIMIT %s
+            """,
+            (center, center, range_days, center, range_days, center, limit),
+        )
+
+        if not rows:
+            return [TextContent(type="text", text=f"No events within {range_days} days of {raw_date}.")]
+
+        lines = [f"# Events near {raw_date}\n"]
+        for r in rows:
+            days = r.get("days_away", 0)
+            prec = r.get("date_precision", "day")
+            d = str(r["event_date"])
+            if prec == "year":
+                d = d[:4]
+            elif prec == "month":
+                d = d[:7]
+            cat = r.get("category", "")
+            lines.append(f"- **{d}** [{cat}] {r['title']} ({days}d away)")
+            if r.get("description"):
+                lines.append(f"  {r['description']}")
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    return [TextContent(type="text", text=f"Unknown timeline action: {action}. Use add/list/around.")]
 
 
 async def _handle_recall(args: dict) -> list[TextContent]:
