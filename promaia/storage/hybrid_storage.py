@@ -97,11 +97,18 @@ class HybridContentRegistry:
 
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
+        # NOTE: gmail_content column types (from schema.sql):
+        #   gmail_labels: JSONB (use @> or ? operators, NOT ANY/ALL)
+        #   email_date: TEXT (ISO format string, not timestamp)
+        #   synced_time: TEXT (ISO format string, not timestamptz)
+
         # Gmail indexes for message-level storage
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_workspace ON gmail_content (workspace)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_sender ON gmail_content (sender_email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_date ON gmail_content (email_date)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels ON gmail_content (gmail_labels)")
+        # Drop old B-tree index on JSONB column if it exists, replace with GIN
+        cursor.execute("DROP INDEX IF EXISTS idx_gmail_labels")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels_gin ON gmail_content USING GIN (gmail_labels)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_id ON gmail_content (thread_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_message_id ON gmail_content (message_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_position ON gmail_content (thread_id, thread_position)")

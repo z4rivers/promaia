@@ -318,6 +318,73 @@ def _insert_message(db, row: dict):
     )
 
 
+def resync_missing_bodies(workspace: str = "zbrain", max_messages: int = 200) -> Dict[str, Any]:
+    """Re-fetch full bodies for gmail_content rows where message_content is NULL."""
+    db = get_postgres_db()
+    rows = db.fetch_all(
+        "SELECT message_id, database_id FROM gmail_content WHERE message_content IS NULL OR message_content = '' LIMIT %s",
+        (max_messages,)
+    )
+    if not rows:
+        return {"updated": 0, "message": "All messages already have content"}
+
+    result: Dict[str, Any] = {"total": len(rows), "updated": 0, "failed": 0, "by_account": {}}
+
+    accounts = discover_accounts()
+    # Group rows by database_id (email address)
+    by_account: Dict[str, list] = {}
+    for row in rows:
+        acct = row['database_id']
+        by_account.setdefault(acct, []).append(row['message_id'])
+
+    for email, msg_ids in by_account.items():
+        # Find matching account token
+        token_path = None
+        for label, tp in accounts.items():
+            try:
+                svc = _get_gmail_service(tp)
+                profile_email = svc.users().getProfile(userId="me").execute()["emailAddress"]
+                if profile_email == email:
+                    token_path = tp
+                    break
+            except Exception:
+                continue
+
+        if not token_path:
+            result["by_account"][email] = {"error": "No token found"}
+            continue
+
+        service = _get_gmail_service(token_path)
+        updated = 0
+        for msg_id in msg_ids:
+            try:
+                msg = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+                body = _extract_body(msg.get("payload", {}))
+                if body:
+                    db.execute(
+                        "UPDATE gmail_content SET message_content = %s WHERE message_id = %s",
+                        (body[:10000], msg_id)
+                    )
+                    updated += 1
+                else:
+                    # Store snippet as fallback, flagged
+                    snippet = msg.get("snippet", "")
+                    if snippet:
+                        db.execute(
+                            "UPDATE gmail_content SET message_content = %s WHERE message_id = %s",
+                            (f"[snippet only] {snippet}", msg_id)
+                        )
+                        updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to resync {msg_id}: {e}")
+                result["failed"] += 1
+
+        result["updated"] += updated
+        result["by_account"][email] = {"updated": updated, "total": len(msg_ids)}
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -331,12 +398,20 @@ if __name__ == "__main__":
     parser.add_argument("--days-back", type=int, default=7)
     parser.add_argument("--max-emails", type=int, default=200)
     parser.add_argument("--workspace", default="zbrain")
+    parser.add_argument("--resync-bodies", action="store_true",
+                        help="Re-fetch bodies for messages with NULL message_content")
     args = parser.parse_args()
 
-    result = run_gmail_ingest(
-        account=args.account,
-        days_back=args.days_back,
-        max_emails=args.max_emails,
-        workspace=args.workspace,
-    )
+    if args.resync_bodies:
+        result = resync_missing_bodies(
+            workspace=args.workspace,
+            max_messages=args.max_emails,
+        )
+    else:
+        result = run_gmail_ingest(
+            account=args.account,
+            days_back=args.days_back,
+            max_emails=args.max_emails,
+            workspace=args.workspace,
+        )
     print(json.dumps(result, indent=2, default=str))
