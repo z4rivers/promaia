@@ -777,11 +777,11 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                         AND thread_id IS NOT NULL
                     """
                     cursor.execute(thread_query, gmail_page_ids)
-                    gmail_thread_ids = {row[0] for row in cursor.fetchall()}
+                    gmail_thread_ids = {row['thread_id'] for row in cursor.fetchall()}
                     
                     # Fetch all messages in those threads
                     if gmail_thread_ids:
-                        print(f"📧 Expanding Gmail threads: {gmail_messages_in_results} messages → {len(gmail_thread_ids)} threads")
+                        print(f"[Gmail] Expanding threads: {gmail_messages_in_results} messages -> {len(gmail_thread_ids)} threads")
                         
                         thread_placeholders = ','.join(['%s'] * len(gmail_thread_ids))
                         gmail_query = f"""
@@ -805,7 +805,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                                 added_count += 1
                         
                         if added_count > 0:
-                            print(f"➕ Added {added_count} thread messages ({initial_count} → {len(registry_entries)} total pages)")
+                            print(f"[Gmail] Added {added_count} thread messages ({initial_count} -> {len(registry_entries)} total pages)")
         
         # Step 3: Load actual markdown content for each entry
         # Use the same logic as read_markdown_files_with_registry for consistency
@@ -862,11 +862,68 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                                 break
                 
                 if not md_file:
-                    # Skip if we can't find the file - but warn the user
-                    print(f"⚠️  Skipping page '{title}' ({page_id}): markdown file not found on disk")
-                    continue
-                
-                # Read the markdown content
+                    # Postgres fallback for Gmail content (no .md files on disk)
+                    if database_name == 'gmail' or 'gmail' in str(entry.get('content_type', '')):
+                        from promaia.storage.postgres_db import get_postgres_db
+                        pg_db = get_postgres_db()
+                        gmail_row = pg_db.fetch_one(
+                            """SELECT subject, sender_email, sender_name, email_date,
+                                      body_snippet, message_content, gmail_labels,
+                                      recipient_emails, thread_id, is_unread
+                               FROM gmail_content WHERE page_id = %s""",
+                            (page_id,)
+                        )
+                        if gmail_row:
+                            body = gmail_row.get('message_content') or gmail_row.get('body_snippet') or ''
+                            subject = gmail_row.get('subject', 'No Subject')
+                            sender = gmail_row.get('sender_name') or gmail_row.get('sender_email', 'Unknown')
+                            date_str = gmail_row.get('email_date', '')
+                            content = f"# {subject}\n\nFrom: {sender}\nDate: {date_str}\n\n{body}"
+
+                            # Parse created_time for date_obj
+                            try:
+                                if entry['created_time']:
+                                    date_obj = datetime.fromisoformat(entry['created_time'].replace("Z", "+00:00"))
+                                else:
+                                    date_obj = datetime.now()
+                            except (ValueError, TypeError):
+                                date_obj = datetime.now()
+
+                            page_data = {
+                                'page_id': page_id,
+                                'date': date_obj.strftime("%Y-%m-%d"),
+                                'date_obj': date_obj,
+                                'content': content,
+                                'file_path': f"gmail/{page_id}",
+                                'filename': f"{page_id}.gmail",
+                                'title': subject,
+                                'created_time': entry['created_time'],
+                                'last_edited_time': entry['last_edited_time'],
+                                'synced_time': entry['synced_time'],
+                                'metadata': entry['metadata'],
+                                'database_name': database_name
+                            }
+
+                            # Group by qualified name
+                            workspace = entry['workspace']
+                            if workspace and '.' not in database_name:
+                                qualified_key = f"{workspace}.{database_name}"
+                            else:
+                                qualified_key = database_name
+
+                            if qualified_key not in grouped_results:
+                                grouped_results[qualified_key] = []
+                            grouped_results[qualified_key].append(page_data)
+                            continue
+                        else:
+                            print(f"[WARN] Skipping gmail page '{title}' ({page_id}): not found in gmail_content table")
+                            continue
+                    else:
+                        # Skip non-Gmail entries without .md files
+                        print(f"[WARN] Skipping page '{title}' ({page_id}): markdown file not found on disk")
+                        continue
+
+                # Read the markdown content from disk (non-Gmail path)
                 with open(md_file, 'r', encoding='utf-8') as f:
                     content = f.read()
 
@@ -904,7 +961,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
 
                 except Exception as e:
                     # Don't fail if property injection fails
-                    print(f"⚠️  Failed to inject properties for {page_id}: {e}")
+                    print(f"[WARN] Failed to inject properties for {page_id}: {e}")
 
                 # Parse created_time
                 try:
@@ -914,7 +971,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                         date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
                 except (ValueError, TypeError):
                     date_obj = datetime.fromtimestamp(os.path.getmtime(md_file))
-                
+
                 # Create page data structure compatible with chat interface
                 # (Same format as read_markdown_files_with_registry returns)
                 page_data = {
