@@ -4,8 +4,8 @@
 
 Phase: Phase 4 — Full Platform Activation + Dashboard Design
 Plan: Web dashboard as primary display layer (not Notion)
-Status: 4.1-4.6 activated. Design system approved. Research complete. Implementation next.
-Last activity: 2026-03-07 — Design brainstorming session: 6-skin Japanese dashboard system
+Status: Dashboard wired to live Postgres. Server verified. All skins rendering. Actions & contexts populated.
+Last activity: 2026-03-08 — Dashboard wired to live brain data, contexts populated, actions seeded
 
 ## Session 2026-03-07 Accomplishments
 
@@ -69,34 +69,46 @@ promaia/web/
     dashboard.py       <- Routes: read Postgres -> render templates
 ```
 
+## Session 2026-03-08 Accomplishments
+
+### Dashboard Wired to Live Data
+- Replaced hardcoded stubs in `dashboard.py` with real Postgres queries
+- `_get_brain_data()` queries brain.memories, brain.actions, brain.contexts in one call
+- Counts, actions, projects, and recent memories all flow from live DB
+- All 6 skins verified rendering (200 OK)
+- Server verified: `/`, `/dashboard`, `/api/health`, `/api/mcp/servers`, `/api/chat/models` all working
+
+### Data Populated
+- All 5 project contexts updated with current_state descriptions
+- 4 pending actions seeded into brain.actions
+- Fixed: installed `jsonref` dependency (instructor path was failing)
+- Discovered: Gemini free tier quota exhausted — action auto-extraction blocked until quota resets
+
+### Issues Found
+- `jsonref` was missing — instructor import chain broken (now fixed)
+- Gemini 2.0 Flash free tier quota exhausted — action extraction silently returns empty
+- Consider: paid Gemini tier or local extraction fallback
+
 ## Next Session: What to Do
 
-### Priority 1: Write Design Doc + Implementation Plan
-- Consolidate both design briefs into `docs/plans/2026-03-07-dashboard-design.md`
-- Create implementation plan (writing-plans skill)
-- Commit design doc
+### Priority 1: Agent Scheduler (the heartbeat)
+- Wire Morning Briefing, Email Triage, Evening Digest agents with real data
+- Define agent schedules and triggers
+- Connect to existing agent framework in promaia/agents/
 
-### Priority 2: Build Dashboard (the main event)
-- `base.html` template with skin-switching CSS variables
-- `dashboard.py` router reading from Postgres (brain memories, actions, contexts)
-- Stone Garden skin first (default), then all 6
-- 5 page templates
+### Priority 2: Deploy for iPhone
+- Deploy web server externally (Render, Railway, or VPS)
+- Mobile-first testing with all 6 skins
+- Voice interface consideration
 
-### Priority 3: Gmail Ingest Pipeline
-- `promaia/agents/gmail_ingest.py` — daemon syncing Gmail -> gmail_content table
-- `query_gmail` tool in brain MCP server
-- Wire agents to real email data
+### Priority 3: Export Patches (safety net)
+- `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+- Before Josie/Rose re-init Promaia repo
 
-### Priority 4: MCP Router (3 quick fixes)
-- Fix `get_mcp_server_configs()` import in mcp_servers.py
-- Register MCP router in main.py
-- Add brain server entry to mcp_servers.json
-
-### Priority 5: Remaining items
-- CLI stubs (team_commands, conversation_commands)
-- Export patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
-- Deploy web server externally for phone access
+### Priority 4: Remaining
 - Fix Anthropic chat bug in utils/ai.py
+- CLI stubs (team_commands, conversation_commands)
+- Gemini routing (Phase 3 — model router)
 
 ## Notion Page IDs (still valid — Notion stays as agent backend)
 - Root: 31b72180-6675-8039-a701-f51c6423f11e

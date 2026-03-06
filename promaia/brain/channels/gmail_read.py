@@ -253,7 +253,15 @@ def _scan_account(
 
 def _fetch_recent_messages(service, days_back: int, max_emails: int, before_date: Optional[str] = None) -> List[Dict]:
     """Fetch recent email metadata from Gmail API."""
-    after_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y/%m/%d")
+    # Calculate after_date relative to before_date (not now) when scanning historical windows
+    if before_date:
+        try:
+            anchor = datetime.strptime(before_date, "%Y/%m/%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            anchor = datetime.now(timezone.utc)
+    else:
+        anchor = datetime.now(timezone.utc)
+    after_date = (anchor - timedelta(days=days_back)).strftime("%Y/%m/%d")
     query = f"after:{after_date}"
     if before_date:
         query += f" before:{before_date}"
