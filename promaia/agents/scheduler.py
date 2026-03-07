@@ -12,6 +12,7 @@ from promaia.agents.agent_config import load_agents, AgentConfig
 from promaia.agents.executor import AgentExecutor
 from promaia.agents.budget_guard import BudgetGuard
 from promaia.agents.cost_tracker import CostTracker
+from promaia.events.router import EventRouter
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class AgentScheduler:
         self.shutdown_event = asyncio.Event()
         self.cost_tracker = CostTracker()
         self.budget_guard = BudgetGuard(self.cost_tracker)
+        self.event_router = EventRouter()
 
     async def start(self):
         """
@@ -59,6 +61,11 @@ class AgentScheduler:
             task = asyncio.create_task(self._run_agent_loop(agent))
             self.tasks[agent.name] = task
             logger.info(f"   ✓ Scheduled '{agent.name}' (every {agent.interval_minutes} min)")
+
+        # Start event router (EVENT-02)
+        router_task = asyncio.create_task(self.event_router.run())
+        self.tasks["__event_router__"] = router_task
+        logger.info("   Event router started (polling every 30s)")
 
         logger.info("✅ Scheduler started. Press Ctrl+C to stop.\n")
 
