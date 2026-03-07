@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Agent
 status: in_progress
-stopped_at: Completed 09-01-PLAN.md (Time-of-Day Scheduling + Telegram Push)
-last_updated: "2026-03-07T10:55:53.458Z"
-last_activity: 2026-03-07 -- Plan 09-01 complete (Time-of-Day Scheduling + Telegram Push)
+stopped_at: Phase 9 complete, Phase 11 discussion starting
+last_updated: "2026-03-07T18:00:00.000Z"
+last_activity: 2026-03-07 -- Phase 9 complete. v3.0 quick wins (Plans 0.5a-4) committed. Phase 11 discussion starting.
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 13
-  percent: 93
+  total_phases: 7
+  completed_phases: 5
+  total_plans: 15
+  completed_plans: 15
+  percent: 71
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 9: Proactive Push
+**Current focus:** Phase 11: Conversational Telegram Bot
 
 ## Current Position
 
-Phase: 9 of 10 (Proactive Push)
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: In Progress
-Last activity: 2026-03-07 -- Plan 09-01 complete (Time-of-Day Scheduling + Telegram Push)
+Phase: 11 (Conversational Telegram Bot)
+Plan: 0 of ? -- DISCUSSION PHASE
+Status: Discussing
+Last activity: 2026-03-07 -- Phase 9 complete, v3.0 quick wins shipped, GSD reconciled
 
-Progress: [█████████░] 93%
+Progress: [█████░░░░░] 71%
 
 ## Performance Metrics
 
@@ -52,10 +52,13 @@ Progress: [█████████░] 93%
 | 07. Event Bus + Notif Layer | 3/3 | 5min | ~2min |
 | 08. Telegram Bot | 2/2 | 18min | ~9min |
 
-**Recent Trend:** Phase 9 Plan 01 complete. Time-of-day scheduling with direct Telegram push.
+| Phase 09 | 2/2 | ~8min | ~4min |
+
+**Recent Trend:** Phase 9 complete. v3.0 product polish shipped (5 commits). Phase 11 discussion starting.
 | Phase 08 P01 | 10min | 2 tasks | 9 files |
 | Phase 08 P02 | 8min | 2 tasks | 4 files |
 | Phase 09 P01 | 4min | 2 tasks | 4 files |
+| Phase 09 P02 | 4min | 3 tasks | 4 files |
 
 ## What's Live
 
@@ -133,9 +136,20 @@ None yet.
 - Google AI pricing: $125/mo intro rate going away. Budget projections assume $20/mo plan.
 - MuninnDB v0.3.7 needed for embedding fix (Windows binary not yet available)
 
+## v3.0 Quick Wins (shipped between Phase 9 and Phase 11)
+
+Product polish work triggered by Zack's first real user test:
+- Gmail pipeline fresh sync + email page rendering (78 emails)
+- Google Calendar connected (7 calendars)
+- Unified startup: `python -m promaia dev`
+- Scheduler catch-up on missed runs + heartbeat + Telegram lifecycle notifications
+- Dashboard nav bar + health indicator + active page highlighting
+- Telegram bot personality (greetings, questions, varied confirmations)
+- Personality manifest written (.planning/PERSONALITY-MANIFEST.md)
+
 ## Session Continuity
 
-Last session: 2026-03-07T10:55:53.456Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-03-07T18:00:00.000Z
+Stopped at: GSD reconciled, Phase 11 discussion starting
 Resume file: None
-Next: Phase 9 Plan 02 -- Notification Preferences + Email Triage Scheduling
+Next: Phase 11 discuss-phase (Conversational Telegram Bot)

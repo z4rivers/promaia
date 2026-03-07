@@ -23,8 +23,9 @@
 - [x] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops (completed 2026-03-07)
 - [x] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge (completed 2026-03-07)
 - [x] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands (completed 2026-03-07)
-- [ ] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest
+- [x] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest (completed 2026-03-07)
 - [ ] **Phase 10: Memory Deepening + Polish** - Decay tiers, association strengthening, profile-driven prompts, session handoff
+- [ ] **Phase 11: Conversational Telegram Bot** - Gemini-powered conversation with brain context, personality manifest, session synthesis
 
 ## Phase Details
 
@@ -110,8 +111,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 09-01-PLAN.md -- Time-of-day scheduling + direct Telegram push + emitter pre-routing + config
-- [ ] 09-02-PLAN.md -- Fatigue controls + reply handler + email-triage interval + human verification
+- [x] 09-01-PLAN.md -- Time-of-day scheduling + direct Telegram push + emitter pre-routing + config
+- [x] 09-02-PLAN.md -- Fatigue controls + reply handler + email-triage interval + human verification
 
 ### Phase 10: Memory Deepening + Polish
 **Goal**: The brain gets smarter over time -- memories decay or strengthen based on use, the profile shapes every agent call, and sessions resume seamlessly
@@ -123,6 +124,18 @@ Plans:
   3. Memories that are frequently retrieved together score higher when either one is searched (association strengthening)
   4. Every agent call includes a ~200-token cached profile prefix describing who Zack is, his schedule, and his preferences
   5. Ending a session auto-captures a summary; the next session's briefing surfaces yesterday's context
+**Plans**: TBD
+
+### Phase 11: Conversational Telegram Bot
+**Goal**: Telegram becomes a real conversational surface -- Gemini-powered responses using brain context, personality manifest, and conversation history
+**Depends on**: Phase 9
+**Requirements**: CONV-01, CONV-02, CONV-03, CONV-04, CONV-05
+**Success Criteria** (what must be TRUE):
+  1. Text "how are my projects looking?" on Telegram and get a real answer using brain context
+  2. Voice note about a project idea gets intelligent acknowledgment, not "Captured."
+  3. Conversation history (last 5 messages) provides continuity within a session
+  4. Personality manifest loaded as system prompt -- Promaia sounds like Promaia, not a generic bot
+  5. After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
 **Plans**: TBD
 
 ## Progress
@@ -139,8 +152,9 @@ Plans:
 | 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
 | 7. Event Bus + Notification Layer | v2.0 | Complete    | 2026-03-07 | - |
 | 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
-| 9. Proactive Push | v2.0 | 0/2 | Planning complete | - |
+| 9. Proactive Push | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
+| 11. Conversational Telegram Bot | v2.0 | 0/? | Discussion | - |
 
 ---
 *Created: 2026-03-04*
