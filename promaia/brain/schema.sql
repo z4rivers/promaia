@@ -252,3 +252,38 @@ CREATE INDEX IF NOT EXISTS idx_brain_timeline_event_date
 -- B-tree on category for filtered lookups
 CREATE INDEX IF NOT EXISTS idx_brain_timeline_category
     ON brain.timeline (category);
+
+
+-- ============================================================
+-- brain.agent_costs
+-- Per-API-call cost tracking for agent executions.
+-- Every generate_content call logs model, token counts,
+-- cached/thinking tokens, and computed USD cost.
+-- Used by CostTracker (promaia/agents/cost_tracker.py)
+-- and brain_costs MCP tool for user-facing spend visibility.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.agent_costs (
+    id SERIAL PRIMARY KEY,
+    execution_id INTEGER REFERENCES agent_executions(id),
+    agent_name TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    task_type TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    cached_tokens INTEGER DEFAULT 0,
+    thinking_tokens INTEGER DEFAULT 0,
+    cost_usd REAL NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for per-agent cost queries (e.g., "how much did morning-briefing cost?")
+CREATE INDEX IF NOT EXISTS idx_agent_costs_agent
+    ON brain.agent_costs (agent_name, created_at DESC);
+
+-- Index for daily/weekly cost summaries
+CREATE INDEX IF NOT EXISTS idx_agent_costs_date
+    ON brain.agent_costs (created_at DESC);
+
+-- Index for per-run cost queries
+CREATE INDEX IF NOT EXISTS idx_agent_costs_execution
+    ON brain.agent_costs (execution_id);

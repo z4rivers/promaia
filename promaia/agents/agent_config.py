@@ -64,6 +64,12 @@ class AgentConfig:
     sdk_enabled: bool = True  # Use SDK for execution
     sdk_permission_mode: str = "bypassPermissions"  # or "default", "acceptEdits", "plan"
     sdk_allowed_tools: Optional[List[str]] = None  # Override default tools
+
+    # NEW: Model routing override
+    # Model key from AGENT_MODEL_MAP (e.g., "flash", "pro"). When None,
+    # ModelRouter.get_agent_model() uses the default for the agent name.
+    # Set in promaia.config.json to override the default model per agent.
+    model: Optional[str] = None
     
     # NEW: Messaging platform configuration (platform-agnostic)
     messaging_platform: Optional[str] = None  # "slack" or "discord"
