@@ -20,7 +20,7 @@
 ### v2.0 Proactive Agent
 
 - [x] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
-- [ ] **Phase 6: Cost Controls + Model Routing** - Right model per task, budget tracking, prompt caching
+- [ ] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops
 - [ ] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge
 - [ ] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands
 - [ ] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest
@@ -44,17 +44,25 @@ Plans:
 - [x] 05-02-PLAN.md -- Agent config + prompt hardening (schedule change + anti-hallucination)
 - [x] 05-03-PLAN.md -- Full validation run + human verification of agent output
 
-### Phase 6: Cost Controls + Model Routing
-**Goal**: Every API call uses the cheapest model that can do the job, with per-run and daily budget enforcement
+### Phase 6: Waste Elimination + Spend Visibility
+**Goal**: Best possible results at minimum cost — never pay twice for the same work, never burn time on garbage output, never let a bug drain the wallet silently
 **Depends on**: Phase 5
 **Requirements**: ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04, ROUTE-05, COST-01, COST-02, COST-03, COST-04
 **Success Criteria** (what must be TRUE):
-  1. Morning briefing runs on Gemini Pro, email-triage and evening-digest run on Gemini Flash -- not Opus
-  2. A failed model call automatically retries on the next tier up without crashing
-  3. Every agent run logs its model, token count, and dollar cost to brain.agent_costs
-  4. An agent run that exceeds $0.50 is terminated mid-execution with a logged reason
-  5. Non-critical agent runs are skipped when the daily budget is exhausted
-**Plans**: TBD
+  1. Repeated system prompts and stable context blocks are cached — not re-sent and re-billed on every call
+  2. Already-processed emails/memories are not re-summarized or re-embedded on subsequent agent runs
+  3. Every agent run logs its model, token count, and dollar cost to a tracking table — visible on demand
+  4. A runaway loop (agent stuck retrying or iterating with no progress) is detected and killed automatically
+  5. Zack can see a daily/weekly cost summary without digging through logs
+  6. Model selection is intentional: best model for reasoning tasks, lightweight model only where output quality is genuinely identical (pure extraction, formatting)
+  7. Smart batching: combine related queries into fewer, better-structured calls instead of many small ones
+**Plans:** 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md -- Model routing infrastructure + cost tracking table + pricing computation
+- [ ] 06-02-PLAN.md -- AgentContext dataclass + prompt restructuring for Gemini optimization
+- [ ] 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
+- [ ] 06-04-PLAN.md -- End-to-end validation run + human verification of output quality and cost
 
 ### Phase 7: Event Bus + Notification Layer
 **Goal**: Agents produce routable events with urgency tiers, and a polling loop delivers them to the right channel at the right time
@@ -115,7 +123,7 @@ Plans:
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
-| 6. Cost Controls + Model Routing | v2.0 | 0/? | Not started | - |
+| 6. Waste Elimination + Spend Visibility | v2.0 | 0/4 | Planned | - |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |
