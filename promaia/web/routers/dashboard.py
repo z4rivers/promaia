@@ -359,3 +359,45 @@ async def profile_page(request: Request):
         "declared_count": declared_count,
         "inferred_count": inferred_count,
     })
+
+
+@router.get("/api/notifications/unread")
+async def notifications_unread():
+    """Return count of unrouted events for dashboard badge."""
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        row = db.fetch_one(
+            """
+            SELECT COUNT(*) as count
+            FROM brain.events
+            WHERE urgency IS NOT NULL
+              AND routed_at IS NULL
+              AND (held_until IS NULL OR held_until <= NOW())
+            """
+        )
+        return {"unread": row["count"] if row else 0}
+    except Exception as e:
+        logger.warning(f"Notification count unavailable: {e}")
+        return {"unread": 0}
+
+
+@router.post("/api/notifications/read")
+async def notifications_mark_read():
+    """Mark all unrouted events as read via dashboard channel."""
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        count = db.execute(
+            """
+            UPDATE brain.events
+            SET routed_at = NOW(), channel = 'dashboard'
+            WHERE urgency IS NOT NULL
+              AND routed_at IS NULL
+              AND (held_until IS NULL OR held_until <= NOW())
+            """
+        )
+        return {"status": "ok", "marked": count}
+    except Exception as e:
+        logger.warning(f"Mark read failed: {e}")
+        return {"status": "error", "marked": 0}
