@@ -3163,6 +3163,9 @@ def main():
     discord_parser.add_argument("--token", help="Discord bot token (optional, will use credentials file if not provided)")
     discord_parser.set_defaults(func=handle_discord_bot)
 
+    # Unified dev runner — one command starts everything
+    subparsers.add_parser("dev", help="Start Promaia (scheduler + Telegram bot + web dashboard)")
+
     args = parser.parse_args()
 
     # Configure logging
@@ -3205,6 +3208,12 @@ def main():
 
     if args.command is None:
         parser.print_help()
+        return
+
+    # Unified dev runner
+    if args.command == "dev":
+        from promaia.runner import main as run_dev
+        run_dev()
         return
 
     # Handle commands

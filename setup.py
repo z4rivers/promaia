@@ -16,8 +16,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Promaia Team',
-    packages=['promaia'],
-    package_dir={'promaia': 'promaia'},
+    packages=find_packages(),
     include_package_data=True,
     install_requires=[
         'aiohappyeyeballs==2.6.1',
