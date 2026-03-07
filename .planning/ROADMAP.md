@@ -20,7 +20,7 @@
 ### v2.0 Proactive Agent
 
 - [x] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
-- [ ] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops
+- [x] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops (completed 2026-03-07)
 - [ ] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge
 - [ ] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands
 - [ ] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest
@@ -56,13 +56,13 @@ Plans:
   5. Zack can see a daily/weekly cost summary without digging through logs
   6. Model selection is intentional: best model for reasoning tasks, lightweight model only where output quality is genuinely identical (pure extraction, formatting)
   7. Smart batching: combine related queries into fewer, better-structured calls instead of many small ones
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 06-01-PLAN.md -- Model routing infrastructure + cost tracking table + pricing computation
 - [x] 06-02-PLAN.md -- AgentContext dataclass + prompt restructuring for Gemini optimization
-- [ ] 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
-- [ ] 06-04-PLAN.md -- End-to-end validation run + human verification of output quality and cost
+- [x] 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
+- [x] 06-04-PLAN.md -- End-to-end validation run + human verification of output quality and cost
 
 ### Phase 7: Event Bus + Notification Layer
 **Goal**: Agents produce routable events with urgency tiers, and a polling loop delivers them to the right channel at the right time
@@ -123,7 +123,7 @@ Plans:
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
-| 6. Waste Elimination + Spend Visibility | v2.0 | 2/4 | In Progress | - |
+| 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |

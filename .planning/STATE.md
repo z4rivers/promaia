@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 6: Waste Elimination + Spend Visibility -- IN PROGRESS
+**Current focus:** Phase 6: Waste Elimination + Spend Visibility -- COMPLETE
 
 ## Current Position
 
-Phase: 6 of 10 (Waste Elimination + Spend Visibility)
-Plan: 3 of 4 in current phase -- COMPLETE
-Status: Executing
-Last activity: 2026-03-07 -- Plan 06-03 complete (Gemini execution path + budget enforcement)
+Phase: 6 of 10 (Waste Elimination + Spend Visibility) -- COMPLETE
+Plan: 4 of 4 in current phase -- COMPLETE
+Status: Phase Complete
+Last activity: 2026-03-07 -- Plan 06-04 complete (End-to-end Gemini validation, 91% cost reduction)
 
-Progress: [######################--------] 75% (v2.0 Phase 6: 3/4 plans complete)
+Progress: [##############################] 100% (v2.0 Phase 6: 4/4 plans complete)
 
 ## Performance Metrics
 
@@ -32,15 +32,15 @@ Progress: [######################--------] 75% (v2.0 Phase 6: 3/4 plans complete
 | 03.1 Onboarding Module | 3 | -- | -- |
 | 04. Platform Activation | 1 | -- | -- |
 | 05. Validate & Activate | 3 | ~12min | ~4min |
-| 06. Waste Elim + Spend Vis | 3/4 | 34min | ~11min |
+| 06. Waste Elim + Spend Vis | 4/4 | 39min | ~10min |
 
-**Recent Trend:** Phase 6 nearing completion. Gemini execution path wired in, budget enforcement active, one validation plan remaining.
+**Recent Trend:** Phase 6 complete. All agents running on Gemini 3 Flash at $0.0125/cycle (91% reduction from Claude baseline). Ready for Phase 7.
 
 ## What's Live
 
 - Brain MCP server: 16 tools (added brain_costs), 56+ memories, 10 domains, 98 profile traits
 - Agent scheduler: PID running, 3 agents (morning-briefing, email-triage, evening-digest)
-- Agent cost: ~$0.044/run avg via Claude SDK ($0.132 total for 3-agent validation cycle)
+- Agent cost: ~$0.004/run avg via Gemini 3 Flash ($0.0125 total for 3-agent cycle, down from $0.132 Claude)
 - Web dashboard: localhost:8000, 5 pages, Superflat skin
 - Gmail pipeline: OAuth working, emails ingested
 
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - 06-03: Single-level fallback only (no cascade) to prevent cost explosion
 - 06-03: RunawayDetector uses word-set Jaccard overlap (no external deps)
 - 06-03: Budget-blocked agents sleep for full interval before retry
+- 06-04: All 3 agents validated on Gemini 3 Flash with human-approved output quality
+- 06-04: 91% cost reduction confirmed ($0.0125 vs $0.132 Claude baseline)
+- 06-04: Fixed datetime variable shadowing in executor.py (auto-fix Rule 1)
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 06-03-PLAN.md (Gemini execution path + budget enforcement + fallback chain)
+Stopped at: Completed 06-04-PLAN.md (End-to-end Gemini validation -- Phase 6 complete)
 Resume file: None
-Next: 06-04-PLAN.md -- End-to-end validation of Gemini-powered agent pipeline
+Next: Phase 7 planning -- Event Bus + Notification Layer
