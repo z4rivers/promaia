@@ -101,7 +101,7 @@
       "journal_db_id": null,
       "description": "Scan both Gmail accounts, classify and surface attention items",
       "created_at": null,
-      "last_run_at": "2026-03-07T12:08:08.633500+00:00",
+      "last_run_at": "2026-03-07T12:11:15.194514+00:00",
       "calendar_event_ids": null,
       "calendar_id": null,
       "source_access": null,

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from promaia.agents.agent_config import load_agents, AgentConfig
+from promaia.agents.agent_config import load_agents, AgentConfig, update_agent_last_run
 from promaia.agents.executor import AgentExecutor
 from promaia.agents.budget_guard import BudgetGuard
 from promaia.agents.cost_tracker import CostTracker
@@ -95,6 +95,75 @@ def _next_run_time(schedule: List[Tuple[str, str]]) -> datetime:
     return min(candidates)
 
 
+def _missed_runs(agent: AgentConfig) -> List[Tuple[str, str]]:
+    """Check if any scheduled runs were missed since the agent last ran.
+
+    Compares each schedule entry for today against ``agent.last_run_at``.
+    A run is considered "missed" when:
+      1. The schedule entry applies to today (daily or matching weekday).
+      2. The scheduled time has already passed.
+      3. ``last_run_at`` is either None or earlier than the scheduled time.
+
+    Returns:
+        List of (day_spec, time_str) entries that were missed today.
+    """
+    if not agent.schedule:
+        return []
+
+    now = datetime.now(_USER_TZ)
+
+    # Parse last_run_at into a timezone-aware datetime in user TZ
+    last_run: Optional[datetime] = None
+    if agent.last_run_at:
+        try:
+            lr = datetime.fromisoformat(agent.last_run_at)
+            # Ensure timezone-aware in user TZ
+            if lr.tzinfo is None:
+                lr = lr.replace(tzinfo=_USER_TZ)
+            else:
+                lr = lr.astimezone(_USER_TZ)
+            last_run = lr
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Could not parse last_run_at='{agent.last_run_at}' "
+                f"for '{agent.name}', treating as never run"
+            )
+
+    missed: List[Tuple[str, str]] = []
+
+    for day_spec, time_str in agent.schedule:
+        hour, minute = int(time_str.split(":")[0]), int(time_str.split(":")[1])
+
+        # Does this schedule entry apply today?
+        applies_today = False
+        if day_spec.lower() == "daily":
+            applies_today = True
+        else:
+            target_weekday = _WEEKDAY_MAP.get(day_spec)
+            if target_weekday is not None and target_weekday == now.weekday():
+                applies_today = True
+
+        if not applies_today:
+            continue
+
+        # Build today's scheduled time
+        scheduled_today = now.replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+
+        # Has it already passed today?
+        if scheduled_today > now:
+            continue  # Not yet due -- normal scheduling will handle it
+
+        # Was it already covered by a recent run?
+        if last_run is not None and last_run >= scheduled_today:
+            continue  # Already ran at or after the scheduled time today
+
+        missed.append((day_spec, time_str))
+
+    return missed
+
+
 class AgentScheduler:
     """
     Schedules and runs agents at their configured intervals.
@@ -134,6 +203,17 @@ class AgentScheduler:
 
         logger.info(f"📋 Found {len(enabled_agents)} enabled agents")
 
+        # Check for missed runs (catch-up detection)
+        for agent in enabled_agents:
+            if agent.schedule:
+                missed = _missed_runs(agent)
+                for day_spec, time_str in missed:
+                    last_desc = agent.last_run_at or "never"
+                    logger.info(
+                        f"   Missed {agent.name} (scheduled {time_str}, "
+                        f"last run {last_desc}) — will run now"
+                    )
+
         # Create tasks for each agent
         for agent in enabled_agents:
             if agent.schedule:
@@ -164,7 +244,17 @@ class AgentScheduler:
         self.tasks["__event_router__"] = router_task
         logger.info("   Event router started (polling every 30s)")
 
+        # Start heartbeat loop (writes to brain.events every 5 min)
+        heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self.tasks["__heartbeat__"] = heartbeat_task
+        logger.info("   Heartbeat loop started (every 5 min)")
+
         logger.info("✅ Scheduler started. Press Ctrl+C to stop.\n")
+
+        # Notify via Telegram that Promaia is online
+        await self._send_telegram_notification(
+            f"Promaia is online. Scheduler running with {len(enabled_agents)} agents."
+        )
 
         # Wait for shutdown signal
         await self.shutdown_event.wait()
@@ -239,6 +329,79 @@ class AgentScheduler:
             agent: The agent configuration (must have schedule set).
         """
         logger.info(f"🕐 Starting scheduled loop for '{agent.name}'")
+
+        # --- Catch-up: fire missed runs before entering normal loop ---
+        missed = _missed_runs(agent)
+        if missed and self.running:
+            # De-duplicate: only run once even if multiple schedule entries missed
+            missed_desc = ", ".join(t for _, t in missed)
+            last_desc = agent.last_run_at or "never"
+            logger.info(
+                f"Missed {agent.name} (scheduled {missed_desc}, "
+                f"last run {last_desc}) — running now"
+            )
+
+            # Budget check before catch-up
+            allowed, reason = self.budget_guard.can_start_run(
+                agent.name, is_critical=False
+            )
+            if allowed:
+                try:
+                    executor = AgentExecutor(agent)
+                    result = await executor.execute()
+
+                    if result["success"]:
+                        logger.info(
+                            f"✅ '{agent.name}' catch-up run completed"
+                        )
+
+                        # Push output to Telegram
+                        output = result.get("output", "")
+                        pushed = False
+                        if output:
+                            pushed = await self._push_agent_output(
+                                agent, output
+                            )
+
+                        # Emit events
+                        try:
+                            execution_id = result.get("execution_id", 0)
+                            event_count = emit_agent_events(
+                                agent_name=agent.name,
+                                output=output,
+                                execution_id=execution_id,
+                                pushed_to_channel=(
+                                    "telegram" if pushed else None
+                                ),
+                            )
+                            if event_count > 0:
+                                logger.info(
+                                    f"Emitted {event_count} events "
+                                    f"for '{agent.name}' (catch-up)"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Event emission failed (non-fatal): {e}"
+                            )
+
+                        # Update last_run_at so normal loop doesn't re-fire
+                        timestamp = datetime.now(
+                            timezone.utc
+                        ).isoformat()
+                        update_agent_last_run(agent.name, timestamp)
+                    else:
+                        logger.error(
+                            f"❌ '{agent.name}' catch-up failed: "
+                            f"{result.get('error')}"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"❌ Error during '{agent.name}' catch-up: {e}"
+                    )
+            else:
+                logger.warning(
+                    f"Skipping '{agent.name}' catch-up: {reason}"
+                )
 
         while self.running:
             try:
@@ -483,9 +646,80 @@ class AgentScheduler:
                 logger.warning(f"Email check loop error (non-fatal): {e}")
                 # Continue polling -- transient errors should not kill the loop
 
+    async def _heartbeat_loop(self):
+        """Write a heartbeat event to brain.events every 5 minutes.
+
+        Allows the dashboard to show "scheduler last seen: X min ago".
+        """
+        while self.running:
+            try:
+                await asyncio.sleep(300)  # 5 minutes
+            except asyncio.CancelledError:
+                break
+
+            if not self.running:
+                break
+
+            try:
+                from promaia.storage.postgres_db import get_postgres_db
+                import json
+
+                db = get_postgres_db()
+                active_tasks = [
+                    name for name, t in self.tasks.items()
+                    if not name.startswith("__") and not t.done()
+                ]
+                db.execute(
+                    """
+                    INSERT INTO brain.events (type, payload, source, created_at)
+                    VALUES ('scheduler_heartbeat', %s, 'heartbeat', NOW())
+                    """,
+                    (json.dumps({"active_agents": active_tasks}),),
+                )
+            except Exception as e:
+                logger.warning(f"Heartbeat write failed (non-fatal): {e}")
+
+    async def _send_telegram_notification(self, text: str):
+        """Send a plain text notification to Telegram.
+
+        Used for system-level messages (startup, shutdown). Sends to the
+        first chat_id in TELEGRAM_WHITELIST. Failures are logged but never
+        raised -- notifications must not block the scheduler lifecycle.
+        """
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        whitelist = os.environ.get("TELEGRAM_WHITELIST")
+
+        if not bot_token or not whitelist:
+            logger.warning(
+                "Telegram notification skipped: "
+                "TELEGRAM_BOT_TOKEN or TELEGRAM_WHITELIST not set"
+            )
+            return
+
+        try:
+            chat_id = int(whitelist.split(",")[0].strip())
+        except (ValueError, IndexError):
+            logger.error(f"Invalid TELEGRAM_WHITELIST format: {whitelist}")
+            return
+
+        try:
+            from aiogram import Bot
+
+            bot = Bot(token=bot_token)
+            try:
+                await bot.send_message(chat_id, text)
+                logger.info(f"Telegram notification sent: {text}")
+            finally:
+                await bot.session.close()
+        except Exception as e:
+            logger.warning(f"Telegram notification failed (non-fatal): {e}")
+
     async def _shutdown(self):
         """Gracefully shutdown all running tasks."""
         logger.info("\n🛑 Shutting down scheduler...")
+
+        # Notify via Telegram before tearing down
+        await self._send_telegram_notification("Promaia is going offline.")
 
         self.running = False
 
