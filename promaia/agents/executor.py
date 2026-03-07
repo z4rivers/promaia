@@ -25,6 +25,7 @@ from promaia.agents.cost_tracker import CostTracker, CostRecord
 from promaia.agents.gemini_executor import GeminiExecutor
 from promaia.agents.budget_guard import BudgetGuard, RunawayDetector
 from promaia.agents.agent_context import AgentContext, get_agent_tools_docs
+from promaia.events.emitter import emit_agent_events
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,19 @@ class AgentExecutor:
             # The Notion journal is ONLY for agent-initiated notes via write_journal tool
 
             logger.info(f"✅ Agent '{self.config.name}' completed successfully")
+
+            # Step 7: Emit routable events (EVENT-07)
+            try:
+                event_count = emit_agent_events(
+                    agent_name=self.config.name,
+                    output=result.get('output', ''),
+                    execution_id=execution_id,
+                )
+                if event_count > 0:
+                    logger.info(f"Emitted {event_count} routable events for '{self.config.name}'")
+            except Exception as e:
+                logger.warning(f"Event emission failed (non-fatal): {e}")
+
             return {
                 'success': True,
                 'execution_id': execution_id,
