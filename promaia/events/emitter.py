@@ -22,11 +22,28 @@ logger = logging.getLogger(__name__)
 _MAX_SUMMARY_LEN = 500
 
 
+def _is_empty_state_report(text: str) -> bool:
+    """Check if text is an empty-state report, not a real action item."""
+    lower = text.lower()
+    return any(phrase in lower for phrase in [
+        "no new emails",
+        "no unread emails",
+        "no emails from",
+        "no personal emails",
+        "no work emails",
+        "not found",
+        "no action needed",
+        "requiring attention",
+        "were found in this context",
+    ])
+
+
 def _parse_action_needed(output: str) -> list[str]:
     """Extract individual items from the **Action Needed** section.
 
     Looks for lines starting with ``- `` after the ``**Action Needed**``
     header and before the next ``**`` header (or end of string).
+    Filters out empty-state reports that the LLM may mistakenly include.
     """
     items: list[str] = []
     in_section = False
@@ -42,9 +59,11 @@ def _parse_action_needed(output: str) -> list[str]:
             # Another section header ends the Action Needed block
             if stripped.startswith("**") and stripped.endswith("**"):
                 break
-            # Capture bullet items
+            # Capture bullet items (skip empty-state reports)
             if stripped.startswith("- "):
-                items.append(stripped[2:].strip())
+                item = stripped[2:].strip()
+                if not _is_empty_state_report(item):
+                    items.append(item)
 
     return items
 

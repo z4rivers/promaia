@@ -50,7 +50,12 @@
       "max_iterations": 3,
       "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
       "enabled": true,
-      "schedule": [["daily", "06:00"]],
+      "schedule": [
+        [
+          "daily",
+          "06:00"
+        ]
+      ],
       "interval_minutes": null,
       "agent_id": "morning-briefing",
       "notion_page_id": null,
@@ -95,9 +100,8 @@
       "instructions_db_id": null,
       "journal_db_id": null,
       "description": "Scan both Gmail accounts, classify and surface attention items",
-      "_note": "Fast detection via Gmail API check loop in scheduler. interval_minutes=480 is a safety-net fallback.",
       "created_at": null,
-      "last_run_at": "2026-03-07T06:29:53.188278+00:00",
+      "last_run_at": "2026-03-07T12:08:08.633500+00:00",
       "calendar_event_ids": null,
       "calendar_id": null,
       "source_access": null,
@@ -126,7 +130,12 @@
       "max_iterations": 3,
       "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
       "enabled": true,
-      "schedule": [["daily", "16:30"]],
+      "schedule": [
+        [
+          "daily",
+          "16:30"
+        ]
+      ],
       "interval_minutes": null,
       "agent_id": "evening-digest",
       "notion_page_id": null,

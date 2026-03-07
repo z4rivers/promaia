@@ -445,7 +445,15 @@ class AgentScheduler:
                 new_count = response.get("resultSizeEstimate", 0)
 
                 if new_count > 0:
-                    logger.info(f"New unread email detected ({new_count} new) -- triggering email-triage")
+                    logger.info(f"New unread email detected ({new_count} new) -- syncing and triggering email-triage")
+
+                    # Sync new emails into database before triage
+                    try:
+                        from promaia.brain.gmail_ingest import run_gmail_ingest
+                        sync_result = run_gmail_ingest(account=account_label, days_back=1, max_emails=50)
+                        logger.info(f"Gmail sync: {sync_result.get('total_synced', 0)} new messages ingested")
+                    except Exception as e:
+                        logger.warning(f"Gmail sync failed (non-fatal): {e}")
 
                     # Find the email-triage agent config
                     agents = load_agents()
@@ -658,3 +666,9 @@ def run_scheduler_daemon_sync():
     Use this from CLI commands.
     """
     asyncio.run(run_scheduler_daemon())
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
+    run_scheduler_daemon_sync()
