@@ -414,3 +414,20 @@ async def generate_response(chat_id: int, user_message: str) -> str:
         logger.warning(f"Failed to save assistant response: {e}")
 
     return response_text
+
+
+# ---------------------------------------------------------------------------
+# Synthesis timer (stub -- full implementation in Task 2)
+# ---------------------------------------------------------------------------
+
+_synthesis_timers: dict[int, asyncio.Task] = {}
+
+
+async def reset_synthesis_timer(chat_id: int) -> None:
+    """Reset the synthesis timer for a chat. Full implementation in Task 2."""
+    pass
+
+
+async def cleanup_stale_sessions() -> None:
+    """Clean up stale sessions on startup. Full implementation in Task 2."""
+    pass

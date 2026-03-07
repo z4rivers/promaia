@@ -13,7 +13,7 @@ from io import BytesIO
 from aiogram import Router
 from aiogram.types import Message
 
-from promaia.telegram.brain_ops import capture_memory
+from promaia.telegram.conversation import generate_response, reset_synthesis_timer
 from promaia.telegram.formatting import send_long_message
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,14 @@ async def handle_voice(message: Message) -> None:
     # Show the transcription
     await send_long_message(message, f"Heard: {transcript}")
 
-    # Auto-capture to brain
-    result = await capture_memory(transcript)
-    await message.answer(result)
+    # Show typing indicator while Gemini thinks
+    await message.bot.send_chat_action(message.chat.id, "typing")
+
+    # Generate conversational response based on the transcription
+    response = await generate_response(message.chat.id, transcript)
+
+    # Reset synthesis timer
+    await reset_synthesis_timer(message.chat.id)
+
+    # Send response
+    await send_long_message(message, response)

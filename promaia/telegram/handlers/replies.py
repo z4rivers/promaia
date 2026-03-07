@@ -14,6 +14,8 @@ from aiogram import Router, F
 from aiogram.types import Message
 
 from promaia.telegram.brain_ops import capture_memory
+from promaia.telegram.conversation import generate_response, reset_synthesis_timer
+from promaia.telegram.formatting import send_long_message
 
 logger = logging.getLogger(__name__)
 
@@ -58,19 +60,16 @@ async def handle_reply(message: Message) -> None:
             f"Zack's response: {reply_text}"
         )
         domain = "email"
-        confirmation = "Reply captured with urgent notification context."
 
     elif original_text.startswith(_BRIEFING_PREFIX):
         # Morning briefing
         content = f"Reply to morning briefing:\n\n{reply_text}"
         domain = "working"
-        confirmation = "Reply captured with briefing context."
 
     elif original_text.startswith(_DIGEST_PREFIX):
         # Evening digest
         content = f"Reply to evening digest:\n\n{reply_text}"
         domain = "working"
-        confirmation = "Reply captured with digest context."
 
     else:
         # Not a push notification reply (e.g., reply to /briefing command response)
@@ -78,5 +77,11 @@ async def handle_reply(message: Message) -> None:
         return
 
     logger.info(f"Reply to push notification captured (domain={domain})")
-    result = await capture_memory(content, domain=domain)
-    await message.answer(confirmation)
+    # Capture push notification context as standalone memory
+    await capture_memory(content, domain=domain)
+
+    # Generate contextual conversational response about the reply
+    await message.bot.send_chat_action(message.chat.id, "typing")
+    response = await generate_response(message.chat.id, reply_text)
+    await reset_synthesis_timer(message.chat.id)
+    await send_long_message(message, response)
