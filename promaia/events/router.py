@@ -8,6 +8,7 @@ Applies quiet hours and rate limiting before channel dispatch (07-02).
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -30,6 +31,24 @@ class EventRouter:
         self.channels: list[NotificationChannel] = [DashboardChannel()]
         self.rate_limiter = RateLimiter()
         self.user_timezone = "America/New_York"
+
+        # Conditionally register TelegramChannel if configured
+        telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        telegram_whitelist = os.getenv("TELEGRAM_WHITELIST", "")
+        if telegram_token and telegram_whitelist:
+            try:
+                from promaia.telegram.channel import TelegramChannel
+
+                chat_id = int(telegram_whitelist.split(",")[0].strip())
+                self.channels.append(TelegramChannel(bot_token=telegram_token, chat_id=chat_id))
+                logger.info(f"TelegramChannel registered for chat_id={chat_id}")
+            except ImportError:
+                logger.warning(
+                    "aiogram not installed -- TelegramChannel not registered. "
+                    "Install with: pip install aiogram"
+                )
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Invalid TELEGRAM_WHITELIST format: {e}")
 
     async def run(self):
         """Main polling loop -- runs until cancelled."""
