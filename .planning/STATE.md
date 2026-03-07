@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 6 of 10 (Waste Elimination + Spend Visibility)
-Plan: 2 of 4 in current phase -- COMPLETE
+Plan: 3 of 4 in current phase -- COMPLETE
 Status: Executing
-Last activity: 2026-03-07 -- Plan 06-02 complete (AgentContext dataclass + prompt restructuring)
+Last activity: 2026-03-07 -- Plan 06-03 complete (Gemini execution path + budget enforcement)
 
-Progress: [################--------------] 50% (v2.0 Phase 6: 2/4 plans complete)
+Progress: [######################--------] 75% (v2.0 Phase 6: 3/4 plans complete)
 
 ## Performance Metrics
 
@@ -32,9 +32,9 @@ Progress: [################--------------] 50% (v2.0 Phase 6: 2/4 plans complete
 | 03.1 Onboarding Module | 3 | -- | -- |
 | 04. Platform Activation | 1 | -- | -- |
 | 05. Validate & Activate | 3 | ~12min | ~4min |
-| 06. Waste Elim + Spend Vis | 2/4 | 25min | ~12min |
+| 06. Waste Elim + Spend Vis | 3/4 | 34min | ~11min |
 
-**Recent Trend:** Phase 6 progressing. AgentContext + prompt tiers built on top of model routing foundation.
+**Recent Trend:** Phase 6 nearing completion. Gemini execution path wired in, budget enforcement active, one validation plan remaining.
 
 ## What's Live
 
@@ -74,6 +74,10 @@ Recent decisions affecting current work:
 - 06-02: Office day detection hardcoded to Thursday (matches Zack's schedule)
 - 06-02: AGENT_TOOL_REGISTRY static mapping for 3 known agents (no dynamic discovery)
 - 06-02: Prompt restructuring already applied by 06-01 -- verified, no redundant changes
+- 06-03: Synchronous genai.generate_content (matching nl_orchestrator.py pattern, not asyncio.to_thread)
+- 06-03: Single-level fallback only (no cascade) to prevent cost explosion
+- 06-03: RunawayDetector uses word-set Jaccard overlap (no external deps)
+- 06-03: Budget-blocked agents sleep for full interval before retry
 
 ### Pending Todos
 
@@ -87,6 +91,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 06-02-PLAN.md (AgentContext dataclass + prompt restructuring)
+Stopped at: Completed 06-03-PLAN.md (Gemini execution path + budget enforcement + fallback chain)
 Resume file: None
-Next: 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
+Next: 06-04-PLAN.md -- End-to-end validation of Gemini-powered agent pipeline
