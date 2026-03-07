@@ -1,5 +1,5 @@
 """
-Brain MCP Server — 15 tools for zBrain.
+Brain MCP Server — 16 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over stdio.
 Claude calls these tools to get briefings, capture thoughts, search memories,
@@ -23,6 +23,7 @@ Tools:
     gmail_query     — search stored Gmail content by sender, subject, or full-text
     activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
     timeline        — reference timeline of life events (add/list/query)
+    brain_costs     — daily/weekly agent cost summary (ask "what am I spending?")
 
 Usage:
     python -m promaia.brain.mcp_server
@@ -553,6 +554,25 @@ async def list_tools() -> list[Tool]:
                 "required": ["action"]
             }
         ),
+        Tool(
+            name="brain_costs",
+            description=(
+                "Show agent API costs: today's spend and daily breakdown "
+                "for the last N days. Ask 'what am I spending?' to see "
+                "a table of costs per agent per day."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "How many days of cost history to return (default 7).",
+                        "default": 7
+                    }
+                },
+                "required": []
+            }
+        ),
     ]
 
 
@@ -595,6 +615,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_activate(arguments)
         elif name == "timeline":
             return await _handle_timeline(arguments)
+        elif name == "brain_costs":
+            return await _handle_brain_costs(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
@@ -1942,6 +1964,61 @@ def _today_str() -> str:
     """Return today's date as YYYY-MM-DD."""
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+# ---------------------------------------------------------------------------
+# brain_costs handler
+# ---------------------------------------------------------------------------
+
+async def _handle_brain_costs(args: dict) -> list[TextContent]:
+    """Return formatted cost summary for the user."""
+    days = args.get("days", 7)
+    try:
+        from promaia.agents.cost_tracker import CostTracker
+
+        tracker = CostTracker()
+        today_spend = tracker.get_daily_spend()
+        summary = tracker.get_daily_summary(days=days)
+
+        lines = ["## Agent Costs", ""]
+        lines.append("### Today")
+        lines.append(f"Total: ${today_spend:.4f}")
+        lines.append("")
+
+        lines.append(f"### Last {days} days")
+        if summary:
+            lines.append(
+                "| Date | Agent | Calls | Input Tokens | Output Tokens | Cached Tokens | Cost |"
+            )
+            lines.append(
+                "|------|-------|-------|-------------|--------------|--------------|------|"
+            )
+            total_cost = 0.0
+            for row in summary:
+                day_str = str(row.get("day", ""))
+                agent = row.get("agent_name", "")
+                calls = row.get("calls", 0)
+                inp = row.get("input_tokens", 0) or 0
+                out = row.get("output_tokens", 0) or 0
+                cached = row.get("cached_tokens", 0) or 0
+                cost = row.get("cost", 0.0) or 0.0
+                total_cost += cost
+                lines.append(
+                    f"| {day_str} | {agent} | {calls} | {inp:,} | {out:,} | {cached:,} | ${cost:.4f} |"
+                )
+            lines.append("")
+            lines.append("### Totals")
+            lines.append(f"Total spend (last {days} days): ${total_cost:.4f}")
+        else:
+            lines.append("No cost data recorded yet.")
+
+        result = "\n".join(lines)
+        logger.info(f"brain_costs: today=${today_spend:.4f}, {len(summary)} rows")
+        return [TextContent(type="text", text=result)]
+
+    except Exception as e:
+        logger.error(f"brain_costs failed: {e}", exc_info=True)
+        return [TextContent(type="text", text=f"Error fetching costs: {e}")]
 
 
 # ---------------------------------------------------------------------------
