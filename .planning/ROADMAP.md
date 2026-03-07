@@ -136,7 +136,7 @@ Plans:
   3. Conversation history (last 5 messages) provides continuity within a session
   4. Personality manifest loaded as system prompt -- Promaia sounds like Promaia, not a generic bot
   5. After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 11-01-PLAN.md -- Conversation engine: schema, CRUD, context assembly, personality prompt, impact scoring, Gemini calling
@@ -158,7 +158,7 @@ Plans:
 | 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
 | 9. Proactive Push | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
-| 11. Conversational Telegram Bot | v2.0 | 0/2 | Planned | - |
+| 11. Conversational Telegram Bot | 1/2 | In Progress|  | - |
 
 ---
 *Created: 2026-03-04*

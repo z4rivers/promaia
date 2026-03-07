@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Agent
 status: in_progress
-stopped_at: Phase 9 complete, Phase 11 discussion starting
-last_updated: "2026-03-07T18:00:00.000Z"
-last_activity: 2026-03-07 -- Phase 9 complete. v3.0 quick wins (Plans 0.5a-4) committed. Phase 11 discussion starting.
+stopped_at: "Completed 11-01-PLAN.md"
+last_updated: "2026-03-07T23:05:36Z"
+last_activity: 2026-03-07 -- Phase 11 Plan 01 complete (conversation engine)
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 15
+  total_plans: 17
   completed_plans: 15
-  percent: 71
+  percent: 88
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 11 (Conversational Telegram Bot)
-Plan: 0 of ? -- DISCUSSION PHASE
-Status: Discussing
-Last activity: 2026-03-07 -- Phase 9 complete, v3.0 quick wins shipped, GSD reconciled
+Plan: 1 of 2 complete
+Status: Executing
+Last activity: 2026-03-07 -- Phase 11 Plan 01 complete (conversation engine)
 
-Progress: [█████░░░░░] 71%
+Progress: [████████░░] 88%
 
 ## Performance Metrics
 
@@ -54,11 +54,14 @@ Progress: [█████░░░░░] 71%
 
 | Phase 09 | 2/2 | ~8min | ~4min |
 
-**Recent Trend:** Phase 9 complete. v3.0 product polish shipped (5 commits). Phase 11 discussion starting.
+| Phase 11. Conversational Telegram | 1/2 | 4min | ~4min |
+
+**Recent Trend:** Phase 11 Plan 01 complete (conversation engine). Plan 02 (handler integration) next.
 | Phase 08 P01 | 10min | 2 tasks | 9 files |
 | Phase 08 P02 | 8min | 2 tasks | 4 files |
 | Phase 09 P01 | 4min | 2 tasks | 4 files |
 | Phase 09 P02 | 4min | 3 tasks | 4 files |
+| Phase 11 P01 | 4min | 2 tasks | 3 files |
 
 ## What's Live
 
@@ -126,6 +129,11 @@ Recent decisions affecting current work:
 - 09-01: Pre-routing uses atomic INSERT with routed_at+channel to prevent race condition
 - 09-01: Evening digest renamed Tonight to What's Next for 4:30 PM timing
 - 09-01: Bot session closed in finally block to prevent connection leaks
+- 11-01: Personality prompt 1276 chars (substance-first, under 1500 limit per D4)
+- 11-01: Impact promotion threshold 0.5 with 2-signal minimum to prevent false positives
+- 11-01: Session gap threshold 30 minutes for new session detection
+- 11-01: Gemini 3 Flash with temperature=1.0 and 30-second timeout for conversation
+- 11-01: Semantic search degrades gracefully if embedding fails (no crash)
 
 ### Pending Todos
 
@@ -149,7 +157,7 @@ Product polish work triggered by Zack's first real user test:
 
 ## Session Continuity
 
-Last session: 2026-03-07T18:00:00.000Z
-Stopped at: GSD reconciled, Phase 11 discussion starting
+Last session: 2026-03-07T23:05:36.865Z
+Stopped at: Completed 11-01-PLAN.md
 Resume file: None
-Next: Phase 11 discuss-phase (Conversational Telegram Bot)
+Next: Phase 11 Plan 02 (handler integration + synthesis)
