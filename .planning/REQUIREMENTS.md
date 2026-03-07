@@ -18,13 +18,13 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 
 - [ ] **ROUTE-01**: Model router selects appropriate model per task type (classify, extract, embed, synthesize, reason, create, heartbeat)
 - [ ] **ROUTE-02**: Fallback chain activates when primary model fails (next tier up)
-- [ ] **ROUTE-03**: Agent prompts restructured into cacheable tiers (anchor/tools/context) with cache_control markers
+- [ ] **ROUTE-03**: Agent prompts restructured into implicit-cacheable tiers: stable system instruction prefix (anchor tier), tool declarations (tools tier), per-run dynamic context (context tier). Prompt ordering maximizes Gemini implicit cache hits on the stable prefix. Explicit cache_control markers are not used -- implicit caching is preferred for 3x/day run volume per research findings.
 - [ ] **ROUTE-04**: Dynamic tool injection reduces prompt size by only including tools each agent needs
 - [ ] **ROUTE-05**: AgentContext dataclass provides standardized awareness (user profile, time, goals, events, domain state) to all agents
 - [ ] **COST-01**: brain.agent_costs table logs every API call with model, tokens, and cost
 - [ ] **COST-02**: Per-run budget cap enforced (configurable, default $0.50)
 - [ ] **COST-03**: Daily budget cap skips non-critical runs when exceeded
-- [ ] **COST-04**: Each agent uses assigned model (morning-briefing: Gemini Pro, email-triage: Gemini Flash, evening-digest: Gemini Flash)
+- [ ] **COST-04**: Each agent uses assigned model per ModelRouter configuration (default: gemini-3-flash-preview for all three agents)
 
 ### Event Bus & Notifications
 
@@ -148,4 +148,4 @@ Updated during v2.0 roadmap creation (2026-03-06).
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-06 after v2.0 roadmap creation*
+*Last updated: 2026-03-07 after Phase 6 checker revision (ROUTE-03 implicit caching, COST-04 model assignment)*
