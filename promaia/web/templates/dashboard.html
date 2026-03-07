@@ -406,3 +406,16 @@
 
 </main>
 {% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// Mark all notifications as read when dashboard is viewed (EVENT-06)
+fetch('/api/notifications/read', { method: 'POST' })
+    .then(function() {
+        var badge = document.getElementById('notif-badge');
+        if (badge) badge.classList.remove('visible');
+    })
+    .catch(function() {});
+</script>
+{% endblock %}

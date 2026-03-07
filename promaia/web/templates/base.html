@@ -51,9 +51,34 @@
             }
         }
 
+        .notification-badge {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 100;
+            background: var(--accent-primary, #E63946);
+            color: #fff;
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
+            font-size: 0.75rem;
+            font-weight: 700;
+            min-width: 24px;
+            height: 24px;
+            line-height: 24px;
+            text-align: center;
+            border-radius: 12px;
+            padding: 0 8px;
+            display: none;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: opacity 0.2s ease;
+        }
+        .notification-badge.visible { display: block; }
+        .notification-badge:hover { opacity: 0.85; }
+
     </style>
 </head>
 <body class="{{ skin }}" data-skin="{{ skin }}">
+    <div class="notification-badge" id="notif-badge" title="Unread notifications" onclick="window.location='/dashboard'"></div>
     <div class="atmosphere" aria-hidden="true"></div>
 
     <div class="page-shell">
@@ -61,6 +86,27 @@
     </div>
 
     {% block scripts %}{% endblock %}
+    <script>
+    (function() {
+        var badge = document.getElementById('notif-badge');
+        if (!badge) return;
+        function poll() {
+            fetch('/api/notifications/unread')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.unread > 0) {
+                        badge.textContent = d.unread;
+                        badge.classList.add('visible');
+                    } else {
+                        badge.classList.remove('visible');
+                    }
+                })
+                .catch(function() {});
+        }
+        poll();
+        setInterval(poll, 60000);
+    })();
+    </script>
     <script src="/static/js/atmospherics.js" defer></script>
 </body>
 </html>
