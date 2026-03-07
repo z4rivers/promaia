@@ -10,6 +10,8 @@ from pathlib import Path
 
 from promaia.agents.agent_config import load_agents, AgentConfig
 from promaia.agents.executor import AgentExecutor
+from promaia.agents.budget_guard import BudgetGuard
+from promaia.agents.cost_tracker import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,8 @@ class AgentScheduler:
         self.running = False
         self.tasks: Dict[str, asyncio.Task] = {}
         self.shutdown_event = asyncio.Event()
+        self.cost_tracker = CostTracker()
+        self.budget_guard = BudgetGuard(self.cost_tracker)
 
     async def start(self):
         """
@@ -77,6 +81,19 @@ class AgentScheduler:
 
         while self.running:
             try:
+                # Check daily budget before running (COST-03)
+                allowed, reason = self.budget_guard.can_start_run(agent.name, is_critical=False)
+                if not allowed:
+                    logger.warning(f"Skipping '{agent.name}': {reason}")
+                    # Wait for next interval instead of running
+                    if self.running:
+                        logger.info(f"⏳ '{agent.name}' sleeping for {agent.interval_minutes} minutes...")
+                        try:
+                            await asyncio.sleep(interval_seconds)
+                        except asyncio.CancelledError:
+                            break
+                    continue
+
                 # Run the agent
                 logger.info(f"\n⏰ Triggering '{agent.name}' (interval: {agent.interval_minutes}m)")
 

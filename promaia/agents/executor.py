@@ -19,6 +19,13 @@ from promaia.ai.prompts import format_context_data
 from promaia.ai.nl_orchestrator import PromaiLLMAdapter
 from promaia.config.databases import get_database_config
 
+# Gemini execution path (06-03)
+from promaia.agents.model_router import ModelRouter, TaskType
+from promaia.agents.cost_tracker import CostTracker, CostRecord
+from promaia.agents.gemini_executor import GeminiExecutor
+from promaia.agents.budget_guard import BudgetGuard, RunawayDetector
+from promaia.agents.agent_context import AgentContext, get_agent_tools_docs
+
 logger = logging.getLogger(__name__)
 
 # Hard caps to prevent "prompt too long" failures when an agent is configured
@@ -87,6 +94,12 @@ class AgentExecutor:
         self.tracker = ExecutionTracker()
         self.notion_writer = NotionOutputWriter(workspace=agent_config.workspace)
 
+        # Gemini execution path (06-03): shared routing, cost, and budget instances
+        self.router = ModelRouter()
+        self.cost_tracker = CostTracker()
+        self.gemini_executor = GeminiExecutor(self.cost_tracker, self.router)
+        self.budget_guard = BudgetGuard(self.cost_tracker)
+
     async def execute(
         self,
         run_request: Optional[str] = None,
@@ -131,10 +144,23 @@ class AgentExecutor:
             if not initial_context:
                 logger.warning("No context data loaded")
 
-            # Step 2: Execute agent (SDK or legacy mode)
-            logger.info(f"sdk_enabled={self.config.sdk_enabled}, SDK_AVAILABLE={SDK_AVAILABLE}")
-            
-            if self.config.sdk_enabled and SDK_AVAILABLE:
+            # Step 2: Execute agent -- route to Gemini, SDK, or legacy
+            # Determine model: use agent config override or router default
+            model_config = self.router.get_agent_model(self.config.name)
+            is_gemini = model_config.model_id.startswith("gemini")
+
+            if is_gemini:
+                logger.info(
+                    f"🚀 Using Gemini execution path: "
+                    f"{model_config.display_name} ({model_config.model_id})"
+                )
+                result = await self._execute_with_gemini(
+                    initial_context,
+                    model_config=model_config,
+                    execution_id=execution_id,
+                    run_request=run_request,
+                )
+            elif self.config.sdk_enabled and SDK_AVAILABLE:
                 logger.info("🚀 Using Claude Agent SDK for execution")
                 result = await self._execute_with_sdk(initial_context, run_request=run_request, run_metadata=run_metadata)
             else:
@@ -837,6 +863,108 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
         except Exception as e:
             logger.error(f"Error sending to messaging platform: {e}", exc_info=True)
             return False
+
+    # ==================== GEMINI EXECUTION PATH (06-03) ====================
+
+    async def _execute_with_gemini(
+        self,
+        initial_context: Dict[str, List[Dict[str, Any]]],
+        model_config,
+        execution_id: int,
+        run_request: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute agent using Gemini API via GeminiExecutor.
+
+        Builds a system instruction from the agent's prompt file plus
+        AgentContext, constructs contents from initial context data,
+        and makes a single Gemini API call with cost tracking.
+
+        Args:
+            initial_context: Preloaded context from databases.
+            model_config: ModelConfig from the router.
+            execution_id: Current execution ID for cost tracking.
+            run_request: Optional run-specific instruction.
+
+        Returns:
+            Result dict matching existing format: output, iterations_used,
+            tokens_used, cost_estimate, success.
+        """
+        # Load AgentContext for user awareness injection
+        try:
+            agent_ctx = AgentContext.load_from_brain(domain_state={})
+        except Exception as e:
+            logger.warning(f"Could not load AgentContext from brain: {e}")
+            # Create minimal context so execution can proceed
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            agent_ctx = AgentContext(
+                user_name="Zack",
+                user_profile_summary="No profile data available",
+                current_time=now,
+                day_of_week=now.strftime("%A"),
+                is_office_day=now.strftime("%A") == "Thursday",
+            )
+
+        # Build system instruction from prompt file + AgentContext + tool docs
+        custom_prompt = self._load_custom_prompt()
+        tool_docs = get_agent_tools_docs(self.config.name)
+
+        system_instruction = (
+            f"{custom_prompt}\n\n"
+            f"{tool_docs}\n\n"
+            f"{agent_ctx.to_prompt_block()}"
+        )
+
+        # Build contents from initial context
+        contents_parts = []
+        if initial_context:
+            contents_parts.append(format_context_data(initial_context))
+        if run_request:
+            contents_parts.append(f"\n# Run Request\n\n{run_request}")
+        contents_parts.append(
+            f"\nCurrent time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+        )
+        contents = "\n".join(contents_parts)
+
+        # Create runaway detector (safety net)
+        runaway = RunawayDetector(
+            max_iterations=self.config.max_iterations,
+            max_cost=self.budget_guard.per_run_cap,
+        )
+
+        # Make the Gemini API call with fallback
+        gemini_result = await self.gemini_executor.generate_with_fallback(
+            model_config=model_config,
+            system_instruction=system_instruction,
+            contents=contents,
+            execution_id=execution_id,
+            agent_name=self.config.name,
+            task_type="synthesize",
+        )
+
+        # Check runaway detector (safety net for multi-iteration scenarios)
+        should_kill, kill_reason = runaway.check(
+            gemini_result["content"], gemini_result["cost_usd"]
+        )
+        if should_kill:
+            logger.warning(f"Runaway detector triggered: {kill_reason}")
+
+        # Check per-run budget
+        within_budget, budget_reason = self.budget_guard.check_run_budget(execution_id)
+        if not within_budget:
+            logger.warning(f"Budget guard: {budget_reason}")
+
+        total_tokens = (
+            gemini_result["input_tokens"] + gemini_result["output_tokens"]
+        )
+
+        return {
+            "output": gemini_result["content"],
+            "iterations_used": 1,
+            "tokens_used": total_tokens,
+            "cost_estimate": gemini_result["cost_usd"],
+            "success": True,
+        }
 
     # ==================== SDK INTEGRATION METHODS ====================
 
