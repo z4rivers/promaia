@@ -467,6 +467,10 @@ class AgentScheduler:
                             result = await executor.execute()
                             if result.get("success"):
                                 logger.info("Email-triage completed (triggered by new mail)")
+                                # Push triage results to Telegram so Zack sees them
+                                output = result.get("output", "")
+                                if output:
+                                    await self._push_agent_output(triage_agent, output)
                             else:
                                 logger.warning(f"Email-triage failed: {result.get('error')}")
                         else:
