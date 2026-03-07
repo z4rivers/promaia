@@ -895,7 +895,6 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
         except Exception as e:
             logger.warning(f"Could not load AgentContext from brain: {e}")
             # Create minimal context so execution can proceed
-            from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             agent_ctx = AgentContext(
                 user_name="Zack",
