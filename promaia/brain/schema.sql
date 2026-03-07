@@ -306,3 +306,49 @@ CREATE INDEX IF NOT EXISTS idx_agent_costs_date
 -- Index for per-run cost queries
 CREATE INDEX IF NOT EXISTS idx_agent_costs_execution
     ON brain.agent_costs (execution_id);
+
+
+-- ============================================================
+-- brain.conversations
+-- Ephemeral session history for continuity. Every user and
+-- assistant message is stored here. High-impact messages
+-- graduate to brain.memories via promote_message_to_memory().
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.conversations (
+    id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    impact_score REAL DEFAULT 0.0,
+    promoted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_chat_session
+    ON brain.conversations (chat_id, session_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_chat_recent
+    ON brain.conversations (chat_id, created_at DESC);
+
+
+-- ============================================================
+-- brain.conversation_sessions
+-- Tracks session lifecycle and synthesis state. A session groups
+-- messages by time proximity (gap_minutes threshold). Synthesis
+-- produces a summary memory when a session goes quiet.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.conversation_sessions (
+    id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    session_id TEXT NOT NULL UNIQUE,
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    last_message_at TIMESTAMPTZ DEFAULT NOW(),
+    message_count INTEGER DEFAULT 0,
+    synthesized BOOLEAN DEFAULT FALSE,
+    synthesized_at TIMESTAMPTZ,
+    synthesis_memory_id INTEGER REFERENCES brain.memories(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conv_sessions_chat
+    ON brain.conversation_sessions (chat_id, started_at DESC);

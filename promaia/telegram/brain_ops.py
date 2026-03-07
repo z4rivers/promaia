@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import random
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -373,5 +374,211 @@ async def get_projects() -> str:
         except Exception as e:
             logger.error(f"projects query failed: {e}", exc_info=True)
             return f"Projects error: {e}"
+
+    return await asyncio.to_thread(_sync)
+
+
+# ---------------------------------------------------------------------------
+# Conversation CRUD
+# ---------------------------------------------------------------------------
+
+async def save_conversation_message(
+    chat_id: int,
+    session_id: str,
+    role: str,
+    content: str,
+    impact_score: float = 0.0,
+) -> int:
+    """Insert a message into brain.conversations and update session counters.
+
+    Returns the conversation message id.
+    """
+
+    def _sync():
+        db = _get_db()
+        msg_id = db.insert_returning(
+            """
+            INSERT INTO brain.conversations
+                (chat_id, session_id, role, content, impact_score)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (chat_id, session_id, role, content, impact_score),
+        )
+        # Update session counters
+        db.execute(
+            """
+            UPDATE brain.conversation_sessions
+            SET message_count = message_count + 1,
+                last_message_at = NOW()
+            WHERE session_id = %s
+            """,
+            (session_id,),
+        )
+        return msg_id
+
+    return await asyncio.to_thread(_sync)
+
+
+async def get_conversation_history(chat_id: int, limit: int = 10) -> list[dict]:
+    """Fetch last N messages for a chat in chronological order.
+
+    Returns list of dicts with keys: role, content, created_at.
+    """
+
+    def _sync():
+        db = _get_db()
+        rows = db.fetch_all(
+            """
+            SELECT role, content, created_at
+            FROM brain.conversations
+            WHERE chat_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (chat_id, limit),
+        )
+        # Reverse to chronological (ASC) order
+        rows.reverse()
+        return rows
+
+    return await asyncio.to_thread(_sync)
+
+
+async def get_or_create_session(chat_id: int, gap_minutes: int = 30) -> str:
+    """Return the current session_id, creating a new one if needed.
+
+    A session is reused if its last_message_at is within gap_minutes of now
+    AND it has not been synthesized. Otherwise a new session is created.
+    """
+
+    def _sync():
+        db = _get_db()
+        row = db.fetch_one(
+            """
+            SELECT session_id, last_message_at, synthesized
+            FROM brain.conversation_sessions
+            WHERE chat_id = %s
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (chat_id,),
+        )
+        if row and not row["synthesized"]:
+            last_msg = row["last_message_at"]
+            if isinstance(last_msg, str):
+                try:
+                    last_msg = datetime.fromisoformat(last_msg)
+                except ValueError:
+                    last_msg = None
+            if last_msg is not None:
+                if last_msg.tzinfo is None:
+                    last_msg = last_msg.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                gap = (now - last_msg).total_seconds() / 60.0
+                if gap <= gap_minutes:
+                    return row["session_id"]
+
+        # Create a new session
+        new_session_id = str(uuid.uuid4())
+        db.execute(
+            """
+            INSERT INTO brain.conversation_sessions (chat_id, session_id)
+            VALUES (%s, %s)
+            """,
+            (chat_id, new_session_id),
+        )
+        return new_session_id
+
+    return await asyncio.to_thread(_sync)
+
+
+async def update_session_synthesized(session_id: str, memory_id: int) -> None:
+    """Mark a session as synthesized with the resulting memory id."""
+
+    def _sync():
+        db = _get_db()
+        db.execute(
+            """
+            UPDATE brain.conversation_sessions
+            SET synthesized = TRUE,
+                synthesized_at = NOW(),
+                synthesis_memory_id = %s
+            WHERE session_id = %s
+            """,
+            (memory_id, session_id),
+        )
+
+    await asyncio.to_thread(_sync)
+
+
+async def get_session_messages(session_id: str) -> list[dict]:
+    """Fetch ALL messages for a session in chronological order.
+
+    Returns list of dicts with keys: role, content, impact_score, created_at.
+    """
+
+    def _sync():
+        db = _get_db()
+        return db.fetch_all(
+            """
+            SELECT role, content, impact_score, created_at
+            FROM brain.conversations
+            WHERE session_id = %s
+            ORDER BY created_at ASC
+            """,
+            (session_id,),
+        )
+
+    return await asyncio.to_thread(_sync)
+
+
+async def promote_message_to_memory(
+    conversation_id: int,
+    content: str,
+    domain: str = None,
+) -> int:
+    """Promote a conversation message to brain.memories.
+
+    Inserts the content as a permanent memory with source='telegram-conversation',
+    generates an embedding, and marks the conversation row as promoted.
+    Returns the new memory_id.
+    """
+
+    def _sync():
+        db = _get_db()
+
+        # Insert into brain.memories
+        memory_id = db.insert_returning(
+            """
+            INSERT INTO brain.memories (content, domain, source, source_id)
+            VALUES (%s, %s, 'telegram-conversation', 'promoted')
+            RETURNING id
+            """,
+            (content, domain),
+        )
+
+        # Generate embedding
+        try:
+            vector_mgr = _get_vector_mgr()
+            embedding = vector_mgr.generate_embedding(content)
+            embedding_array = np.array(embedding)
+            with db.get_connection() as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE brain.memories SET embedding = %s WHERE id = %s",
+                        (embedding_array, memory_id),
+                    )
+        except Exception as e:
+            logger.warning(f"Embedding generation failed for promoted memory {memory_id}: {e}")
+
+        # Mark conversation message as promoted
+        db.execute(
+            "UPDATE brain.conversations SET promoted = TRUE WHERE id = %s",
+            (conversation_id,),
+        )
+
+        return memory_id
 
     return await asyncio.to_thread(_sync)
