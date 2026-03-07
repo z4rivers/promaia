@@ -59,8 +59,8 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Model routing infrastructure + cost tracking table + pricing computation
-- [ ] 06-02-PLAN.md -- AgentContext dataclass + prompt restructuring for Gemini optimization
+- [x] 06-01-PLAN.md -- Model routing infrastructure + cost tracking table + pricing computation
+- [x] 06-02-PLAN.md -- AgentContext dataclass + prompt restructuring for Gemini optimization
 - [ ] 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
 - [ ] 06-04-PLAN.md -- End-to-end validation run + human verification of output quality and cost
 
@@ -123,7 +123,7 @@ Plans:
 | 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
-| 6. Waste Elimination + Spend Visibility | v2.0 | 0/4 | Planned | - |
+| 6. Waste Elimination + Spend Visibility | v2.0 | 2/4 | In Progress | - |
 | 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |

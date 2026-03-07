@@ -32,9 +32,9 @@ Progress: [################--------------] 50% (v2.0 Phase 6: 2/4 plans complete
 | 03.1 Onboarding Module | 3 | -- | -- |
 | 04. Platform Activation | 1 | -- | -- |
 | 05. Validate & Activate | 3 | ~12min | ~4min |
-| 06. Waste Elim + Spend Vis | 1/4 | 11min | 11min |
+| 06. Waste Elim + Spend Vis | 2/4 | 25min | ~12min |
 
-**Recent Trend:** Phase 6 started. Model routing infrastructure and cost tracking foundation built.
+**Recent Trend:** Phase 6 progressing. AgentContext + prompt tiers built on top of model routing foundation.
 
 ## What's Live
 
@@ -71,6 +71,9 @@ Recent decisions affecting current work:
 - 06-01: All 3 agents use Gemini 3 Flash per user decision COST-04
 - 06-01: thinking_budget=0 for Flash-Lite (no thinking support)
 - 06-01: Thinking tokens billed separately via thinking_price_per_m
+- 06-02: Office day detection hardcoded to Thursday (matches Zack's schedule)
+- 06-02: AGENT_TOOL_REGISTRY static mapping for 3 known agents (no dynamic discovery)
+- 06-02: Prompt restructuring already applied by 06-01 -- verified, no redundant changes
 
 ### Pending Todos
 
@@ -84,6 +87,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 06-01-PLAN.md (Model routing infrastructure + cost tracking)
+Stopped at: Completed 06-02-PLAN.md (AgentContext dataclass + prompt restructuring)
 Resume file: None
-Next: 06-02-PLAN.md -- Gemini executor replacing Claude SDK
+Next: 06-03-PLAN.md -- Gemini execution path + budget enforcement + fallback chain
