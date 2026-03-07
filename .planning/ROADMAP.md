@@ -21,7 +21,7 @@
 
 - [x] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
 - [x] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops (completed 2026-03-07)
-- [x] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge (completed 2026-03-07)
+- [x] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge (completed 2026-03-07)
 - [ ] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands
 - [ ] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest
 - [ ] **Phase 10: Memory Deepening + Polish** - Decay tiers, association strengthening, profile-driven prompts, session handoff
@@ -91,7 +91,11 @@ Plans:
   3. /briefing returns the current morning briefing; /search, /capture, /projects, /actions work against live brain data
   4. Sending a voice note produces a text transcription and a brain response based on that transcription
   5. The bot stays running as a daemon and reconnects automatically after network interruptions
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md -- Core bot infrastructure + text commands + brain operations + daemon CLI
+- [ ] 08-02-PLAN.md -- Voice transcription (Deepgram Nova-3) + event channel integration + human verification
 
 ### Phase 9: Proactive Push
 **Goal**: The brain reaches Zack without being asked -- morning briefing on the phone at wake-up, urgent emails within a minute, evening digest at end of day
@@ -130,7 +134,7 @@ Plans:
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
 | 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
 | 7. Event Bus + Notification Layer | v2.0 | Complete    | 2026-03-07 | - |
-| 8. Telegram Bot | v2.0 | 0/? | Not started | - |
+| 8. Telegram Bot | v2.0 | 0/2 | Planned | - |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
 
