@@ -16,15 +16,15 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 
 ### Model Routing & Cost
 
-- [ ] **ROUTE-01**: Model router selects appropriate model per task type (classify, extract, embed, synthesize, reason, create, heartbeat)
+- [x] **ROUTE-01**: Model router selects appropriate model per task type (classify, extract, embed, synthesize, reason, create, heartbeat)
 - [ ] **ROUTE-02**: Fallback chain activates when primary model fails (next tier up)
 - [ ] **ROUTE-03**: Agent prompts restructured into implicit-cacheable tiers: stable system instruction prefix (anchor tier), tool declarations (tools tier), per-run dynamic context (context tier). Prompt ordering maximizes Gemini implicit cache hits on the stable prefix. Explicit cache_control markers are not used -- implicit caching is preferred for 3x/day run volume per research findings.
 - [ ] **ROUTE-04**: Dynamic tool injection reduces prompt size by only including tools each agent needs
 - [ ] **ROUTE-05**: AgentContext dataclass provides standardized awareness (user profile, time, goals, events, domain state) to all agents
-- [ ] **COST-01**: brain.agent_costs table logs every API call with model, tokens, and cost
+- [x] **COST-01**: brain.agent_costs table logs every API call with model, tokens, and cost
 - [ ] **COST-02**: Per-run budget cap enforced (configurable, default $0.50)
 - [ ] **COST-03**: Daily budget cap skips non-critical runs when exceeded
-- [ ] **COST-04**: Each agent uses assigned model per ModelRouter configuration (default: gemini-3-flash-preview for all three agents)
+- [x] **COST-04**: Each agent uses assigned model per ModelRouter configuration (default: gemini-3-flash-preview for all three agents)
 
 ### Event Bus & Notifications
 
@@ -105,15 +105,15 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | VALID-02 | Phase 5 | Complete |
 | VALID-03 | Phase 5 | Complete |
 | VALID-04 | Phase 5 | Complete |
-| ROUTE-01 | Phase 6 | Pending |
+| ROUTE-01 | Phase 6 | Complete |
 | ROUTE-02 | Phase 6 | Pending |
 | ROUTE-03 | Phase 6 | Pending |
 | ROUTE-04 | Phase 6 | Pending |
 | ROUTE-05 | Phase 6 | Pending |
-| COST-01 | Phase 6 | Pending |
+| COST-01 | Phase 6 | Complete |
 | COST-02 | Phase 6 | Pending |
 | COST-03 | Phase 6 | Pending |
-| COST-04 | Phase 6 | Pending |
+| COST-04 | Phase 6 | Complete |
 | EVENT-01 | Phase 7 | Pending |
 | EVENT-02 | Phase 7 | Pending |
 | EVENT-03 | Phase 7 | Pending |
