@@ -11,7 +11,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.utils.backoff import BackoffConfig
 
 from promaia.telegram.auth import WhitelistMiddleware
-from promaia.telegram.handlers import commands, messages, voice
+from promaia.telegram.handlers import commands, messages, voice, replies
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,10 @@ async def start_bot() -> None:
     # Register whitelist middleware on all incoming messages
     dp.message.middleware(WhitelistMiddleware())
 
-    # Include routers in order: commands FIRST, voice SECOND, messages LAST (catch-all)
+    # Include routers in order: commands > voice > replies > messages (catch-all last)
     dp.include_router(commands.router)
     dp.include_router(voice.router)
+    dp.include_router(replies.router)
     dp.include_router(messages.router)
 
     logger.info("Telegram bot starting polling...")
