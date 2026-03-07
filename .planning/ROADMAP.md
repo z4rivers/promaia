@@ -134,7 +134,7 @@ Plans:
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
 | 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
 | 7. Event Bus + Notification Layer | v2.0 | Complete    | 2026-03-07 | - |
-| 8. Telegram Bot | v2.0 | 2/2 | Complete | 2026-03-07 |
+| 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
 
