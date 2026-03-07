@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 ## Current Position
 
-Phase: 8 of 10 (Telegram Bot)
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: In Progress
-Last activity: 2026-03-07 -- Plan 08-01 complete (Core Telegram bot)
+Phase: 8 of 10 (Telegram Bot) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase Complete
+Last activity: 2026-03-07 -- Plan 08-02 complete (Voice + Event Channel)
 
-Progress: [###############---------------] 50% (v2.0 Phase 8: 1/2 plans complete)
+Progress: [##############################] 100% (v2.0 Phase 8: 2/2 plans complete)
 
 ## Performance Metrics
 
@@ -34,10 +34,11 @@ Progress: [###############---------------] 50% (v2.0 Phase 8: 1/2 plans complete
 | 05. Validate & Activate | 3 | ~12min | ~4min |
 | 06. Waste Elim + Spend Vis | 4/4 | 39min | ~10min |
 | 07. Event Bus + Notif Layer | 3/3 | 5min | ~2min |
-| 08. Telegram Bot | 1/2 | 10min | 10min |
+| 08. Telegram Bot | 2/2 | 18min | ~9min |
 
-**Recent Trend:** Phase 8 started. Core Telegram bot with brain commands, whitelist auth, and daemon CLI shipped.
+**Recent Trend:** Phase 8 complete. Full Telegram bot with text commands, voice transcription, and event channel shipped.
 | Phase 08 P01 | 10min | 2 tasks | 9 files |
+| Phase 08 P02 | 8min | 2 tasks | 4 files |
 
 ## What's Live
 
@@ -46,6 +47,7 @@ Progress: [###############---------------] 50% (v2.0 Phase 8: 1/2 plans complete
 - Agent cost: ~$0.004/run avg via Gemini 3 Flash ($0.0125 total for 3-agent cycle, down from $0.132 Claude)
 - Web dashboard: localhost:8000, 5 pages, Superflat skin, notification badge with 60s polling
 - Gmail pipeline: OAuth working, emails ingested
+- Telegram bot: text commands, free-text capture, voice transcription, event channel -- daemon at ~/.promaia/telegram_bot.pid
 
 ## Known Issues (Phase 5 targets)
 
@@ -94,6 +96,11 @@ Recent decisions affecting current work:
 - 08-01: source='telegram' for captured memories (distinguishes mobile from MCP session)
 - 08-01: Domain detection via detect_mode() for free-text auto-capture
 - 08-01: Message splitting at 4096-char Telegram limit with paragraph/line fallback
+- 08-02: Deepgram Nova-3 for voice transcription (OGG Opus native, no conversion)
+- 08-02: TelegramChannel creates own Bot instance (decoupled from polling bot for scheduler use)
+- 08-02: Event router conditionally registers TelegramChannel when both env vars set
+- 08-02: First whitelisted chat ID used as push target for event delivery
+- 08-02: Voice router registered between commands and messages (prevents catch-all interception)
 
 ### Pending Todos
 
@@ -107,6 +114,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 08-01-PLAN.md (Core Telegram bot)
+Stopped at: Completed 08-02-PLAN.md (Voice + Event Channel -- Phase 8 complete)
 Resume file: None
-Next: Phase 8 Plan 2 -- Telegram as NotificationChannel
+Next: Phase 9 -- Proactive Push
