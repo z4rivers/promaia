@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 6: Waste Elimination + Spend Visibility -- COMPLETE
+**Current focus:** Phase 7: Event Bus + Notification Layer
 
 ## Current Position
 
-Phase: 6 of 10 (Waste Elimination + Spend Visibility) -- COMPLETE
-Plan: 4 of 4 in current phase -- COMPLETE
-Status: Phase Complete
-Last activity: 2026-03-07 -- Plan 06-04 complete (End-to-end Gemini validation, 91% cost reduction)
+Phase: 7 of 10 (Event Bus + Notification Layer)
+Plan: 1 of 3 in current phase -- COMPLETE
+Status: In Progress
+Last activity: 2026-03-07 -- Plan 07-01 complete (Event schema + emitter)
 
-Progress: [##############################] 100% (v2.0 Phase 6: 4/4 plans complete)
+Progress: [##########--------------------] 33% (v2.0 Phase 7: 1/3 plans complete)
 
 ## Performance Metrics
 
@@ -33,8 +33,9 @@ Progress: [##############################] 100% (v2.0 Phase 6: 4/4 plans complet
 | 04. Platform Activation | 1 | -- | -- |
 | 05. Validate & Activate | 3 | ~12min | ~4min |
 | 06. Waste Elim + Spend Vis | 4/4 | 39min | ~10min |
+| 07. Event Bus + Notif Layer | 1/3 | 3min | 3min |
 
-**Recent Trend:** Phase 6 complete. All agents running on Gemini 3 Flash at $0.0125/cycle (91% reduction from Claude baseline). Ready for Phase 7.
+**Recent Trend:** Phase 7 in progress. Event schema extended, emitter wired into executor. All agents now produce routable events after each run.
 
 ## What's Live
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - 06-04: All 3 agents validated on Gemini 3 Flash with human-approved output quality
 - 06-04: 91% cost reduction confirmed ($0.0125 vs $0.132 Claude baseline)
 - 06-04: Fixed datetime variable shadowing in executor.py (auto-fix Rule 1)
+- 07-01: Deterministic agent-to-urgency mapping (no LLM classification) for zero-cost routing
+- 07-01: Unknown agents default to digest urgency as safe fallback
+- 07-01: Event emission non-fatal -- never crashes agent pipeline
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 06-04-PLAN.md (End-to-end Gemini validation -- Phase 6 complete)
+Stopped at: Completed 07-01-PLAN.md (Event schema + emitter wired into executor)
 Resume file: None
-Next: Phase 7 planning -- Event Bus + Notification Layer
+Next: 07-02-PLAN.md -- Notification Router
