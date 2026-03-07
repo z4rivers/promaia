@@ -64,6 +64,14 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 - [ ] **MEM-04**: Profile-driven prompt (~200 tokens of "who Zack is") injected as cached prefix in every agent call
 - [ ] **MEM-05**: Session handoff: end-of-session summary auto-captured, next session briefing surfaces yesterday's work
 
+### Conversational Telegram
+
+- [ ] **CONV-01**: Text questions on Telegram get real answers using brain context (profile, memories, projects, actions)
+- [ ] **CONV-02**: Voice notes get intelligent conversational response after transcription, not just "Captured."
+- [ ] **CONV-03**: Conversation history (last N messages) provides continuity within a session via brain.conversations table
+- [ ] **CONV-04**: Personality manifest loaded as condensed system prompt -- Promaia sounds like Promaia, not a generic bot
+- [ ] **CONV-05**: After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
+
 ## Future Requirements
 
 Deferred beyond v2.0.
@@ -140,12 +148,17 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | MEM-03 | Phase 10 | Pending |
 | MEM-04 | Phase 10 | Pending |
 | MEM-05 | Phase 10 | Pending |
+| CONV-01 | Phase 11 | Pending |
+| CONV-02 | Phase 11 | Pending |
+| CONV-03 | Phase 11 | Pending |
+| CONV-04 | Phase 11 | Pending |
+| CONV-05 | Phase 11 | Pending |
 
 **Coverage:**
-- v2 requirements: 39 total
-- Mapped to phases: 39
+- v2 requirements: 44 total
+- Mapped to phases: 44
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-07 after Phase 6 checker revision (ROUTE-03 implicit caching, COST-04 model assignment)*
+*Last updated: 2026-03-07 after Phase 11 planning (CONV-01 through CONV-05 added)*
