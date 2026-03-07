@@ -20,7 +20,7 @@
 ### v2.0 Proactive Agent
 
 - [x] **Phase 5: Validate & Activate** - Fix agent data pipeline, kill SQL bugs, get real coherent agent runs
-- [x] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops (completed 2026-03-07)
+- [x] **Phase 6: Waste Elimination + Spend Visibility** - Cache what repeats, track what you spend, kill runaway loops (completed 2026-03-07)
 - [ ] **Phase 7: Event Bus + Notification Layer** - Urgency-routed events, quiet hours, dashboard badge
 - [ ] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands
 - [ ] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest
@@ -74,7 +74,12 @@ Plans:
   3. Events generated between 9pm and 6am are held until morning (quiet hours)
   4. Dashboard shows an unread notification count badge that clears when viewed
   5. No more than 10 push notifications are sent in any one-hour window
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md -- Schema extension + event models + emitter + executor integration
+- [ ] 07-02-PLAN.md -- Event router + channels + rate limiter + scheduler integration
+- [ ] 07-03-PLAN.md -- Dashboard notification badge + API endpoints
 
 ### Phase 8: Telegram Bot
 **Goal**: Zack can talk to the brain from his phone -- text, voice, commands -- and the brain talks back
@@ -124,7 +129,7 @@ Plans:
 | 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
 | 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
 | 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
-| 7. Event Bus + Notification Layer | v2.0 | 0/? | Not started | - |
+| 7. Event Bus + Notification Layer | v2.0 | 0/3 | Planned | - |
 | 8. Telegram Bot | v2.0 | 0/? | Not started | - |
 | 9. Proactive Push | v2.0 | 0/? | Not started | - |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
