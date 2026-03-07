@@ -50,8 +50,8 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 ### Proactive Push
 
 - [ ] **PUSH-01**: Email-triage classifies each finding as interrupt/digest/archive
-- [ ] **PUSH-02**: Morning briefing auto-pushes to Telegram at scheduled time (6:00 AM or wake signal)
-- [ ] **PUSH-03**: Evening digest batches day's events into single Telegram message at 4:30 PM
+- [x] **PUSH-02**: Morning briefing auto-pushes to Telegram at scheduled time (6:00 AM or wake signal)
+- [x] **PUSH-03**: Evening digest batches day's events into single Telegram message at 4:30 PM
 - [ ] **PUSH-04**: Notification fatigue prevention: 30-min cooldown, daily cap (10), cross-channel dedup, batching
 - [ ] **PUSH-05**: User can reply inline to Telegram pushes and brain processes the response
 - [ ] **PUSH-06**: Urgent emails reach Zack within 1 minute via interrupt push
@@ -130,8 +130,8 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | TELE-07 | Phase 8 | Complete |
 | TELE-08 | Phase 8 | Complete |
 | PUSH-01 | Phase 9 | Pending |
-| PUSH-02 | Phase 9 | Pending |
-| PUSH-03 | Phase 9 | Pending |
+| PUSH-02 | Phase 9 | Complete |
+| PUSH-03 | Phase 9 | Complete |
 | PUSH-04 | Phase 9 | Pending |
 | PUSH-05 | Phase 9 | Pending |
 | PUSH-06 | Phase 9 | Pending |

@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v2.0
+milestone_name: Proactive Agent
+status: in_progress
+stopped_at: Completed 09-01-PLAN.md (Time-of-Day Scheduling + Telegram Push)
+last_updated: "2026-03-07T10:55:53.458Z"
+last_activity: 2026-03-07 -- Plan 09-01 complete (Time-of-Day Scheduling + Telegram Push)
+progress:
+  total_phases: 6
+  completed_phases: 4
+  total_plans: 14
+  completed_plans: 13
+  percent: 93
+---
+
 # Project State
 
 ## Project Reference
@@ -5,16 +21,16 @@
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 8: Telegram Bot
+**Current focus:** Phase 9: Proactive Push
 
 ## Current Position
 
-Phase: 8 of 10 (Telegram Bot) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase Complete
-Last activity: 2026-03-07 -- Plan 08-02 complete (Voice + Event Channel)
+Phase: 9 of 10 (Proactive Push)
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: In Progress
+Last activity: 2026-03-07 -- Plan 09-01 complete (Time-of-Day Scheduling + Telegram Push)
 
-Progress: [##############################] 100% (v2.0 Phase 8: 2/2 plans complete)
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -36,14 +52,15 @@ Progress: [##############################] 100% (v2.0 Phase 8: 2/2 plans complet
 | 07. Event Bus + Notif Layer | 3/3 | 5min | ~2min |
 | 08. Telegram Bot | 2/2 | 18min | ~9min |
 
-**Recent Trend:** Phase 8 complete. Full Telegram bot with text commands, voice transcription, and event channel shipped.
+**Recent Trend:** Phase 9 Plan 01 complete. Time-of-day scheduling with direct Telegram push.
 | Phase 08 P01 | 10min | 2 tasks | 9 files |
 | Phase 08 P02 | 8min | 2 tasks | 4 files |
+| Phase 09 P01 | 4min | 2 tasks | 4 files |
 
 ## What's Live
 
 - Brain MCP server: 16 tools (added brain_costs), 56+ memories, 10 domains, 98 profile traits
-- Agent scheduler: PID running, 3 agents (morning-briefing, email-triage, evening-digest)
+- Agent scheduler: PID running, 3 agents (morning-briefing @6AM, evening-digest @4:30PM, email-triage every 8h)
 - Agent cost: ~$0.004/run avg via Gemini 3 Flash ($0.0125 total for 3-agent cycle, down from $0.132 Claude)
 - Web dashboard: localhost:8000, 5 pages, Superflat skin, notification badge with 60s polling
 - Gmail pipeline: OAuth working, emails ingested
@@ -101,6 +118,11 @@ Recent decisions affecting current work:
 - 08-02: Event router conditionally registers TelegramChannel when both env vars set
 - 08-02: First whitelisted chat ID used as push target for event delivery
 - 08-02: Voice router registered between commands and messages (prevents catch-all interception)
+- 09-01: Sleep-until scheduling recalculates next_run after each execution to prevent drift
+- 09-01: Direct Telegram push bypasses rate limiter for scheduled agents
+- 09-01: Pre-routing uses atomic INSERT with routed_at+channel to prevent race condition
+- 09-01: Evening digest renamed Tonight to What's Next for 4:30 PM timing
+- 09-01: Bot session closed in finally block to prevent connection leaks
 
 ### Pending Todos
 
@@ -113,7 +135,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07
-Stopped at: Completed 08-02-PLAN.md (Voice + Event Channel -- Phase 8 complete)
+Last session: 2026-03-07T10:55:53.456Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None
-Next: Phase 9 -- Proactive Push
+Next: Phase 9 Plan 02 -- Notification Preferences + Email Triage Scheduling
