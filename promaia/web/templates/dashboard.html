@@ -364,9 +364,18 @@
             </div>
 
             <h2 class="section-header" style="margin-top: var(--space-xl);">Upcoming</h2>
+            {% if calendar_events %}
+            {% for event in calendar_events %}
             <div class="card" data-type="calendar">
-                <p class="calendar-placeholder">Calendar not connected</p>
+                <div class="project-name">{{ event.summary }}</div>
+                <div class="action-domain">{{ event.time }}{% if event.calendar %} &middot; {{ event.calendar }}{% endif %}</div>
             </div>
+            {% endfor %}
+            {% else %}
+            <div class="card" data-type="calendar">
+                <p class="calendar-placeholder">No upcoming events</p>
+            </div>
+            {% endif %}
         </div>
 
     </section>
@@ -390,13 +399,6 @@
         </div>
         {% endif %}
     </section>
-
-    <!-- Navigation -->
-    <nav class="nav-zone">
-        <a href="/projects">Projects</a>
-        <a href="/email">Email</a>
-        <a href="/profile">Profile</a>
-    </nav>
 
     <!-- Footer Zone -->
     <footer class="footer-zone">

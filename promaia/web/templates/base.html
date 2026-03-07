@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="/static/skins/{{ skin }}.css">
 
     <style>
-        /* === Minimal reset — skins own everything else === */
+        /* === Minimal reset === */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: var(--font-body, sans-serif);
@@ -37,6 +37,66 @@
             z-index: 0;
             pointer-events: none;
         }
+
+        /* === Top Navigation === */
+        .top-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            margin-bottom: var(--space-lg, 24px);
+            border-bottom: 1px solid var(--border-subtle, #e0ddd5);
+            position: relative;
+            z-index: 10;
+        }
+
+        .top-nav__brand {
+            font-family: var(--font-display, var(--font-heading, 'Archivo Black', sans-serif));
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--accent-primary, #E63946);
+            letter-spacing: 0.02em;
+        }
+
+        .top-nav__links {
+            display: flex;
+            gap: var(--space-lg, 24px);
+            align-items: center;
+        }
+
+        .top-nav__links a {
+            font-family: var(--font-body, 'Outfit', sans-serif);
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted, #999);
+            transition: color 150ms ease;
+            padding: 4px 0;
+        }
+
+        .top-nav__links a:hover,
+        .top-nav__links a.active {
+            color: var(--text-primary, #2C2C2C);
+        }
+
+        .top-nav__status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
+            font-size: 0.7rem;
+            color: var(--text-muted, #999);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted, #999);
+        }
+
+        .status-dot--online { background: var(--accent-success, #2ecc71); }
+        .status-dot--stale { background: var(--accent-warning, #f39c12); }
+        .status-dot--offline { background: var(--text-muted, #999); }
 
         .page-shell {
             max-width: var(--page-max-width, 1120px);
@@ -82,29 +142,72 @@
     <div class="atmosphere" aria-hidden="true"></div>
 
     <div class="page-shell">
+        <nav class="top-nav">
+            <a href="/" class="top-nav__brand">Promaia</a>
+            <div class="top-nav__links">
+                <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="/projects" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a>
+                <a href="/email" class="{% if active_page == 'email' %}active{% endif %}">Email</a>
+                <a href="/profile" class="{% if active_page == 'profile' %}active{% endif %}">Profile</a>
+            </div>
+            <div class="top-nav__status" id="system-status">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">checking...</span>
+            </div>
+        </nav>
+
         {% block content %}{% endblock %}
     </div>
 
     {% block scripts %}{% endblock %}
     <script>
     (function() {
+        // Notification badge polling
         var badge = document.getElementById('notif-badge');
-        if (!badge) return;
-        function poll() {
-            fetch('/api/notifications/unread')
+        if (badge) {
+            function pollNotifs() {
+                fetch('/api/notifications/unread')
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d.unread > 0) {
+                            badge.textContent = d.unread;
+                            badge.classList.add('visible');
+                        } else {
+                            badge.classList.remove('visible');
+                        }
+                    })
+                    .catch(function() {});
+            }
+            pollNotifs();
+            setInterval(pollNotifs, 60000);
+        }
+
+        // Scheduler health indicator
+        var dot = document.getElementById('status-dot');
+        var text = document.getElementById('status-text');
+        function pollHealth() {
+            fetch('/api/scheduler/health')
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
-                    if (d.unread > 0) {
-                        badge.textContent = d.unread;
-                        badge.classList.add('visible');
+                    dot.className = 'status-dot';
+                    if (d.status === 'online') {
+                        dot.classList.add('status-dot--online');
+                        text.textContent = 'online';
+                    } else if (d.status === 'stale') {
+                        dot.classList.add('status-dot--stale');
+                        text.textContent = Math.round(d.last_seen_minutes) + 'm ago';
                     } else {
-                        badge.classList.remove('visible');
+                        dot.classList.add('status-dot--offline');
+                        text.textContent = 'offline';
                     }
                 })
-                .catch(function() {});
+                .catch(function() {
+                    dot.className = 'status-dot status-dot--offline';
+                    text.textContent = 'offline';
+                });
         }
-        poll();
-        setInterval(poll, 60000);
+        pollHealth();
+        setInterval(pollHealth, 60000);
     })();
     </script>
     <script src="/static/js/atmospherics.js" defer></script>

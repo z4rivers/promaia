@@ -4,7 +4,7 @@ Dashboard router — serves the Promaia web dashboard with live brain data.
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -161,19 +161,80 @@ async def dashboard(request: Request):
 
     brain = _get_brain_data()
 
+    calendar_events = _get_calendar_events()
+
     context = {
-        **_base_context(request),
+        **_base_context(request, "dashboard"),
         "greeting": greeting,
         "date_str": date_str,
         "user_name": "Zack",
+        "calendar_events": calendar_events,
         **brain,
     }
 
     return templates.TemplateResponse("dashboard.html", context)
 
 
-def _base_context(request: Request) -> dict:
-    return {"request": request, "skin": SKIN}
+def _get_calendar_events(days_ahead: int = 7) -> list:
+    """Fetch upcoming events from all Google Calendars."""
+    try:
+        from promaia.gcal.google_calendar import GoogleCalendarManager
+        mgr = GoogleCalendarManager()
+        if not mgr.authenticate():
+            return []
+
+        now = datetime.now(timezone.utc)
+        time_max = now + timedelta(days=days_ahead)
+        time_min_str = now.isoformat().replace("+00:00", "Z")
+        time_max_str = time_max.isoformat().replace("+00:00", "Z")
+
+        all_events = []
+        calendars = mgr.service.calendarList().list().execute().get("items", [])
+
+        for cal in calendars:
+            cal_id = cal["id"]
+            try:
+                result = mgr.service.events().list(
+                    calendarId=cal_id,
+                    timeMin=time_min_str,
+                    timeMax=time_max_str,
+                    singleEvents=True,
+                    orderBy="startTime",
+                    maxResults=10,
+                ).execute()
+                for ev in result.get("items", []):
+                    start = ev.get("start", {})
+                    start_str = start.get("dateTime") or start.get("date", "")
+                    # Parse for display
+                    try:
+                        if "T" in start_str:
+                            dt = datetime.fromisoformat(start_str)
+                            display_time = dt.strftime("%a %b %#d, %I:%M %p")
+                        else:
+                            dt = datetime.strptime(start_str, "%Y-%m-%d")
+                            display_time = dt.strftime("%a %b %#d") + " (all day)"
+                    except (ValueError, TypeError):
+                        display_time = start_str
+
+                    all_events.append({
+                        "summary": ev.get("summary", "(no title)"),
+                        "time": display_time,
+                        "calendar": cal.get("summary", ""),
+                        "sort_key": start_str,
+                    })
+            except Exception:
+                continue
+
+        all_events.sort(key=lambda e: e["sort_key"])
+        return all_events[:15]
+
+    except Exception as e:
+        logger.warning(f"Calendar data unavailable: {e}")
+        return []
+
+
+def _base_context(request: Request, active_page: str = "") -> dict:
+    return {"request": request, "skin": SKIN, "active_page": active_page}
 
 
 @router.get("/projects", response_class=HTMLResponse)
@@ -231,7 +292,7 @@ async def projects_page(request: Request):
         projects = []
 
     return templates.TemplateResponse("projects.html", {
-        **_base_context(request),
+        **_base_context(request, "projects"),
         "projects": projects,
     })
 
@@ -246,13 +307,13 @@ async def email_page(request: Request):
         from promaia.storage.postgres_db import get_postgres_db
         db = get_postgres_db()
 
-        # Stats
+        # Stats — email_date is RFC 2822 text, use synced_time for "today"
         stat_row = db.fetch_one(
             """
             SELECT
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE is_unread) as unread,
-                COUNT(*) FILTER (WHERE email_date::date = CURRENT_DATE) as today
+                COUNT(*) FILTER (WHERE synced_time::date = CURRENT_DATE) as today
             FROM gmail_content
             """
         )
@@ -263,13 +324,13 @@ async def email_page(request: Request):
                 "today": stat_row["today"],
             }
 
-        # Recent emails
+        # Recent emails — order by created_time parsed as timestamp
         email_rows = db.fetch_all(
             """
             SELECT sender_name, sender_email, subject, body_snippet,
                    is_unread, email_date
             FROM gmail_content
-            ORDER BY synced_time DESC
+            ORDER BY synced_time DESC, id DESC
             LIMIT 30
             """
         )
@@ -289,7 +350,7 @@ async def email_page(request: Request):
         logger.warning(f"Email data unavailable: {e}")
 
     return templates.TemplateResponse("email.html", {
-        **_base_context(request),
+        **_base_context(request, "email"),
         "emails": emails,
         "stats": stats,
         "email_account": email_account,
@@ -351,7 +412,7 @@ async def profile_page(request: Request):
         logger.warning(f"Profile data unavailable: {e}")
 
     return templates.TemplateResponse("profile.html", {
-        **_base_context(request),
+        **_base_context(request, "profile"),
         "user_name": "Zack",
         "categories": categories,
         "trait_count": trait_count,
@@ -380,6 +441,36 @@ async def notifications_unread():
     except Exception as e:
         logger.warning(f"Notification count unavailable: {e}")
         return {"unread": 0}
+
+
+@router.get("/api/scheduler/health")
+async def scheduler_health():
+    """Return scheduler heartbeat status for dashboard health indicator."""
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        row = db.fetch_one(
+            """
+            SELECT created_at, payload
+            FROM brain.events
+            WHERE source = 'heartbeat' AND type = 'scheduler_heartbeat'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        )
+        if row:
+            created = row["created_at"]
+            now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now(timezone.utc)
+            minutes_ago = (now - created).total_seconds() / 60
+            return {
+                "status": "online" if minutes_ago < 10 else "stale",
+                "last_seen_minutes": round(minutes_ago, 1),
+                "last_seen": created.isoformat(),
+            }
+        return {"status": "unknown", "last_seen_minutes": None}
+    except Exception as e:
+        logger.warning(f"Scheduler health check failed: {e}")
+        return {"status": "error"}
 
 
 @router.post("/api/notifications/read")

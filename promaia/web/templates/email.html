@@ -122,24 +122,11 @@
         font-style: italic;
     }
 
-    .nav-link {
-        font-family: var(--font-mono);
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        margin-bottom: var(--space-lg);
-        display: inline-block;
-    }
-
-    .nav-link:hover {
-        color: var(--accent-primary);
-    }
 </style>
 {% endblock %}
 
 {% block content %}
 <main class="email-page">
-
-    <a href="/dashboard" class="nav-link">&larr; Dashboard</a>
 
     <h1 class="page-title">Email Intelligence</h1>
     <p class="page-subtitle">{{ email_account }}</p>
