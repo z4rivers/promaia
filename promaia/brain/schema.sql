@@ -130,6 +130,25 @@ CREATE INDEX IF NOT EXISTS idx_brain_events_created_at
 CREATE INDEX IF NOT EXISTS idx_brain_events_session_id
     ON brain.events (session_id);
 
+-- Notification routing columns (07-01: Event Bus)
+-- Nullable so existing events are unaffected
+ALTER TABLE brain.events ADD COLUMN IF NOT EXISTS
+    urgency TEXT CHECK (urgency IN ('interrupt', 'digest', 'archive'));
+
+ALTER TABLE brain.events ADD COLUMN IF NOT EXISTS
+    routed_at TIMESTAMPTZ;
+
+ALTER TABLE brain.events ADD COLUMN IF NOT EXISTS
+    channel TEXT;
+
+ALTER TABLE brain.events ADD COLUMN IF NOT EXISTS
+    held_until TIMESTAMPTZ;
+
+-- Partial index for the router's polling query: find unrouted events with urgency
+CREATE INDEX IF NOT EXISTS idx_brain_events_unrouted
+    ON brain.events (created_at ASC)
+    WHERE urgency IS NOT NULL AND routed_at IS NULL;
+
 
 -- ============================================================
 -- brain.profile
