@@ -38,14 +38,14 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 
 ### Telegram Bot
 
-- [ ] **TELE-01**: Telegram bot responds to text messages from whitelisted chat IDs
-- [ ] **TELE-02**: Bot silently ignores messages from non-whitelisted users
-- [ ] **TELE-03**: /briefing command triggers and returns morning briefing content
-- [ ] **TELE-04**: /search, /capture, /projects, /actions commands work against brain
-- [ ] **TELE-05**: Free-text messages auto-captured to brain with domain detection
+- [x] **TELE-01**: Telegram bot responds to text messages from whitelisted chat IDs
+- [x] **TELE-02**: Bot silently ignores messages from non-whitelisted users
+- [x] **TELE-03**: /briefing command triggers and returns morning briefing content
+- [x] **TELE-04**: /search, /capture, /projects, /actions commands work against brain
+- [x] **TELE-05**: Free-text messages auto-captured to brain with domain detection
 - [ ] **TELE-06**: Voice notes transcribed via Deepgram Nova-3 and processed as text
 - [ ] **TELE-07**: Bot registered as event router channel -- interrupt events pushed within 30 seconds
-- [ ] **TELE-08**: Bot runs as persistent daemon with auto-reconnect
+- [x] **TELE-08**: Bot runs as persistent daemon with auto-reconnect
 
 ### Proactive Push
 
@@ -121,14 +121,14 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | EVENT-05 | Phase 7 | Complete |
 | EVENT-06 | Phase 7 | Complete |
 | EVENT-07 | Phase 7 | Complete |
-| TELE-01 | Phase 8 | Pending |
-| TELE-02 | Phase 8 | Pending |
-| TELE-03 | Phase 8 | Pending |
-| TELE-04 | Phase 8 | Pending |
-| TELE-05 | Phase 8 | Pending |
+| TELE-01 | Phase 8 | Complete |
+| TELE-02 | Phase 8 | Complete |
+| TELE-03 | Phase 8 | Complete |
+| TELE-04 | Phase 8 | Complete |
+| TELE-05 | Phase 8 | Complete |
 | TELE-06 | Phase 8 | Pending |
 | TELE-07 | Phase 8 | Pending |
-| TELE-08 | Phase 8 | Pending |
+| TELE-08 | Phase 8 | Complete |
 | PUSH-01 | Phase 9 | Pending |
 | PUSH-02 | Phase 9 | Pending |
 | PUSH-03 | Phase 9 | Pending |

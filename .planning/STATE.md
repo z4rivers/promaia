@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Proactive AI assistant that reaches YOU -- not a dashboard you check, but a system that initiates, remembers, and acts autonomously.
-**Current focus:** Phase 7: Event Bus + Notification Layer
+**Current focus:** Phase 8: Telegram Bot
 
 ## Current Position
 
-Phase: 7 of 10 (Event Bus + Notification Layer)
-Plan: 3 of 3 in current phase -- COMPLETE
-Status: Phase Complete
-Last activity: 2026-03-07 -- Plan 07-03 complete (Notification badge)
+Phase: 8 of 10 (Telegram Bot)
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: In Progress
+Last activity: 2026-03-07 -- Plan 08-01 complete (Core Telegram bot)
 
-Progress: [##############################] 100% (v2.0 Phase 7: 3/3 plans complete)
+Progress: [###############---------------] 50% (v2.0 Phase 8: 1/2 plans complete)
 
 ## Performance Metrics
 
@@ -34,10 +34,10 @@ Progress: [##############################] 100% (v2.0 Phase 7: 3/3 plans complet
 | 05. Validate & Activate | 3 | ~12min | ~4min |
 | 06. Waste Elim + Spend Vis | 4/4 | 39min | ~10min |
 | 07. Event Bus + Notif Layer | 3/3 | 5min | ~2min |
+| 08. Telegram Bot | 1/2 | 10min | 10min |
 
-**Recent Trend:** Phase 7 complete. Event schema, notification router, and dashboard badge all shipped. Dashboard now shows unread notification count with 60s polling.
-| Phase 07 P02 | 2min | 2 tasks | 4 files |
-| Phase 07 P03 | 2min | 2 tasks | 3 files |
+**Recent Trend:** Phase 8 started. Core Telegram bot with brain commands, whitelist auth, and daemon CLI shipped.
+| Phase 08 P01 | 10min | 2 tasks | 9 files |
 
 ## What's Live
 
@@ -90,6 +90,10 @@ Recent decisions affecting current work:
 - 07-03: Badge uses CSS custom properties for skin compatibility
 - 07-03: 60-second polling interval to avoid DB connection pressure
 - 07-03: Events marked with channel='dashboard' on read for routing audit trail
+- 08-01: aiogram 3.26 BackoffConfig for auto-reconnect (min_delay=1s, max_delay=30s)
+- 08-01: source='telegram' for captured memories (distinguishes mobile from MCP session)
+- 08-01: Domain detection via detect_mode() for free-text auto-capture
+- 08-01: Message splitting at 4096-char Telegram limit with paragraph/line fallback
 
 ### Pending Todos
 
@@ -103,6 +107,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 07-03-PLAN.md (Notification badge + API endpoints)
+Stopped at: Completed 08-01-PLAN.md (Core Telegram bot)
 Resume file: None
-Next: Phase 8 -- Telegram Channel
+Next: Phase 8 Plan 2 -- Telegram as NotificationChannel
