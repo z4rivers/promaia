@@ -95,6 +95,7 @@
       "instructions_db_id": null,
       "journal_db_id": null,
       "description": "Scan both Gmail accounts, classify and surface attention items",
+      "_note": "Fast detection via Gmail API check loop in scheduler. interval_minutes=480 is a safety-net fallback.",
       "created_at": null,
       "last_run_at": "2026-03-07T06:29:53.188278+00:00",
       "calendar_event_ids": null,

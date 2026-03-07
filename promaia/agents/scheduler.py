@@ -154,6 +154,11 @@ class AgentScheduler:
                     f"   ✓ Scheduled '{agent.name}' (every {agent.interval_minutes} min)"
                 )
 
+        # Start lightweight email check loop (PUSH-06: sub-minute email detection)
+        email_check_task = asyncio.create_task(self._email_check_loop())
+        self.tasks["__email_check__"] = email_check_task
+        logger.info("   Email check loop started (polling Gmail every 60s)")
+
         # Start event router (EVENT-02)
         router_task = asyncio.create_task(self.event_router.run())
         self.tasks["__event_router__"] = router_task
@@ -389,6 +394,82 @@ class AgentScheduler:
                 exc_info=True,
             )
             return False
+
+    async def _email_check_loop(self):
+        """Lightweight Gmail API poll for new unread emails (PUSH-06).
+
+        Checks every 60 seconds for new unread mail. When detected, triggers
+        the email-triage agent on-demand. This achieves sub-2-minute email
+        detection at $0/day API cost (Gmail API calls are free within quota).
+
+        The full email-triage agent only runs when new mail exists, so LLM
+        cost is proportional to actual email volume, not polling frequency.
+        """
+        from promaia.brain.channels.gmail_read import _get_gmail_service, discover_accounts
+        import time as _time
+
+        # Discover Gmail accounts
+        accounts = discover_accounts()
+        if not accounts:
+            logger.warning("No Gmail accounts found -- email check loop disabled")
+            return
+
+        # Use first account (primary)
+        account_label, token_path = next(iter(accounts.items()))
+        logger.info(f"Email check loop using account: {account_label}")
+
+        # Track last check timestamp (epoch seconds)
+        # Capture timestamp BEFORE the API call to prevent coverage gaps
+        last_check_epoch = int(_time.time())
+
+        while self.running:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                break
+
+            try:
+                # Capture timestamp at START of iteration (before API call)
+                check_start_epoch = int(_time.time())
+
+                # Build Gmail service (handles token refresh)
+                service = _get_gmail_service(token_path)
+
+                # Lightweight check: list unread messages since last check
+                # Gmail query uses epoch seconds for after: filter
+                query = f"is:unread after:{last_check_epoch}"
+                response = service.users().messages().list(
+                    userId="me", q=query, maxResults=1
+                ).execute()
+
+                new_count = response.get("resultSizeEstimate", 0)
+
+                if new_count > 0:
+                    logger.info(f"New unread email detected ({new_count} new) -- triggering email-triage")
+
+                    # Find the email-triage agent config
+                    agents = load_agents()
+                    triage_agent = next((a for a in agents if a.name == "email-triage"), None)
+
+                    if triage_agent:
+                        # Check budget before running
+                        allowed, reason = self.budget_guard.can_start_run("email-triage", is_critical=False)
+                        if allowed:
+                            executor = AgentExecutor(triage_agent)
+                            result = await executor.execute()
+                            if result.get("success"):
+                                logger.info("Email-triage completed (triggered by new mail)")
+                            else:
+                                logger.warning(f"Email-triage failed: {result.get('error')}")
+                        else:
+                            logger.warning(f"Skipping on-demand email-triage: {reason}")
+
+                # Update last check time (captured at start of iteration)
+                last_check_epoch = check_start_epoch
+
+            except Exception as e:
+                logger.warning(f"Email check loop error (non-fatal): {e}")
+                # Continue polling -- transient errors should not kill the loop
 
     async def _shutdown(self):
         """Gracefully shutdown all running tasks."""
