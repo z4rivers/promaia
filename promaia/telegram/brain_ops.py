@@ -9,6 +9,7 @@ blocking the event loop.
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -236,8 +237,25 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
             logger.warning(f"Action extraction/insert failed: {e}")
 
         if action_count > 0:
-            return f"Captured. Extracted {action_count} action(s)."
-        return "Captured."
+            action_confirmations = [
+                f"Got it -- I pulled out {action_count} thing{'s' if action_count > 1 else ''} to track from that.",
+                f"Stored. Found {action_count} action{'s' if action_count > 1 else ''} in there too.",
+                f"Noted, and I spotted {action_count} to-do{'s' if action_count > 1 else ''} in that.",
+                f"On it. {action_count} action{'s' if action_count > 1 else ''} queued up.",
+            ]
+            return random.choice(action_confirmations)
+
+        simple_confirmations = [
+            "Got it.",
+            "Noted.",
+            "Stored that away.",
+            "On it.",
+            "Tucked away.",
+            "Logged.",
+            "Heard.",
+            "Saved.",
+        ]
+        return random.choice(simple_confirmations)
 
     return await asyncio.to_thread(_sync)
 
