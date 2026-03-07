@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 7 of 10 (Event Bus + Notification Layer)
-Plan: 1 of 3 in current phase -- COMPLETE
-Status: In Progress
-Last activity: 2026-03-07 -- Plan 07-01 complete (Event schema + emitter)
+Plan: 3 of 3 in current phase -- COMPLETE
+Status: Phase Complete
+Last activity: 2026-03-07 -- Plan 07-03 complete (Notification badge)
 
-Progress: [##########--------------------] 33% (v2.0 Phase 7: 1/3 plans complete)
+Progress: [##############################] 100% (v2.0 Phase 7: 3/3 plans complete)
 
 ## Performance Metrics
 
@@ -33,16 +33,18 @@ Progress: [##########--------------------] 33% (v2.0 Phase 7: 1/3 plans complete
 | 04. Platform Activation | 1 | -- | -- |
 | 05. Validate & Activate | 3 | ~12min | ~4min |
 | 06. Waste Elim + Spend Vis | 4/4 | 39min | ~10min |
-| 07. Event Bus + Notif Layer | 1/3 | 3min | 3min |
+| 07. Event Bus + Notif Layer | 3/3 | 5min | ~2min |
 
-**Recent Trend:** Phase 7 in progress. Event schema extended, emitter wired into executor. All agents now produce routable events after each run.
+**Recent Trend:** Phase 7 complete. Event schema, notification router, and dashboard badge all shipped. Dashboard now shows unread notification count with 60s polling.
+| Phase 07 P02 | 2min | 2 tasks | 4 files |
+| Phase 07 P03 | 2min | 2 tasks | 3 files |
 
 ## What's Live
 
 - Brain MCP server: 16 tools (added brain_costs), 56+ memories, 10 domains, 98 profile traits
 - Agent scheduler: PID running, 3 agents (morning-briefing, email-triage, evening-digest)
 - Agent cost: ~$0.004/run avg via Gemini 3 Flash ($0.0125 total for 3-agent cycle, down from $0.132 Claude)
-- Web dashboard: localhost:8000, 5 pages, Superflat skin
+- Web dashboard: localhost:8000, 5 pages, Superflat skin, notification badge with 60s polling
 - Gmail pipeline: OAuth working, emails ingested
 
 ## Known Issues (Phase 5 targets)
@@ -85,6 +87,9 @@ Recent decisions affecting current work:
 - 07-01: Deterministic agent-to-urgency mapping (no LLM classification) for zero-cost routing
 - 07-01: Unknown agents default to digest urgency as safe fallback
 - 07-01: Event emission non-fatal -- never crashes agent pipeline
+- 07-03: Badge uses CSS custom properties for skin compatibility
+- 07-03: 60-second polling interval to avoid DB connection pressure
+- 07-03: Events marked with channel='dashboard' on read for routing audit trail
 
 ### Pending Todos
 
@@ -98,6 +103,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 07-01-PLAN.md (Event schema + emitter wired into executor)
+Stopped at: Completed 07-03-PLAN.md (Notification badge + API endpoints)
 Resume file: None
-Next: 07-02-PLAN.md -- Notification Router
+Next: Phase 8 -- Telegram Channel

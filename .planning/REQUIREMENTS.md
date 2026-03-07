@@ -29,11 +29,11 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 ### Event Bus & Notifications
 
 - [x] **EVENT-01**: brain.events has urgency column (interrupt/digest/archive) with routing metadata
-- [ ] **EVENT-02**: Event router polls unrouted events every 30 seconds and routes by urgency
-- [ ] **EVENT-03**: Quiet hours (9pm-6am) respected -- non-critical interrupts queued for morning
-- [ ] **EVENT-04**: Rate limiting prevents notification spam (max 10 pushes/hour, 30-min cooldown between non-urgent)
-- [ ] **EVENT-05**: Channel registry supports abstract channel interface with dashboard fallback
-- [ ] **EVENT-06**: Dashboard shows unread notification badge from unrouted events
+- [x] **EVENT-02**: Event router polls unrouted events every 30 seconds and routes by urgency
+- [x] **EVENT-03**: Quiet hours (9pm-6am) respected -- non-critical interrupts queued for morning
+- [x] **EVENT-04**: Rate limiting prevents notification spam (max 10 pushes/hour, 30-min cooldown between non-urgent)
+- [x] **EVENT-05**: Channel registry supports abstract channel interface with dashboard fallback
+- [x] **EVENT-06**: Dashboard shows unread notification badge from unrouted events
 - [x] **EVENT-07**: Agents emit routable events with correct urgency after each run
 
 ### Telegram Bot
@@ -115,11 +115,11 @@ Updated during v2.0 roadmap creation (2026-03-06).
 | COST-03 | Phase 6 | Complete |
 | COST-04 | Phase 6 | Complete |
 | EVENT-01 | Phase 7 | Complete |
-| EVENT-02 | Phase 7 | Pending |
-| EVENT-03 | Phase 7 | Pending |
-| EVENT-04 | Phase 7 | Pending |
-| EVENT-05 | Phase 7 | Pending |
-| EVENT-06 | Phase 7 | Pending |
+| EVENT-02 | Phase 7 | Complete |
+| EVENT-03 | Phase 7 | Complete |
+| EVENT-04 | Phase 7 | Complete |
+| EVENT-05 | Phase 7 | Complete |
+| EVENT-06 | Phase 7 | Complete |
 | EVENT-07 | Phase 7 | Complete |
 | TELE-01 | Phase 8 | Pending |
 | TELE-02 | Phase 8 | Pending |
