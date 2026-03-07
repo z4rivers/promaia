@@ -1,9 +1,8 @@
 """
 Conversation engine for Telegram bot.
 
-Owns context assembly, Gemini calling, impact scoring, and session management.
-Delegates conversation CRUD to brain_ops.py. Does NOT implement synthesis
-timer (that belongs in Plan 02 handler integration).
+Owns context assembly, Gemini calling, impact scoring, session management,
+and session synthesis. Delegates conversation CRUD to brain_ops.py.
 """
 import asyncio
 import logging
@@ -21,10 +20,13 @@ from pgvector.psycopg2 import register_vector
 from promaia.storage.postgres_db import get_postgres_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.telegram.brain_ops import (
+    capture_memory,
     get_conversation_history,
     get_or_create_session,
+    get_session_messages,
     promote_message_to_memory,
     save_conversation_message,
+    update_session_synthesized,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,49 @@ def _get_vector_mgr():
     if _vector_manager is None:
         _vector_manager = VectorDBManager()
     return _vector_manager
+
+
+# ---------------------------------------------------------------------------
+# Cost tracking (Gemini 3 Flash pricing per Phase 6)
+# ---------------------------------------------------------------------------
+
+# Gemini 3 Flash: $0.15/1M input, $0.60/1M output
+_FLASH_INPUT_PRICE_PER_M = 0.15
+_FLASH_OUTPUT_PRICE_PER_M = 0.60
+
+
+def _log_cost(response, agent_name: str) -> None:
+    """Log Gemini API cost to brain.agent_costs. Never fails."""
+    try:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return
+        input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        cached_tokens = getattr(usage, "cached_content_token_count", 0) or 0
+
+        cost = (
+            input_tokens * _FLASH_INPUT_PRICE_PER_M / 1_000_000
+            + output_tokens * _FLASH_OUTPUT_PRICE_PER_M / 1_000_000
+        )
+
+        db = _get_db()
+        db.execute(
+            """
+            INSERT INTO brain.agent_costs
+                (agent_name, model_id, task_type, input_tokens, output_tokens,
+                 cached_tokens, thinking_tokens, cost_usd)
+            VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
+            """,
+            (agent_name, "gemini-3-flash-preview", "conversation",
+             input_tokens, output_tokens, cached_tokens, cost),
+        )
+        logger.debug(
+            f"Cost logged: {agent_name} in={input_tokens} out={output_tokens} "
+            f"cost=${cost:.6f}"
+        )
+    except Exception as e:
+        logger.warning(f"Cost logging failed (non-fatal): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +439,9 @@ async def generate_response(chat_id: int, user_message: str) -> str:
             timeout=30.0,
         )
         response_text = response.text if response and response.text else None
+        # Log cost (non-blocking, never fails)
+        if response:
+            _log_cost(response, "telegram-conversation")
     except asyncio.TimeoutError:
         logger.error("Gemini call timed out after 30 seconds")
         response_text = None
@@ -417,17 +465,176 @@ async def generate_response(chat_id: int, user_message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Synthesis timer (stub -- full implementation in Task 2)
+# Session synthesis
 # ---------------------------------------------------------------------------
 
 _synthesis_timers: dict[int, asyncio.Task] = {}
 
+_SYNTHESIS_SYSTEM_PROMPT = (
+    "You are a session summarizer. Produce a concise synthesis of this "
+    "conversation. Focus on: decisions made, commitments stated, emotional "
+    "context, project updates, and ideas worth revisiting. If meaning of "
+    "earlier messages changed with later context, note that. Be specific "
+    "-- names, projects, dates. 2-4 sentences max."
+)
+
 
 async def reset_synthesis_timer(chat_id: int) -> None:
-    """Reset the synthesis timer for a chat. Full implementation in Task 2."""
-    pass
+    """Reset the synthesis timer for a chat. Called by handlers after each message.
+
+    If message count >= SYNTHESIS_MESSAGE_THRESHOLD, runs synthesis immediately.
+    Otherwise starts a silence countdown (SYNTHESIS_SILENCE_SECONDS).
+    """
+    # Cancel any existing timer for this chat
+    existing = _synthesis_timers.pop(chat_id, None)
+    if existing is not None:
+        existing.cancel()
+        try:
+            await asyncio.sleep(0)  # Let cancellation propagate
+        except Exception:
+            pass
+
+    # Check message count threshold
+    try:
+        session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
+        messages = await get_session_messages(session_id)
+        if len(messages) >= SYNTHESIS_MESSAGE_THRESHOLD:
+            # Enough messages -- synthesize immediately in background
+            asyncio.create_task(_run_synthesis(chat_id))
+            return
+    except Exception as e:
+        logger.warning(f"Synthesis timer message count check failed: {e}")
+
+    # Start silence countdown
+    _synthesis_timers[chat_id] = asyncio.create_task(_synthesis_countdown(chat_id))
+
+
+async def _synthesis_countdown(chat_id: int) -> None:
+    """Wait for silence period, then run synthesis."""
+    try:
+        await asyncio.sleep(SYNTHESIS_SILENCE_SECONDS)
+        await _run_synthesis(chat_id)
+    except asyncio.CancelledError:
+        # Normal -- timer was reset by a new message
+        pass
+    except Exception as e:
+        logger.error(f"Synthesis countdown error for chat {chat_id}: {e}", exc_info=True)
+
+
+async def _run_synthesis(chat_id: int) -> None:
+    """Synthesize a session into a permanent memory.
+
+    Gets the current session's messages, calls Gemini with a synthesis prompt,
+    stores the result as a brain.memories entry, and marks the session synthesized.
+    """
+    try:
+        # Get current session
+        session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
+
+        # Get all messages in this session
+        messages = await get_session_messages(session_id)
+
+        # Skip if fewer than 3 messages (not enough substance per CONV-05)
+        if len(messages) < 3:
+            logger.debug(f"Session {session_id}: only {len(messages)} messages, skipping synthesis")
+            return
+
+        # Format transcript
+        transcript = "\n".join(
+            f"{m['role'].title()}: {m['content']}" for m in messages
+        )
+
+        # Call Gemini for synthesis
+        client = _get_genai_client()
+        config = types.GenerateContentConfig(
+            system_instruction=_SYNTHESIS_SYSTEM_PROMPT,
+            temperature=0.3,  # Low for factual synthesis
+        )
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=transcript,
+                config=config,
+            ),
+            timeout=30.0,
+        )
+
+        synthesis_text = response.text if response and response.text else None
+
+        # Log synthesis cost
+        if response:
+            _log_cost(response, "telegram-synthesis")
+
+        if not synthesis_text:
+            logger.warning(f"Session {session_id}: synthesis returned empty response")
+            return
+
+        # Store as permanent memory
+        memory_result = await capture_memory(synthesis_text, domain="conversation-synthesis")
+        logger.info(f"Session {session_id} synthesized: {synthesis_text[:100]}...")
+
+        # Get the memory ID from brain.memories (most recent with this domain)
+        try:
+            db = _get_db()
+            row = await asyncio.to_thread(
+                lambda: db.fetch_one(
+                    """
+                    SELECT id FROM brain.memories
+                    WHERE domain = 'conversation-synthesis'
+                    ORDER BY created_at DESC LIMIT 1
+                    """
+                )
+            )
+            if row:
+                await update_session_synthesized(session_id, row["id"])
+        except Exception as e:
+            logger.warning(f"Failed to link synthesis memory to session: {e}")
+
+    except asyncio.CancelledError:
+        raise  # Let cancellation propagate
+    except Exception as e:
+        # Synthesis failure must NEVER crash the bot
+        logger.error(f"Session synthesis failed for chat {chat_id}: {e}", exc_info=True)
+    finally:
+        # Clean up timer reference
+        _synthesis_timers.pop(chat_id, None)
 
 
 async def cleanup_stale_sessions() -> None:
-    """Clean up stale sessions on startup. Full implementation in Task 2."""
-    pass
+    """Synthesize any sessions orphaned by bot restart.
+
+    Checks brain.conversation_sessions for unsynthesized sessions where
+    last_message_at is older than SYNTHESIS_SILENCE_SECONDS. Runs synthesis
+    for each to prevent lost session data.
+    """
+    try:
+        db = _get_db()
+
+        def _find_stale():
+            return db.fetch_all(
+                f"""
+                SELECT chat_id, session_id
+                FROM brain.conversation_sessions
+                WHERE synthesized = FALSE
+                  AND last_message_at < NOW() - INTERVAL '{SYNTHESIS_SILENCE_SECONDS} seconds'
+                ORDER BY last_message_at ASC
+                """
+            )
+
+        stale_sessions = await asyncio.to_thread(_find_stale)
+
+        if not stale_sessions:
+            logger.info("No stale sessions to synthesize on startup")
+            return
+
+        logger.info(f"Found {len(stale_sessions)} stale session(s) to synthesize")
+        for session in stale_sessions:
+            try:
+                await _run_synthesis(session["chat_id"])
+            except Exception as e:
+                logger.warning(
+                    f"Stale session synthesis failed for {session['session_id']}: {e}"
+                )
+
+    except Exception as e:
+        logger.error(f"Stale session cleanup failed: {e}", exc_info=True)
