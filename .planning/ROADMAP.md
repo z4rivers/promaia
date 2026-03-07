@@ -107,7 +107,11 @@ Plans:
   3. Evening digest arrives as a single batched Telegram message at 4:30 PM
   4. Zack can reply inline to a pushed Telegram message and the brain processes the response
   5. Notification fatigue controls are active: 30-min cooldown between non-urgent pushes, daily cap of 10, cross-channel dedup
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 09-01-PLAN.md -- Time-of-day scheduling + direct Telegram push + emitter pre-routing + config
+- [ ] 09-02-PLAN.md -- Fatigue controls + reply handler + email-triage interval + human verification
 
 ### Phase 10: Memory Deepening + Polish
 **Goal**: The brain gets smarter over time -- memories decay or strengthen based on use, the profile shapes every agent call, and sessions resume seamlessly
@@ -135,7 +139,7 @@ Plans:
 | 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
 | 7. Event Bus + Notification Layer | v2.0 | Complete    | 2026-03-07 | - |
 | 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
-| 9. Proactive Push | v2.0 | 0/? | Not started | - |
+| 9. Proactive Push | v2.0 | 0/2 | Planning complete | - |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
 
 ---
