@@ -53,6 +53,7 @@ def emit_agent_events(
     agent_name: str,
     output: str,
     execution_id: int,
+    pushed_to_channel: str | None = None,
 ) -> int:
     """Convert agent output into routable brain.events rows.
 
@@ -60,6 +61,9 @@ def emit_agent_events(
         agent_name: Name of the agent (e.g. ``morning-briefing``).
         output: Raw text output from the agent run.
         execution_id: Execution ID for traceability.
+        pushed_to_channel: If provided, events are inserted with
+            ``routed_at`` and ``channel`` set atomically at INSERT time,
+            preventing the event router from re-delivering them.
 
     Returns:
         Number of events inserted.
@@ -77,6 +81,7 @@ def emit_agent_events(
                 agent_name=agent_name,
                 execution_id=execution_id,
                 summary=output[:_MAX_SUMMARY_LEN],
+                pushed_to_channel=pushed_to_channel,
             )
             count = 1
 
@@ -89,6 +94,7 @@ def emit_agent_events(
                 agent_name=agent_name,
                 execution_id=execution_id,
                 summary=output[:_MAX_SUMMARY_LEN],
+                pushed_to_channel=pushed_to_channel,
             )
             count = 1
 
@@ -105,6 +111,7 @@ def emit_agent_events(
                     agent_name=agent_name,
                     execution_id=execution_id,
                     summary=item_text[:_MAX_SUMMARY_LEN],
+                    pushed_to_channel=pushed_to_channel,
                 )
                 count += 1
 
@@ -117,6 +124,7 @@ def emit_agent_events(
                 agent_name=agent_name,
                 execution_id=execution_id,
                 summary=output[:_MAX_SUMMARY_LEN],
+                pushed_to_channel=pushed_to_channel,
             )
             count += 1
 
@@ -130,6 +138,7 @@ def emit_agent_events(
                 agent_name=agent_name,
                 execution_id=execution_id,
                 summary=output[:_MAX_SUMMARY_LEN],
+                pushed_to_channel=pushed_to_channel,
             )
             count = 1
 
@@ -149,16 +158,32 @@ def _insert_event(
     agent_name: str,
     execution_id: int,
     summary: str,
+    pushed_to_channel: str | None = None,
 ) -> Optional[int]:
-    """Insert a single event row into brain.events."""
+    """Insert a single event row into brain.events.
+
+    When ``pushed_to_channel`` is set, ``routed_at`` and ``channel`` are
+    included in the INSERT itself (not a separate UPDATE). This ensures
+    the event is never visible as unrouted, preventing the event router
+    from picking it up and causing double delivery.
+    """
     payload = json.dumps({
         "agent_name": agent_name,
         "execution_id": execution_id,
         "summary": summary,
     })
-    return db.insert_returning(
-        """INSERT INTO brain.events (type, payload, source, urgency)
-           VALUES (%s, %s::jsonb, %s, %s)
-           RETURNING id""",
-        (event_type, payload, source, urgency),
-    )
+
+    if pushed_to_channel:
+        return db.insert_returning(
+            """INSERT INTO brain.events (type, payload, source, urgency, routed_at, channel)
+               VALUES (%s, %s::jsonb, %s, %s, NOW(), %s)
+               RETURNING id""",
+            (event_type, payload, source, urgency, pushed_to_channel),
+        )
+    else:
+        return db.insert_returning(
+            """INSERT INTO brain.events (type, payload, source, urgency)
+               VALUES (%s, %s::jsonb, %s, %s)
+               RETURNING id""",
+            (event_type, payload, source, urgency),
+        )
