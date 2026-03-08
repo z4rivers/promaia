@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Promaia{% endblock %}</title>
 
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <meta name="theme-color" content="#FF3366">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <!-- Superflat fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -146,6 +153,7 @@
             <a href="/" class="top-nav__brand">Promaia</a>
             <div class="top-nav__links">
                 <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="/talk" class="{% if active_page == 'talk' %}active{% endif %}">Talk</a>
                 <a href="/projects" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a>
                 <a href="/email" class="{% if active_page == 'email' %}active{% endif %}">Email</a>
                 <a href="/profile" class="{% if active_page == 'profile' %}active{% endif %}">Profile</a>
@@ -212,5 +220,6 @@
     })();
     </script>
     <script src="/static/js/atmospherics.js" defer></script>
+    <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');</script>
 </body>
 </html>

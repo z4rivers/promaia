@@ -6,9 +6,9 @@
 
 **Primary use case:** Driving. Voice in, voice out. No screen dependency. Car noise (engine, horns, Siri navigation) must not interrupt the conversation.
 
-**Architecture:** New `/talk` route serving `talk.html`. New `/api/brain/chat`, `/api/brain/voice`, and `/api/brain/tts` endpoints. Browser-side MediaRecorder for capture with smart MIME detection. Simple energy-threshold silence detection for auto-stop (V2: upgrade to Silero VAD). Google Cloud TTS returns MP3 played via `<audio>` element for reliable car speaker playback (survives screen lock via Media Session API). Continuous conversation loop: after TTS finishes, auto-resume listening. PWA manifest for home screen install.
+**Architecture:** New `/talk` route serving `talk.html`. New `/api/brain/chat`, `/api/brain/voice`, and `/api/brain/tts` endpoints. Browser-side MediaRecorder for capture with smart MIME detection. Silero VAD (`@ricky0123/vad-web`) detects speech vs car noise on the audio stream, auto-stops on speech end. Raw unfiltered audio sent to Gemini for transcription (it handles noise better than any client-side filter). Google Cloud TTS returns MP3 played via `<audio>` element for reliable car speaker playback (survives screen lock via Media Session API). Continuous conversation loop: after TTS finishes, auto-resume listening. esbuild bundles talk.js + VAD dependency. PWA manifest for home screen install.
 
-**Tech Stack:** FastAPI, Jinja2, Gemini 3 Flash (conversation + transcription), Google Cloud TTS (speech output), Web Audio API (recording + silence detection), Media Session API (lock screen playback), existing brain Postgres schema, existing conversation.py engine.
+**Tech Stack:** FastAPI, Jinja2, Gemini 3 Flash (conversation + transcription), Google Cloud TTS (speech output), esbuild (JS bundler), @ricky0123/vad-web (Silero VAD), Web Audio API (recording), Media Session API (lock screen playback), existing brain Postgres schema, existing conversation.py engine.
 
 **Research findings (Gemini-verified 2026-03-08):**
 - `audio/webm;codecs=opus` works on Chrome, Firefox, Safari iOS 18+ — Gemini API accepts it natively
@@ -20,6 +20,8 @@
 - iOS PWA: no auto-install banner — need custom instructions (Share → Add to Home Screen)
 - MediaRecorder.start(1000) timeslice prevents memory issues on long recordings
 - Browser `noiseSuppression: true` + `echoCancellation: true` on getUserMedia helps
+- `@ricky0123/vad-web` wraps Silero VAD ONNX model — runs in browser via ONNX Runtime Web, fires `onSpeechStart`/`onSpeechEnd` callbacks, handles all the audio worklet setup
+- esbuild can bundle ESM + ONNX runtime in <1s — no webpack/vite complexity needed for this scale
 
 ---
 
@@ -212,7 +214,74 @@ git commit -m "feat(phase5): brain chat + voice + TTS API endpoints"
 
 ---
 
-### Task 3: Create the Talk page template (driving-first design)
+### Task 3: esbuild + npm setup for frontend bundling
+
+**Files:**
+- Create: `package.json`
+- Create: `esbuild.config.mjs`
+
+**Step 1: Initialize npm and install dependencies**
+
+```bash
+npm init -y
+npm install --save @ricky0123/vad-web onnxruntime-web
+npm install --save-dev esbuild
+```
+
+**Step 2: Create esbuild config**
+
+Create `esbuild.config.mjs`:
+
+```javascript
+import * as esbuild from 'esbuild';
+
+const isWatch = process.argv.includes('--watch');
+
+const config = {
+    entryPoints: ['promaia/web/static/js/talk.src.js'],
+    bundle: true,
+    outfile: 'promaia/web/static/js/talk.js',
+    format: 'esm',
+    target: ['es2020'],
+    sourcemap: true,
+    minify: !isWatch,
+    loader: { '.wasm': 'file' },
+};
+
+if (isWatch) {
+    const ctx = await esbuild.context(config);
+    await ctx.watch();
+    console.log('Watching for changes...');
+} else {
+    await esbuild.build(config);
+    console.log('Build complete');
+}
+```
+
+Note: `atmospherics.js` stays unbundled (vanilla JS, no imports). Only `talk.src.js` goes through esbuild because it imports `@ricky0123/vad-web`.
+
+**Step 3: Add build scripts to package.json**
+
+```json
+{
+    "scripts": {
+        "build": "node esbuild.config.mjs",
+        "dev": "node esbuild.config.mjs --watch"
+    }
+}
+```
+
+**Step 4: Add node_modules to .gitignore, commit built output**
+
+```bash
+echo "node_modules/" >> .gitignore
+git add package.json package-lock.json esbuild.config.mjs .gitignore
+git commit -m "feat(phase5): esbuild + @ricky0123/vad-web setup for frontend bundling"
+```
+
+---
+
+### Task 4: Create the Talk page template (driving-first design)
 
 **Files:**
 - Create: `promaia/web/templates/talk.html`
@@ -257,16 +326,16 @@ git commit -m "feat(phase5): Talk page — driving-first voice interface"
 
 ---
 
-### Task 4: Create talk.js — the conversation engine
+### Task 5: Create talk.src.js — the conversation engine (esbuild source)
 
 **Files:**
-- Create: `promaia/web/static/js/talk.js`
+- Create: `promaia/web/static/js/talk.src.js`
 
 **This is the heart of the hands-free experience. Architecture:**
 
 1. User taps mic → enters "conversation mode"
-2. MediaRecorder captures audio with smart MIME detection
-3. Simple energy-threshold silence detection auto-stops after ~2s of silence
+2. Silero VAD (`@ricky0123/vad-web`) detects speech start/end — handles car noise
+3. MediaRecorder captures audio with smart MIME detection during speech segments
 4. Raw audio (unfiltered) sent to `/api/brain/voice` — Gemini handles noise
 5. Response text sent to `/api/brain/tts` → MP3 returned
 6. MP3 played via `<audio>` element (works through car Bluetooth, survives screen lock)
@@ -302,9 +371,12 @@ const stream = await navigator.mediaDevices.getUserMedia({
     }
 });
 
-// Silence detection via Web Audio API AnalyserNode
-// Monitor RMS energy — when it drops below threshold for 2s, stop recording
-// Threshold tuned for car environment (higher than default)
+// Silero VAD via @ricky0123/vad-web
+import { MicVAD } from '@ricky0123/vad-web';
+
+// VAD handles speech detection — fires callbacks on speech start/end
+// Much more reliable than energy threshold in noisy car environment
+// Records audio during speech, auto-stops when speech ends
 
 // TTS playback via <audio> element
 async function playTTS(text) {
@@ -341,16 +413,17 @@ document.addEventListener('visibilitychange', () => {
 });
 ```
 
-**Step 5: Commit**
+**Step 5: Build and commit**
 
 ```bash
-git add promaia/web/static/js/talk.js
-git commit -m "feat(phase5): talk.js — hands-free conversation loop with Cloud TTS and silence detection"
+npm run build
+git add promaia/web/static/js/talk.src.js promaia/web/static/js/talk.js promaia/web/static/js/talk.js.map
+git commit -m "feat(phase5): talk.js — hands-free conversation loop with Silero VAD + Cloud TTS"
 ```
 
 ---
 
-### Task 5: PWA manifest for home screen install
+### Task 6: PWA manifest for home screen install
 
 **Files:**
 - Create: `promaia/web/static/manifest.json`
@@ -414,7 +487,7 @@ git commit -m "feat(phase5): PWA manifest — installable on phone, starts on Ta
 
 ---
 
-### Task 6: Google Cloud TTS setup
+### Task 7: Google Cloud TTS setup
 
 **Files:**
 - Modify: `.env` (add GOOGLE_APPLICATION_CREDENTIALS or verify existing key works)
@@ -447,7 +520,7 @@ git commit -m "feat(phase5): Google Cloud TTS dependency + credentials"
 
 ---
 
-### Task 7: Integration test — driving scenario
+### Task 8: Integration test — driving scenario
 
 **Steps:**
 1. Start local: `python -m promaia dev`
@@ -469,16 +542,16 @@ git commit -m "feat(phase5): Google Cloud TTS dependency + credentials"
 |------|------|--------|
 | 1 | Web brain chat adapter + noise-aware transcription | 10 min |
 | 2 | API endpoints (chat + voice + TTS) | 15 min |
-| 3 | Talk page template (driving-first, use frontend-design) | 20 min |
-| 4 | talk.js — conversation loop + silence detection + Cloud TTS | 30 min |
-| 5 | PWA manifest | 10 min |
-| 6 | Google Cloud TTS setup | 15 min |
-| 7 | Integration test | 20 min |
+| 3 | esbuild + @ricky0123/vad-web setup | 10 min |
+| 4 | Talk page template (driving-first, use frontend-design) | 20 min |
+| 5 | talk.src.js — conversation loop + Silero VAD + Cloud TTS | 30 min |
+| 6 | PWA manifest | 10 min |
+| 7 | Google Cloud TTS setup | 15 min |
+| 8 | Integration test | 20 min |
 
-**Total: ~2 hours**
+**Total: ~2.5 hours**
 
-## V2 Upgrades (future)
-- Silero VAD (@ricky0123/vad-web) replacing simple silence detection
+## Future Improvements
 - Continuous listening without tap-to-start
 - Wake word detection
 - Gemini Live API for real-time streaming conversation

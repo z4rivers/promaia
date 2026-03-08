@@ -1,0 +1,22 @@
+{
+    "id": "promaia-zbrain",
+    "name": "Promaia",
+    "short_name": "Promaia",
+    "description": "Your second brain — voice first",
+    "start_url": "/talk",
+    "display": "standalone",
+    "background_color": "#FFFFFF",
+    "theme_color": "#FF3366",
+    "icons": [
+        {
+            "src": "/static/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

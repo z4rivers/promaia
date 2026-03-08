@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Promaia — Talk{% endblock %}
+
+{% block head %}
+<style>
+    .talk-page {
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 120px);
+        padding-bottom: 140px; /* space for fixed mic button */
+    }
+
+    /* === Compact Info Feeds === */
+    .talk-feeds {
+        transition: opacity 300ms ease, filter 300ms ease;
+    }
+    .talk-feeds.dimmed {
+        opacity: 0.25;
+        filter: blur(2px);
+        pointer-events: none;
+    }
+
+    .talk-brain-bar {
+        display: flex;
+        gap: var(--space-md, 16px);
+        align-items: center;
+        flex-wrap: wrap;
+        font-family: var(--font-mono, monospace);
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        letter-spacing: 0.03em;
+        padding: 10px 16px;
+        background: var(--bg-card);
+        border: var(--card-border, 1px solid var(--border-subtle));
+        border-radius: var(--card-radius, 8px);
+        margin-bottom: var(--space-md, 16px);
+    }
+    .talk-brain-bar .metric {
+        font-family: var(--font-display, var(--font-heading));
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--accent-primary);
+    }
+
+    .talk-actions-header {
+        font-family: var(--font-heading);
+        font-size: var(--section-header-size, 0.75rem);
+        font-weight: var(--section-header-weight, 600);
+        text-transform: uppercase;
+        letter-spacing: var(--section-header-tracking, 0.1em);
+        color: var(--text-muted);
+        margin-bottom: var(--space-sm, 8px);
+    }
+
+    .talk-action-card {
+        background: var(--bg-card);
+        border: var(--card-border, 1px solid var(--border-subtle));
+        border-left: var(--accent-border, 3px solid var(--accent-primary));
+        border-radius: var(--card-radius, 8px);
+        padding: 10px 14px;
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        animation: pop-in 200ms ease both;
+    }
+    .talk-action-card + .talk-action-card {
+        margin-top: 6px;
+    }
+    .talk-action-card .action-domain {
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        margin-top: 2px;
+    }
+    .talk-action-card:nth-child(2) { animation-delay: 50ms; }
+    .talk-action-card:nth-child(3) { animation-delay: 100ms; }
+    .talk-action-card:nth-child(4) { animation-delay: 150ms; }
+
+    /* === Conversation Area === */
+    .talk-conversation {
+        flex: 1;
+        overflow-y: auto;
+        margin-top: var(--space-lg, 24px);
+        padding-bottom: var(--space-md, 16px);
+    }
+
+    .talk-msg {
+        padding: 10px 16px;
+        margin-bottom: 8px;
+        border-radius: var(--card-radius, 8px);
+        font-size: 0.9rem;
+        line-height: 1.5;
+        animation: pop-in 200ms ease both;
+        max-width: 90%;
+    }
+    .talk-msg--user {
+        background: var(--bg-card);
+        border: var(--card-border, 1px solid var(--border-subtle));
+        color: var(--text-primary);
+        margin-left: auto;
+        text-align: right;
+    }
+    .talk-msg--assistant {
+        background: var(--bg-card);
+        border: 2px solid var(--accent-primary, #FF3366);
+        color: var(--text-primary);
+        margin-right: auto;
+    }
+    .talk-msg-label {
+        font-family: var(--font-mono);
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+
+    .talk-empty {
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        padding: var(--space-2xl, 48px) 0;
+        font-family: var(--font-body);
+    }
+
+    /* === Status Indicator === */
+    .talk-status {
+        text-align: center;
+        padding: var(--space-md, 16px) 0;
+        min-height: 48px;
+    }
+    .talk-status-label {
+        font-family: var(--font-display, var(--font-heading));
+        font-size: 1.2rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        transition: color 200ms ease;
+    }
+    .talk-status-label[data-state="listening"] {
+        color: var(--accent-primary, #FF3366);
+    }
+    .talk-status-label[data-state="thinking"] {
+        color: var(--accent-info, #8B00FF);
+    }
+    .talk-status-label[data-state="speaking"] {
+        color: var(--accent-success, #00CC88);
+    }
+    .talk-status-label[data-state="error"] {
+        color: var(--accent-warning, #FFE700);
+    }
+
+    /* Pulse animation for listening state */
+    @keyframes status-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .talk-status-label[data-state="listening"],
+    .talk-status-label[data-state="thinking"] {
+        animation: status-pulse 1.5s ease-in-out infinite;
+    }
+
+    /* === Mic Button: MASSIVE, fixed at bottom center === */
+    .talk-mic-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 20px 32px 20px;
+        background: linear-gradient(transparent, var(--bg-primary, #fff) 30%);
+        z-index: 50;
+    }
+
+    .talk-mic-btn {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 3px solid var(--border-visible, #1A1A2E);
+        background: var(--bg-card, #fff);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 200ms ease;
+        flex-shrink: 0;
+    }
+    .talk-mic-btn svg {
+        width: 36px;
+        height: 36px;
+        fill: var(--text-primary, #1A1A2E);
+        transition: fill 200ms ease;
+    }
+    .talk-mic-btn:hover {
+        border-color: var(--accent-primary, #FF3366);
+        transform: scale(1.05);
+    }
+    .talk-mic-btn:active {
+        transform: scale(0.95);
+    }
+    .talk-mic-btn.active {
+        background: var(--accent-primary, #FF3366);
+        border-color: var(--accent-primary, #FF3366);
+    }
+    .talk-mic-btn.active svg {
+        fill: #FFFFFF;
+    }
+
+    /* Pulse ring when active */
+    @keyframes mic-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4); }
+        70% { box-shadow: 0 0 0 20px rgba(255, 51, 102, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0); }
+    }
+    .talk-mic-btn.active {
+        animation: mic-pulse 2s ease-out infinite;
+    }
+
+    /* Keyboard toggle */
+    .talk-kb-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 2px solid var(--border-subtle, #E0E0E8);
+        background: var(--bg-card, #fff);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 150ms ease;
+    }
+    .talk-kb-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: var(--text-muted, #888);
+    }
+    .talk-kb-btn:hover {
+        border-color: var(--accent-primary);
+    }
+
+    /* Text input bar */
+    .talk-text-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: none;
+        padding: 12px 16px 28px 16px;
+        background: var(--bg-primary, #fff);
+        border-top: 2px solid var(--border-visible, #1A1A2E);
+        z-index: 51;
+        gap: 8px;
+        align-items: center;
+    }
+    .talk-text-bar.visible {
+        display: flex;
+    }
+    .talk-text-bar input {
+        flex: 1;
+        font-family: var(--font-body);
+        font-size: 1rem;
+        padding: 10px 14px;
+        border: 2px solid var(--border-visible, #1A1A2E);
+        border-radius: var(--card-radius, 8px);
+        background: var(--bg-card, #fff);
+        color: var(--text-primary);
+        outline: none;
+    }
+    .talk-text-bar input:focus {
+        border-color: var(--accent-primary, #FF3366);
+    }
+    .talk-text-bar button {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 10px 18px;
+        background: var(--accent-primary, #FF3366);
+        color: #fff;
+        border: 2px solid var(--accent-primary, #FF3366);
+        border-radius: var(--card-radius, 8px);
+        cursor: pointer;
+        transition: all 150ms ease;
+    }
+    .talk-text-bar button:hover {
+        background: var(--text-primary, #1A1A2E);
+        border-color: var(--text-primary, #1A1A2E);
+    }
+    .talk-text-bar .close-kb {
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 8px;
+    }
+
+    /* === Mobile optimizations === */
+    @media (max-width: 480px) {
+        .talk-mic-btn {
+            width: 72px;
+            height: 72px;
+        }
+        .talk-mic-btn svg {
+            width: 32px;
+            height: 32px;
+        }
+        .talk-msg {
+            max-width: 95%;
+        }
+    }
+
+    /* Hide nav links except brand on very small screens when in conversation */
+    @media (max-width: 360px) {
+        .top-nav__links {
+            gap: var(--space-sm, 8px);
+            font-size: 0.75rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="talk-page" id="talk-page">
+
+    <!-- Compact Info Feeds -->
+    <section class="talk-feeds" id="feeds">
+        <div class="talk-brain-bar">
+            <span><span class="metric">{{ brain_status.memories }}</span> memories</span>
+            <span>&middot;</span>
+            <span><span class="metric">{{ brain_status.actions }}</span> actions</span>
+            <span>&middot;</span>
+            <span><span class="metric">{{ brain_status.contexts }}</span> contexts</span>
+        </div>
+
+        {% if actions %}
+        <div class="talk-actions-header">Pending</div>
+        {% for action in actions[:4] %}
+        <div class="talk-action-card">
+            {{ action.text }}
+            <div class="action-domain">{{ action.domain }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </section>
+
+    <!-- Conversation Area -->
+    <section class="talk-conversation" id="conversation">
+        <div id="messages">
+            {% if last_message %}
+            <div class="talk-msg talk-msg--assistant">
+                <div class="talk-msg-label">Last session</div>
+                {{ last_message }}
+            </div>
+            {% else %}
+            <div class="talk-empty">Tap the mic to start talking</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Status Indicator -->
+    <div class="talk-status">
+        <div class="talk-status-label" id="talk-status" data-state="idle">Ready</div>
+    </div>
+
+</main>
+
+<!-- Fixed Mic Button Area -->
+<div class="talk-mic-area" id="mic-area">
+    <button class="talk-kb-btn" id="kb-toggle" title="Type instead">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
+        </svg>
+    </button>
+    <button class="talk-mic-btn" id="mic-btn" title="Tap to talk">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+    </button>
+</div>
+
+<!-- Text Input Bar (hidden by default) -->
+<div class="talk-text-bar" id="text-bar">
+    <button class="close-kb" id="close-kb" title="Back to voice">&times;</button>
+    <input type="text" id="text-field" placeholder="Type a message..." autocomplete="off">
+    <button id="send-btn">Send</button>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/static/js/talk.js"></script>
+{% endblock %}

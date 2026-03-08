@@ -237,6 +237,36 @@ def _base_context(request: Request, active_page: str = "") -> dict:
     return {"request": request, "skin": SKIN, "active_page": active_page}
 
 
+@router.get("/talk", response_class=HTMLResponse)
+async def talk_page(request: Request):
+    """Render the Talk page — mobile hub with voice + compact info feeds."""
+    brain = _get_brain_data()
+
+    # Last assistant message for continuity
+    last_message = None
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        row = db.fetch_one(
+            """
+            SELECT content FROM brain.conversations
+            WHERE role = 'assistant'
+            ORDER BY created_at DESC LIMIT 1
+            """
+        )
+        if row:
+            content = row["content"] or ""
+            last_message = content[:200] + ("..." if len(content) > 200 else "")
+    except Exception as e:
+        logger.warning(f"Last message unavailable: {e}")
+
+    return templates.TemplateResponse("talk.html", {
+        **_base_context(request, "talk"),
+        **brain,
+        "last_message": last_message,
+    })
+
+
 @router.get("/projects", response_class=HTMLResponse)
 async def projects_page(request: Request):
     try:

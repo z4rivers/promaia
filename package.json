@@ -1,0 +1,33 @@
+{
+  "name": "promaia",
+  "version": "1.0.0",
+  "description": "> A comprehensive Python framework for multi-source content management, AI-powered workflows, and intelligent synchronization",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/commodorebob/promaia.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/commodorebob/promaia/issues"
+  },
+  "homepage": "https://github.com/commodorebob/promaia#readme",
+  "dependencies": {
+    "@ricky0123/vad-web": "^0.0.30",
+    "onnxruntime-web": "^1.24.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3"
+  }
+}
