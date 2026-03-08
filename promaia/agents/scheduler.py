@@ -198,7 +198,9 @@ class AgentScheduler:
         enabled_agents = [a for a in agents if a.enabled]
 
         if not enabled_agents:
-            logger.warning("⚠️  No enabled agents found")
+            logger.warning("⚠️  No enabled agents found — scheduler will idle (web + Telegram still active)")
+            # Don't return — wait for shutdown so other services keep running
+            await self.shutdown_event.wait()
             return
 
         logger.info(f"📋 Found {len(enabled_agents)} enabled agents")

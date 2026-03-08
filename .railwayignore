@@ -1,0 +1,17 @@
+.git
+.claude
+zbrain-patches
+screenshots
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+*.patch
+audit_clean.txt
+audit_prompt.txt
+gmail_human_dump.json
+gmail_life_analysis.md
+CLAUDE.md.template
+SETUP.md
+credentials
