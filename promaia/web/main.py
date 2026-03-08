@@ -49,12 +49,13 @@ if os.environ.get("PYTHON_ENV") == "production":
 
     class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            proto = request.headers.get("x-forwarded-proto", "http")
-            if proto == "http":
-                url = request.url.replace(scheme="https")
-                return StarletteRedirect(str(url), status_code=301)
+            # Only redirect if x-forwarded-proto is explicitly present and "http".
+            # Railway's internal health checks don't send this header — don't redirect those.
+            forwarded_proto = request.headers.get("x-forwarded-proto")
+            if forwarded_proto == "http":
+                url = str(request.url).replace("http://", "https://", 1)
+                return StarletteRedirect(url, status_code=301)
             response = await call_next(request)
-            # Prevent Cloudflare from caching error pages or HTML
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             return response
 
