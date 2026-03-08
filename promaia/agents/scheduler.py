@@ -2,7 +2,7 @@
 Agent Scheduler - Runs scheduled agents at specified intervals using asyncio.
 
 Supports two scheduling modes:
-  - Time-of-day via agent.schedule (e.g., daily at 06:00 ET)
+  - Time-of-day via agent.schedule (e.g., daily at 06:00 PT)
   - Fixed interval via agent.interval_minutes (legacy, e.g., every 480 min)
 """
 import asyncio
@@ -24,7 +24,7 @@ from promaia.events.router import EventRouter
 logger = logging.getLogger(__name__)
 
 # User timezone for schedule calculations
-_USER_TZ = ZoneInfo("America/New_York")
+_USER_TZ = ZoneInfo("America/Los_Angeles")
 
 # Weekday name to weekday number (Monday=0 .. Sunday=6)
 _WEEKDAY_MAP = {
@@ -44,7 +44,7 @@ def _next_run_time(schedule: List[Tuple[str, str]]) -> datetime:
 
     Each entry is (day_spec, time_str) where:
       - day_spec is "daily" or a weekday abbreviation ("Mon", "Tue", etc.)
-      - time_str is "HH:MM" in user timezone (America/New_York)
+      - time_str is "HH:MM" in user timezone (America/Los_Angeles)
 
     Returns the earliest upcoming datetime (timezone-aware in user TZ).
     """
