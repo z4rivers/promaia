@@ -41,6 +41,23 @@ app = FastAPI(
     version="0.2.0",
 )
 
+
+# HTTPS redirect middleware (production only — Railway terminates SSL at edge)
+if os.environ.get("PYTHON_ENV") == "production":
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import RedirectResponse as StarletteRedirect
+
+    class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            proto = request.headers.get("x-forwarded-proto", "http")
+            if proto == "http":
+                url = request.url.replace(scheme="https")
+                return StarletteRedirect(str(url), status_code=301)
+            return await call_next(request)
+
+    app.add_middleware(HTTPSRedirectMiddleware)
+
+
 # Auth middleware (must be added BEFORE CORS so login redirects work)
 app.add_middleware(DashboardAuthMiddleware)
 
