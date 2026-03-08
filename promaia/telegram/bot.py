@@ -84,6 +84,17 @@ async def start_bot() -> None:
             logger.info("Telegram webhook removed on shutdown")
     else:
         # Polling mode (default for local development)
+        # Safety check: if a webhook is already registered (e.g. Railway),
+        # polling would delete it and break the cloud deployment.
+        info = await _bot.get_webhook_info()
+        if info.url:
+            logger.warning(
+                f"Skipping polling — active webhook exists: {info.url}  "
+                "Set TELEGRAM_WEBHOOK_URL to use webhook mode, "
+                "or call /deleteWebhook manually to force polling."
+            )
+            return
+
         logger.info("Telegram bot starting polling...")
         await _dp.start_polling(
             _bot,
