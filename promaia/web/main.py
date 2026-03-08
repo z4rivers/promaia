@@ -53,7 +53,10 @@ if os.environ.get("PYTHON_ENV") == "production":
             if proto == "http":
                 url = request.url.replace(scheme="https")
                 return StarletteRedirect(str(url), status_code=301)
-            return await call_next(request)
+            response = await call_next(request)
+            # Prevent Cloudflare from caching error pages or HTML
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            return response
 
     app.add_middleware(HTTPSRedirectMiddleware)
 
