@@ -66,17 +66,10 @@ async def brain_tts(req: ChatRequest):
 
         # Gemini native TTS — uses the same API key as everything else
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GOOGLE_MODELS["tts"],
             contents=f"Read this aloud naturally: {req.message}",
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name="Kore"
-                        )
-                    )
-                ),
             ),
         )
 
