@@ -23,7 +23,7 @@ if (existsSync(vadDist)) {
 const onnxDist = 'node_modules/onnxruntime-web/dist';
 if (existsSync(onnxDist)) {
     for (const file of readdirSync(onnxDist)) {
-        if (file.endsWith('.wasm')) {
+        if (file.endsWith('.wasm') || file.endsWith('.mjs')) {
             copyFileSync(join(onnxDist, file), join(wasmDir, file));
             console.log(`  copied ${file}`);
         }
