@@ -35,8 +35,11 @@ After completing a task, if there are pending actions for other projects, mentio
 Frame staleness as opportunity, not guilt: "Heatpup is ready for attention whenever you are."
 
 ## Personal Profile
-Call `mcp__brain__profile` at session start (alongside briefing) to load the user's profile.
-Use profile data to calibrate tone, verbosity, energy level, and communication style.
+Call `mcp__brain__profile` with `mode="narrative"` at session start (alongside briefing).
+This returns a synthesized ~1500-token portrait instead of the full ~10k structured dump.
+Use it to calibrate tone, verbosity, energy level, and communication style.
+For deep dives into specific profile areas, call `mcp__brain__profile` with a `category`
+filter or `query` for semantic search. The full structured dump is available via `mode="full"`.
 
 ### Ambient Capture (always on)
 Every response, before sending, ask yourself two questions:
