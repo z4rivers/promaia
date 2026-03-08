@@ -43,29 +43,24 @@ IMPACT_PROMOTION_THRESHOLD = 0.5
 # Condensed from PERSONALITY-MANIFEST.md per D4.
 # Short, direct, substance-first. Under 300 words.
 PERSONALITY_SYSTEM_PROMPT = (
-    "You are Promaia. You are a stakeholder in Zack's life -- invested in his "
-    "projects and goals. You show up working.\n\n"
-    "SUBSTANCE-FIRST: Open every response with something useful -- a deliverable, "
-    "a key question, a ready step, or a connection. Never open with pleasantries, "
-    "small talk, or filler. Warmth comes through in HOW you deliver substance, not "
-    "in padding before it.\n\n"
-    "ATTITUDE:\n"
-    "- Invested: Track his projects. Notice drift. Care whether he reaches his goals.\n"
-    "- Direct: Say the thing. No diplomatic filler. Warmth is real when it shows up.\n"
-    "- Curious: Walk through doors his words open. Ask the question the moment earns.\n"
-    "- Challenging: Reframe assumptions. Point out wrong problems. Push in service of "
-    "his goals.\n\n"
-    "VOICE:\n"
-    "- Short sentences. Active voice. Use 'I' for perspectives.\n"
-    "- Humor sharp and committed -- all the way or not at all.\n"
-    "- Match his energy: brief when brief, detailed when exploring.\n\n"
-    "NEVER:\n"
-    "- 'Great question!' / 'I'd be happy to help!' / pleasantry openers\n"
-    "- Therapy voice / corporate speak / generic bot responses\n"
-    "- 'Captured.' / 'Noted.' / 'I understand.' as standalone replies\n\n"
-    "CONTEXT: Reference projects, actions, recent activity naturally. Connect this "
-    "moment to past moments. Validate before solving -- receive hard things before "
-    "trying to fix them."
+    "You are Promaia, Zack's second brain. You are a conversational mirror and "
+    "sounding board on Telegram.\n\n"
+    "CORE DIRECTIVE:\n"
+    "Zack has other tools for project management. He uses you for clarity, reflection, "
+    "and connecting dots. Respond to the specific thought he just shared. Connect this "
+    "moment to past moments when relevant. If something doesn't add up or could be "
+    "helpful, point it out or ask about it.\n\n"
+    "HOW TO USE CONTEXT:\n"
+    "You have awareness of Zack's current state (projects, memories, profile). Use this "
+    "ONLY to understand what he is talking about. Offer insight over status. Instead of "
+    "'You have 3 tasks due', try 'Sounds like Heatpup keeps pulling at you -- is that "
+    "worth revisiting?' If he asks for planning or prioritization help, give it. "
+    "Otherwise, stay in reflection mode.\n\n"
+    "SUBSTANCE-FIRST: Open every response with something useful -- a reaction, a key "
+    "question, a connection. Warmth comes through in HOW you engage, not in padding.\n\n"
+    "VOICE: Short sentences. Direct. Match his energy: brief when brief, detailed when "
+    "exploring. Humor sharp and committed. Validate before solving -- receive hard "
+    "things before trying to fix them."
 )
 
 # ---------------------------------------------------------------------------
@@ -289,11 +284,11 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
 
         # 2. Conversation history is fetched via brain_ops (async), handled outside
 
-        # 3. Active projects
+        # 3. Active projects (narrative format to avoid triggering manager behavior)
         try:
             projects = db.fetch_all(
                 """
-                SELECT d.name, c.directive, c.current_state, c.priority
+                SELECT d.name, c.current_state
                 FROM brain.contexts c
                 JOIN brain.domains d ON c.domain_id = d.id
                 WHERE d.is_project = true
@@ -302,16 +297,15 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
                 """
             )
             if projects:
-                proj_text = "\n".join(
-                    f"- P{r['priority']} {r['name']}: "
-                    f"{r.get('current_state') or r.get('directive') or '--'}"
-                    for r in projects
-                )
-                parts.append(f"## Active Projects\n{proj_text}")
+                proj_parts = []
+                for r in projects:
+                    state = r.get('current_state') or ''
+                    proj_parts.append(f"{r['name']} ({state})" if state else r['name'])
+                parts.append(f"## What Zack is working on\n{'. '.join(proj_parts)}.")
         except Exception as e:
             logger.warning(f"Context assembly: projects query failed: {e}")
 
-        # 4. Pending actions
+        # 4. Pending actions (narrative, not a task list)
         try:
             actions = db.fetch_all(
                 """
@@ -323,8 +317,8 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
                 """
             )
             if actions:
-                action_text = "\n".join(f"- {r['description']}" for r in actions)
-                parts.append(f"## Pending Actions\n{action_text}")
+                action_summary = ". ".join(r['description'] for r in actions)
+                parts.append(f"## Things on his mind\n{action_summary}.")
         except Exception as e:
             logger.warning(f"Context assembly: actions query failed: {e}")
 
@@ -428,7 +422,7 @@ async def generate_response(chat_id: int, user_message: str) -> str:
         client = _get_genai_client()
         config = types.GenerateContentConfig(
             system_instruction=PERSONALITY_SYSTEM_PROMPT,
-            temperature=1.0,
+            temperature=0.7,
         )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(

@@ -1,10 +1,8 @@
 """
 Voice note handler for Telegram bot.
 
-Downloads voice notes, transcribes via Deepgram Nova-3, shows the
-transcription to the user, and auto-captures it to the brain.
-
-Degrades gracefully when DEEPGRAM_API_KEY is not set.
+Downloads voice notes, transcribes via Gemini, shows the
+transcription to the user, and generates a conversational response.
 """
 import logging
 import os
@@ -26,13 +24,10 @@ MAX_VOICE_SIZE = 10 * 1024 * 1024
 
 @router.message(lambda msg: msg.voice is not None)
 async def handle_voice(message: Message) -> None:
-    """Download, transcribe, and auto-capture a voice note."""
-    # Check for Deepgram API key
-    api_key = os.environ.get("DEEPGRAM_API_KEY")
+    """Download, transcribe via Gemini, and respond conversationally."""
+    api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        await message.answer(
-            "Voice transcription unavailable -- DEEPGRAM_API_KEY not configured."
-        )
+        await message.answer("Voice transcription unavailable -- GOOGLE_API_KEY not configured.")
         return
 
     # Check file size
@@ -52,25 +47,31 @@ async def handle_voice(message: Message) -> None:
         await message.answer("Failed to download voice note. Try again?")
         return
 
-    # Transcribe via Deepgram Nova-3
+    # Transcribe via Gemini
     try:
-        from deepgram import AsyncDeepgramClient
+        from google import genai
+        from google.genai import types
 
-        client = AsyncDeepgramClient(api_key=api_key)
-        response = await client.listen.v1.media.transcribe_file(
-            request=audio_bytes,
-            model="nova-3",
-            smart_format=True,
+        client = genai.Client(api_key=api_key)
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Content(parts=[
+                    types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),
+                    types.Part(text="Transcribe this voice note exactly. Return only the transcription, no commentary."),
+                ])
+            ],
+            config=types.GenerateContentConfig(temperature=0.0),
         )
-        transcript = (
-            response.results.channels[0].alternatives[0].transcript
-        )
+        transcript = ""
+        if response.candidates and response.candidates[0].content.parts:
+            transcript = response.text.strip()
     except Exception as e:
-        logger.error(f"Deepgram transcription failed: {e}", exc_info=True)
+        logger.error(f"Gemini transcription failed: {e}", exc_info=True)
         await message.answer("Transcription failed. Try again?")
         return
 
-    if not transcript or not transcript.strip():
+    if not transcript:
         await message.answer("Could not transcribe the voice note.")
         return
 
