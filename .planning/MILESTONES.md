@@ -21,3 +21,22 @@ Built persistent brain layer on Promaia: Postgres+pgvector on Supabase, 15-tool 
 - MuninnDB embeddings broken (deprecated model)
 
 **Archive:** `milestones/v1.0-ROADMAP.md`, `milestones/v1.0-REQUIREMENTS.md`
+
+## v2.0 Proactive Agent (2026-03-07)
+
+**Phases:** 7 (5-11) | **Plans:** 17
+
+The brain reaches you. Agents push to Telegram, conversation is Gemini-powered with full brain context, costs tracked and optimized.
+
+**Key accomplishments:**
+1. Agent data pipeline validated — real data, no hallucinations (Phase 5)
+2. Gemini model routing with 91% cost reduction vs Claude (Phase 6)
+3. Event bus with urgency tiers, quiet hours, dashboard badges (Phase 7)
+4. Telegram bot — text, voice, commands, daemon with auto-reconnect (Phase 8)
+5. Proactive push — morning briefing, urgent alerts, evening digest arrive automatically (Phase 9)
+6. Conversational Telegram — Gemini-powered responses with personality, context assembly, session synthesis (Phase 11)
+
+**Deferred:**
+- Phase 10 (Memory Deepening) — blocked on MuninnDB embedding fix, deferred to v3.1+
+
+**Archive:** `ROADMAP.md` (v2.0 section), `REQUIREMENTS.md`, `phases/05-11`

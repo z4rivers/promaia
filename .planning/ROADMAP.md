@@ -3,7 +3,8 @@
 ## Milestones
 
 - **v1.0 Foundation** -- Phases 01-04 (shipped 2026-03-06) [archive](milestones/v1.0-ROADMAP.md)
-- **v2.0 Proactive Agent** -- Phases 5-10 (in progress)
+- **v2.0 Proactive Agent** -- Phases 5-11 (shipped 2026-03-07)
+- **v3.0 One Brain, Every Surface** -- (in progress) [plans](v3.0-PLANS.md)
 
 ## Phases
 
@@ -25,7 +26,7 @@
 - [x] **Phase 8: Telegram Bot** - Mobile brain access via text, voice, and commands (completed 2026-03-07)
 - [x] **Phase 9: Proactive Push** - Agents initiate contact: morning briefing, urgent alerts, evening digest (completed 2026-03-07)
 - [ ] **Phase 10: Memory Deepening + Polish** - Decay tiers, association strengthening, profile-driven prompts, session handoff
-- [ ] **Phase 11: Conversational Telegram Bot** - Gemini-powered conversation with brain context, personality manifest, session synthesis
+- [x] **Phase 11: Conversational Telegram Bot** - Gemini-powered conversation with brain context, personality manifest, session synthesis (completed 2026-03-07)
 
 ## Phase Details
 
@@ -136,11 +137,11 @@ Plans:
   3. Conversation history (last 5 messages) provides continuity within a session
   4. Personality manifest loaded as system prompt -- Promaia sounds like Promaia, not a generic bot
   5. After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 11-01-PLAN.md -- Conversation engine: schema, CRUD, context assembly, personality prompt, impact scoring, Gemini calling
-- [ ] 11-02-PLAN.md -- Handler wiring, session synthesis timer, cost tracking, human verification
+- [x] 11-01-PLAN.md -- Conversation engine: schema, CRUD, context assembly, personality prompt, impact scoring, Gemini calling
+- [x] 11-02-PLAN.md -- Handler wiring, session synthesis timer, cost tracking, human verification
 
 ## Progress
 
@@ -158,7 +159,7 @@ Plans:
 | 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
 | 9. Proactive Push | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
-| 11. Conversational Telegram Bot | 1/2 | In Progress|  | - |
+| 11. Conversational Telegram Bot | v2.0 | 2/2 | Complete | 2026-03-07 |
 
 ---
 *Created: 2026-03-04*
