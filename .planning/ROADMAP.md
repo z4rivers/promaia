@@ -134,9 +134,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Text "how are my projects looking?" on Telegram and get a real answer using brain context
   2. Voice note about a project idea gets intelligent acknowledgment, not "Captured."
-  3. Conversation history (last 5 messages) provides continuity within a session
+  3. Conversation history (last 10 messages) provides continuity within a session
   4. Personality manifest loaded as system prompt -- Promaia sounds like Promaia, not a generic bot
-  5. After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
+  5. After 4 min silence with 3+ messages, a synthesized session summary is stored as a single memory
 **Plans:** 2/2 plans complete
 
 Plans:

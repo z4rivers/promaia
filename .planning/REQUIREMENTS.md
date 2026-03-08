@@ -70,7 +70,7 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 - [ ] **CONV-02**: Voice notes get intelligent conversational response after transcription, not just "Captured."
 - [x] **CONV-03**: Conversation history (last N messages) provides continuity within a session via brain.conversations table
 - [x] **CONV-04**: Personality manifest loaded as condensed system prompt -- Promaia sounds like Promaia, not a generic bot
-- [ ] **CONV-05**: After 5+ min silence with 3+ messages, a synthesized session summary is stored as a single memory
+- [ ] **CONV-05**: After 4 min silence with 3+ messages, a synthesized session summary is stored as a single memory
 
 ## Future Requirements
 

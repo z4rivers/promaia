@@ -72,12 +72,12 @@ All changes are unstaged. Next session should review and commit in logical group
 ### Priority 1: Plan 3 — Conversational Telegram Bot
 1. Create `brain.conversations` table (chat_id, role, content, created_at)
 2. Create `promaia/telegram/conversation.py`:
-   - Load profile prefix (~200 tokens) + last 5 messages
+   - Load profile prefix (~200 tokens) + last 10 messages
    - Call Gemini Flash with personality system prompt + context + message
    - Return conversational response
-3. Personality system prompt (stored in brain, not hardcoded)
+3. Personality system prompt (currently hardcoded in conversation.py — TODO: move to brain)
 4. Update handlers/messages.py and voice.py for conversational replies
-5. Session synthesis: after 5+ min silence with 3+ messages, Gemini summarizes
+5. Session synthesis: after 4 min silence with 3+ messages, Gemini summarizes
 
 ### Priority 2: Remaining plans
 - Plan 5: Deploy to web (phone access)

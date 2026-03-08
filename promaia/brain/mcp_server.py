@@ -107,7 +107,7 @@ def get_vector_mgr():
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Enumerate all 13 brain tools."""
+    """Enumerate all 16 brain tools."""
     return [
         Tool(
             name="briefing",
