@@ -10,9 +10,12 @@ GOOGLE_MODELS = {
     "flash-lite": "gemini-3.1-flash-lite-preview",
     # Gemini 3 models (still current)
     "flash": "gemini-3-flash-preview",
-    # Gemini 2.5 models (legacy)
+    # Gemini 2.5 models (legacy, but TTS still lives here)
     "2.5-pro": "gemini-2.5-pro",
     "2.5-flash": "gemini-2.5-flash",
+    # TTS-specific models (2.5 generation — 3.x doesn't support audio output yet)
+    "tts": "gemini-2.5-flash-preview-tts",
+    "tts-hq": "gemini-2.5-pro-preview-tts",
     # Embeddings
     "embedding": "gemini-embedding-001",
 }
@@ -48,9 +51,11 @@ MODEL_DISPLAY_NAMES = {
     "gemini-3-flash-preview": "Gemini 3 Flash",
     "gemini-3-flash": "Gemini 3 Flash",
 
-    # Google models - Gemini 2.5 (legacy)
+    # Google models - Gemini 2.5 (legacy, but TTS still lives here)
     "gemini-2.5-pro": "Gemini 2.5 Pro",
     "gemini-2.5-flash": "Gemini 2.5 Flash",
+    "gemini-2.5-flash-preview-tts": "Gemini 2.5 Flash TTS",
+    "gemini-2.5-pro-preview-tts": "Gemini 2.5 Pro TTS",
 
     # OpenAI models
     "gpt-4o": "GPT-4o",
