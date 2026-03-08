@@ -74,9 +74,7 @@ async def brain_tts(req: ChatRequest):
         )
 
         # Extract audio data from response
-        if (response.candidates
-                and response.candidates[0].content
-                and response.candidates[0].content.parts):
+        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
             part = response.candidates[0].content.parts[0]
             if hasattr(part, 'inline_data') and part.inline_data:
                 audio_data = part.inline_data.data
@@ -85,6 +83,27 @@ async def brain_tts(req: ChatRequest):
                 # If data is base64 encoded string, decode it
                 if isinstance(audio_data, str):
                     audio_data = base64.b64decode(audio_data)
+
+                # Gemini TTS currently returns raw PCM (audio/L16;codec=pcm;rate=24000).
+                # The browser <audio> tag cannot play raw headerless PCM bytes. We must wrap it in a WAV header.
+                if "audio/L16" in mime_type or "pcm" in mime_type.lower():
+                    import io
+                    import wave
+                    
+                    # Gemini defaults to 24000Hz, 1 channel, 16-bit PCM for its TTS models
+                    sample_rate = 24000
+                    if "rate=16000" in mime_type:
+                        sample_rate = 16000
+                        
+                    wav_io = io.BytesIO()
+                    with wave.open(wav_io, 'wb') as wav_file:
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2) # 16-bit = 2 bytes
+                        wav_file.setframerate(sample_rate)
+                        wav_file.writeframes(audio_data)
+                    
+                    audio_data = wav_io.getvalue()
+                    mime_type = "audio/wav"
 
                 return Response(
                     content=audio_data,
