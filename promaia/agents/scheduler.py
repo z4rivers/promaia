@@ -332,9 +332,16 @@ class AgentScheduler:
         """
         logger.info(f"🕐 Starting scheduled loop for '{agent.name}'")
 
-        # --- Catch-up: fire missed runs before entering normal loop ---
+        # --- Catch-up: fire missed runs, but delay to let uvicorn bind first ---
         missed = _missed_runs(agent)
         if missed and self.running:
+            logger.info(
+                f"Delaying '{agent.name}' catch-up by 30s (letting web server start)"
+            )
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                return
             # De-duplicate: only run once even if multiple schedule entries missed
             missed_desc = ", ".join(t for _, t in missed)
             last_desc = agent.last_run_at or "never"
