@@ -9,6 +9,8 @@ import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
+from promaia.ai.models import ANTHROPIC_MODELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -143,7 +145,7 @@ Response: {{"has_intent": true, "confidence": 0.9, "intent_type": "compose_new",
 
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-haiku-4-5-20251001",  # Fast, cheap model for intent detection
+                    model=ANTHROPIC_MODELS["haiku"],  # Fast, cheap model for intent detection
                     max_tokens=500,
                     messages=[{"role": "user", "content": prompt}]
                 )

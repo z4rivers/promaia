@@ -13,7 +13,9 @@ GOOGLE_MODELS = {
     # Gemini 2.5 models (legacy)
     "2.5-pro": "gemini-2.5-pro",
     "2.5-flash": "gemini-2.5-flash",
-} 
+    # Embeddings
+    "embedding": "gemini-embedding-001",
+}
 
 # Local Llama models (commonly used models with Ollama or similar local setups)
 LLAMA_MODELS = {
@@ -96,7 +98,7 @@ def get_model_display_name(model_id: str, api_type: str = None) -> str:
 
 def get_current_anthropic_model() -> str:
     """Get the current default Anthropic model ID."""
-    return ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-6")
+    return ANTHROPIC_MODELS["sonnet"]
 
 def get_current_google_model() -> str:
     """Get the current default Google model ID."""
@@ -109,4 +111,4 @@ def get_current_google_model() -> str:
             return GOOGLE_MODELS[env_model]
         # Otherwise assume it's a full model ID
         return env_model
-    return GOOGLE_MODELS.get("flash", "gemini-3-flash-preview") 
+    return GOOGLE_MODELS["flash"]

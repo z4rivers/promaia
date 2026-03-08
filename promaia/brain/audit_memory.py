@@ -18,6 +18,8 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
+from promaia.ai.models import GOOGLE_MODELS
+
 logger = logging.getLogger(__name__)
 
 # Project root
@@ -150,7 +152,7 @@ async def run_audit() -> str:
 
     response = await asyncio.wait_for(
         client.aio.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model=GOOGLE_MODELS["pro"],
             contents=payload,
             config=types.GenerateContentConfig(
                 system_instruction=AUDIT_PROMPT,

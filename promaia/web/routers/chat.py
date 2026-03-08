@@ -257,15 +257,15 @@ async def handle_chat_message(chat_input: ChatMessageInput):
     message_history = chat_input.history or []
 
     # Support both specific model IDs and provider types
-    model_id = chat_input.preferred_model or "gemini-3-flash-preview"
+    model_id = chat_input.preferred_model or GOOGLE_MODELS["flash"]
     provider_type = get_provider_from_model_id(model_id)
 
     # If it's just a provider type, get the default model ID for that provider
     if model_id in ["gemini", "anthropic", "openai", "llama"]:
         if model_id == "gemini":
-            model_id = GOOGLE_MODELS.get("flash", "gemini-3-flash-preview")
+            model_id = GOOGLE_MODELS["flash"]
         elif model_id == "anthropic":
-            model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+            model_id = ANTHROPIC_MODELS["sonnet"]
         elif model_id == "openai":
             model_id = "gpt-4o"
         # llama stays as is (will be handled by env var)
@@ -314,9 +314,9 @@ async def handle_chat_message(chat_input: ChatMessageInput):
         # Fall back to first available provider
         provider_type = available_providers[0]
         if provider_type == "gemini":
-            model_id = GOOGLE_MODELS.get("flash", "gemini-3-flash-preview")
+            model_id = GOOGLE_MODELS["flash"]
         elif provider_type == "anthropic":
-            model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+            model_id = ANTHROPIC_MODELS["sonnet"]
         elif provider_type == "openai":
             model_id = "gpt-4o"
         debug_print(f"Requested provider not available, falling back to: {provider_type} (model: {model_id})")
@@ -504,7 +504,7 @@ async def _handle_anthropic(user_message: str, images: List[ImageData], message_
 
     # Use provided model_id or fall back to Sonnet 4.5
     if not model_id:
-        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5")
+        model_id = ANTHROPIC_MODELS["sonnet"]
 
     debug_print(f"Using Anthropic model: {model_id}")
     response_content = await call_anthropic_with_retry(
@@ -768,7 +768,7 @@ async def get_available_models():
     # Determine default model (prefer Gemini Flash, then first available)
     default_model = None
     if gemini_client_initialized:
-        default_model = "gemini-3-flash-preview"
+        default_model = GOOGLE_MODELS["flash"]
     elif available_models:
         default_model = available_models[0]["model_id"]
 

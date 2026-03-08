@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 import os
 from promaia.utils.timezone_utils import now_utc
 
+from promaia.ai.models import ANTHROPIC_MODELS
 from promaia.mail.learning_system import EmailResponseLearningSystem
 from promaia.mail.context_builder import ResponseContext
 
@@ -294,7 +295,7 @@ class ResponseGenerator:
             # Generate response based on model type
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=ANTHROPIC_MODELS["sonnet"],
                     max_tokens=2000,
                     messages=[{
                         "role": "user",
@@ -302,7 +303,7 @@ class ResponseGenerator:
                     }]
                 )
                 response_body = response.content[0].text.strip()
-                model_used = "claude-sonnet-4-6"
+                model_used = ANTHROPIC_MODELS["sonnet"]
             
             elif self.model_type == "openai":
                 response = client.chat.completions.create(
@@ -412,7 +413,7 @@ class ResponseGenerator:
             # Generate refined response
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=ANTHROPIC_MODELS["sonnet"],
                     max_tokens=2000,
                     messages=[{
                         "role": "user",

@@ -11,6 +11,7 @@ from io import BytesIO
 from aiogram import Router
 from aiogram.types import Message
 
+from promaia.ai.models import GOOGLE_MODELS
 from promaia.telegram.conversation import generate_response, reset_synthesis_timer
 from promaia.telegram.formatting import send_long_message
 
@@ -54,7 +55,7 @@ async def handle_voice(message: Message) -> None:
 
         client = genai.Client(api_key=api_key)
         response = await client.aio.models.generate_content(
-            model="gemini-3-flash-preview",
+            model=GOOGLE_MODELS["flash"],
             contents=[
                 types.Content(parts=[
                     types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),

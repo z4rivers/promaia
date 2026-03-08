@@ -33,6 +33,7 @@ from .query_strategies import QueryStrategy, SQLQueryStrategy, VectorQueryStrate
 from anthropic import Anthropic
 from openai import OpenAI
 from google import genai
+from promaia.ai.models import ANTHROPIC_MODELS
 
 
 class MockResponse:
@@ -107,7 +108,7 @@ class PromaiLLMAdapter:
             
         elif self.client_type == "anthropic":
             response = self.client.messages.create(
-                model="claude-sonnet-4-6",
+                model=ANTHROPIC_MODELS["sonnet"],
                 max_tokens=4000,
                 messages=[{"role": "user", "content": prompt.strip()}]
             )

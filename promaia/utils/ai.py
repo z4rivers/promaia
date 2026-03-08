@@ -208,7 +208,7 @@ async def call_anthropic_with_retry(
     client: AsyncAnthropic,
     system_prompt: str, 
     messages: list, 
-    model_name: str = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-6"),
+    model_name: str = ANTHROPIC_MODELS["sonnet"],
     max_tokens: int = 1024,
     temperature: float = 0.7, 
     max_retries: int = 3

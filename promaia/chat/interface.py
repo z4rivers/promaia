@@ -498,7 +498,7 @@ def get_current_model_name():
 
     # Get the actual model ID being used for each API type (fallback)
     if current_api == "anthropic":
-        model_id = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-6")
+        model_id = ANTHROPIC_MODELS["sonnet"]
         return get_model_display_name(model_id, "anthropic")
     elif current_api == "openai":
         return get_model_display_name("gpt-4o", "openai")
@@ -725,9 +725,9 @@ def call_anthropic_with_retry(client, system_prompt, messages, max_tokens=4096, 
         # Fallback to checking display name
         current_model_name = get_current_model_name()
         if "Opus" in current_model_name:
-            model_to_use = ANTHROPIC_MODELS.get("opus", "claude-opus-4-6")
+            model_to_use = ANTHROPIC_MODELS["opus"]
         else:
-            model_to_use = ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-6")
+            model_to_use = ANTHROPIC_MODELS["sonnet"]
 
     debug_print(f"Using Anthropic model: {model_to_use}")
     

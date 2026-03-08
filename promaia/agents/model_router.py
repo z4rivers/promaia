@@ -12,6 +12,8 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
 
+from promaia.ai.models import GOOGLE_MODELS
+
 
 class TaskType(Enum):
     """Types of tasks that agents perform, each routed to an optimal model."""
@@ -49,7 +51,7 @@ class ModelConfig:
 # ---------------------------------------------------------------------------
 MODELS: dict[str, ModelConfig] = {
     "flash": ModelConfig(
-        model_id="gemini-3-flash-preview",
+        model_id=GOOGLE_MODELS["flash"],
         display_name="Gemini 3 Flash",
         input_price_per_m=0.50,
         output_price_per_m=3.00,
@@ -60,7 +62,7 @@ MODELS: dict[str, ModelConfig] = {
         temperature=1.0,
     ),
     "flash-lite": ModelConfig(
-        model_id="gemini-3.1-flash-lite-preview",
+        model_id=GOOGLE_MODELS["flash-lite"],
         display_name="Gemini 3.1 Flash-Lite",
         input_price_per_m=0.25,
         output_price_per_m=1.50,
@@ -71,7 +73,7 @@ MODELS: dict[str, ModelConfig] = {
         temperature=1.0,
     ),
     "pro": ModelConfig(
-        model_id="gemini-3.1-pro-preview",
+        model_id=GOOGLE_MODELS["pro"],
         display_name="Gemini 3.1 Pro",
         input_price_per_m=2.00,
         output_price_per_m=12.00,
@@ -82,7 +84,7 @@ MODELS: dict[str, ModelConfig] = {
         temperature=1.0,
     ),
     "embedding": ModelConfig(
-        model_id="gemini-embedding-001",
+        model_id=GOOGLE_MODELS["embedding"],
         display_name="Gemini Embedding",
         input_price_per_m=0.00,
         output_price_per_m=0.00,

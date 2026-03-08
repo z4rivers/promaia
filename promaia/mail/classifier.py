@@ -11,6 +11,8 @@ import logging
 import os
 from typing import Dict, Any, Optional
 
+from promaia.ai.models import ANTHROPIC_MODELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,7 +149,7 @@ class EmailClassifier:
             # Call AI based on model type
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=ANTHROPIC_MODELS["sonnet"],
                     max_tokens=500,
                     messages=[{
                         "role": "user",

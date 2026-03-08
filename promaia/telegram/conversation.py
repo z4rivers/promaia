@@ -17,6 +17,7 @@ from google import genai
 from google.genai import types
 from pgvector.psycopg2 import register_vector
 
+from promaia.ai.models import GOOGLE_MODELS
 from promaia.storage.postgres_db import get_postgres_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.telegram.brain_ops import (
@@ -130,7 +131,7 @@ def _log_cost(response, agent_name: str) -> None:
                  cached_tokens, thinking_tokens, cost_usd)
             VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
             """,
-            (agent_name, "gemini-3-flash-preview", "conversation",
+            (agent_name, GOOGLE_MODELS["flash"], "conversation",
              input_tokens, output_tokens, cached_tokens, cost),
         )
         logger.debug(
@@ -426,7 +427,7 @@ async def generate_response(chat_id: int, user_message: str) -> str:
         )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
+                model=GOOGLE_MODELS["flash"],
                 contents=f"{context}\n\nUser: {user_message}",
                 config=config,
             ),
@@ -546,7 +547,7 @@ async def _run_synthesis(chat_id: int) -> None:
         )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
+                model=GOOGLE_MODELS["flash"],
                 contents=transcript,
                 config=config,
             ),

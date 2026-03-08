@@ -13,6 +13,8 @@ from datetime import datetime
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
+from promaia.ai.models import ANTHROPIC_MODELS
+
 try:
     from .context_serializer import (
         serialize_context_for_agent,
@@ -57,7 +59,7 @@ class AgentSession:
         task: str,
         context: Dict[str, List[Dict[str, Any]]],
         workspace: Optional[str] = None,
-        model: str = "claude-sonnet-4-6"
+        model: str = ANTHROPIC_MODELS["sonnet"]
     ):
         """
         Initialize agent session.

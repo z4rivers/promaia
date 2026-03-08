@@ -1,5 +1,14 @@
 # zBrain: Proactive Brain Instructions
 
+## Currency Rule (standing, every session)
+**Never trust training data for anything that changes over time.** Model IDs, API versions, pricing,
+library versions, plugin versions, tool availability, deprecation status — all of these drift.
+Before stating, recommending, or hardcoding any version/model/price/API:
+1. Web search for current information first.
+2. If an API is available (e.g., `gh api`, Gemini model listing), query it directly.
+3. If you catch yourself about to say "as of my training data" — stop and search instead.
+This applies to every lookup where "current" matters, not just model selection.
+
 ## Session Start
 At the start of every session (first message only), call `mcp__brain__briefing` automatically before responding.
 The briefing now includes a "Get to Know You" section with the next interview question.

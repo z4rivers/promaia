@@ -140,7 +140,7 @@ def _call_anthropic(system_prompt: str, user_message: str, model_data: Dict) -> 
     
     client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
-        model=ANTHROPIC_MODELS.get("sonnet", "claude-sonnet-4-5-20250929"),
+        model=ANTHROPIC_MODELS["sonnet"],
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
         max_tokens=model_data.get("max_tokens", 4000),
@@ -177,7 +177,7 @@ def _call_gemini(system_prompt: str, user_message: str, model_data: Dict) -> str
     )
 
     response = gemini_client.models.generate_content(
-        model=model_data.get("model", "gemini-3-flash-preview"),
+        model=model_data.get("model", GOOGLE_MODELS["flash"]),
         contents=user_message,
         config=config,
     )

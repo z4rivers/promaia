@@ -19,6 +19,7 @@ from pgvector.psycopg2 import register_vector
 from promaia.utils.config import load_environment
 load_environment()
 
+from promaia.ai.models import GOOGLE_MODELS
 from promaia.storage.postgres_db import get_postgres_db
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,7 @@ class VectorDBManager:
                 from google import genai
                 self.genai_client = genai.Client(api_key=google_api_key)
                 self.embedding_provider = "google"
-                self.embedding_model = "gemini-embedding-001"
+                self.embedding_model = GOOGLE_MODELS["embedding"]
                 logger.info(f"Using Google Gemini embeddings: {self.embedding_model}")
                 return
             except Exception as e:
@@ -103,7 +104,7 @@ class VectorDBManager:
         try:
             if self.embedding_provider == "google":
                 result = self.genai_client.models.embed_content(
-                    model='gemini-embedding-001',
+                    model=GOOGLE_MODELS["embedding"],
                     contents=text,
                     config={'output_dimensionality': 768},
                 )

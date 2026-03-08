@@ -15,6 +15,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from promaia.ai.models import GOOGLE_MODELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +105,7 @@ def _extract_via_instructor(text: str, api_key: str) -> ActionExtractionResult:
     prompt = _EXTRACTION_PROMPT.format(text=text)
 
     result = instructor_client.chat.completions.create(
-        model="gemini-3.1-flash-lite-preview",
+        model=GOOGLE_MODELS["flash-lite"],
         messages=[{"role": "user", "content": prompt}],
         response_model=ActionExtractionResult,
     )
@@ -144,7 +146,7 @@ def _extract_via_raw_gemini(text: str, api_key: str) -> ActionExtractionResult:
     prompt = _EXTRACTION_PROMPT.format(text=text)
 
     response = client.models.generate_content(
-        model="gemini-3.1-flash-lite-preview",
+        model=GOOGLE_MODELS["flash-lite"],
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",

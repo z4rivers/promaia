@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+from promaia.ai.models import ANTHROPIC_MODELS
 from promaia.agents.agent_config import AgentConfig, update_agent_last_run
 from promaia.agents.execution_tracker import ExecutionTracker
 from promaia.agents.notion_writer import NotionOutputWriter
@@ -1810,7 +1811,7 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
             setting_sources=['local', 'project'],  # Load local & project MCP config
             permission_mode=permission_mode,
             max_turns=self.config.max_iterations,
-            model="claude-sonnet-4-6",  # Sonnet 4.6
+            model=ANTHROPIC_MODELS["sonnet"],  # Sonnet 4.6
         )
 
 

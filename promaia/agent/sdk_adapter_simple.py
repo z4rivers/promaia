@@ -13,6 +13,8 @@ from pathlib import Path
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
+from promaia.ai.models import ANTHROPIC_MODELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,7 +86,7 @@ class PromaiaAgentClient:
     def __init__(
         self,
         workspace: str = None,
-        model: str = "claude-sonnet-4-6",
+        model: str = ANTHROPIC_MODELS["sonnet"],
         max_tokens: int = 4096,
         temperature: float = 0.7
     ):
