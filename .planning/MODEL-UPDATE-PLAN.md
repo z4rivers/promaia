@@ -98,8 +98,27 @@ These are old copies with spaces in filenames. Not imported anywhere:
 
 ## Change Log
 
-(Fill in as updates are made)
-
 | File | Old | New | Date |
 |------|-----|-----|------|
-| | | | |
+| ai/models.py | gemini-2.5-pro-preview-05-06 | gemini-2.5-pro | 2026-03-07 |
+| ai/models.py | gemini-2.5-flash-preview-05-20 | gemini-2.5-flash | 2026-03-07 |
+| ai/models.py | display names for old IDs | matched new IDs | 2026-03-07 |
+| telegram/handlers/voice.py | gemini-2.5-flash | gemini-3-flash-preview | 2026-03-07 |
+| web/routers/nodes.py | gemini-1.5-pro-latest | gemini-3-flash-preview | 2026-03-07 |
+| web/routers/nodes.py | gpt-3.5-turbo example | gpt-4o-mini | 2026-03-07 |
+| scrubber.py | gpt-3.5-turbo-0125 | gpt-4o-mini | 2026-03-07 |
+| mail/intent_detector.py | claude-3-5-haiku-20241022 | claude-haiku-4-5-20251001 | 2026-03-07 |
+| mail/classifier.py | claude-sonnet-4-20250514 | claude-sonnet-4-6 | 2026-03-07 |
+| mail/response_generator.py (x2) | claude-sonnet-4-20250514 | claude-sonnet-4-6 | 2026-03-07 |
+| ai/nl_orchestrator.py | claude-sonnet-4-20250514 | claude-sonnet-4-6 | 2026-03-07 |
+| agent/sdk_adapter.py | claude-sonnet-4-5-20250929 | claude-sonnet-4-6 | 2026-03-07 |
+| agent/agent_manager.py | claude-sonnet-4-5-20250929 | claude-sonnet-4-6 | 2026-03-07 |
+| agent/sdk_adapter_simple.py | claude-sonnet-4-5-20250929 | claude-sonnet-4-6 | 2026-03-07 |
+| agents/executor.py | claude-sonnet-4-5-20250929 | claude-sonnet-4-6 | 2026-03-07 |
+| write/interface.py | claude-sonnet-4-5-20250929 fallback | claude-sonnet-4-6 | 2026-03-07 |
+| chat/interface.py (x3) | claude-sonnet-4-5/opus-4-5 fallbacks | claude-sonnet-4-6/opus-4-6 | 2026-03-07 |
+| utils/ai.py | claude-sonnet-4-5-20250929 default | claude-sonnet-4-6 | 2026-03-07 |
+| utils/ai.py | model_mapping missing new IDs | added 4.6 mappings | 2026-03-07 |
+| ROADMAP.md | Phase 7 plans unchecked | checked [x] | 2026-03-07 |
+| 52 backup files | " 2.py" / " 3.py" files | DELETED | 2026-03-07 |
+| 5 custom skills | old format | writing-skills best practices | 2026-03-07 |

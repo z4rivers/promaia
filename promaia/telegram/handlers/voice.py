@@ -54,7 +54,7 @@ async def handle_voice(message: Message) -> None:
 
         client = genai.Client(api_key=api_key)
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash-preview",
             contents=[
                 types.Content(parts=[
                     types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),

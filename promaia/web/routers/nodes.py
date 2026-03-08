@@ -177,7 +177,7 @@ def _call_gemini(system_prompt: str, user_message: str, model_data: Dict) -> str
     )
 
     response = gemini_client.models.generate_content(
-        model=model_data.get("model", "gemini-1.5-pro-latest"),
+        model=model_data.get("model", "gemini-3-flash-preview"),
         contents=user_message,
         config=config,
     )
@@ -302,7 +302,7 @@ async def list_models():
     return {
         "anthropic": ANTHROPIC_MODELS,
         "google": GOOGLE_MODELS,
-        "openai": ["gpt-4-turbo", "gpt-3.5-turbo"] # Example
+        "openai": ["gpt-4o", "gpt-4o-mini"]
     }
 
 @router.post("/validate-workflow")

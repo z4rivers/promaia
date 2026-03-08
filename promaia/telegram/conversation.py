@@ -102,9 +102,9 @@ def _get_vector_mgr():
 # Cost tracking (Gemini 3 Flash pricing per Phase 6)
 # ---------------------------------------------------------------------------
 
-# Gemini 3 Flash: $0.15/1M input, $0.60/1M output
-_FLASH_INPUT_PRICE_PER_M = 0.15
-_FLASH_OUTPUT_PRICE_PER_M = 0.60
+# Gemini 3 Flash: $0.50/1M input, $3.00/1M output (verified 2026-03-07)
+_FLASH_INPUT_PRICE_PER_M = 0.50
+_FLASH_OUTPUT_PRICE_PER_M = 3.00
 
 
 def _log_cost(response, agent_name: str) -> None:

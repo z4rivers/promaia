@@ -79,9 +79,9 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 07-01-PLAN.md -- Schema extension + event models + emitter + executor integration
-- [ ] 07-02-PLAN.md -- Event router + channels + rate limiter + scheduler integration
-- [ ] 07-03-PLAN.md -- Dashboard notification badge + API endpoints
+- [x] 07-01-PLAN.md -- Schema extension + event models + emitter + executor integration
+- [x] 07-02-PLAN.md -- Event router + channels + rate limiter + scheduler integration
+- [x] 07-03-PLAN.md -- Dashboard notification badge + API endpoints
 
 ### Phase 8: Telegram Bot
 **Goal**: Zack can talk to the brain from his phone -- text, voice, commands -- and the brain talks back

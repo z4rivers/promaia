@@ -143,7 +143,7 @@ Response: {{"has_intent": true, "confidence": 0.9, "intent_type": "compose_new",
 
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-3-5-haiku-20241022",  # Fast, cheap model for intent detection
+                    model="claude-haiku-4-5-20251001",  # Fast, cheap model for intent detection
                     max_tokens=500,
                     messages=[{"role": "user", "content": prompt}]
                 )

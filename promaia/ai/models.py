@@ -11,8 +11,8 @@ GOOGLE_MODELS = {
     # Gemini 3 models (still current)
     "flash": "gemini-3-flash-preview",
     # Gemini 2.5 models (legacy)
-    "2.5-pro": "gemini-2.5-pro-preview-05-06",
-    "2.5-flash": "gemini-2.5-flash-preview-05-20",
+    "2.5-pro": "gemini-2.5-pro",
+    "2.5-flash": "gemini-2.5-flash",
 } 
 
 # Local Llama models (commonly used models with Ollama or similar local setups)
@@ -47,8 +47,8 @@ MODEL_DISPLAY_NAMES = {
     "gemini-3-flash": "Gemini 3 Flash",
 
     # Google models - Gemini 2.5 (legacy)
-    "gemini-2.5-pro-preview-05-06": "Gemini 2.5 Pro",
-    "gemini-2.5-flash-preview-05-20": "Gemini 2.5 Flash",
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-2.5-flash": "Gemini 2.5 Flash",
 
     # OpenAI models
     "gpt-4o": "GPT-4o",

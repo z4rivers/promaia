@@ -163,7 +163,7 @@ You will be given a journal entry. Apply these rules and provide the scrubbed ve
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content}
             ],
-            model="gpt-3.5-turbo-0125", 
+            model="gpt-4o-mini",
             temperature=0.2, # Slightly lower temp for more deterministic scrubbing
         )
         scrubbed_text = chat_completion.choices[0].message.content

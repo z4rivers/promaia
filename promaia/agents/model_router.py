@@ -51,9 +51,9 @@ MODELS: dict[str, ModelConfig] = {
     "flash": ModelConfig(
         model_id="gemini-3-flash-preview",
         display_name="Gemini 3 Flash",
-        input_price_per_m=0.15,
-        output_price_per_m=0.60,
-        thinking_price_per_m=0.60,     # Thinking billed as output
+        input_price_per_m=0.50,
+        output_price_per_m=3.00,
+        thinking_price_per_m=3.00,     # Thinking billed as output
         cached_input_discount=0.1,     # 90% off
         min_cache_tokens=1024,
         max_thinking_budget=8192,
@@ -62,8 +62,8 @@ MODELS: dict[str, ModelConfig] = {
     "flash-lite": ModelConfig(
         model_id="gemini-3.1-flash-lite-preview",
         display_name="Gemini 3.1 Flash-Lite",
-        input_price_per_m=0.04,
-        output_price_per_m=0.15,
+        input_price_per_m=0.25,
+        output_price_per_m=1.50,
         thinking_price_per_m=0.00,     # No thinking support
         cached_input_discount=0.1,
         min_cache_tokens=1024,
@@ -73,9 +73,9 @@ MODELS: dict[str, ModelConfig] = {
     "pro": ModelConfig(
         model_id="gemini-3.1-pro-preview",
         display_name="Gemini 3.1 Pro",
-        input_price_per_m=1.25,
-        output_price_per_m=10.00,
-        thinking_price_per_m=10.00,    # Thinking billed as output
+        input_price_per_m=2.00,
+        output_price_per_m=12.00,
+        thinking_price_per_m=12.00,    # Thinking billed as output
         cached_input_discount=0.1,
         min_cache_tokens=4096,
         max_thinking_budget=0,         # Disabled by default; enable per-task if needed

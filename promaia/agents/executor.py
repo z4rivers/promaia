@@ -1810,7 +1810,7 @@ Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
             setting_sources=['local', 'project'],  # Load local & project MCP config
             permission_mode=permission_mode,
             max_turns=self.config.max_iterations,
-            model="claude-sonnet-4-5-20250929",  # Sonnet 4.5
+            model="claude-sonnet-4-6",  # Sonnet 4.6
         )
 
 

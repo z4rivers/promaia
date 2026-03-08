@@ -84,7 +84,7 @@ class PromaiaAgentClient:
     def __init__(
         self,
         workspace: str = None,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 4096,
         temperature: float = 0.7
     ):

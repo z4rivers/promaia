@@ -294,7 +294,7 @@ class ResponseGenerator:
             # Generate response based on model type
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model="claude-sonnet-4-6",
                     max_tokens=2000,
                     messages=[{
                         "role": "user",
@@ -302,7 +302,7 @@ class ResponseGenerator:
                     }]
                 )
                 response_body = response.content[0].text.strip()
-                model_used = "claude-sonnet-4-20250514"
+                model_used = "claude-sonnet-4-6"
             
             elif self.model_type == "openai":
                 response = client.chat.completions.create(
@@ -412,7 +412,7 @@ class ResponseGenerator:
             # Generate refined response
             if self.model_type == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model="claude-sonnet-4-6",
                     max_tokens=2000,
                     messages=[{
                         "role": "user",

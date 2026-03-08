@@ -57,7 +57,7 @@ class AgentSession:
         task: str,
         context: Dict[str, List[Dict[str, Any]]],
         workspace: Optional[str] = None,
-        model: str = "claude-sonnet-4-5-20250929"
+        model: str = "claude-sonnet-4-6"
     ):
         """
         Initialize agent session.
