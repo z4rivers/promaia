@@ -179,13 +179,23 @@ async function initVAD() {
         baseAssetPath: '/static/vad/',
         onnxWASMBasePath: '/static/vad/',
 
+        // Tuned for real-world use (driving, ambient noise)
+        positiveSpeechThreshold: 0.8,   // default 0.5 — high to avoid false starts from noise
+        negativeSpeechThreshold: 0.5,   // default 0.35 — raised so silence is detected sooner
+        redemptionFrames: 6,            // default 8 — fewer frames needed to confirm speech end
+        minSpeechFrames: 4,             // default 3 — slightly longer to avoid noise bursts
+        preSpeechPadFrames: 3,          // default 1 — capture a bit before speech starts
+        submitUserSpeechOnPause: false, // don't fire onSpeechEnd when we call vad.pause()
+
         onSpeechStart: () => {
+            console.log('[VAD] Speech started');
             if (!isProcessing) {
                 setStatus('listening');
             }
         },
 
         onSpeechEnd: async (audio) => {
+            console.log('[VAD] Speech ended, audio samples:', audio.length);
             if (isProcessing) return;
             isProcessing = true;
 
@@ -232,6 +242,8 @@ async function initVAD() {
             }
         },
     });
+
+    console.log('[VAD] Initialized successfully');
 }
 
 // ---------------------------------------------------------------------------
