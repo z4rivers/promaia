@@ -24,6 +24,8 @@ async def _run_web(host: str = "0.0.0.0", port: int = 8000):
         host=host,
         port=port,
         log_level="warning",
+        # In production behind a reverse proxy, trust forwarded headers
+        forwarded_allow_ips="*" if os.environ.get("PYTHON_ENV") == "production" else None,
     )
     server = uvicorn.Server(config)
     await server.serve()
@@ -57,14 +59,17 @@ async def run_all():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     load_dotenv(os.path.join(project_root, ".env"))
 
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
 
-    logger.info("Starting Promaia (scheduler + telegram + web)...")
+    auth_status = "ON" if os.environ.get("DASHBOARD_PASSWORD") else "OFF (no DASHBOARD_PASSWORD)"
+    logger.info(f"Starting Promaia (scheduler + telegram + web) on {host}:{port}")
+    logger.info(f"Dashboard auth: {auth_status}")
 
     tasks = [
         asyncio.create_task(_run_scheduler(), name="scheduler"),
         asyncio.create_task(_run_telegram(), name="telegram"),
-        asyncio.create_task(_run_web(port=port), name="web"),
+        asyncio.create_task(_run_web(host=host, port=port), name="web"),
     ]
 
     # Wait until any task exits (usually means shutdown was requested)

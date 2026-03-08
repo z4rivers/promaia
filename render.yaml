@@ -1,14 +1,29 @@
 services:
-  - type: worker
-    name: maia-journal-processor
-    env: python
+  - type: web
+    name: promaia
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python -m maia.scripts.process_journals
-    schedule: "0 0 * * *"  # Run at midnight every day
+    startCommand: python -m promaia dev
     envVars:
-      - key: NOTION_TOKEN
+      - key: DATABASE_URL
         sync: false
-      - key: NOTION_JOURNAL_DATABASE_ID
+      - key: GOOGLE_API_KEY
         sync: false
-      - key: MAIA_DEBUG
-        value: "0" 
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WHITELIST
+        sync: false
+      - key: TELEGRAM_WEBHOOK_URL
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_SECRET
+        sync: false
+      - key: DASHBOARD_AUTH_TOKEN
+        sync: false
+      - key: PYTHON_ENV
+        value: "production"
+      - key: PORT
+        value: "8000"

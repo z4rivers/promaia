@@ -103,3 +103,9 @@ numpy==1.26.3
 
 # Action extraction (brain MCP)
 instructor>=1.0.0
+
+# Telegram bot
+aiogram>=3.20.0
+
+# FastAPI form handling (login)
+python-multipart>=0.0.20

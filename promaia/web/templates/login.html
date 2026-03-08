@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promaia - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #F4F0E8;
+            color: #2C2C2C;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: #fff;
+            border: 2px solid #1A1A2E;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 380px;
+            margin: 16px;
+        }
+        .login-card h1 {
+            font-family: 'Archivo Black', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            color: #1A1A2E;
+        }
+        .login-card p.subtitle {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 32px;
+        }
+        .field {
+            margin-bottom: 20px;
+        }
+        .field label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #555;
+            margin-bottom: 6px;
+        }
+        .field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #E0E0E8;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            color: #1A1A2E;
+            transition: border-color 150ms ease;
+            outline: none;
+        }
+        .field input:focus {
+            border-color: #1A1A2E;
+        }
+        .error-msg {
+            color: #E63946;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .error-msg.visible { display: block; }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #1A1A2E;
+            color: #fff;
+            border: none;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 150ms ease;
+        }
+        button:hover { background: #2A2A4E; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>Promaia</h1>
+        <p class="subtitle">Sign in to your dashboard</p>
+
+        {% if error %}
+        <div class="error-msg visible">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit">Sign in</button>
+        </form>
+    </div>
+</body>
+</html>
