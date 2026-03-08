@@ -268,7 +268,9 @@ async def list_tools() -> list[Tool]:
             name="profile",
             description=(
                 "Read the user's personal profile. Returns all dimensions or "
-                "a specific category. Categories include: identity, cognitive_style, "
+                "a specific category. Use mode='narrative' for a synthesized "
+                "portrait (~1500 tokens vs ~10k for full dump). "
+                "Categories include: identity, cognitive_style, "
                 "energy_patterns, emotional_landscape, values_and_motivation, "
                 "communication, work_patterns, relationships, neurodivergence."
             ),
@@ -282,6 +284,14 @@ async def list_tools() -> list[Tool]:
                     "query": {
                         "type": "string",
                         "description": "Semantic search across profile (optional). E.g. 'what motivates me'"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": (
+                            "Output mode: 'narrative' returns a synthesized ~1500-token portrait "
+                            "(cached, regenerated on profile changes). 'full' returns all structured "
+                            "rows. Default returns all rows (same as 'full')."
+                        )
                     }
                 },
                 "required": []
@@ -1342,7 +1352,15 @@ async def _handle_actions(args: dict) -> list[TextContent]:
 
 
 async def _handle_profile(args: dict) -> list[TextContent]:
-    """Read user profile — full, by category, or by semantic search."""
+    """Read user profile — narrative, full, by category, or by semantic search."""
+    mode = args.get("mode", "").strip() or None
+
+    # Narrative mode — synthesized portrait
+    if mode == "narrative":
+        from promaia.brain.profile_narrative import get_or_generate_narrative
+        narrative = await get_or_generate_narrative()
+        return [TextContent(type="text", text=f"# Profile Portrait\n\n{narrative}")]
+
     db = get_db()
     category = args.get("category", "").strip() or None
     query = args.get("query", "").strip() or None
