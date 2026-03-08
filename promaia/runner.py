@@ -7,8 +7,6 @@ Usage:
 import asyncio
 import logging
 import os
-import signal
-import sys
 
 from dotenv import load_dotenv
 
@@ -32,9 +30,25 @@ async def _run_web(host: str = "0.0.0.0", port: int = 8000):
 
 
 async def _run_telegram():
-    """Run the Telegram bot polling loop."""
+    """Run the Telegram bot polling loop with auto-restart on crash.
+
+    Telegram long-polling is inherently flaky — timeout errors are normal
+    network weather.  Wrap in a restart loop so a transient failure doesn't
+    kill the entire process (web server + scheduler).
+    """
     from promaia.telegram.bot import start_bot
-    await start_bot()
+
+    while True:
+        try:
+            logger.info("Starting Telegram bot...")
+            await start_bot()
+            logger.warning("Telegram bot exited cleanly — restarting in 5s")
+        except asyncio.CancelledError:
+            logger.info("Telegram task cancelled, shutting down")
+            break
+        except Exception as e:
+            logger.error(f"Telegram bot crashed: {e} — restarting in 5s")
+        await asyncio.sleep(5)
 
 
 async def _run_scheduler():
@@ -43,14 +57,11 @@ async def _run_scheduler():
 
     scheduler = AgentScheduler()
 
-    # Wire up shutdown signal
-    def handle_signal(signum, frame):
+    try:
+        await scheduler.start()
+    except asyncio.CancelledError:
+        logger.info("Scheduler task cancelled, stopping")
         scheduler.stop()
-
-    signal.signal(signal.SIGINT, handle_signal)
-    signal.signal(signal.SIGTERM, handle_signal)
-
-    await scheduler.start()
 
 
 async def run_all():
@@ -67,26 +78,25 @@ async def run_all():
     logger.info(f"Dashboard auth: {auth_status}")
 
     tasks = [
+        asyncio.create_task(_run_web(host=host, port=port), name="web"),
         asyncio.create_task(_run_scheduler(), name="scheduler"),
         asyncio.create_task(_run_telegram(), name="telegram"),
-        asyncio.create_task(_run_web(host=host, port=port), name="web"),
     ]
 
-    # Wait until any task exits (usually means shutdown was requested)
-    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    try:
+        # FIRST_EXCEPTION: only shut down if a task raises an unhandled error.
+        # Telegram now self-heals, so only a fatal web/scheduler crash triggers this.
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
 
-    # Cancel remaining tasks
-    for task in pending:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    # Check for unexpected exits
-    for task in done:
-        if task.exception():
-            logger.error(f"{task.get_name()} exited with error: {task.exception()}")
+        for task in done:
+            if task.exception():
+                logger.error(f"Fatal: {task.get_name()} crashed: {task.exception()}")
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info("All Promaia services shut down")
 
 
 def main():
