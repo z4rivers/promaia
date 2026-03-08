@@ -107,10 +107,10 @@ coverage.xml
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# esbuild output + VAD runtime (rebuild via: npm install && npm run build)
-promaia/web/static/js/talk.js
-promaia/web/static/js/talk.js.map
-promaia/web/static/vad/
+# esbuild output — tracked for Railway deployment (rebuild via: npm install && npm run build)
+# promaia/web/static/js/talk.js
+# promaia/web/static/js/talk.js.map
+# promaia/web/static/vad/
 
 # ============================================================================
 # NODE.JS / JAVASCRIPT
