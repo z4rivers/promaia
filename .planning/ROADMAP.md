@@ -143,25 +143,70 @@ Plans:
 - [x] 11-01-PLAN.md -- Conversation engine: schema, CRUD, context assembly, personality prompt, impact scoring, Gemini calling
 - [x] 11-02-PLAN.md -- Handler wiring, session synthesis timer, cost tracking, human verification
 
+### v3.0 One Brain, Every Surface
+
+Quick Wins (Plans 0.5a, 0.5b, 1, 2, 4) shipped 2026-03-07. Plan 3 became Phase 11.
+
+- [x] **Plan 0.5a: Gmail Pipeline** - Fresh sync + email page rendering (shipped)
+- [x] **Plan 0.5b: Google Calendar** - Connected 7 calendars (shipped)
+- [x] **Plan 1: Unified Startup** - `python -m promaia dev` (shipped)
+- [x] **Plan 2: Scheduler Reliability** - Catch-up, heartbeat, lifecycle notifications (shipped)
+- [x] **Plan 3: Conversational Telegram** - Became Phase 11 (shipped)
+- [x] **Plan 4: Dashboard Nav** - Nav bar, health indicator, active page (shipped)
+- [ ] **Plan 5: Deploy to Web** - Cloud hosting, phone access, always-on, auth in production
+- [ ] **Plan 6: Life Dashboard Categories** - Tabbed categories (Projects/Health/Finance), interactive, drill-down
+- [ ] **Plan 7: ZBRAIN.md + Share with Josie** - Documentation, personal data audit, setup guide
+
+### v3.0 Plan Details
+
+### Plan 5: Deploy to Web
+**Goal**: Dashboard accessible from phone, always on, survives PC being off
+**Depends on**: v3.0 Quick Wins (complete)
+**Success Criteria**:
+  1. Dashboard loads from phone browser with auth
+  2. Telegram bot responds via webhook (not polling)
+  3. Scheduler fires agents on schedule without PC running
+  4. `/api/health` returns healthy from public URL
+**Plans:** 1 plan
+
+Plans:
+- [ ] v3-05-01-PLAN.md -- Fix deployment blockers + deploy to Render
+
+### Plan 6: Life Dashboard Categories
+**Goal**: Dashboard becomes life command center with category tabs, health/finance domains, interactive elements
+**Depends on**: v3.0 Quick Wins (complete)
+**Success Criteria**:
+  1. Category tabs (All/Projects/Health/Finance/Email) switch instantly via client-side JS
+  2. Project drill-down shows full context, actions, memories
+  3. Can complete actions and quick-capture from dashboard
+  4. Health metrics trackable with trend display
+  5. Finance shows subscription totals and agent costs
+**Plans:** 1 plan
+
+Plans:
+- [ ] v3-06-01-PLAN.md -- Category tabs + interactive dashboard + health/finance domains
+
 ## Progress
 
-**Execution Order:** Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9 -> 10
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 01. Postgres Foundation | v1.0 | 3/3 | Complete | 2026-03-04 |
-| 02. Brain Schema + MCP | v1.0 | 3/3 | Complete | 2026-03-05 |
-| 03.1 Onboarding Module | v1.0 | 3/3 | Complete | 2026-03-05 |
-| 04. Platform Activation | v1.0 | 1/1 | Complete | 2026-03-06 |
-| 5. Validate & Activate | v2.0 | Complete    | 2026-03-06 | 2026-03-06 |
-| 6. Waste Elimination + Spend Visibility | v2.0 | 4/4 | Complete | 2026-03-07 |
-| 7. Event Bus + Notification Layer | v2.0 | Complete    | 2026-03-07 | - |
-| 8. Telegram Bot | v2.0 | Complete    | 2026-03-07 | 2026-03-07 |
-| 9. Proactive Push | v2.0 | 2/2 | Complete | 2026-03-07 |
-| 10. Memory Deepening + Polish | v2.0 | 0/? | Not started | - |
-| 11. Conversational Telegram Bot | v2.0 | 2/2 | Complete | 2026-03-07 |
+| Phase/Plan | Milestone | Status | Completed |
+|------------|-----------|--------|-----------|
+| 01. Postgres Foundation | v1.0 | Complete | 2026-03-04 |
+| 02. Brain Schema + MCP | v1.0 | Complete | 2026-03-05 |
+| 03.1 Onboarding Module | v1.0 | Complete | 2026-03-05 |
+| 04. Platform Activation | v1.0 | Complete | 2026-03-06 |
+| 5. Validate & Activate | v2.0 | Complete | 2026-03-06 |
+| 6. Waste Elimination | v2.0 | Complete | 2026-03-07 |
+| 7. Event Bus + Notifications | v2.0 | Complete | 2026-03-07 |
+| 8. Telegram Bot | v2.0 | Complete | 2026-03-07 |
+| 9. Proactive Push | v2.0 | Complete | 2026-03-07 |
+| 10. Memory Deepening | v2.0 | Deferred | - |
+| 11. Conversational Telegram | v2.0 | Complete | 2026-03-07 |
+| v3 Plan 5: Deploy to Web | v3.0 | Planned | - |
+| v3 Plan 6: Life Dashboard | v3.0 | Planned | - |
+| v3 Plan 7: Docs + Share | v3.0 | Not started | - |
 
 ---
 *Created: 2026-03-04*
 *v1.0 archived: 2026-03-06*
 *v2.0 roadmap added: 2026-03-06*
+*v3.0 plans added: 2026-03-07*
