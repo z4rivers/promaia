@@ -270,6 +270,29 @@ async def reject_audio_review(review_id: int):
         logger.error(f"Failed to reject review {review_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/api/dashboard/review/{review_id}/update")
+async def update_audio_review(review_id: int, request: Request):
+    """Update a review's summary (used by Edit button before Accept)."""
+    try:
+        body = await request.json()
+        new_summary = body.get("summary", "").strip()
+        if not new_summary:
+            raise HTTPException(status_code=400, detail="Summary cannot be empty")
+
+        from promaia.storage.postgres_db import pg_connect
+        with pg_connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE brain.audio_session_reviews SET summary = %s WHERE id = %s",
+                    (new_summary, review_id)
+                )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update review {review_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 def _get_calendar_events(days_ahead: int = 7) -> list:

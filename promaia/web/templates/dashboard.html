@@ -347,7 +347,8 @@
             {% endif %}
 
             <div style="display: flex; gap: 12px; margin-top: 16px;">
-                <button onclick="handleReview({{ review.id }}, 'accept')" style="padding: 8px 16px; background: var(--accent-success); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">Accept & Save</button>
+                <button onclick="handleReview({{ review.id }}, 'accept')" style="padding: 8px 16px; background: var(--accent-success); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">Accept</button>
+                <button onclick="editReview({{ review.id }})" style="padding: 8px 16px; background: transparent; color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Edit</button>
                 <button onclick="handleReview({{ review.id }}, 'reject')" style="padding: 8px 16px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-visible); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Discard</button>
             </div>
         </div>
@@ -486,6 +487,63 @@ function handleReview(reviewId, action) {
             card.style.opacity = '1';
             card.style.pointerEvents = 'auto';
         });
+}
+
+function editReview(reviewId) {
+    var card = document.getElementById('review-card-' + reviewId);
+    var summaryEl = card.querySelector('.project-detail');
+    var originalText = summaryEl.textContent.trim();
+    
+    // Replace summary with editable textarea
+    var textarea = document.createElement('textarea');
+    textarea.value = originalText;
+    textarea.style.cssText = 'width: 100%; min-height: 80px; padding: 8px; font-size: 0.95rem; font-family: inherit; border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary); resize: vertical;';
+    summaryEl.replaceWith(textarea);
+    textarea.focus();
+    
+    // Swap buttons to Save/Cancel
+    var btnRow = card.querySelector('div[style*="display: flex"]');
+    btnRow.innerHTML = '<button onclick="saveEdit(' + reviewId + ')" style="padding: 8px 16px; background: var(--accent-success); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">Save</button>' +
+        '<button onclick="cancelEdit(' + reviewId + ', \'' + originalText.replace(/'/g, "\\'").replace(/\n/g, "\\n") + '\')" style="padding: 8px 16px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-visible); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Cancel</button>';
+}
+
+function saveEdit(reviewId) {
+    var card = document.getElementById('review-card-' + reviewId);
+    var textarea = card.querySelector('textarea');
+    var newText = textarea.value.trim();
+    
+    // Update on server then accept
+    fetch('/api/dashboard/review/' + reviewId + '/update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({summary: newText})
+    })
+    .then(function(res) {
+        if (res.ok) {
+            handleReview(reviewId, 'accept');
+        } else {
+            alert('Failed to save edit.');
+        }
+    })
+    .catch(function(err) { alert('Error: ' + err); });
+}
+
+function cancelEdit(reviewId, originalText) {
+    var card = document.getElementById('review-card-' + reviewId);
+    var textarea = card.querySelector('textarea');
+    
+    // Restore original summary
+    var summaryEl = document.createElement('div');
+    summaryEl.className = 'project-detail';
+    summaryEl.style.cssText = 'font-size: 1rem; color: var(--text-primary); margin: 12px 0;';
+    summaryEl.textContent = originalText;
+    textarea.replaceWith(summaryEl);
+    
+    // Restore original buttons
+    var btnRow = card.querySelector('div[style*="display: flex"]');
+    btnRow.innerHTML = '<button onclick="handleReview(' + reviewId + ', \'accept\')" style="padding: 8px 16px; background: var(--accent-success); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">Accept</button>' +
+        '<button onclick="editReview(' + reviewId + ')" style="padding: 8px 16px; background: transparent; color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Edit</button>' +
+        '<button onclick="handleReview(' + reviewId + ', \'reject\')" style="padding: 8px 16px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-visible); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Discard</button>';
 }
 </script>
 {% endblock %}
