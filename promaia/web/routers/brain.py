@@ -15,9 +15,83 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from promaia.web.brain_chat import chat, transcribe_audio
+from promaia.storage.postgres_db import get_postgres_db, pg_connect
+import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+async def generate_session_review(transcript_log: list):
+    """Background task to summarize a completed voice session and propose memories to the dashboard."""
+    if not transcript_log:
+        return
+        
+    try:
+        logger.info(f"Generating async session review for {len(transcript_log)} turns...")
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+        
+        # Format transcript
+        lines = []
+        for t in transcript_log:
+            role = "Promaia" if t["role"] == "promaia" else "Zack"
+            lines.append(f"{role}: {t['text']}")
+        full_transcript = "\n".join(lines)
+        
+        prompt = (
+            "You are reviewing a raw audio transcript between Zack and his AI assistant Promaia. "
+            "Write a very concise 2-3 sentence summary of the conversation. "
+            "Also, extract any significant decisions, facts, or context that Promaia should remember. "
+            f"\n\nTRANSCRIPT:\n{full_transcript}"
+        )
+        
+        # We need a proper JSON schema
+        schema = {
+            "type": "OBJECT",
+            "properties": {
+                "summary": {"type": "STRING", "description": "Concise 2-3 sentence summary"},
+                "proposed_memories": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "content": {"type": "STRING", "description": "The extracted fact"},
+                            "domain": {"type": "STRING", "description": "e.g., personal, project, heatpup"}
+                        },
+                        "required": ["content", "domain"]
+                    }
+                }
+            },
+            "required": ["summary", "proposed_memories"]
+        }
+        
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+            ),
+        )
+        
+        result_json = json.loads(response.text)
+        
+        # Save to PostgreSQL
+        with pg_connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO brain.audio_session_reviews 
+                    (raw_transcript, summary, proposed_memories, status)
+                    VALUES (%s, %s, %s, 'pending')
+                    """,
+                    (json.dumps(transcript_log), result_json.get("summary", ""), json.dumps(result_json.get("proposed_memories", [])))
+                )
+        logger.info("Successfully saved AudioSessionReview to Postgres database.")
+    except Exception as e:
+        logger.error(f"Failed to generate session review: {e}", exc_info=True)
+
 
 
 class ChatRequest(BaseModel):
@@ -154,6 +228,37 @@ async def brain_stream(websocket: WebSocket):
     except Exception as e:
         logger.warning(f"Muninn context fetch for Live API failed: {e}. Degrading gracefully.")
 
+    # 2. Inject recent conversation summaries for continuity
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        recent_sessions = db.fetch_all(
+            """
+            SELECT summary, status, created_at 
+            FROM brain.audio_session_reviews 
+            WHERE summary IS NOT NULL AND status IN ('pending', 'accepted')
+            ORDER BY created_at DESC 
+            LIMIT 3
+            """
+        )
+        if recent_sessions:
+            system_ctx += "\n\nRECENT CONVERSATIONS YOU JUST HAD WITH ZACK:\n"
+            for s in recent_sessions:
+                dt_str = s['created_at'].strftime("%Y-%m-%d %H:%M:%S") if hasattr(s['created_at'], 'strftime') else str(s['created_at'])
+                status_label = "UNAPPROVED SUMMARY" if s['status'] == 'pending' else "APPROVED"
+                system_ctx += f"- [{dt_str}] [{status_label}] {s['summary']}\n"
+            system_ctx += (
+                "\nCRITICAL INSTRUCTION REGARDING PAST CONVERSATIONS:\n"
+                "If a recent conversation has an [UNAPPROVED SUMMARY], you must proactively try to round it off and confirm it with Zack. "
+                "Say something natural like 'Hey, last time you were saying X, did I get that right?' "
+                "Your goal is to get his verbal approval so you can use 'commit_staged_memories' and keep his unreviewed pile clean. "
+                "If the conversation felt cut-off, try to pick it back up. "
+                "If a conversation is already [APPROVED], treat it purely as passive context."
+            )
+            logger.info(f"Live API populated with {len(recent_sessions)} recent conversation summaries.")
+    except Exception as e:
+        logger.warning(f"Failed to fetch recent sessions for context: {e}")
+
     # 11.5 Tool Definitions for Staging and Committing Memories
     memory_tools = {
         "function_declarations": [
@@ -198,6 +303,7 @@ async def brain_stream(websocket: WebSocket):
     )
 
     try:
+        transcript_log = []
         async with client.aio.live.connect(model=model_id, config=config) as session:
             logger.info("Connected to Gemini Live API.")
 
@@ -221,6 +327,9 @@ async def brain_stream(websocket: WebSocket):
                             # Text turn or interrupt signal from frontend
                             turn_complete = msg.get("turnComplete", True)
                             text_msg = msg["clientContent"]["turns"][0]["parts"][0]["text"]
+                            
+                            transcript_log.append({"role": "user", "text": text_msg, "time": time.time()})
+                            
                             await session.send_client_content(
                                 turns=[types.Content(parts=[types.Part.from_text(text=text_msg)])],
                                 turn_complete=turn_complete
@@ -255,6 +364,7 @@ async def brain_stream(websocket: WebSocket):
                                             })
                                         # Text/Transcript payload (can be logged or displayed)
                                         elif part.text:
+                                            transcript_log.append({"role": "promaia", "text": part.text, "time": time.time()})
                                             await websocket.send_json({
                                                 "serverContent": {
                                                     "modelTurn": {
@@ -325,7 +435,11 @@ async def brain_stream(websocket: WebSocket):
                     logger.error(f"Gemini receive loop error: {e}", exc_info=True)
                 finally:
                     # Session ended. If there are staged memories, we handle Step 11.5 confirmation loop here or frontend handles it
-                    pass
+                    if transcript_log:
+                        # Only summarize if it was a real conversation (more than just a 1 turn greeting)
+                        if len(transcript_log) > 2:
+                            logger.info(f"Voice session ended. Captured {len(transcript_log)} turns. Triggering async dashboard review extraction.")
+                            asyncio.create_task(generate_session_review(transcript_log))
 
             # Run both loops
             client_task = asyncio.create_task(receive_from_client())
