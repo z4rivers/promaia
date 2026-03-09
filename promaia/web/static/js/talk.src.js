@@ -23,6 +23,9 @@ let playCtx = null;
 let nextPlayTime = 0;
 let playingNodes = [];
 
+// Wake Lock (keeps screen on during voice sessions)
+let wakeLock = null;
+
 // ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
@@ -338,6 +341,26 @@ async function startConversation() {
     feedsEl.classList.add('dimmed');
     setStatus('connecting');
 
+    // Acquire Wake Lock to prevent screen sleep during voice session
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('[WakeLock] Screen lock acquired — screen will stay on');
+            wakeLock.addEventListener('release', () => {
+                console.log('[WakeLock] Released');
+                // Re-acquire if still in conversation (e.g. after tab switch back)
+                if (conversationMode && 'wakeLock' in navigator) {
+                    navigator.wakeLock.request('screen').then(wl => {
+                        wakeLock = wl;
+                        console.log('[WakeLock] Re-acquired after release');
+                    }).catch(() => {});
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[WakeLock] Could not acquire:', e.message);
+    }
+
     try {
         console.log("Starting conversation sequence...");
         await connectWebSocket();
@@ -370,6 +393,13 @@ function stopConversation() {
     
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
+    }
+
+    // Release Wake Lock
+    if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+        console.log('[WakeLock] Released on conversation end');
     }
 }
 
@@ -501,9 +531,10 @@ textField.addEventListener('keydown', (e) => {
     }
 });
 
-// Avoid iOS background loops
+// Screen sleep handling — DON'T kill conversation, just log
+// Wake Lock keeps screen on; if it fails, we still want audio to survive
 document.addEventListener('visibilitychange', () => {
     if (document.hidden && conversationMode) {
-        stopConversation();
+        console.warn('[Visibility] Page hidden during conversation — Wake Lock should prevent this');
     }
 });
