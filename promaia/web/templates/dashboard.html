@@ -313,6 +313,48 @@
         </div>
     </header>
 
+    <!-- Voice Session Review Zone (Conditionally Rendered) -->
+    {% if audio_reviews %}
+    <section class="review-zone" style="margin-bottom: var(--section-gap, 48px);">
+        <h2 class="section-header" style="color: var(--accent-warning);">Pending Voice Reviews</h2>
+        {% for review in audio_reviews %}
+        <div class="card card--accent" style="border-left-color: var(--accent-warning);" id="review-card-{{ review.id }}">
+            <div class="project-name">Voice Session Summary ({{ review.created_at }})</div>
+            <div class="project-detail" style="font-size: 1rem; color: var(--text-primary); margin: 12px 0;">
+                {{ review.summary }}
+            </div>
+            
+            {% if review.proposed_memories %}
+            <div style="margin: 12px 0; padding: 12px; background: color-mix(in srgb, var(--accent-warning) 5%, transparent); border-radius: var(--radius-sm);">
+                <div class="mode-label">Extracted Memories:</div>
+                <ul style="margin: 4px 0 0 16px; font-size: 0.85rem; color: var(--text-secondary);">
+                    {% for mem in review.proposed_memories %}
+                    <li><strong>[{{ mem.domain }}]</strong> {{ mem.content }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if review.raw_transcript %}
+            <details style="margin: 12px 0; font-size: 0.8rem;">
+                <summary style="cursor: pointer; color: var(--accent-primary); font-family: var(--font-mono);">View Raw Transcript</summary>
+                <div style="margin-top: 8px; padding: 12px; background: color-mix(in srgb, var(--text-muted) 5%, transparent); border-radius: var(--radius-sm); max-height: 200px; overflow-y: auto;">
+                    {% for line in review.raw_transcript %}
+                    <p style="margin: 4px 0;"><strong>{{ 'Promaia' if line.role == 'promaia' else 'Zack' }}:</strong> {{ line.text }}</p>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
+
+            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button onclick="handleReview({{ review.id }}, 'accept')" style="padding: 8px 16px; background: var(--accent-success); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">Accept & Save</button>
+                <button onclick="handleReview({{ review.id }}, 'reject')" style="padding: 8px 16px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-visible); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Discard</button>
+            </div>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
     <!-- Primary Zone: 2-column grid (skins override grid-template) -->
     <section class="primary-zone">
 
@@ -419,5 +461,31 @@ fetch('/api/notifications/read', { method: 'POST' })
         if (badge) badge.classList.remove('visible');
     })
     .catch(function() {});
+
+function handleReview(reviewId, action) {
+    var card = document.getElementById('review-card-' + reviewId);
+    card.style.opacity = '0.5';
+    card.style.pointerEvents = 'none';
+    
+    fetch('/api/dashboard/review/' + reviewId + '/' + action, { method: 'POST' })
+        .then(function(res) {
+            if (res.ok) {
+                card.remove();
+                // Optionally reload to update "memories" count in header
+                if (action === 'accept') {
+                    window.location.reload();
+                }
+            } else {
+                alert('Failed to ' + action + ' review.');
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        })
+        .catch(function(err) {
+            alert('Error: ' + err);
+            card.style.opacity = '1';
+            card.style.pointerEvents = 'auto';
+        });
+}
 </script>
 {% endblock %}

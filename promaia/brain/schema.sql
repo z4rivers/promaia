@@ -367,3 +367,24 @@ CREATE TABLE IF NOT EXISTS brain.profile_narrative (
     profile_hash TEXT NOT NULL,
     generated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================================
+-- brain.audio_session_reviews
+-- Async session reviews for the Dashboard (Step 11.5).
+-- Stores full transcripts of voice sessions and Gemini's
+-- proposed summary/memories for user approval.
+-- status: pending, accepted, rejected
+-- ============================================================
+CREATE TABLE IF NOT EXISTS brain.audio_session_reviews (
+    id SERIAL PRIMARY KEY,
+    user_id UUID DEFAULT '00000000-0000-0000-0000-000000000001',
+    raw_transcript JSONB,
+    summary TEXT,
+    proposed_memories JSONB DEFAULT '[]',
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_brain_audio_review_status
+    ON brain.audio_session_reviews (status, created_at DESC);
