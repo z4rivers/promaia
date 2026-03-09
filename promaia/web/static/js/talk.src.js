@@ -58,6 +58,60 @@ function setStatus(state, text) {
 }
 
 // ---------------------------------------------------------------------------
+// Audio feedback tones (instant UX confirmation, no latency)
+// ---------------------------------------------------------------------------
+function playTone(type) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+
+        if (type === 'start') {
+            // Rising two-note chime: "I'm on"
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+            const osc1 = ctx.createOscillator();
+            osc1.type = 'sine';
+            osc1.frequency.value = 587.33; // D5
+            osc1.connect(gain);
+            osc1.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.12);
+
+            const gain2 = ctx.createGain();
+            gain2.connect(ctx.destination);
+            gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+
+            const osc2 = ctx.createOscillator();
+            osc2.type = 'sine';
+            osc2.frequency.value = 880; // A5
+            osc2.connect(gain2);
+            osc2.start(ctx.currentTime + 0.12);
+            osc2.stop(ctx.currentTime + 0.35);
+
+            setTimeout(() => ctx.close(), 500);
+        } else if (type === 'end') {
+            // Gentle descending tone: "done"
+            gain.gain.setValueAtTime(0.12, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(659.25, ctx.currentTime); // E5
+            osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25); // down to A4
+            osc.connect(gain);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.3);
+
+            setTimeout(() => ctx.close(), 500);
+        }
+    } catch (e) {
+        console.warn('[Tone] Could not play:', e.message);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Messages UI
 // ---------------------------------------------------------------------------
 function addMessage(role, text) {
@@ -370,6 +424,7 @@ async function startConversation() {
         await startCapture();
         console.log("Capture started. Starting VAD...");
         vad.start();
+        playTone('start');
         setStatus('listening');
     } catch (err) {
         console.error("FAILED to start conversation!");
@@ -386,6 +441,7 @@ function stopConversation() {
     endBtn.classList.remove('visible');
     feedsEl.classList.remove('dimmed');
     setStatus('idle');
+    playTone('end');
     
     stopPlayback();
     stopCapture();
