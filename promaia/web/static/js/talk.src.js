@@ -462,22 +462,28 @@ function stopConversation() {
 // ---------------------------------------------------------------------------
 // Text input (Direct text push through WebSocket)
 // ---------------------------------------------------------------------------
-function sendText(text) {
+async function sendText(text) {
     if (!text.trim()) return;
     addMessage('user', text);
     setStatus('thinking');
 
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ 
-            clientContent: { 
-                turns: [{ role: "user", parts: [{ text: text }] }],
-                turnComplete: true 
-            } 
-        }));
-    } else {
-        addMessage('assistant', '(Disconnected — tap mic to connect first)');
-        setStatus('idle');
+    // Auto-connect WebSocket if not already open (text-only, no mic needed)
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        try {
+            await connectWebSocket();
+        } catch (err) {
+            addMessage('assistant', '(Could not connect — try again)');
+            setStatus('error');
+            return;
+        }
     }
+
+    ws.send(JSON.stringify({ 
+        clientContent: { 
+            turns: [{ role: "user", parts: [{ text: text }] }],
+            turnComplete: true 
+        } 
+    }));
 }
 
 // ---------------------------------------------------------------------------
