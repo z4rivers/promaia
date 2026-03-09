@@ -265,48 +265,7 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
         db = _get_db()
         parts = []
 
-        # 1. User profile
-        try:
-            profile_rows = db.fetch_all(
-                """
-                SELECT category, field, value
-                FROM brain.profile
-                ORDER BY confidence DESC
-                LIMIT 15
-                """
-            )
-            if profile_rows:
-                profile_text = "\n".join(
-                    f"- {r['field']}: {r['value']}" for r in profile_rows
-                )
-                parts.append(f"## About Zack\n{profile_text}")
-        except Exception as e:
-            logger.warning(f"Context assembly: profile query failed: {e}")
-
-        # 2. Conversation history is fetched via brain_ops (async), handled outside
-
-        # 3. Active projects (narrative format to avoid triggering manager behavior)
-        try:
-            projects = db.fetch_all(
-                """
-                SELECT d.name, c.current_state
-                FROM brain.contexts c
-                JOIN brain.domains d ON c.domain_id = d.id
-                WHERE d.is_project = true
-                ORDER BY c.priority ASC
-                LIMIT 8
-                """
-            )
-            if projects:
-                proj_parts = []
-                for r in projects:
-                    state = r.get('current_state') or ''
-                    proj_parts.append(f"{r['name']} ({state})" if state else r['name'])
-                parts.append(f"## What Zack is working on\n{'. '.join(proj_parts)}.")
-        except Exception as e:
-            logger.warning(f"Context assembly: projects query failed: {e}")
-
-        # 4. Pending actions (narrative, not a task list)
+        # Pending actions (narrative, not a task list)
         try:
             actions = db.fetch_all(
                 """
@@ -341,40 +300,38 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
     except Exception as e:
         logger.warning(f"Context assembly: history query failed: {e}")
 
-    # 3. Relevant memories (semantic search)
+    # 3. Relevant memories + Profile + Projects (MuninnDB Cognitive Memory)
     try:
-        vector_mgr = _get_vector_mgr()
-        query_embedding = vector_mgr.generate_embedding(user_message)
-        query_array = np.array(query_embedding)
-
-        def _search_memories():
-            db = _get_db()
-            with db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(
-                        """
-                        SELECT content, domain, created_at,
-                               embedding <=> %s::vector AS distance
-                        FROM brain.memories
-                        WHERE embedding IS NOT NULL
-                        ORDER BY distance ASC
-                        LIMIT 5
-                        """,
-                        (query_array,),
-                    )
-                    return [dict(r) for r in cur.fetchall()]
-
-        memory_rows = await asyncio.to_thread(_search_memories)
-        if memory_rows:
-            mem_text = "\n".join(
-                f"- {r['content'][:200]}" for r in memory_rows
-            )
-            # Insert after conversation history
-            insert_pos = min(2, len(parts))
-            parts.insert(insert_pos, f"## Relevant Memories\n{mem_text}")
+        from promaia.brain.muninn import get_muninn
+        muninn = await get_muninn()
+        
+        # Opus Safety Check: Fallback if Muninn is offline
+        if not muninn:
+            logger.warning("Context assembly: MuninnDB is offline. Falling back to Postgres sync fetch.")
+            fallback_parts = await asyncio.to_thread(_sync_fetch)
+            parts.extend(fallback_parts)
+        else:
+            history_content = await get_conversation_history(chat_id, limit=3)
+            context_list = [h['content'] for h in history_content] if history_content else []
+            context_list.append(user_message)
+            
+            res = await muninn.activate(context=context_list, max_results=15)
+            activations = res.get("activations", [])
+            
+            if activations:
+                mem_text = "\n".join(f"- {a['content']}" for a in activations)
+                # Insert directly after history
+                insert_pos = min(2, len(parts))
+                parts.insert(insert_pos, f"## Cognitive Context (MuninnDB)\n{mem_text}")
+            else:
+                logger.warning("Context assembly: MuninnDB returned empty activations. Falling back to Postgres.")
+                fallback_parts = await asyncio.to_thread(_sync_fetch)
+                parts.extend(fallback_parts)
+                
     except Exception as e:
-        logger.warning(f"Context assembly: semantic search failed (degrading gracefully): {e}")
+        logger.warning(f"Context assembly: MuninnDB activate failed with exception: {e}. Falling back to Postgres.")
+        fallback_parts = await asyncio.to_thread(_sync_fetch)
+        parts.extend(fallback_parts)
 
     return "\n\n".join(parts)
 
@@ -567,6 +524,20 @@ async def _run_synthesis(chat_id: int) -> None:
         # Store as permanent memory
         memory_result = await capture_memory(synthesis_text, domain="conversation-synthesis")
         logger.info(f"Session {session_id} synthesized: {synthesis_text[:100]}...")
+
+        # Dual-write to MuninnDB
+        try:
+            from promaia.brain.muninn import get_muninn
+            muninn = await get_muninn()
+            if muninn:
+                await muninn.write(
+                    concept=f"Conversation synthesis session {session_id}",
+                    content=synthesis_text,
+                    tags=["synthesis", "conversation"],
+                    confidence=0.9
+                )
+        except Exception as e:
+            logger.warning(f"Dual-write to MuninnDB failed: {e}")
 
         # Get the memory ID from brain.memories (most recent with this domain)
         try:
