@@ -115,11 +115,16 @@ async def list_tools() -> list[Tool]:
                 "Return a session briefing: stale projects, pending actions, "
                 "and recent heartbeat activity from the last 24 hours. "
                 "Call this at the start of every session. "
-                "IMPORTANT: This brain uses the 'Along For The Ride' capture standard. "
-                "Throughout the session, proactively use the 'capture' tool whenever "
-                "something substantive happens — decisions, insights, discoveries, "
-                "context shifts, or preferences revealed. MuninnDB's cognitive engine "
-                "handles noise via temporal decay; under-capturing is the real failure mode."
+                "IMPORTANT: This brain uses the 'Along For The Ride' standard with two halves: "
+                "(1) CAPTURE: Proactively use 'capture' whenever something substantive happens — "
+                "decisions, insights, discoveries, context shifts, or preferences revealed. "
+                "(2) RETRIEVE: When the user brings up a topic, idea, or reference that might "
+                "connect to existing memories, call 'activate' with their context BEFORE responding. "
+                "If you find relevant associated information, offer it naturally — 'this sounds like "
+                "our discussion about...', 'is this related to...?', 'would you like me to save this "
+                "with...?' Don't assume the user forgot — you're offering connections, not correcting "
+                "memory. The brain should feel like a partner who was there for every conversation, "
+                "not a search engine that waits to be queried."
             ),
             inputSchema={
                 "type": "object",
@@ -489,8 +494,11 @@ async def list_tools() -> list[Tool]:
                 "Uses context-based associative recall with Hebbian learning, "
                 "temporal decay, and graph traversal -- different from vector search. "
                 "Returns memories ranked by cognitive relevance, not just similarity. "
-                "Use this when you want associative, context-driven recall rather than "
-                "keyword or semantic search."
+                "USE PROACTIVELY: When the user mentions a topic, project, person, or idea "
+                "that might relate to past conversations or stored knowledge, call this "
+                "with their context to check for connections BEFORE responding. Offer "
+                "relevant associated information naturally — don't wait to be asked. "
+                "This is the 'recognition' half of the Along For The Ride standard."
             ),
             inputSchema={
                 "type": "object",
