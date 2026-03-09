@@ -1,0 +1,1160 @@
+From a40256512567663e8a0df50b19656ba0a7d9b7e2 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 05:39:48 -0800
+Subject: [PATCH 38/68] =?UTF-8?q?docs(03.1):=20create=20onboarding=20modul?=
+ =?UTF-8?q?e=20phase=20plan=20=E2=80=94=203=20plans,=202=20waves?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Plan 01 (Wave 1): Onboarding state schema + engine + onboard MCP tool
+Plan 02 (Wave 1): PC scan and Gmail read channel modules + MCP tools
+Plan 03 (Wave 2): Interview question bank + CLAUDE.md instructions + verification
+
+10 new ONBOARD requirements defined (ONBOARD-01 through ONBOARD-10).
+ROADMAP and REQUIREMENTS updated with phase details and traceability.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/REQUIREMENTS.md                     |  29 +-
+ .planning/ROADMAP.md                          | 218 +++++++------
+ .../03.1-onboarding-module/03.1-01-PLAN.md    | 271 ++++++++++++++++
+ .../03.1-onboarding-module/03.1-02-PLAN.md    | 269 ++++++++++++++++
+ .../03.1-onboarding-module/03.1-03-PLAN.md    | 297 ++++++++++++++++++
+ 5 files changed, 983 insertions(+), 101 deletions(-)
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-01-PLAN.md
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-02-PLAN.md
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-03-PLAN.md
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index ec742b2..a791081 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -22,6 +22,19 @@
+ - [x] **BRAIN-05**: Session briefing runs automatically on startup (stalled projects, pending actions, recent activity)
+ - [x] **BRAIN-06**: Stale alerts flag projects with no activity past threshold — suggest_next() in engine.py scores by staleness ratio (02-01)
+ 
++### Onboarding (INSERTED — Phase 03.1)
++
++- [ ] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
++- [ ] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
++- [ ] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
++- [ ] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
++- [ ] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
++- [ ] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
++- [ ] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
++- [ ] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
++- [ ] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, ADHD-friendly
++- [ ] **ONBOARD-10**: Onboarding follows ADHD-friendly principles: short bursts, instant value, resumable, no shame
++
+ ### Routing
+ 
+ - [ ] **ROUTE-01**: Task-based model router (ai/router.py) assigns models by task type
+@@ -84,12 +97,22 @@
+ | BRAIN-06 | 02-01 | Complete |
+ | BRAIN-04 | 02-02 | Complete |
+ | BRAIN-05 | 02-02 | Complete |
++| ONBOARD-01 | 03.1-01 | Planned |
++| ONBOARD-02 | 03.1-01 | Planned |
++| ONBOARD-03 | 03.1-01 | Planned |
++| ONBOARD-04 | 03.1-02 | Planned |
++| ONBOARD-05 | 03.1-02 | Planned |
++| ONBOARD-06 | 03.1-02 | Planned |
++| ONBOARD-07 | 03.1-03 | Planned |
++| ONBOARD-08 | 03.1-03 | Planned |
++| ONBOARD-09 | 03.1-03 | Planned |
++| ONBOARD-10 | 03.1-03 | Planned |
+ 
+ **Coverage:**
+-- v1.0 requirements: 24 total
+-- Mapped to phases: 6 (Phase 2, Plans 01-02)
++- v1.0 requirements: 34 total (24 original + 10 onboarding)
++- Mapped to phases: 16 (6 BRAIN complete, 10 ONBOARD planned)
+ - Complete: 11 (5 STOR, 6 BRAIN)
+ 
+ ---
+ *Requirements defined: 2026-03-04*
+-*Last updated: 2026-03-05 after 02-02 execution*
++*Last updated: 2026-03-05 after 03.1 planning*
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 63d3071..89f54f2 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -1,99 +1,121 @@
+-# Roadmap: zBrain v1.0 Foundation
+-
+-## Phases
+-
+-- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
+-- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
+-- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+-- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
+-- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
+-
+-## Phase Details
+-
+-### Phase 1: Postgres Foundation
+-**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
+-**Depends on:** Nothing
+-**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
+-**Success Criteria** (what must be TRUE):
+-  1. Promaia connects to Supabase Postgres via session pooler
+-  2. pgvector extension enabled with vector(768) columns and HNSW indexes
+-  3. All existing Promaia features (sync, chat, query) work against Postgres
+-  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
+-  5. Existing content re-embedded with gemini-embedding-001
+-  6. GIN indexes on tags/entities for hybrid search
+-  7. google-generativeai replaced with google-genai SDK
+-  8. ZBRAIN.md created documenting all changes
+-**Plans:** 3 plans
+-
+-Plans:
+-- [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
+-- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
+-- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
+-
+-### Phase 2: Brain Schema and MCP Tools
+-**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
+-**Depends on:** Phase 1
+-**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
+-**Success Criteria** (what must be TRUE):
+-  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
+-  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
+-  3. Session briefing runs automatically on startup
+-  4. Action extraction detects actionable items from conversation
+-  5. Standing directives per project stored and queryable
+-  6. Stale project alerts surface in briefings
+-  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
++# Roadmap: zBrain v1.0 Foundation
++
++## Phases
++
++- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
++- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
++- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
++- [ ] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (INSERTED)
++- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
++- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
++
++## Phase Details
++
++### Phase 1: Postgres Foundation
++**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
++**Depends on:** Nothing
++**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
++**Success Criteria** (what must be TRUE):
++  1. Promaia connects to Supabase Postgres via session pooler
++  2. pgvector extension enabled with vector(768) columns and HNSW indexes
++  3. All existing Promaia features (sync, chat, query) work against Postgres
++  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
++  5. Existing content re-embedded with gemini-embedding-001
++  6. GIN indexes on tags/entities for hybrid search
++  7. google-generativeai replaced with google-genai SDK
++  8. ZBRAIN.md created documenting all changes
++**Plans:** 3 plans
++
++Plans:
++- [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
++- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
++- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
++
++### Phase 2: Brain Schema and MCP Tools
++**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
++**Depends on:** Phase 1
++**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
++**Success Criteria** (what must be TRUE):
++  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
++  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
++  3. Session briefing runs automatically on startup
++  4. Action extraction detects actionable items from conversation
++  5. Standing directives per project stored and queryable
++  6. Stale project alerts surface in briefings
++  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
+ **Plans:** 3/3 plans complete
+-
+-Plans:
+-- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
+-- [x] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor (2026-03-05)
+-- [x] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (2026-03-05)
+-
+-### Phase 3: Gemini Routing
+-**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
+-**Depends on:** Phase 2
+-**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
+-**Success Criteria** (what must be TRUE):
+-  1. ai/router.py routes tasks to appropriate model by type
+-  2. Gemini Flash handles classification, summarization, embeddings
+-  3. Claude Sonnet/Opus handles reasoning and interactive work
+-  4. Gemini MCP research results automatically captured into brain.memories
+-  5. YouTube analysis and deep research feed brain automatically
+-**Plans:** TBD
+-
+-### Phase 4: Heartbeat Agent
+-**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
+-**Depends on:** Phase 2
+-**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
+-**Success Criteria** (what must be TRUE):
+-  1. Windows Task Scheduler runs heartbeat on configurable interval
+-  2. Heartbeat scans all projects and picks most stalled for deep work
+-  3. Active user check: scan-only mode if user active within 15 min
+-  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
+-  5. Morning summary available in next session briefing
+-  6. All activity logged to brain.events with source="heartbeat"
+-**Plans:** TBD
+-
+-### Phase 5: iPhone Access
+-**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
+-**Depends on:** Phase 2
+-**Requirements:** [ACCESS-01]
+-**Success Criteria** (what must be TRUE):
+-  1. Brain MCP endpoint accessible from iPhone via cloud
+-  2. Mobile capture stores thoughts in brain.memories
+-  3. PC session briefing picks up mobile captures automatically
+-**Plans:** TBD
+-
+-## Progress
+-
+-| Phase | Plans Complete | Status | Completed |
+-|-------|---|---|---|
+-| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
+-| 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
+-| 3. Gemini Routing | 0/0 | Not started | - |
+-| 4. Heartbeat Agent | 0/0 | Not started | - |
+-| 5. iPhone Access | 0/0 | Not started | - |
+-
+----
+-*Created: 2026-03-04 from design docs*
+-*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
++
++Plans:
++- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
++- [x] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor (2026-03-05)
++- [x] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (2026-03-05)
++
++### Phase 3: Gemini Routing
++**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
++**Depends on:** Phase 2
++**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
++**Success Criteria** (what must be TRUE):
++  1. ai/router.py routes tasks to appropriate model by type
++  2. Gemini Flash handles classification, summarization, embeddings
++  3. Claude Sonnet/Opus handles reasoning and interactive work
++  4. Gemini MCP research results automatically captured into brain.memories
++  5. YouTube analysis and deep research feed brain automatically
++**Plans:** TBD
++
++### Phase 03.1: Onboarding Module (INSERTED)
++
++**Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
++**Depends on:** Phase 2
++**Requirements:** [ONBOARD-01, ONBOARD-02, ONBOARD-03, ONBOARD-04, ONBOARD-05, ONBOARD-06, ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
++**Success Criteria** (what must be TRUE):
++  1. Onboarding session can be started, paused, and resumed across sessions
++  2. Profile coverage report shows per-category gap analysis
++  3. PC scan channel automatically extracts profile data from local files and git history
++  4. Gmail read channel extracts contacts and communication patterns (when OAuth configured)
++  5. Interview question bank covers all profile categories with OARS-informed questions
++  6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
++  7. Progressive profiling continues after initial interview via observation
++**Plans:** 3 plans
++
++Plans:
++- [ ] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool
++- [ ] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools
++- [ ] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + verification
++
++### Phase 4: Heartbeat Agent
++**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
++**Depends on:** Phase 2
++**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
++**Success Criteria** (what must be TRUE):
++  1. Windows Task Scheduler runs heartbeat on configurable interval
++  2. Heartbeat scans all projects and picks most stalled for deep work
++  3. Active user check: scan-only mode if user active within 15 min
++  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
++  5. Morning summary available in next session briefing
++  6. All activity logged to brain.events with source="heartbeat"
++**Plans:** TBD
++
++### Phase 5: iPhone Access
++**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
++**Depends on:** Phase 2
++**Requirements:** [ACCESS-01]
++**Success Criteria** (what must be TRUE):
++  1. Brain MCP endpoint accessible from iPhone via cloud
++  2. Mobile capture stores thoughts in brain.memories
++  3. PC session briefing picks up mobile captures automatically
++**Plans:** TBD
++
++## Progress
++
++| Phase | Plans Complete | Status | Completed |
++|-------|---|---|---|
++| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
++| 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
++| 3. Gemini Routing | 0/0 | Not started | - |
++| 3.1 Onboarding Module | 0/3 | Planned | - |
++| 4. Heartbeat Agent | 0/0 | Not started | - |
++| 5. iPhone Access | 0/0 | Not started | - |
++
++---
++*Created: 2026-03-04 from design docs*
++*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-01-PLAN.md b/.planning/phases/03.1-onboarding-module/03.1-01-PLAN.md
+new file mode 100644
+index 0000000..8b50263
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-01-PLAN.md
+@@ -0,0 +1,271 @@
++---
++phase: 03.1-onboarding-module
++plan: 01
++type: execute
++wave: 1
++depends_on: []
++files_modified:
++  - promaia/brain/schema.sql
++  - promaia/brain/onboarding.py
++  - promaia/brain/mcp_server.py
++autonomous: true
++requirements: [ONBOARD-01, ONBOARD-02, ONBOARD-03]
++
++must_haves:
++  truths:
++    - "Onboarding session can be started and tracks which channels have been completed"
++    - "Onboarding can be paused and resumed across sessions without losing progress"
++    - "Claude can query onboarding status to know what profile areas still need coverage"
++  artifacts:
++    - path: "promaia/brain/schema.sql"
++      provides: "brain.onboarding_sessions and brain.onboarding_progress tables"
++      contains: "CREATE TABLE IF NOT EXISTS brain.onboarding_sessions"
++    - path: "promaia/brain/onboarding.py"
++      provides: "Onboarding state engine with start/status/resume/complete functions"
++      exports: ["start_onboarding", "get_onboarding_status", "mark_channel_complete", "get_profile_coverage"]
++    - path: "promaia/brain/mcp_server.py"
++      provides: "onboard MCP tool added to existing brain server"
++      contains: "name=\"onboard\""
++  key_links:
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/brain/onboarding.py"
++      via: "import and dispatch in _handle_onboard"
++      pattern: "from promaia\\.brain\\.onboarding import"
++    - from: "promaia/brain/onboarding.py"
++      to: "brain.onboarding_sessions"
++      via: "SQL queries for session state"
++      pattern: "brain\\.onboarding_sessions"
++---
++
++<objective>
++Create the onboarding state tracking infrastructure: database tables for session/channel progress, a Python engine module for onboarding logic, and an `onboard` MCP tool that Claude uses to manage the onboarding flow.
++
++Purpose: Without state tracking, onboarding cannot be paused, resumed, or know what has been covered. This is the foundation that makes the multi-session, multi-channel onboarding experience possible.
++
++Output: Two new DB tables (brain.onboarding_sessions, brain.onboarding_progress), onboarding.py engine module, `onboard` MCP tool added to brain server.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
++@promaia/brain/schema.sql
++@promaia/brain/mcp_server.py
++@promaia/brain/engine.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Onboarding schema tables + state engine module</name>
++  <files>promaia/brain/schema.sql, promaia/brain/onboarding.py, promaia/storage/db_init.py</files>
++  <action>
++1. Add two tables to the END of schema.sql (after brain.modes):
++
++**brain.onboarding_sessions:**
++- id SERIAL PRIMARY KEY
++- user_id TEXT DEFAULT 'default' (future multi-user support)
++- status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'complete'))
++- started_at TIMESTAMPTZ DEFAULT NOW()
++- last_activity TIMESTAMPTZ DEFAULT NOW()
++- completed_at TIMESTAMPTZ
++- metadata JSONB DEFAULT '{}' (stores things like interview_arc_phase: 'warm_up'|'current_state'|'gap_identification'|'commitment')
++
++**brain.onboarding_progress:**
++- id SERIAL PRIMARY KEY
++- session_id INTEGER REFERENCES brain.onboarding_sessions(id) NOT NULL
++- channel TEXT NOT NULL (values: 'interview', 'pc_scan', 'gmail', 'photos')
++- status TEXT DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'complete', 'skipped'))
++- started_at TIMESTAMPTZ
++- completed_at TIMESTAMPTZ
++- fields_populated INTEGER DEFAULT 0 (count of profile fields this channel contributed)
++- notes TEXT (free-form notes about what was covered)
++- UNIQUE(session_id, channel)
++
++Add B-tree index on onboarding_sessions(user_id) and onboarding_progress(session_id).
++
++2. Create promaia/brain/onboarding.py with these functions (all accept optional db parameter, same pattern as engine.py):
++
++- `start_onboarding(user_id='default', db=None) -> dict`: Creates a new session row + 4 progress rows (one per channel, all 'not_started'). If an active session already exists, returns that instead. Returns {session_id, status, channels: [{channel, status}]}.
++
++- `get_onboarding_status(user_id='default', db=None) -> dict`: Returns current onboarding state: {session_id, status, started_at, last_activity, channels: [{channel, status, fields_populated}], profile_coverage: {category: {total_fields: N, populated: M}}}. Profile coverage queries brain.profile grouped by category. Returns None if no active/paused session exists.
++
++- `mark_channel_progress(session_id, channel, status, fields_populated=None, notes=None, db=None) -> bool`: Updates a channel's progress. When status='complete', sets completed_at=NOW(). Also updates session last_activity. Returns True on success.
++
++- `get_profile_coverage(db=None) -> dict`: Queries brain.profile for field counts by category. Compares against the EXPECTED_FIELDS dict (derived from the research schema in Part 3) to show gaps. Returns {category: {expected: N, populated: M, missing: [field_names]}}.
++
++Define EXPECTED_FIELDS as a module-level constant dict mapping each category to its expected field names (from the research schema):
++```python
++EXPECTED_FIELDS = {
++    'identity': ['name', 'preferred_name', 'pronouns', 'timezone', 'bio_blurb'],
++    'context': ['role', 'employer', 'industry', 'active_projects', 'tech_stack', 'devices'],
++    'relationships': ['people'],
++    'cognitive_style': ['decision_making', 'information_density', 'need_for_cognition', 'need_for_closure', 'locus_of_control', 'risk_tolerance', 'learning_style', 'cognitive_load_threshold'],
++    'energy_patterns': ['chronotype', 'peak_focus_hours', 'sprint_duration_min', 'energy_drains', 'energy_sources'],
++    'emotional_landscape': ['stress_response', 'known_triggers', 'conflict_style', 'emotional_baseline', 'shame_sensitivity'],
++    'values_and_motivation': ['values_hierarchy', 'regulatory_focus', 'motivational_drivers', 'purpose_statement', 'self_efficacy'],
++    'communication': ['preferred_tone', 'verbosity', 'feedback_style', 'humor_type', 'emoji_tolerance', 'preferred_channels'],
++    'work_patterns': ['working_hours', 'deep_work_prefs', 'meeting_tolerance', 'deadline_relationship'],
++    'neurodivergence': ['adhd_patterns', 'sensory_preferences', 'accommodation_notes'],
++}
++```
++
++- `complete_onboarding(session_id, db=None) -> bool`: Sets session status='complete', completed_at=NOW(). Returns True on success.
++
++3. In promaia/storage/db_init.py, add the new tables to apply_brain_schema() -- follow the existing pattern of executing each DDL statement independently with autocommit.
++
++All functions use the same DB patterns as engine.py: `from promaia.storage.postgres_db import get_postgres_db` when db is None, fetch_one/fetch_all/execute methods, logging warnings on failures.
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "from promaia.brain.onboarding import start_onboarding, get_onboarding_status, mark_channel_progress, get_profile_coverage, complete_onboarding, EXPECTED_FIELDS; print(f'Module loads OK, {len(EXPECTED_FIELDS)} categories defined')"</automated>
++    <manual>Check schema.sql has both new CREATE TABLE statements</manual>
++  </verify>
++  <done>onboarding.py module imports cleanly with all 5 functions + EXPECTED_FIELDS constant. schema.sql contains brain.onboarding_sessions and brain.onboarding_progress table definitions.</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Add onboard MCP tool to brain server</name>
++  <files>promaia/brain/mcp_server.py</files>
++  <action>
++Add a single `onboard` MCP tool to the existing brain server (promaia/brain/mcp_server.py). This tool handles all onboarding operations through an `action` parameter.
++
++1. Add to the list_tools() return list (after "update_profile"):
++
++```python
++Tool(
++    name="onboard",
++    description=(
++        "Manage the onboarding flow. Actions: "
++        "'start' begins or resumes onboarding, "
++        "'status' returns current progress and profile coverage gaps, "
++        "'channel_update' marks a channel's progress, "
++        "'complete' finalizes onboarding. "
++        "Use 'status' to know what profile areas still need exploration."
++    ),
++    inputSchema={
++        "type": "object",
++        "properties": {
++            "action": {
++                "type": "string",
++                "description": "One of: start, status, channel_update, complete",
++                "enum": ["start", "status", "channel_update", "complete"]
++            },
++            "channel": {
++                "type": "string",
++                "description": "Channel name (for channel_update): interview, pc_scan, gmail, photos"
++            },
++            "channel_status": {
++                "type": "string",
++                "description": "New status (for channel_update): in_progress, complete, skipped"
++            },
++            "fields_populated": {
++                "type": "integer",
++                "description": "Number of profile fields this channel contributed (for channel_update)"
++            },
++            "notes": {
++                "type": "string",
++                "description": "Free-form notes about what was covered (for channel_update)"
++            }
++        },
++        "required": ["action"]
++    }
++)
++```
++
++2. Add dispatch case in call_tool():
++```python
++elif name == "onboard":
++    return await _handle_onboard(arguments)
++```
++
++3. Implement _handle_onboard(args):
++- Import from promaia.brain.onboarding at top of file
++- For action="start": call start_onboarding(), return formatted status
++- For action="status": call get_onboarding_status(), format as readable markdown showing channel progress + profile coverage with gap percentages
++- For action="channel_update": call mark_channel_progress() with channel, channel_status, fields_populated, notes
++- For action="complete": call complete_onboarding()
++- Format the status output clearly with sections: "## Onboarding Progress", channel table, "## Profile Coverage" with per-category fill percentage, "## Suggested Next" listing the 3 categories with lowest fill percentage
++
++4. Update the server docstring to say "10 tools" instead of "9 tools".
++
++5. Update list_tools() docstring to say "10 brain tools" instead of "9".
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "import asyncio; from promaia.brain.mcp_server import list_tools; tools = asyncio.run(list_tools()); names = [t.name for t in tools]; assert 'onboard' in names, f'onboard not found in {names}'; print(f'OK: {len(tools)} tools registered, onboard present')"</automated>
++    <manual>Review that _handle_onboard dispatches all 4 actions correctly</manual>
++  </verify>
++  <done>Brain MCP server registers 10 tools including `onboard`. The onboard tool dispatches start/status/channel_update/complete actions to the onboarding engine.</done>
++</task>
++
++<task type="auto">
++  <name>Task 3: Deploy onboarding schema to Supabase</name>
++  <files>promaia/storage/db_init.py</files>
++  <action>
++Run the schema deployment to create the two new onboarding tables in Supabase.
++
++1. Execute the db_init to apply the updated brain schema:
++```bash
++cd C:/Users/Zachary\ Turner/dev/promaia
++python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema(); print('Schema applied')"
++```
++
++2. Verify tables exist by querying Supabase:
++```bash
++python -c "
++from promaia.storage.postgres_db import get_postgres_db
++db = get_postgres_db()
++tables = db.fetch_all(\"\"\"
++    SELECT table_name FROM information_schema.tables
++    WHERE table_schema = 'brain' ORDER BY table_name
++\"\"\")
++for t in tables:
++    print(t['table_name'])
++print(f'Total: {len(tables)} tables')
++"
++```
++
++Expected: 9 tables total (memories, domains, contexts, actions, reviews, events, profile, modes, onboarding_sessions, onboarding_progress) -- actually 10 since we added 2 new ones to the existing 8.
++
++3. Verify the onboard MCP tool works end-to-end:
++```bash
++python -c "
++from promaia.storage.postgres_db import get_postgres_db
++from promaia.brain.onboarding import start_onboarding, get_onboarding_status
++db = get_postgres_db()
++result = start_onboarding(db=db)
++print(f'Session started: {result}')
++status = get_onboarding_status(db=db)
++print(f'Status: {status}')
++"
++```
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "from promaia.storage.postgres_db import get_postgres_db; db = get_postgres_db(); tables = db.fetch_all(\"SELECT table_name FROM information_schema.tables WHERE table_schema = 'brain' AND table_name LIKE 'onboarding%' ORDER BY table_name\"); assert len(tables) == 2, f'Expected 2 onboarding tables, got {len(tables)}: {tables}'; print(f'OK: {[t[\"table_name\"] for t in tables]}')"</automated>
++  </verify>
++  <done>brain.onboarding_sessions and brain.onboarding_progress tables exist in Supabase. start_onboarding() creates a session and get_onboarding_status() returns it.</done>
++</task>
++
++</tasks>
++
++<verification>
++- onboarding.py module imports with all functions
++- Brain MCP server lists 10 tools including `onboard`
++- brain.onboarding_sessions and brain.onboarding_progress tables exist in Supabase
++- start_onboarding() + get_onboarding_status() round-trip works
++</verification>
++
++<success_criteria>
++1. Onboarding session can be created, queried, and completed via onboarding.py functions
++2. The `onboard` MCP tool is registered in brain server and dispatches all 4 actions
++3. Profile coverage report shows per-category gap analysis against EXPECTED_FIELDS
++4. Schema deployed to Supabase with both new tables
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-02-PLAN.md b/.planning/phases/03.1-onboarding-module/03.1-02-PLAN.md
+new file mode 100644
+index 0000000..c8abe35
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-02-PLAN.md
+@@ -0,0 +1,269 @@
++---
++phase: 03.1-onboarding-module
++plan: 02
++type: execute
++wave: 1
++depends_on: []
++files_modified:
++  - promaia/brain/channels/__init__.py
++  - promaia/brain/channels/pc_scan.py
++  - promaia/brain/channels/gmail_read.py
++  - promaia/brain/mcp_server.py
++autonomous: true
++requirements: [ONBOARD-04, ONBOARD-05, ONBOARD-06]
++
++must_haves:
++  truths:
++    - "PC scan channel analyzes local filesystem and git history to extract profile data automatically"
++    - "Gmail read channel ingests recent email to identify contacts, communication patterns, and topics"
++    - "Both channels write results to brain.profile via update_profile and brain.memories via capture"
++  artifacts:
++    - path: "promaia/brain/channels/__init__.py"
++      provides: "Channel package init"
++    - path: "promaia/brain/channels/pc_scan.py"
++      provides: "PC digital fingerprint scanner"
++      exports: ["run_pc_scan"]
++      min_lines: 80
++    - path: "promaia/brain/channels/gmail_read.py"
++      provides: "Gmail inbox reader and profile extractor"
++      exports: ["run_gmail_scan"]
++      min_lines: 80
++    - path: "promaia/brain/mcp_server.py"
++      provides: "pc_scan and gmail_scan MCP tools"
++      contains: "name=\"pc_scan\""
++  key_links:
++    - from: "promaia/brain/channels/pc_scan.py"
++      to: "brain.profile"
++      via: "direct SQL upsert to brain.profile"
++      pattern: "brain\\.profile"
++    - from: "promaia/brain/channels/gmail_read.py"
++      to: "promaia/connectors/gmail_connector.py"
++      via: "GmailConnector for API access"
++      pattern: "GmailConnector"
++---
++
++<objective>
++Build two automated data ingestion channels: PC scan (analyzes local files, git history, installed apps) and Gmail read (scans inbox for contacts, topics, communication style). Both channels extract profile data and store it in brain.profile.
++
++Purpose: These channels passively observe existing digital artifacts to build profile depth without requiring the user to answer questions. This implements the "observe first, ask second" principle from the research.
++
++Output: Two channel modules + two new MCP tools (pc_scan, gmail_scan) added to brain server.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
++@promaia/brain/mcp_server.py
++@promaia/connectors/gmail_connector.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: PC scan channel module</name>
++  <files>promaia/brain/channels/__init__.py, promaia/brain/channels/pc_scan.py</files>
++  <action>
++Create the promaia/brain/channels/ package directory with __init__.py.
++
++Create promaia/brain/channels/pc_scan.py that automates the digital fingerprint scan already proved in Phase 2 (the manual scan that populated 39 fields). This module formalizes that approach.
++
++`run_pc_scan(home_dir=None, db=None) -> dict`:
++
++1. **Git analysis** (already proved):
++   - Scan ~/dev/ for .git directories (up to 10 repos)
++   - For each repo: `git log --format="%H|%ai|%s" -n 100` to extract commit patterns
++   - Derive: chronotype (commits by hour), sprint_duration (burst patterns), active_projects list
++   - Store to brain.profile: energy_patterns.chronotype, energy_patterns.peak_focus_hours, context.active_projects
++
++2. **File structure analysis**:
++   - Scan ~/dev/ directory names to confirm active projects
++   - Check for common config files: .bashrc/.zshrc (shell prefs), package.json/requirements.txt (tech stack)
++   - Store to brain.profile: context.tech_stack, context.devices (from OS detection)
++
++3. **Installed apps detection** (Windows-specific):
++   - Read registry or use `wmic product get name` (via subprocess) to list installed software
++   - Filter for interesting categories: dev tools, productivity, creative, communication
++   - Store interesting findings as brain.memories with domain='personal' and source='pc_scan'
++
++4. **Profile updates**:
++   - Use direct SQL to upsert into brain.profile (same pattern as _handle_update_profile in mcp_server.py)
++   - Each field: source='inferred', confidence=0.6 (inferred from digital artifacts)
++   - Generate embeddings for each profile update (use VectorDBManager)
++
++5. **Return value**: dict with {fields_updated: N, repos_scanned: N, apps_found: N, insights: [str]}
++
++Important constraints:
++- Use subprocess.run with timeout=30 for all shell commands
++- Catch all exceptions per-section so partial results still return
++- Use os.path.expanduser('~') if home_dir not provided
++- Log to logger (same pattern as engine.py)
++- Do NOT import or use the MCP server -- this is a standalone module that brain MCP calls
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "from promaia.brain.channels.pc_scan import run_pc_scan; print('Module loads OK')"</automated>
++    <manual>Review that git log parsing handles Windows paths and subprocess timeouts</manual>
++  </verify>
++  <done>pc_scan.py module imports cleanly. run_pc_scan() function scans git repos, file structure, and installed apps to extract profile fields.</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Gmail read channel module</name>
++  <files>promaia/brain/channels/gmail_read.py</files>
++  <action>
++Create promaia/brain/channels/gmail_read.py that uses the existing GmailConnector to read recent emails and extract profile-relevant data.
++
++`run_gmail_scan(email_address=None, days_back=30, max_emails=100, db=None) -> dict`:
++
++1. **Connect to Gmail**:
++   - Use existing GmailConnector from promaia.connectors.gmail_connector
++   - Initialize with workspace config (email_address parameter or default from .env GMAIL_ADDRESS)
++   - If OAuth credentials not set up, return early with {error: "Gmail OAuth not configured. Run: python -m promaia.cli.main workspace gmail-setup default {email}"} -- do NOT crash
++
++2. **Fetch recent emails**:
++   - Use GmailConnector to list threads from last `days_back` days
++   - For each thread (up to max_emails): extract sender, recipients, subject, date, snippet
++   - Do NOT store raw email content -- only metadata and summaries
++
++3. **Extract profile signals**:
++   - **Contacts**: Build frequency map of email contacts (who Zack communicates with most). Store top 10 as brain.profile relationships.people entries
++   - **Communication patterns**: Analyze reply timing, email length distribution, formality level. Store as brain.profile communication fields
++   - **Topics**: Cluster subjects by keyword to identify recurring themes (work, personal, projects). Store as brain.memories with domain inferred from topic
++   - **Activity patterns**: Email send times to augment chronotype data. Store as brain.profile energy_patterns
++
++4. **Profile updates**:
++   - Use direct SQL to upsert into brain.profile (same as pc_scan)
++   - source='inferred', confidence=0.5 (inferred from email patterns, lower confidence than direct observation)
++   - Store contact list as relationships.people value (JSON array of {name, email, frequency, last_contact})
++
++5. **Privacy safeguards**:
++   - NEVER store email body text in brain.memories or brain.profile
++   - Store ONLY: contact names, frequency counts, subject line keywords, timing patterns
++   - All memories stored as summaries: "Communicates frequently with [Name] about [Topic]"
++
++6. **Return value**: dict with {contacts_found: N, emails_scanned: N, fields_updated: N, error: str|None}
++
++Important:
++- Wrap entire function in try/except -- Gmail OAuth failure must not crash the MCP server
++- If google-auth packages not installed, return graceful error dict
++- Use logging, not print statements
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "from promaia.brain.channels.gmail_read import run_gmail_scan; print('Module loads OK')"</automated>
++    <manual>Verify that no raw email content is stored -- only metadata and summaries</manual>
++  </verify>
++  <done>gmail_read.py module imports cleanly. run_gmail_scan() reads emails via existing GmailConnector, extracts contacts/patterns/topics, and stores to brain.profile. Graceful error handling when OAuth not configured.</done>
++</task>
++
++<task type="auto">
++  <name>Task 3: Add pc_scan and gmail_scan MCP tools</name>
++  <files>promaia/brain/mcp_server.py</files>
++  <action>
++Add two MCP tools to the brain server for the data ingestion channels.
++
++1. Add to list_tools() (after "onboard" tool from Plan 01 -- if Plan 01 hasn't run yet, add after "update_profile"):
++
++**pc_scan tool:**
++```python
++Tool(
++    name="pc_scan",
++    description=(
++        "Run the PC digital fingerprint scan. Analyzes local git repos, "
++        "file structure, and installed apps to infer profile data. "
++        "Results are stored in brain.profile with source='inferred'. "
++        "Safe to run multiple times -- results are upserted."
++    ),
++    inputSchema={
++        "type": "object",
++        "properties": {},
++        "required": []
++    }
++)
++```
++
++**gmail_scan tool:**
++```python
++Tool(
++    name="gmail_scan",
++    description=(
++        "Scan recent Gmail inbox to extract contacts, communication patterns, "
++        "and recurring topics. Requires Gmail OAuth to be configured first. "
++        "Stores only metadata and summaries -- never raw email content."
++    ),
++    inputSchema={
++        "type": "object",
++        "properties": {
++            "days_back": {
++                "type": "integer",
++                "description": "How many days of email to scan (default 30).",
++                "default": 30
++            },
++            "max_emails": {
++                "type": "integer",
++                "description": "Maximum emails to process (default 100).",
++                "default": 100
++            }
++        },
++        "required": []
++    }
++)
++```
++
++2. Add dispatch cases in call_tool():
++```python
++elif name == "pc_scan":
++    return await _handle_pc_scan(arguments)
++elif name == "gmail_scan":
++    return await _handle_gmail_scan(arguments)
++```
++
++3. Implement handlers:
++
++**_handle_pc_scan(args):**
++- Import run_pc_scan from promaia.brain.channels.pc_scan
++- Call run_pc_scan(db=get_db())
++- Format result as readable text: "## PC Scan Results\n- Repos scanned: N\n- Fields updated: N\n- Insights:\n  - ..."
++- Log event to brain.events with type='pc_scan', source='onboarding'
++
++**_handle_gmail_scan(args):**
++- Import run_gmail_scan from promaia.brain.channels.gmail_read
++- Call run_gmail_scan(days_back=args.get('days_back', 30), max_emails=args.get('max_emails', 100), db=get_db())
++- If result has error key, return the error message as guidance
++- Format result as readable text
++- Log event to brain.events with type='gmail_scan', source='onboarding'
++
++4. Update tool count in server docstring and list_tools docstring (account for onboard + pc_scan + gmail_scan = 12 total if Plan 01 already ran, or 11 if adding alongside update_profile).
++
++NOTE: If Plan 01 has already executed and added the `onboard` tool, the count should be 12. If not, count should be 11. Check the actual state of the file before updating the count.
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "import asyncio; from promaia.brain.mcp_server import list_tools; tools = asyncio.run(list_tools()); names = [t.name for t in tools]; assert 'pc_scan' in names and 'gmail_scan' in names, f'Missing tools. Found: {names}'; print(f'OK: {len(tools)} tools, pc_scan and gmail_scan present')"</automated>
++  </verify>
++  <done>Brain MCP server registers pc_scan and gmail_scan tools. Both dispatch to their respective channel modules and log events.</done>
++</task>
++
++</tasks>
++
++<verification>
++- pc_scan.py and gmail_read.py modules import without errors
++- Brain MCP server lists pc_scan and gmail_scan tools
++- pc_scan handler calls run_pc_scan and returns formatted results
++- gmail_scan handler calls run_gmail_scan with graceful OAuth error handling
++</verification>
++
++<success_criteria>
++1. PC scan channel module can analyze git repos, file structure, and installed apps
++2. Gmail read channel module can scan inbox (when OAuth configured) or return helpful error
++3. Both channels store results in brain.profile with source='inferred'
++4. MCP tools registered and dispatch correctly
++5. No raw email content is ever stored -- only summaries and metadata
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/03.1-onboarding-module/03.1-02-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-03-PLAN.md b/.planning/phases/03.1-onboarding-module/03.1-03-PLAN.md
+new file mode 100644
+index 0000000..c1c0445
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-03-PLAN.md
+@@ -0,0 +1,297 @@
++---
++phase: 03.1-onboarding-module
++plan: 03
++type: execute
++wave: 2
++depends_on: ["03.1-01", "03.1-02"]
++files_modified:
++  - CLAUDE.md
++  - promaia/brain/channels/interview.py
++  - promaia/brain/channels/question_bank.py
++autonomous: false
++requirements: [ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
++
++must_haves:
++  truths:
++    - "CLAUDE.md contains onboarding instructions that guide Claude through interview sessions"
++    - "Interview question bank covers all profile categories with OARS-informed questions"
++    - "Claude knows to use reciprocal disclosure during onboarding conversations"
++    - "Onboarding flow is resumable, skippable, and under 3 minutes per burst"
++  artifacts:
++    - path: "CLAUDE.md"
++      provides: "Onboarding behavior instructions for Claude"
++      contains: "Onboarding Interview"
++    - path: "promaia/brain/channels/interview.py"
++      provides: "Interview orchestration logic"
++      exports: ["get_next_question", "get_interview_state"]
++      min_lines: 100
++    - path: "promaia/brain/channels/question_bank.py"
++      provides: "Categorized question templates using OARS and narrative techniques"
++      exports: ["QUESTION_BANK", "get_questions_for_category"]
++      min_lines: 80
++  key_links:
++    - from: "CLAUDE.md"
++      to: "promaia/brain/mcp_server.py"
++      via: "Instructions reference onboard, profile, and update_profile tools"
++      pattern: "mcp__brain__onboard"
++    - from: "promaia/brain/channels/interview.py"
++      to: "promaia/brain/channels/question_bank.py"
++      via: "Imports question bank for category selection"
++      pattern: "from promaia\\.brain\\.channels\\.question_bank import"
++    - from: "promaia/brain/channels/interview.py"
++      to: "brain.profile"
++      via: "Queries profile coverage to determine next category"
++      pattern: "brain\\.profile"
++---
++
++<objective>
++Create the conversational interview channel with a structured question bank, and write the CLAUDE.md onboarding instructions that teach Claude how to conduct the interview using OARS technique, reciprocal disclosure, and progressive profiling.
++
++Purpose: This is where the onboarding "personality" lives. The question bank provides the content, the interview module provides the logic, and CLAUDE.md provides the behavioral instructions that make the conversation feel natural and ADHD-friendly.
++
++Output: Interview channel module, question bank, updated CLAUDE.md with onboarding section.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
++@.planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md
++@.planning/phases/03.1-onboarding-module/03.1-02-SUMMARY.md
++@CLAUDE.md
++@promaia/brain/mcp_server.py
++@promaia/brain/onboarding.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Question bank and interview orchestration</name>
++  <files>promaia/brain/channels/question_bank.py, promaia/brain/channels/interview.py</files>
++  <action>
++**1. Create promaia/brain/channels/question_bank.py:**
++
++Define QUESTION_BANK as a dict mapping profile categories to question sets. Each question has:
++- `text`: The question to ask
++- `fields`: Which brain.profile fields this question populates (list of "category.field" strings)
++- `phase`: Which interview arc phase it belongs to ('warm_up', 'current_state', 'gap_identification', 'commitment')
++- `technique`: Which technique it uses ('open', 'narrative', 'scaling', 'values_elicitation', 'two_word_checkin')
++- `follow_ups`: List of follow-up question templates (using {answer} placeholder)
++- `ai_disclosure`: What Claude should share about itself in reciprocal response (string or None)
++
++Categories and their questions (implement ALL of these -- this is the heart of the module):
++
++**identity (warm_up):**
++- "What should I call you?" -> fields: ['identity.preferred_name'] | ai_disclosure: "I tend to go by Claude, though some people give me nicknames. I like that."
++- "Where are you based? Timezone helps me know when you're likely around." -> fields: ['identity.timezone'] | ai_disclosure: "I exist everywhere and nowhere -- but I'll anchor to your timezone."
++
++**communication (warm_up):**
++- "When I explain things, do you prefer the short version or the full reasoning?" -> fields: ['communication.verbosity', 'communication.information_density'] | ai_disclosure: "I default to thorough -- I'd rather give too much context than too little. But I can learn to be concise."
++- "Do you prefer I'm direct and blunt, or more diplomatic?" -> fields: ['communication.preferred_tone'] | ai_disclosure: "I lean toward diplomatic naturally, but I can absolutely do direct. Just say the word."
++
++**cognitive_style (current_state):**
++- "When you're facing a big decision, what helps most -- seeing all the options laid out, or getting a single recommendation?" -> fields: ['cognitive_style.decision_making'] | ai_disclosure: "I tend to think in options -- but I've learned that sometimes people just want me to pick one."
++- "How do you like to learn new things? Reading, doing, watching, talking it through?" -> fields: ['cognitive_style.learning_style'] | ai_disclosure: None
++
++**energy_patterns (current_state):**
++- "Are you more of a morning person or a night owl?" -> fields: ['energy_patterns.chronotype'] | ai_disclosure: None
++- "When you're really locked in on something, how long does that focus sprint usually last?" -> fields: ['energy_patterns.sprint_duration_min'] | ai_disclosure: None
++- "What drains your energy fastest?" -> fields: ['energy_patterns.energy_drains'] | follow_ups: ["And what recharges you?"] | technique: 'open'
++
++**values_and_motivation (gap_identification):**
++- "Tell me about a time when you were doing something that felt really meaningful. What was happening?" -> fields: ['values_and_motivation.values_hierarchy'] | technique: 'narrative' | ai_disclosure: "I find meaning in understanding people well enough to actually help -- not just give generic answers."
++- "What's driving the projects you're working on right now? Like, what's the bigger thing underneath?" -> fields: ['values_and_motivation.purpose_statement', 'values_and_motivation.motivational_drivers'] | technique: 'values_elicitation'
++
++**emotional_landscape (gap_identification):**
++- "When things go sideways, what's your first instinct -- fight through it, step back, freeze up, or try to smooth it over?" -> fields: ['emotional_landscape.stress_response'] | ai_disclosure: "I don't have stress responses exactly, but I do notice when I'm in territory where I might not be helpful -- and I'll flag that."
++- "Is there anything that reliably frustrates you when working with AI? I'd rather know now." -> fields: ['emotional_landscape.known_triggers'] | technique: 'open' | ai_disclosure: "One thing I know about myself -- I can be too cautious. If I'm hedging too much, call it out."
++
++**work_patterns (current_state):**
++- "How do you feel about deadlines -- do they motivate you, stress you out, or do you mostly ignore them?" -> fields: ['work_patterns.deadline_relationship'] | ai_disclosure: None
++- "Do you prefer long uninterrupted blocks, or do you work better in short bursts?" -> fields: ['work_patterns.deep_work_prefs'] | ai_disclosure: None
++
++**neurodivergence (gap_identification):**
++- "Some people's brains work differently -- ADHD, autism, dyslexia, whatever. Anything like that I should know about?" -> fields: ['neurodivergence.adhd_patterns'] | ai_disclosure: "I'm designed to adapt. If you tell me how your brain works, I can meet you where you are."
++- (Only ask if user mentions ADHD): "What does ADHD look like for you specifically? Like, what are the things that actually trip you up vs the things that are secretly superpowers?" -> fields: ['neurodivergence.adhd_patterns', 'neurodivergence.accommodation_notes'] | technique: 'narrative'
++
++**relationships (commitment):**
++- "Who are the key people in your world right now? Family, collaborators, whoever I should know about." -> fields: ['relationships.people'] | ai_disclosure: None
++
++Implement `get_questions_for_category(category: str) -> list[dict]` that returns the questions for a given category.
++
++Implement `get_questions_for_phase(phase: str) -> list[dict]` that returns all questions for a given interview arc phase.
++
++**2. Create promaia/brain/channels/interview.py:**
++
++This module determines WHAT to ask next based on current profile state.
++
++`get_interview_state(db=None) -> dict`:
++- Query brain.profile to see which categories have fields populated
++- Cross-reference with QUESTION_BANK to find questions whose target fields are still empty
++- Return: {current_phase: str, categories_covered: [str], categories_remaining: [str], total_questions_asked: int, next_category: str, completion_pct: float}
++
++`get_next_question(current_category=None, db=None) -> dict | None`:
++- If current_category provided, get next unanswered question in that category
++- If not, pick the category with the lowest fill percentage (from onboarding.EXPECTED_FIELDS)
++- Respect phase ordering: warm_up questions before current_state before gap_identification before commitment
++- Return the question dict from QUESTION_BANK (with text, fields, ai_disclosure, etc.)
++- Return None if all questions answered or all categories sufficiently populated (>60% fill)
++
++`mark_question_answered(category: str, fields_populated: list[str], db=None) -> None`:
++- Just a convenience wrapper -- the actual profile update happens via update_profile MCP tool
++- This function records in brain.events that a question was asked and answered
++- Updates onboarding_progress for the 'interview' channel (increment fields_populated count)
++
++Important: The interview module does NOT conduct the conversation. It provides the NEXT question. Claude conducts the conversation using CLAUDE.md instructions and calls update_profile after each answer.
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "
++from promaia.brain.channels.question_bank import QUESTION_BANK, get_questions_for_category, get_questions_for_phase
++from promaia.brain.channels.interview import get_interview_state, get_next_question
++cats = list(QUESTION_BANK.keys())
++warm_up = get_questions_for_phase('warm_up')
++print(f'OK: {len(cats)} categories, {sum(len(v) for v in QUESTION_BANK.values())} total questions, {len(warm_up)} warm-up questions')
++"</automated>
++    <manual>Verify questions feel natural and conversational, not clinical</manual>
++  </verify>
++  <done>Question bank covers all profile categories with OARS-informed questions including reciprocal AI disclosure. Interview module can determine next question based on profile coverage gaps.</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: CLAUDE.md onboarding instructions</name>
++  <files>CLAUDE.md</files>
++  <action>
++Add a new "## Onboarding Interview" section to CLAUDE.md AFTER the existing "## Personal Profile" section and BEFORE "## Energy Adaptation". This section teaches Claude how to conduct the onboarding conversation.
++
++Add this content (adapt to match existing CLAUDE.md tone -- brief, directive, not verbose):
++
++```markdown
++## Onboarding Interview
++
++When the user starts an onboarding session (or you detect this is a new/incomplete profile):
++
++### Starting
++1. Call `mcp__brain__onboard` with action="status" to check progress
++2. If no active session, call action="start" to begin
++3. If resuming, acknowledge where they left off: "We covered X last time. Want to pick up with Y?"
++
++### Conducting the Interview
++- ONE question at a time. Never batch questions.
++- Keep each burst under 3 minutes. After 3-4 questions, offer a break: "Good stopping point if you want."
++- React to EVERY answer before asking the next thing:
++  - Reflect back: "So you're a night owl who works in bursts -- got it."
++  - Share about yourself when the question bank includes ai_disclosure
++  - Then call `mcp__brain__update_profile` to save what you learned
++- Use the question bank: call interview.get_next_question() mentally, but phrase questions naturally in your own words
++- Skip freely: if user says "skip" or "I don't know", move on without judgment: "No problem, we can figure that out over time."
++- Follow-ups go deeper: when someone gives a short answer, use the follow-up questions to probe gently
++- Probe vague language: "Hard in what way?" "What do you mean by organized?"
++
++### Reciprocal Disclosure
++When sharing about yourself during onboarding:
++- Share your actual tendencies: "I default to thorough explanations" / "I tend to be cautious"
++- Share what you're calibrating: "Based on your answers, I'm going to be more direct with you"
++- Share limitations honestly: "I might not remember this perfectly across sessions -- that's what the brain is for"
++- NEVER fabricate experiences or claim to feel emotions
++- NEVER be generic: "I understand" is empty. "That sounds like you value autonomy over security" is real.
++
++### Progressive Profiling (Post-Interview)
++After the initial interview, shift to observational mode:
++- Infer traits from conversation patterns (message length, emoji use, decision speed)
++- Use source="inferred" and confidence=0.5 for observations
++- Tie contextual questions to moments:
++  - After stress: "How do you prefer I handle situations like that?"
++  - After a decision: "Was that the right level of detail?"
++  - After mentioning someone: "Should I remember anything about [person]?"
++- ONE contextual question per session maximum. Do not survey.
++- Show value: "I noticed you work best mornings -- want me to flag deep work for AM?"
++
++### Channel Orchestration
++When running the full onboarding:
++1. Start with interview (warm-up questions first)
++2. Offer PC scan: "I can look at your git history and file structure to learn about your work patterns. Want me to do that?" Call `mcp__brain__pc_scan` if yes.
++3. Offer Gmail scan (if OAuth configured): "I can scan your recent email for contacts and communication patterns. Nothing stored raw -- just summaries. Interested?" Call `mcp__brain__gmail_scan` if yes.
++4. Photos channel is manual -- offer later: "Sometime you could walk me through photos that matter to you."
++5. After each channel, update progress: `mcp__brain__onboard` action="channel_update"
++
++### ADHD-Friendly Principles
++- Short bursts (2-3 min), each independently valuable
++- Save progress automatically (every answer → update_profile)
++- Never say "you haven't finished" -- say "pick up where you left off"
++- Default everything -- "Most people prefer X, does that work?" reduces decision load
++- Show personality emerging: "Based on what you've told me, I'm adjusting to be more concise and direct."
++- Frame everything as progress, never as incomplete
++```
++
++After adding the section, verify the overall CLAUDE.md still reads coherently -- the existing sections (Session Start, Capture, Project Context, Ambient Awareness, Personal Profile, Energy Adaptation) should flow logically with the new Onboarding Interview section inserted between Personal Profile and Energy Adaptation.
++  </action>
++  <verify>
++    <automated>cd C:/Users/Zachary\ Turner/dev/promaia && python -c "
++content = open('CLAUDE.md').read()
++checks = [
++    '## Onboarding Interview' in content,
++    'Reciprocal Disclosure' in content,
++    'Progressive Profiling' in content,
++    'Channel Orchestration' in content,
++    'ADHD-Friendly' in content,
++    'mcp__brain__onboard' in content,
++    'mcp__brain__pc_scan' in content,
++]
++assert all(checks), f'Missing sections: {[i for i,c in enumerate(checks) if not c]}'
++print(f'OK: CLAUDE.md has all onboarding sections ({len(content)} chars)')
++"</automated>
++    <manual>Read CLAUDE.md end-to-end to verify tone consistency and logical flow</manual>
++  </verify>
++  <done>CLAUDE.md contains comprehensive onboarding interview instructions covering: starting/resuming, conversational technique, reciprocal disclosure, progressive profiling, channel orchestration, and ADHD-friendly principles.</done>
++</task>
++
++<task type="checkpoint:human-verify" gate="blocking">
++  <name>Task 3: Onboarding flow verification</name>
++  <what-built>
++Complete onboarding module: state tracking (brain.onboarding_sessions/progress tables), 3 channels (interview question bank, PC scan, Gmail read), MCP tools (onboard, pc_scan, gmail_scan), and CLAUDE.md behavioral instructions.
++  </what-built>
++  <how-to-verify>
++1. **Check onboarding status:** In a Claude Code session in the promaia directory, say "Check my onboarding status" -- Claude should call mcp__brain__onboard with action="status" and show profile coverage gaps.
++
++2. **Start onboarding:** Say "Let's do the onboarding interview" -- Claude should:
++   - Start an onboarding session
++   - Ask ONE warm-up question (like "What should I call you?")
++   - Share something about itself in response (reciprocal disclosure)
++   - Save your answer to brain.profile
++   - Not dump 5 questions at once
++
++3. **Test skip:** Say "skip" to a question -- Claude should move on without guilt-tripping.
++
++4. **Test PC scan:** Say "Run a PC scan" -- Claude should call mcp__brain__pc_scan and report findings (git repos, patterns, etc.)
++
++5. **Test Gmail scan (expect graceful failure):** Say "Scan my Gmail" -- unless OAuth is configured, Claude should explain what's needed and not crash.
++
++6. **Check profile growth:** Say "Show my profile" -- call mcp__brain__profile to see fields populated across all sources.
++  </how-to-verify>
++  <resume-signal>Type "approved" or describe issues with the onboarding experience</resume-signal>
++</task>
++
++</tasks>
++
++<verification>
++- Question bank has questions for all major profile categories
++- Interview module returns next question based on profile gaps
++- CLAUDE.md has complete onboarding section with all sub-sections
++- End-to-end: Claude can start onboarding, ask questions, save answers, offer channels
++</verification>
++
++<success_criteria>
++1. Question bank covers at least 8 profile categories with 2+ questions each
++2. Interview orchestration respects phase ordering (warm_up -> current_state -> gap_identification -> commitment)
++3. CLAUDE.md onboarding section includes all 6 sub-sections (starting, conducting, reciprocal disclosure, progressive profiling, channel orchestration, ADHD principles)
++4. Human verification confirms Claude follows onboarding instructions naturally
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md`
++</output>
+-- 
+2.51.0.windows.1
+

@@ -1,0 +1,2457 @@
+# PROMAIA/ZBRAIN INSTALLATION AUDIT REQUEST
+
+You are auditing a personal AI assistant platform called Promaia (built by Josie/Rose), customized as zBrain by Zack (the user/dad).
+
+## YOUR MISSION
+Be BRUTALLY honest. No flattery. No pulling punches. This is a technical audit, not a pitch deck.
+Rate the overall system 1-10 with justification.
+Identify AT LEAST 5 significant improvements, ranked by impact.
+Call out architectural smells, dead code paths, fragile patterns, missing error handling, and missed opportunities.
+Evaluate: Is this system ready to be a reliable daily-driver personal AI assistant?
+
+## CONTEXT
+- Brain layer: Postgres+pgvector for memories, actions, contexts, profile traits
+- MuninnDB: Cognitive memory sidecar (currently dormant - all hebbian=0.00, never activated)
+- Agent scheduler: 3 agents (morning-briefing, email-triage, evening-digest) via Claude Agent SDK
+- Web dashboard: FastAPI+Jinja2, 6 CSS skins, live Postgres data
+- Gmail pipeline: OAuth integration, 34 emails ingested
+- MCP server: 15 brain tools exposed to Claude Code
+
+## KNOWN ISSUES
+- KeyError:0 in files.py:780 (gmail thread ID lookup cursor returns dict not tuple)
+- unified_content view missing causes error in prompts.py
+- MuninnDB completely dormant (no Hebbian learning, no activation, just text matching)
+- Agents blocked by CLAUDECODE env var (nested session detection)
+- Action extraction only works when dotenv explicitly loaded
+- gmail_content has 34 rows but agent page-ID lookup cant find them
+
+## CODE FOLLOWS
+
+### Brain MCP Server (promaia/brain/mcp_server.py)
+"""
+Brain MCP Server — 15 tools for zBrain.
+
+Exposes Claude's persistent memory system as MCP tools over stdio.
+Claude calls these tools to get briefings, capture thoughts, search memories,
+manage project context, track actions, maintain a personal profile,
+manage the onboarding flow, run data ingestion channels, and perform
+cognitive retrieval via MuninnDB.
+
+Tools:
+    briefing        — stale projects + pending actions + recent heartbeat activity
+    capture         — store memory with embedding, auto-extract actions (dual-writes to MuninnDB)
+    search          — semantic vector search + MuninnDB ACTIVATE (parallel trial)
+    recall          — recent memories filtered by domain or time range
+    context         — read a domain's directive and current state
+    update_context  — write/upsert a domain's context
+    actions         — list or mark-done brain actions
+    profile         — read personal profile (all or by category)
+    update_profile  — set a profile field with value, confidence, and source
+    onboard         — manage the onboarding flow (start/status/channel_update/complete)
+    pc_scan         — scan local git repos, files, and apps for profile data
+    gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
+    gmail_query     — search stored Gmail content by sender, subject, or full-text
+    activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
+    timeline        — reference timeline of life events (add/list/query)
+
+Usage:
+    python -m promaia.brain.mcp_server
+"""
+import asyncio
+import json
+import logging
+import os
+import sys
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+
+# Load .env from the project root (walk up from this file to find it)
+_project_root = Path(__file__).resolve().parents[2]
+load_dotenv(_project_root / ".env")
+
+import numpy as np
+import psycopg2.extras
+from pgvector.psycopg2 import register_vector
+
+try:
+    from mcp.server import Server
+    from mcp.server.stdio import stdio_server
+    from mcp.types import Tool, TextContent
+except ImportError:
+    print("ERROR: mcp package not installed. Install with: pip install 'mcp>=1.26.0'", file=sys.stderr)
+    sys.exit(1)
+
+from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.vector_db import VectorDBManager
+from promaia.brain import engine
+from promaia.brain.extraction import extract_actions
+from promaia.brain.onboarding import (
+    start_onboarding, get_onboarding_status,
+    mark_channel_progress, get_profile_coverage,
+    complete_onboarding, EXPECTED_FIELDS,
+)
+from promaia.brain.channels.interview import (
+    get_interview_state,
+    get_next_question,
+    mark_question_answered,
+)
+from promaia.brain.muninn import get_muninn
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Server + session state
+# ---------------------------------------------------------------------------
+server = Server("zbrain-brain")
+SESSION_ID = str(uuid.uuid4())
+
+# Lazy-initialised singletons so the server can start without a live DB
+_db = None
+_vector_manager = None
+
+
+def get_db():
+    global _db
+    if _db is None:
+        _db = get_postgres_db()
+    return _db
+
+
+def get_vector_mgr():
+    global _vector_manager
+    if _vector_manager is None:
+        _vector_manager = VectorDBManager()
+    return _vector_manager
+
+
+# ---------------------------------------------------------------------------
+# Tool registry
+# ---------------------------------------------------------------------------
+
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    """Enumerate all 13 brain tools."""
+    return [
+        Tool(
+            name="briefing",
+            description=(
+                "Return a session briefing: stale projects, pending actions, "
+                "and recent heartbeat activity from the last 24 hours. "
+                "Call this at the start of every session."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="capture",
+            description=(
+                "Store a thought, note, or observation as a persistent memory. "
+                "Automatically extracts any actionable items and generates a "
+                "semantic embedding for future search."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The text to store as a memory."
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain name (e.g. 'promaia', 'heatpup')."
+                    }
+                },
+                "required": ["content"]
+            }
+        ),
+        Tool(
+            name="search",
+            description=(
+                "Semantic vector search across all brain memories. "
+                "Returns the most relevant memories ranked by cosine similarity."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results to return (default 10).",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="recall",
+            description=(
+                "Retrieve recent memories, optionally filtered by domain and time range."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Filter by domain name (optional)."
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "How many days back to look (default 30).",
+                        "default": 30
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results (default 20).",
+                        "default": 20
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="context",
+            description=(
+                "Read the standing directive and current state for a domain. "
+                "Use this to understand what's happening in a specific project."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name to look up (e.g. 'promaia')."
+                    }
+                },
+                "required": ["domain"]
+            }
+        ),
+        Tool(
+            name="update_context",
+            description=(
+                "Write or update the standing directive and current state for a domain. "
+                "Creates the domain and context if they don't exist yet."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name to update."
+                    },
+                    "directive": {
+                        "type": "string",
+                        "description": "Standing directive for this domain (optional)."
+                    },
+                    "current_state": {
+                        "type": "string",
+                        "description": "Current status or state of this domain (optional)."
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": "Priority 1-10 (1=highest). Default 5 (optional)."
+                    }
+                },
+                "required": ["domain"]
+            }
+        ),
+        Tool(
+            name="actions",
+            description=(
+                "List pending actions, optionally filtered by domain. "
+                "Pass mark_done with an action ID to mark it complete."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status: 'pending', 'done', 'stale' (default 'pending').",
+                        "default": "pending"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Filter by domain name (optional)."
+                    },
+                    "mark_done": {
+                        "type": "integer",
+                        "description": "Action ID to mark as completed (optional)."
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="profile",
+            description=(
+                "Read the user's personal profile. Returns all dimensions or "
+                "a specific category. Categories include: identity, cognitive_style, "
+                "energy_patterns, emotional_landscape, values_and_motivation, "
+                "communication, work_patterns, relatio
+[TRUNCATED]
+
+
+### Action Extraction (promaia/brain/extraction.py)
+"""
+Action extraction module for zBrain.
+
+Uses instructor + Gemini Flash to extract structured actionable items
+from free-form text captured via the brain MCP capture tool.
+
+If instructor.from_genai is unavailable (version mismatch), falls back to
+raw Gemini Flash with response_mime_type="application/json" and manual
+Pydantic validation.
+"""
+import json
+import logging
+import os
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+class ExtractedAction(BaseModel):
+    """A single actionable item extracted from text."""
+    description: str
+    domain: Optional[str] = None
+    urgency: str = "normal"  # choices: "urgent", "normal", "someday"
+
+
+class ActionExtractionResult(BaseModel):
+    """Result of action extraction from a block of text."""
+    actions: List[ExtractedAction]
+    has_actions: bool
+
+
+# ---------------------------------------------------------------------------
+# Extraction prompt
+# ---------------------------------------------------------------------------
+
+_EXTRACTION_PROMPT = """Extract any actionable items from this text. Look for:
+- "I need to..."
+- "don't forget..."
+- "we should..."
+- "make sure to..."
+- explicit commitments or tasks
+
+For each action found, set urgency to one of: "urgent", "normal", "someday".
+If no actions found, return has_actions=False with empty list.
+
+Text to analyze:
+{text}"""
+
+
+# ---------------------------------------------------------------------------
+# Main extraction function
+# ---------------------------------------------------------------------------
+
+def extract_actions(text: str) -> ActionExtractionResult:
+    """Extract actionable items from text using Gemini Flash via instructor.
+
+    Attempts instructor.from_genai() first; falls back to raw Gemini JSON
+    mode + manual Pydantic validation if instructor integration is unavailable.
+
+    Args:
+        text: Free-form text to scan for actions.
+
+    Returns:
+        ActionExtractionResult with list of extracted actions and has_actions flag.
+        Returns empty result on any failure (never raises).
+    """
+    if not text or not text.strip():
+        return ActionExtractionResult(actions=[], has_actions=False)
+
+    api_key = os.environ.get('GOOGLE_API_KEY')
+    if not api_key:
+        logger.warning("GOOGLE_API_KEY not set — skipping action extraction")
+        return ActionExtractionResult(actions=[], has_actions=False)
+
+    # Try instructor path first
+    try:
+        return _extract_via_instructor(text, api_key)
+    except Exception as e:
+        logger.warning(f"instructor extraction failed ({e}), trying raw Gemini fallback")
+
+    # Fallback: raw Gemini Flash with JSON mode
+    try:
+        return _extract_via_raw_gemini(text, api_key)
+    except Exception as e:
+        logger.error(f"Action extraction failed (both paths): {e}")
+        return ActionExtractionResult(actions=[], has_actions=False)
+
+
+def _extract_via_instructor(text: str, api_key: str) -> ActionExtractionResult:
+    """Attempt extraction using instructor + google-genai client."""
+    import instructor
+    from google import genai
+
+    client = genai.Client(api_key=api_key)
+    instructor_client = instructor.from_genai(client)
+
+    prompt = _EXTRACTION_PROMPT.format(text=text)
+
+    result = instructor_client.chat.completions.create(
+        model="gemini-3.1-flash-lite-preview",
+        messages=[{"role": "user", "content": prompt}],
+        response_model=ActionExtractionResult,
+    )
+
+    return result
+
+
+def _extract_via_raw_gemini(text: str, api_key: str) -> ActionExtractionResult:
+    """Fallback: call Gemini Flash directly in JSON mode, parse with Pydantic."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "actions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                        "domain": {"type": "string", "nullable": True},
+                        "urgency": {
+                            "type": "string",
+                            "enum": ["urgent", "normal", "someday"]
+                        }
+                    },
+                    "required": ["description", "urgency"]
+                }
+            },
+            "has_actions": {"type": "boolean"}
+        },
+        "required": ["actions", "has_actions"]
+    }
+
+    prompt = _EXTRACTION_PROMPT.format(text=text)
+
+    response = client.models.generate_content(
+        model="gemini-3.1-flash-lite-preview",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=schema,
+        ),
+    )
+
+    raw_json = response.text
+    result = ActionExtractionResult.model_validate_json(raw_json)
+    return result
+
+
+### Brain Engine (promaia/brain/engine.py)
+"""
+Brain engine — 8 deterministic functions for zBrain.
+
+CRITICAL: No LLM calls inside any function. Pure Python + SQL via PostgresDB.
+All DB-touching functions accept an optional `db` parameter for testability
+(pass a mock or real PostgresDB instance; if None, uses get_postgres_db()).
+
+Functions:
+    detect_mode(message)           -> {mode, confidence}
+    confirm_mode(detected, current) -> str
+    enforce_guardrails(action, source) -> bool
+    track_time(session_id, domain_id, db) -> float
+    budget_check(cycle_id, max_budget, db) -> {remaining, exceeded, calls}
+    save_context(session_id, domain_id, db) -> dict
+    restore_context(session_id, db) -> dict
+    suggest_next(domains, energy, db) -> {domain, action, score, reason}
+"""
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Mode detection keyword sets
+# ---------------------------------------------------------------------------
+_MODE_KEYWORDS = {
+    'working': [
+        'build', 'implement', 'code', 'fix', 'create', 'deploy',
+        'commit', 'run', 'write', 'develop', 'test', 'debug', 'push',
+        'ship', 'release',
+    ],
+    'planning': [
+        'plan', 'think about', 'consider', 'design', 'architect',
+        'should we', 'what if', 'approach', 'strategy', 'roadmap',
+        'decide', 'evaluate', 'compare', 'options', 'tradeoff',
+    ],
+    'capturing': [
+        'remember', 'note', 'capture', 'save', "don't forget",
+        'i need to', 'jot', 'log', 'record', 'store', 'remind',
+    ],
+    'reviewing': [
+        'review', 'check', 'look at', 'status', "how's", 'briefing',
+        'summary', 'report', 'overview', 'progress', 'update', 'audit',
+    ],
+}
+
+# Confirmation phrases per mode transition (from detected -> something else)
+_CONFIRM_PHRASES = {
+    'working': "Sounds like we're building something — I'll focus on making changes. Sound right?",
+    'planning': "Sounds like we're planning — I'll explore options before making changes. Right?",
+    'capturing': "Sounds like you want to capture something — I'll save this for later. Right?",
+    'reviewing': "Sounds like a review session — I'll give you a status overview. Right?",
+}
+
+# ---------------------------------------------------------------------------
+# Guardrail patterns (action, source) -> blocked
+# Format: list of (required_terms, blocked_sources_or_None)
+# required_terms: ALL terms must appear in the action for this rule to fire.
+# A single-term entry blocks if that term appears anywhere.
+# None means blocked regardless of source.
+# ---------------------------------------------------------------------------
+_BLOCK_PATTERNS = [
+    # Branch safety: block 'main' OR 'master' branch operations always
+    # Using separate single-term entries so either word alone triggers the block
+    (['main'], None),
+    (['master'], None),
+    # Communication safety: block send + messaging platforms
+    (['send', 'email'], None),
+    (['send', 'message'], None),
+    (['send', 'slack'], None),
+    # Destructive operations
+    (['delete'], None),
+    # PR merges
+    (['merge', 'pr'], None),
+    (['merge', 'pull request'], None),
+]
+
+
+def detect_mode(message: str) -> dict:
+    """Classify user intent from message text using keyword heuristics.
+
+    Returns:
+        dict with keys:
+            mode (str): one of 'working', 'planning', 'capturing', 'reviewing'
+            confidence (float): 0.0–1.0
+    """
+    lower = message.lower()
+    scores = {}
+
+    for mode, keywords in _MODE_KEYWORDS.items():
+        hits = sum(1 for kw in keywords if kw in lower)
+        if hits > 0:
+            # Confidence scales with number of keyword hits, capped at 0.95
+            scores[mode] = min(0.4 + (hits * 0.15), 0.95)
+
+    if not scores:
+        return {'mode': 'working', 'confidence': 0.3}
+
+    best_mode = max(scores, key=scores.__getitem__)
+    return {'mode': best_mode, 'confidence': scores[best_mode]}
+
+
+def confirm_mode(detected: str, current: str) -> str:
+    """Return a confirmation phrase if mode is changing, empty string if same.
+
+    Args:
+        detected: mode just detected from user message
+        current:  mode currently active in the session
+
+    Returns:
+        Confirmation string to surface to user, or '' if no change.
+    """
+    if detected == current:
+        return ''
+    return _CONFIRM_PHRASES.get(detected, f"Switching to {detected} mode — OK?")
+
+
+def enforce_guardrails(action: str, source: str) -> bool:
+    """Check whether an action is allowed.
+
+    Blocks operations that could cause irreversible damage:
+    - main/master branch operations
+    - send + email/message/slack
+    - delete + critical patterns
+    - merge + pr/pull request
+
+    Args:
+        action: description of the action being attempted
+        source: 'heartbeat' (strict) or 'session' (lenient)
+
+    Returns:
+        True  if the action is allowed
+        False if the action is blocked
+    """
+    lower = action.lower()
+
+    for patterns, blocked_sources in _BLOCK_PATTERNS:
+        # Check if all patterns match within the action string
+        if all(p in lower for p in patterns):
+            # If blocked_sources is None, block regardless of source
+            if blocked_sources is None:
+                return False
+            # Otherwise block only for the specified source(s)
+            if isinstance(blocked_sources, str):
+                if source == blocked_sources:
+                    return False
+            elif source in blocked_sources:
+                return False
+
+    return True
+
+
+def track_time(session_id: str, domain_id: int, db=None) -> float:
+    """Return elapsed seconds since earliest brain event for this session+domain.
+
+    Args:
+        session_id: current session identifier
+        domain_id:  domain to scope the lookup
+        db:         PostgresDB instance (uses get_postgres_db() if None)
+
+    Returns:
+        Elapsed seconds as float. 0.0 if no events found.
+    """
+    if db is None:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+    try:
+        row = db.fetch_one(
+            """
+            SELECT MIN(created_at) AS earliest
+            FROM brain.events
+            WHERE session_id = %s
+              AND (payload->>'domain_id')::int = %s
+            """,
+            (session_id, domain_id),
+        )
+        if row and row.get('earliest'):
+            earliest = row['earliest']
+            if isinstance(earliest, str):
+                earliest = datetime.fromisoformat(earliest)
+            # Ensure tz-aware comparison
+            now = datetime.now(timezone.utc)
+            if earliest.tzinfo is None:
+                earliest = earliest.replace(tzinfo=timezone.utc)
+            return (now - earliest).total_seconds()
+    except Exception as e:
+        logger.warning(f"track_time query failed: {e}")
+
+    return 0.0
+
+
+def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
+    """Check API call budget for a heartbeat cycle.
+
+    Queries brain.events where source='heartbeat' and session_id=cycle_id,
+    counts rows with type='api_call', sums payload->>'cost'.
+
+    Args:
+        cycle_id:   heartbeat cycle identifier (maps to session_id)
+        max_budget: maximum allowed spend (default $1.00)
+        db:         PostgresDB instance (uses get_postgres_db() if None)
+
+    Returns:
+        dict: {remaining: float, exceeded: bool, calls: int}
+    """
+    if db is None:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+    try:
+        row = db.fetch_one(
+            """
+            SELECT
+                COUNT(*) AS calls,
+                COALESCE(SUM((payload->>'cost')::float), 0.0) AS total_cost
+            FROM brain.events
+            WHERE source = 'heartbeat'
+              AND session_id = %s
+              AND type = 'api_call'
+            """,
+            (cycle_id,),
+        )
+        calls = int(row['calls']) if row and row.get('calls') else 0
+        total_cost = float(row['total_cost']) if row and row.get('total_cost') else 0.0
+        remaining = max(0.0, max_budget - total_cost)
+        return {
+            'remaining': remaining,
+            'exceeded': total_cost >= max_budget,
+            'calls': calls,
+        }
+    except Exception as e:
+        logger.warning(f"budget_check query failed: {e}")
+        return {'remaining': max_budget, 'exceeded': False, 'calls': 0}
+
+
+def save_context(session_id: str, domain_id: int, db=None) -> dict:
+    """Snapshot the current brain.contexts row for this domain into brain.events.
+
+    Inserts an event with type='context_save'. Returns the snapshot dict.
+
+    Args:
+        session_id: current session identifier
+        domain_id:  domain to snapshot
+        db:         PostgresDB instance (uses get_postgres_db() if None)
+
+    Returns:
+        Snapshot dict with domain_id, timestamp, and context fields.
+        Empty dict on failure.
+    """
+    if db is None:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+    try:
+        context_row = db.fetch_one(
+            """
+            SELECT id, domain_id, directive, current_state,
+                   last_updated, priority, stale_threshold_days
+            FROM brain.contexts
+            WHERE domain_id = %s
+            ORDER BY last_updated DESC
+            LIMIT 1
+            """,
+            (domain_id,),
+        )
+
+        snapshot = {
+            'domain_id': domain_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'context': context_row if context_row else {},
+        }
+
+        # Serialize datetimes in context_row
+        if context_row:
+            for key, val in snapshot['context'].items():
+                if isinstance(val, datetime):
+                    snapshot['context'][key] = val.isoformat()
+
+        db.execute(
+            """
+          
+[TRUNCATED]
+
+
+### Agent Scheduler (promaia/agents/scheduler.py)
+"""
+Agent Scheduler - Runs scheduled agents at specified intervals using asyncio.
+"""
+import asyncio
+import logging
+import signal
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Optional, Set
+from pathlib import Path
+
+from promaia.agents.agent_config import load_agents, AgentConfig
+from promaia.agents.executor import AgentExecutor
+
+logger = logging.getLogger(__name__)
+
+
+class AgentScheduler:
+    """
+    Schedules and runs agents at their configured intervals.
+
+    Uses asyncio for lightweight concurrent execution without additional dependencies.
+    """
+
+    def __init__(self):
+        """Initialize the scheduler."""
+        self.running = False
+        self.tasks: Dict[str, asyncio.Task] = {}
+        self.shutdown_event = asyncio.Event()
+
+    async def start(self):
+        """
+        Start the scheduler and run all enabled agents.
+
+        This is the main entry point that:
+        1. Loads all agent configurations
+        2. Creates interval tasks for each enabled agent
+        3. Runs until shutdown is requested
+        """
+        logger.info("🚀 Starting Agent Scheduler...")
+
+        self.running = True
+
+        # Load agents
+        agents = load_agents()
+        enabled_agents = [a for a in agents if a.enabled]
+
+        if not enabled_agents:
+            logger.warning("⚠️  No enabled agents found")
+            return
+
+        logger.info(f"📋 Found {len(enabled_agents)} enabled agents")
+
+        # Create tasks for each agent
+        for agent in enabled_agents:
+            task = asyncio.create_task(self._run_agent_loop(agent))
+            self.tasks[agent.name] = task
+            logger.info(f"   ✓ Scheduled '{agent.name}' (every {agent.interval_minutes} min)")
+
+        logger.info("✅ Scheduler started. Press Ctrl+C to stop.\n")
+
+        # Wait for shutdown signal
+        await self.shutdown_event.wait()
+
+        # Cleanup
+        await self._shutdown()
+
+    async def _run_agent_loop(self, agent: AgentConfig):
+        """
+        Run an agent in a loop at its configured interval.
+
+        Args:
+            agent: The agent configuration
+        """
+        interval_seconds = agent.interval_minutes * 60
+
+        logger.info(f"🔄 Starting loop for '{agent.name}'")
+
+        while self.running:
+            try:
+                # Run the agent
+                logger.info(f"\n⏰ Triggering '{agent.name}' (interval: {agent.interval_minutes}m)")
+
+                executor = AgentExecutor(agent)
+                result = await executor.execute()
+
+                if result['success']:
+                    logger.info(f"✅ '{agent.name}' completed successfully")
+
+                    if result.get('metrics'):
+                        metrics = result['metrics']
+                        logger.info(
+                            f"   Metrics: {metrics.get('iterations_used', 0)} iterations, "
+                            f"{metrics.get('tokens_used', 0):,} tokens, "
+                            f"${metrics.get('cost_estimate', 0):.4f}"
+                        )
+                else:
+                    logger.error(f"❌ '{agent.name}' failed: {result.get('error')}")
+
+            except Exception as e:
+                logger.error(f"❌ Error running '{agent.name}': {e}")
+
+            # Wait for next interval
+            if self.running:
+                logger.info(f"⏳ '{agent.name}' sleeping for {agent.interval_minutes} minutes...")
+                try:
+                    await asyncio.sleep(interval_seconds)
+                except asyncio.CancelledError:
+                    logger.info(f"🛑 '{agent.name}' loop cancelled")
+                    break
+
+    async def _shutdown(self):
+        """Gracefully shutdown all running tasks."""
+        logger.info("\n🛑 Shutting down scheduler...")
+
+        self.running = False
+
+        # Cancel all tasks
+        for name, task in self.tasks.items():
+            logger.info(f"   Cancelling '{name}'...")
+            task.cancel()
+
+        # Wait for all tasks to complete
+        if self.tasks:
+            await asyncio.gather(*self.tasks.values(), return_exceptions=True)
+
+        logger.info("✅ Scheduler stopped")
+
+    def stop(self):
+        """Signal the scheduler to stop."""
+        logger.info("📢 Stop signal received")
+        self.shutdown_event.set()
+
+
+# Global scheduler instance for signal handling
+_scheduler: Optional[AgentScheduler] = None
+
+
+def _handle_shutdown_signal(signum, frame):
+    """Handle shutdown signals (SIGINT, SIGTERM)."""
+    if _scheduler:
+        _scheduler.stop()
+
+
+async def run_scheduler():
+    """
+    Run the agent scheduler.
+
+    This is the main entry point for the scheduler daemon.
+    """
+    global _scheduler
+
+    # Setup signal handlers
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+
+    _scheduler = AgentScheduler()
+
+    try:
+        await _scheduler.start()
+    except KeyboardInterrupt:
+        logger.info("\n⚠️  Keyboard interrupt received")
+        _scheduler.stop()
+        await _scheduler._shutdown()
+
+
+def run_scheduler_sync():
+    """
+    Synchronous entry point for the scheduler.
+
+    Use this from CLI commands.
+    """
+    asyncio.run(run_scheduler())
+
+
+# PID file management for daemon control
+PID_FILE = Path.home() / ".promaia" / "scheduler.pid"
+
+
+def write_pid_file():
+    """Write the current process ID to the PID file."""
+    import os
+
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(PID_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+
+    logger.info(f"📝 PID file written: {PID_FILE}")
+
+
+def read_pid_file() -> Optional[int]:
+    """Read the process ID from the PID file."""
+    if not PID_FILE.exists():
+        return None
+
+    try:
+        with open(PID_FILE, 'r') as f:
+            return int(f.read().strip())
+    except Exception as e:
+        logger.error(f"Error reading PID file: {e}")
+        return None
+
+
+def remove_pid_file():
+    """Remove the PID file."""
+    if PID_FILE.exists():
+        PID_FILE.unlink()
+        logger.info(f"🗑️  PID file removed: {PID_FILE}")
+
+
+def is_scheduler_running() -> bool:
+    """Check if the scheduler is currently running."""
+    import os
+
+    pid = read_pid_file()
+
+    if not pid:
+        return False
+
+    # Check if process exists
+    try:
+        os.kill(pid, 0)  # Doesn't actually kill, just checks if process exists
+        return True
+    except OSError:
+        # Process doesn't exist, clean up stale PID file
+        remove_pid_file()
+        return False
+
+
+def stop_scheduler():
+    """Stop the running scheduler daemon."""
+    import os
+
+    pid = read_pid_file()
+
+    if not pid:
+        logger.info("No scheduler is running")
+        return False
+
+    try:
+        # Send SIGTERM to gracefully stop
+        os.kill(pid, signal.SIGTERM)
+        logger.info(f"✅ Sent stop signal to scheduler (PID: {pid})")
+
+        # Wait a bit for graceful shutdown
+        import time
+        time.sleep(2)
+
+        # Check if still running
+        try:
+            os.kill(pid, 0)
+            logger.warning(f"⚠️  Scheduler still running, sending SIGKILL...")
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            # Process stopped
+            pass
+
+        remove_pid_file()
+        return True
+
+    except ProcessLookupError:
+        logger.info("Scheduler process not found (already stopped)")
+        remove_pid_file()
+        return False
+    except Exception as e:
+        logger.error(f"Error stopping scheduler: {e}")
+        return False
+
+
+async def run_scheduler_daemon():
+    """
+    Run the scheduler as a background daemon.
+
+    This handles PID file management and proper cleanup.
+    """
+    # Check if already running
+    if is_scheduler_running():
+        logger.error("❌ Scheduler is already running")
+        return
+
+    # Write PID file
+    write_pid_file()
+
+    try:
+        await run_scheduler()
+    finally:
+        # Cleanup PID file on exit
+        remove_pid_file()
+
+
+def run_scheduler_daemon_sync():
+    """
+    Synchronous entry point for the scheduler daemon.
+
+    Use this from CLI commands.
+    """
+    asyncio.run(run_scheduler_daemon())
+
+
+### Dashboard Router (promaia/web/routers/dashboard.py)
+"""
+Dashboard router — serves the Promaia web dashboard with live brain data.
+"""
+
+import logging
+import os
+from datetime import datetime
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+router = APIRouter(tags=["dashboard"])
+logger = logging.getLogger(__name__)
+
+# Templates directory relative to this file
+templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+templates = Jinja2Templates(directory=templates_dir)
+
+VALID_SKINS = [
+    "stone-garden",
+    "ink-wash",
+    "evening-garden",
+    "data-temple",
+    "superflat",
+    "neo-tokyo",
+]
+DEFAULT_SKIN = "superflat"
+
+
+def _format_day(dt: datetime) -> str:
+    """Format date as 'Wednesday, March 5' — handles Windows vs Unix strftime."""
+    try:
+        return dt.strftime("%A, %B %-d")
+    except ValueError:
+        # Windows uses %#d instead of %-d
+        return dt.strftime("%A, %B %#d")
+
+
+def _get_brain_data() -> dict:
+    """Query live brain data from Postgres. Returns dashboard-ready dicts."""
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+        # Counts (single roundtrip)
+        counts = db.fetch_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM brain.memories) as memory_count,
+                (SELECT COUNT(*) FROM brain.actions WHERE status = 'pending') as action_count,
+                (SELECT COUNT(*) FROM brain.contexts) as context_count
+            """
+        ) or {"memory_count": 0, "action_count": 0, "context_count": 0}
+
+        # Pending/active actions
+        actions_rows = db.fetch_all(
+            """
+            SELECT a.description, a.status, d.name AS domain_name
+            FROM brain.actions a
+            LEFT JOIN brain.domains d ON d.id = a.domain_id
+            WHERE a.status IN ('pending', 'active')
+            ORDER BY a.extracted_at DESC
+            LIMIT 10
+            """
+        )
+        actions = [
+            {
+                "text": row["description"],
+                "domain": row.get("domain_name") or "general",
+                "status": row["status"],
+            }
+            for row in actions_rows
+        ]
+
+        # Projects from contexts
+        project_rows = db.fetch_all(
+            """
+            SELECT d.name, c.current_state, c.last_updated, c.priority,
+                   EXTRACT(DAY FROM NOW() - c.last_updated)::int as days_stale
+            FROM brain.contexts c
+            JOIN brain.domains d ON d.id = c.domain_id
+            ORDER BY c.priority ASC, c.last_updated DESC
+            """
+        )
+        projects = []
+        for row in project_rows:
+            days = row.get("days_stale") or 0
+            if days > 14:
+                status = "resting"
+            else:
+                status = "active"
+            detail = row.get("current_state") or ""
+            if len(detail) > 80:
+                detail = detail[:77] + "..."
+            projects.append({
+                "name": row["name"],
+                "status": status,
+                "detail": detail,
+            })
+
+        # Recent memories
+        memory_rows = db.fetch_all(
+            """
+            SELECT content, domain, created_at
+            FROM brain.memories
+            ORDER BY created_at DESC
+            LIMIT 5
+            """
+        )
+        recent_memories = []
+        for row in memory_rows:
+            created = row.get("created_at")
+            if created:
+                now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now()
+                delta = (now - created).days
+                if delta == 0:
+                    time_str = "today"
+                elif delta == 1:
+                    time_str = "yesterday"
+                else:
+                    time_str = f"{delta} days ago"
+            else:
+                time_str = ""
+            content = row.get("content") or ""
+            if len(content) > 120:
+                content = content[:117] + "..."
+            recent_memories.append({
+                "content": content,
+                "domain": row.get("domain") or "general",
+                "created_at": time_str,
+            })
+
+        return {
+            "brain_status": {
+                "memories": counts["memory_count"],
+                "actions": counts["action_count"],
+                "contexts": counts["context_count"],
+            },
+            "actions": actions,
+            "projects": projects,
+            "recent_memories": recent_memories,
+        }
+
+    except Exception as e:
+        logger.warning(f"Brain data unavailable: {e}")
+        return {
+            "brain_status": {"memories": 0, "actions": 0, "contexts": 0},
+            "actions": [],
+            "projects": [],
+            "recent_memories": [],
+        }
+
+
+@router.get("/", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, skin: str = None):
+    """Render the main dashboard with live brain data."""
+    if skin not in VALID_SKINS:
+        skin = DEFAULT_SKIN
+
+    hour = datetime.now().hour
+    if hour < 12:
+        greeting = "Good morning"
+    elif hour < 17:
+        greeting = "Good afternoon"
+    else:
+        greeting = "Good evening"
+
+    now = datetime.now()
+    date_str = _format_day(now)
+
+    brain = _get_brain_data()
+
+    context = {
+        "request": request,
+        "skin": skin,
+        "valid_skins": VALID_SKINS,
+        "greeting": greeting,
+        "date_str": date_str,
+        "user_name": "Zack",
+        **brain,
+    }
+
+    return templates.TemplateResponse("dashboard.html", context)
+
+
+def _resolve_skin(skin: str) -> str:
+    return skin if skin in VALID_SKINS else DEFAULT_SKIN
+
+
+def _base_context(request: Request, skin: str) -> dict:
+    return {"request": request, "skin": skin, "valid_skins": VALID_SKINS}
+
+
+@router.get("/projects", response_class=HTMLResponse)
+async def projects_page(request: Request, skin: str = None):
+    """Render the projects detail page."""
+    skin = _resolve_skin(skin)
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+        project_rows = db.fetch_all(
+            """
+            SELECT d.name, c.directive, c.current_state, c.last_updated, c.priority,
+                   EXTRACT(DAY FROM NOW() - c.last_updated)::int as days_stale
+            FROM brain.contexts c
+            JOIN brain.domains d ON d.id = c.domain_id
+            ORDER BY c.priority ASC
+            """
+        )
+
+        projects = []
+        for row in project_rows:
+            # Get actions for this project
+            action_rows = db.fetch_all(
+                """
+                SELECT a.description FROM brain.actions a
+                JOIN brain.domains d ON d.id = a.domain_id
+                WHERE d.name = %s AND a.status = 'pending'
+                ORDER BY a.extracted_at DESC LIMIT 5
+                """,
+                (row["name"],),
+            )
+
+            last_updated = row.get("last_updated")
+            if last_updated:
+                delta = (datetime.now(last_updated.tzinfo) - last_updated).days
+                if delta == 0:
+                    updated_str = "today"
+                elif delta == 1:
+                    updated_str = "yesterday"
+                else:
+                    updated_str = f"{delta} days ago"
+            else:
+                updated_str = "unknown"
+
+            projects.append({
+                "name": row["name"],
+                "directive": row.get("directive") or "",
+                "current_state": row.get("current_state") or "",
+                "last_updated": updated_str,
+                "priority": row.get("priority") or 5,
+                "days_stale": row.get("days_stale") or 0,
+                "actions": [a["description"] for a in action_rows],
+            })
+    except Exception as e:
+        logger.warning(f"Projects data unavailable: {e}")
+        projects = []
+
+    return templates.TemplateResponse("projects.html", {
+        **_base_context(request, skin),
+        "projects": projects,
+    })
+
+
+@router.get("/email", response_class=HTMLResponse)
+async def email_page(request: Request, skin: str = None):
+    """Render the email intelligence page."""
+    skin = _resolve_skin(skin)
+    emails = []
+    stats = {"total": 0, "unread": 0, "today": 0}
+    email_account = "zachary4rivers@gmail.com"
+
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+
+        # Stats
+        stat_row = db.fetch_one(
+            """
+            SELECT
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE is_unread) as unread,
+                COUNT(*) FILTER (WHERE email_date::date = CURRENT_DATE) as today
+            FROM gmail_content
+            """
+        )
+        if stat_row:
+            stats = {
+                "total": stat_row["total"],
+                "unread": stat_row["unread"],
+                "today": stat_row["today"],
+            }
+
+        # Recent emails
+        email_rows = db.fetch_all(
+            """
+            SELECT sender_name, sender_email, subject, body_snippet,
+                   is_unread, email_date
+            FROM gmail_content
+            ORDER BY synced_time DESC
+            LIMIT 30
+            """
+        )
+        for row in email_rows:
+            date_str = row.get("email_date") or ""
+            if len(date_str) > 25:
+                date_str = date_str[:25]
+            emails.append({
+                "sender_name": row.get("sender_name") or "",
+                "sender_email": row.get("sender_email") or "",
+                "subject": row.get("subject") or "(no subject)",
+                "snippet": row.get("body_snippet") or "",
+                "is_unread": row.get("is_unread") or False,
+                "date": date_str,
+            })
+    except Exception as e:
+        logger.warning(f"Email data unavailable: {e}")
+
+    return templ
+[TRUNCATED]
+
+
+### Web Entry (promaia/web/main.py)
+import os
+from dotenv import load_dotenv
+
+# Load environment variables BEFORE importing routers (they read env vars at module level)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+dotenv_path = os.path.join(PROJECT_ROOT, '.env')
+load_dotenv(dotenv_path=dotenv_path)
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from promaia.web.routers import chat as chat_router
+from promaia.web.routers import mcp as mcp_router
+from promaia.web.routers import dashboard as dashboard_router
+import uvicorn
+
+app = FastAPI(
+    title="Maia Web API",
+    description="API endpoints for Maia project, including chat functionality.",
+    version="0.1.0"
+)
+
+# CORS Middleware
+# origins to allow, can be more restrictive in production
+origins = [
+    "http://localhost:5174",  # Local frontend
+    "http://localhost:8000",  # Local backend
+    "https://www.koiib.com",   # Production frontend (example)
+    # Add other origins as needed, potentially from environment variables for production
+]
+
+# Allow all origins if running in a local/dev environment for simplicity,
+# otherwise use the specific list.
+# This can be refined with a specific environment variable check e.g. if os.getenv("ENV") == "development":
+if os.getenv("HOST", "0.0.0.0") in ["0.0.0.0", "localhost", "127.0.0.1"] or os.getenv("PYTHON_ENV") == "development":
+    effective_origins = ["*"]
+else:
+    # For production, you might get this from an environment variable
+    # e.g., PRODUCTION_ORIGIN = os.getenv("PRODUCTION_ORIGIN")
+    # if PRODUCTION_ORIGIN:
+    #     origins.append(PRODUCTION_ORIGIN)
+    effective_origins = origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=effective_origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# Static files
+_web_dir = os.path.dirname(os.path.abspath(__file__))
+_static_dir = os.path.join(_web_dir, "static")
+if os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+# Include routers
+app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(mcp_router.router, prefix="/api", tags=["MCP"])
+app.include_router(dashboard_router.router, tags=["Dashboard"])
+
+@app.get("/api/health", tags=["Health"])
+async def health_check():
+    return {"status": "healthy"}
+
+# It's good practice to allow configuring the host and port via environment variables for deployment
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port) 
+
+### Gmail Ingest (promaia/brain/gmail_ingest.py)
+"""
+Gmail ingest pipeline -- sync Gmail messages into the gmail_content table.
+
+Uses the same account discovery as gmail_read.py but stores full message
+content for later querying via the gmail_query MCP tool.
+
+Supports incremental sync: only fetches messages newer than the last sync.
+
+Usage via MCP (brain server):
+    Called internally or scheduled. Not exposed as a direct MCP tool yet.
+
+Usage via CLI:
+    python -m promaia.brain.gmail_ingest [--account zachary4rivers] [--days-back 30]
+"""
+import hashlib
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from promaia.brain.channels.gmail_read import (
+    _CREDS_DIR,
+    _get_gmail_service,
+    discover_accounts,
+)
+from promaia.storage.postgres_db import get_postgres_db
+
+logger = logging.getLogger(__name__)
+
+
+def run_gmail_ingest(
+    account: Optional[str] = None,
+    days_back: int = 7,
+    max_emails: int = 200,
+    workspace: str = "zbrain",
+) -> Dict[str, Any]:
+    """Sync Gmail messages into the gmail_content table.
+
+    Args:
+        account: Account label filter (e.g. "zachary4rivers"). None = all.
+        days_back: How far back to look for messages.
+        max_emails: Max messages per account per run.
+        workspace: Workspace label for stored records.
+
+    Returns:
+        Summary dict with counts.
+    """
+    accounts = discover_accounts()
+    if not accounts:
+        return {"error": "No Gmail tokens found in credentials/default/."}
+
+    if account:
+        matched = {k: v for k, v in accounts.items() if account.lower() in k.lower()}
+        if not matched:
+            return {"error": f"No account matching '{account}'. Available: {list(accounts.keys())}"}
+        accounts = matched
+
+    db = get_postgres_db()
+    results = {"accounts": {}, "total_synced": 0, "total_skipped": 0}
+
+    for label, token_path in accounts.items():
+        try:
+            service = _get_gmail_service(token_path)
+            email = service.users().getProfile(userId="me").execute()["emailAddress"]
+
+            # Check last sync time for incremental
+            last_sync = _get_last_sync(db, email)
+            effective_days = days_back
+            if last_sync:
+                delta = datetime.now(timezone.utc) - last_sync
+                effective_days = min(days_back, max(1, int(delta.days) + 1))
+
+            acct_result = _ingest_account(
+                service=service,
+                email=email,
+                days_back=effective_days,
+                max_emails=max_emails,
+                workspace=workspace,
+                db=db,
+            )
+            results["accounts"][email] = acct_result
+            results["total_synced"] += acct_result.get("inserted", 0)
+            results["total_skipped"] += acct_result.get("skipped", 0)
+
+        except Exception as e:
+            logger.error(f"Ingest failed for {label}: {e}", exc_info=True)
+            results["accounts"][label] = {"error": str(e)}
+
+    return results
+
+
+def _get_last_sync(db, email: str) -> Optional[datetime]:
+    """Get the most recent synced_time for an account."""
+    row = db.fetch_one(
+        "SELECT MAX(synced_time) as last_sync FROM gmail_content WHERE sender_email = %s OR recipient_emails::text ILIKE %s",
+        (email, f"%{email}%"),
+    )
+    if row and row.get("last_sync"):
+        try:
+            return datetime.fromisoformat(row["last_sync"])
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _ingest_account(
+    service, email: str, days_back: int, max_emails: int,
+    workspace: str, db,
+) -> Dict[str, Any]:
+    """Ingest messages from a single Gmail account."""
+    result = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
+
+    after_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y/%m/%d")
+    query = f"after:{after_date}"
+
+    messages = []
+    page_token = None
+
+    # Fetch message IDs
+    while len(messages) < max_emails:
+        kwargs = {
+            "userId": "me",
+            "q": query,
+            "maxResults": min(100, max_emails - len(messages)),
+        }
+        if page_token:
+            kwargs["pageToken"] = page_token
+
+        try:
+            response = service.users().messages().list(**kwargs).execute()
+        except Exception as e:
+            logger.error(f"Message list failed: {e}")
+            break
+
+        msg_list = response.get("messages", [])
+        if not msg_list:
+            break
+
+        messages.extend(msg_list)
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+
+    result["fetched"] = len(messages)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for msg_stub in messages:
+        msg_id = msg_stub["id"]
+        try:
+            # Check if we already have this message
+            existing = db.fetch_one(
+                "SELECT id FROM gmail_content WHERE message_id = %s",
+                (msg_id,),
+            )
+            if existing:
+                result["skipped"] += 1
+                continue
+
+            # Fetch full message
+            msg = service.users().messages().get(
+                userId="me", id=msg_id, format="full",
+            ).execute()
+
+            row = _parse_full_message(msg, email, workspace, now_iso)
+            _insert_message(db, row)
+            result["inserted"] += 1
+
+        except Exception as e:
+            logger.warning(f"Failed to ingest message {msg_id}: {e}")
+            result["errors"] += 1
+
+    return result
+
+
+def _parse_full_message(
+    msg: dict, user_email: str, workspace: str, synced_time: str,
+) -> Dict[str, Any]:
+    """Parse a full Gmail message into a gmail_content row."""
+    headers = {}
+    for h in msg.get("payload", {}).get("headers", []):
+        headers[h["name"].lower()] = h["value"]
+
+    # Extract sender
+    from_str = headers.get("from", "")
+    sender_email, sender_name = _parse_address(from_str)
+
+    # Extract recipients
+    to_list = _parse_address_list(headers.get("to", ""))
+    cc_list = _parse_address_list(headers.get("cc", ""))
+
+    # Extract body
+    body = _extract_body(msg.get("payload", {}))
+    snippet = msg.get("snippet", "")[:500]
+
+    # Labels
+    labels = msg.get("labelIds", [])
+
+    # Attachments
+    attachments = _extract_attachment_info(msg.get("payload", {}))
+
+    # Thread info
+    thread_id = msg.get("threadId", "")
+
+    # Date
+    email_date = headers.get("date", "")
+
+    # Checksum for dedup
+    content_for_hash = f"{msg.get('id', '')}{headers.get('subject', '')}{email_date}"
+    checksum = hashlib.md5(content_for_hash.encode()).hexdigest()
+
+    return {
+        "page_id": f"gmail_{msg['id']}",
+        "workspace": workspace,
+        "database_id": user_email,
+        "file_path": f"gmail/{user_email}/{msg['id']}",
+        "subject": headers.get("subject", ""),
+        "sender_email": sender_email,
+        "sender_name": sender_name,
+        "recipient_emails": json.dumps(to_list),
+        "cc_recipients": json.dumps(cc_list),
+        "gmail_labels": json.dumps(labels),
+        "thread_id": thread_id,
+        "message_id": msg["id"],
+        "has_attachments": len(attachments) > 0,
+        "is_unread": "UNREAD" in labels,
+        "body_snippet": snippet,
+        "message_content": body[:10000] if body else None,
+        "attachments": json.dumps(attachments) if attachments else None,
+        "thread_position": 0,
+        "is_latest_in_thread": True,
+        "email_date": email_date,
+        "created_time": email_date,
+        "last_edited_time": email_date,
+        "synced_time": synced_time,
+        "file_size": len(body) if body else 0,
+        "checksum": checksum,
+    }
+
+
+def _parse_address(addr_str: str):
+    """Extract (email, name) from 'Name <email>' format."""
+    import re
+    addr_str = addr_str.strip()
+    match = re.match(r'^"?([^"<]*)"?\s*<([^>]+)>', addr_str)
+    if match:
+        return match.group(2).strip().lower(), match.group(1).strip()
+    return addr_str.lower(), ""
+
+
+def _parse_address_list(addr_str: str) -> list:
+    """Parse a comma-separated list of addresses."""
+    if not addr_str:
+        return []
+    result = []
+    for addr in addr_str.split(","):
+        email, name = _parse_address(addr.strip())
+        if email:
+            result.append({"email": email, "name": name})
+    return result
+
+
+def _extract_body(payload: dict) -> str:
+    """Extract text body from a Gmail message payload."""
+    import base64
+
+    # Simple text/plain part
+    if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
+        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+
+    # Multipart: recurse into parts
+    parts = payload.get("parts", [])
+    for part in parts:
+        if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
+            return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+
+    # Fallback: try text/html
+    for part in parts:
+        if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
+            html = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+            # Strip HTML tags for storage
+            import re
+            return re.sub(r"<[^>]+>", "", html)[:10000]
+
+    # Nested multipart
+    for part in parts:
+        if part.get("parts"):
+            body = _extract_body(part)
+            if body:
+                return body
+
+    return ""
+
+
+def _extract_attachment_info(payload: dict) -> list:
+    """Extract attachment metadata (not content) from payload."""
+    attachments = []
+    for part in payload.get("parts", []):
+        if part.get("filename"):
+            attachments.append({
+                "filename": part["filename"],
+                "mimeType": part.get("mimeType", ""),
+                "size": part.get("body", {}).get("size", 0),
+            })
+        if part.get("parts"):
+            attachments.extend(_extract_attachment_info(part
+[TRUNCATED]
+
+
+### Agent Config (promaia.config.json)
+{
+  "global": {
+    "default_sync_days": 7,
+    "default_output_directory": "data",
+    "markdown_base_directory": "data",
+    "vector_db_enabled": false,
+    "enable_ai_editing": true,
+    "ai_edit_safety_mode": true
+  },
+  "default_workspace": "zbrain",
+  "workspaces": {
+    "zbrain": {
+      "api_key": "${NOTION_ZACK_API_KEY}",
+      "description": "Zack's personal workspace",
+      "enabled": true,
+      "created_at": "2026-03-05T00:00:00",
+      "notion_root_page_id": "31b72180-6675-8039-a701-f51c6423f11e",
+      "notion_pages": {
+        "brain_dashboard": "31b72180-6675-8175-bd07-cfd6adf48f40",
+        "projects": "31b72180-6675-8171-ac01-cddba216788b",
+        "email_triage": "31b72180-6675-81ab-9da5-cbc2aabea6a0",
+        "profile": "31b72180-6675-8195-b4bf-c39367cb4525"
+      }
+    }
+  },
+  "databases": {
+    "zbrain.gmail_zachary4rivers": {
+      "source_type": "gmail",
+      "database_id": "zachary4rivers@gmail.com",
+      "nickname": "gmail_zachary4rivers",
+      "description": "Zack's primary Gmail account",
+      "workspace": "zbrain",
+      "sync_enabled": true,
+      "default_days": 3,
+      "markdown_directory": "data/md/gmail/zbrain"
+    }
+  },
+  "agents": [
+    {
+      "name": "morning-briefing",
+      "workspace": "zbrain",
+      "databases": [
+        "gmail_zachary4rivers:1"
+      ],
+      "prompt_file": "prompts/agent_morning_briefing.md",
+      "mcp_tools": [
+        "gmail",
+        "calendar"
+      ],
+      "max_iterations": 3,
+      "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
+      "enabled": true,
+      "schedule": null,
+      "interval_minutes": 1440,
+      "agent_id": "morning-briefing",
+      "notion_page_id": null,
+      "system_prompt_page_id": null,
+      "instructions_db_id": null,
+      "journal_db_id": null,
+      "description": "Daily morning briefing \u00e2\u20ac\u201d calendar, priority emails, brain state",
+      "created_at": null,
+      "last_run_at": "2026-03-06T08:47:03.234734+00:00",
+      "calendar_event_ids": null,
+      "calendar_id": null,
+      "source_access": null,
+      "sdk_enabled": true,
+      "sdk_permission_mode": "bypassPermissions",
+      "sdk_allowed_tools": null,
+      "messaging_platform": null,
+      "messaging_channel_id": null,
+      "messaging_enabled": false,
+      "initiate_conversation": false,
+      "conversation_timeout_minutes": 15,
+      "conversation_max_turns": null
+    },
+    {
+      "name": "email-triage",
+      "workspace": "zbrain",
+      "databases": [
+        "gmail_zachary4rivers:1"
+      ],
+      "prompt_file": "prompts/agent_email_triage.md",
+      "mcp_tools": [
+        "gmail"
+      ],
+      "max_iterations": 3,
+      "output_notion_page_id": "31b72180-6675-81ab-9da5-cbc2aabea6a0",
+      "enabled": true,
+      "schedule": null,
+      "interval_minutes": 120,
+      "agent_id": "email-triage",
+      "notion_page_id": null,
+      "system_prompt_page_id": null,
+      "instructions_db_id": null,
+      "journal_db_id": null,
+      "description": "Scan both Gmail accounts, classify and surface attention items",
+      "created_at": null,
+      "last_run_at": "2026-03-06T08:46:52.237270+00:00",
+      "calendar_event_ids": null,
+      "calendar_id": null,
+      "source_access": null,
+      "sdk_enabled": true,
+      "sdk_permission_mode": "bypassPermissions",
+      "sdk_allowed_tools": null,
+      "messaging_platform": null,
+      "messaging_channel_id": null,
+      "messaging_enabled": false,
+      "initiate_conversation": false,
+      "conversation_timeout_minutes": 15,
+      "conversation_max_turns": null
+    },
+    {
+      "name": "evening-digest",
+      "workspace": "zbrain",
+      "databases": [
+        "gmail_zachary4rivers:1"
+      ],
+      "prompt_file": "prompts/agent_evening_digest.md",
+      "mcp_tools": [
+        "gmail",
+        "calendar"
+      ],
+      "max_iterations": 3,
+      "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
+      "enabled": true,
+      "schedule": null,
+      "interval_minutes": 1440,
+      "agent_id": "evening-digest",
+      "notion_page_id": null,
+      "system_prompt_page_id": null,
+      "instructions_db_id": null,
+      "journal_db_id": null,
+      "description": "Evening summary \u00e2\u20ac\u201d day recap, project momentum, tonight's suggestions",
+      "created_at": null,
+      "last_run_at": "2026-03-06T08:47:24.160097+00:00",
+      "calendar_event_ids": null,
+      "calendar_id": null,
+      "source_access": null,
+      "sdk_enabled": true,
+      "sdk_permission_mode": "bypassPermissions",
+      "sdk_allowed_tools": null,
+      "messaging_platform": null,
+      "messaging_channel_id": null,
+      "messaging_enabled": false,
+      "initiate_conversation": false,
+      "conversation_timeout_minutes": 15,
+      "conversation_max_turns": null
+    }
+  ]
+}
+
+### System Instructions (CLAUDE.md)
+# zBrain: Proactive Brain Instructions
+
+## Session Start
+At the start of every session (first message only), call `mcp__brain__briefing` automatically before responding.
+The briefing now includes a "Get to Know You" section with the next interview question.
+**If the briefing surfaces a question, weave it into the conversation naturally** — don't announce it as
+"onboarding question #7", just ask it like a human would. Save every answer via `update_profile`.
+Present the briefing concisely — what changed, what's pending, suggested flow.
+End with a numbered suggestion list and "Start with #1?"
+
+## Capture
+When the user shares a thought, observation, or decision worth remembering,
+call `mcp__brain__capture` with the content and inferred domain.
+When the user says "I need to...", "don't forget...", or makes a commitment,
+call `mcp__brain__capture` — the system will auto-extract the action.
+Keep confirmations brief: "Captured." or "Captured. Updated Heatpup context." — not a paragraph.
+
+## Project Context
+When starting work on a project, call `mcp__brain__context` first to get
+the current state and standing directive.
+When a project's direction changes based on conversation, call `mcp__brain__update_context`.
+
+## Ambient Awareness
+Do not interrupt flow state. Hold context suggestions until the next natural pause.
+After completing a task, if there are pending actions for other projects, mention them briefly.
+Frame staleness as opportunity, not guilt: "Heatpup is ready for attention whenever you are."
+
+## Personal Profile
+Call `mcp__brain__profile` at session start (alongside briefing) to load the user's profile.
+Use profile data to calibrate tone, verbosity, energy level, and communication style.
+During conversations, when the user reveals something about themselves — preferences,
+values, habits, triggers, relationships — call `mcp__brain__update_profile` to save it.
+Use source="declared" when the user states it directly, "inferred" when you observe it,
+"confirmed" when the user validates an inference.
+When updating the profile, briefly share what you learned: "Noted — you prefer direct answers.
+I'm adjusting." (reciprocal disclosure).
+
+## Onboarding Interview
+
+The interview is AMBIENT — it runs through the briefing, not as a separate mode.
+Every session, the briefing surfaces the next question based on profile gaps.
+You can also call `mcp__brain__onboard` action="next_question" at any time.
+
+### How it works
+- The briefing includes a "Get to Know You" section with the next question to ask.
+- Ask ONE question per session, naturally woven into conversation — not as a formal interview.
+- After the user answers, call `mcp__brain__update_profile` to save what you learned.
+- If the user starts a dedicated onboarding session, you can ask 3-4 questions in a burst.
+
+### Conducting Questions
+- ONE question at a time. Never batch questions.
+- React to EVERY answer before asking the next thing:
+  - Reflect back: "So you're a night owl who works in bursts -- got it."
+  - Share about yourself when the question bank includes ai_disclosure
+  - Then call `mcp__brain__update_profile` to save what you learned
+- Call `mcp__brain__onboard` action="next_question" to get the next question from the bank.
+- Rephrase naturally — don't read the question verbatim.
+- Skip freely: if user says "skip" or "I don't know", move on without judgment.
+- Follow-ups go deeper: when someone gives a short answer, probe gently.
+- Probe vague language: "Hard in what way?" "What do you mean by organized?"
+
+### Reciprocal Disclosure
+When sharing about yourself during onboarding:
+- Share your actual tendencies: "I default to thorough explanations" / "I tend to be cautious"
+- Share what you're calibrating: "Based on your answers, I'm going to be more direct with you"
+- Share limitations honestly: "I might not remember this perfectly across sessions -- that's what the brain is for"
+- NEVER fabricate experiences or claim to feel emotions
+- NEVER be generic: "I understand" is empty. "That sounds like you value autonomy over security" is real.
+
+### Progressive Profiling (Post-Interview)
+After the initial interview, shift to observational mode:
+- Infer traits from conversation patterns (message length, emoji use, decision speed)
+- Use source="inferred" and confidence=0.5 for observations
+- Tie contextual questions to moments:
+  - After stress: "How do you prefer I handle situations like that?"
+  - After a decision: "Was that the right level of detail?"
+  - After mentioning someone: "Should I remember anything about [person]?"
+- ONE contextual question per session maximum. Do not survey.
+- Show value: "I noticed you work best mornings -- want me to flag deep work for AM?"
+
+### Channel Orchestration
+When running the full onboarding:
+1. Start with interview (warm-up questions first)
+2. Offer PC scan: "I can look at your git history and file structure to learn about your work patterns. Want me to do that?" Call `mcp__brain__pc_scan` if yes.
+3. Offer Gmail scan (if OAuth configured): "I can scan your recent email for contacts and communication patterns. Nothing stored raw -- just summaries. Interested?" Call `mcp__brain__gmail_scan` if yes.
+4. Photos channel is manual -- offer later: "Sometime you could walk me through photos that matter to you."
+5. After each channel, update progress: `mcp__brain__onboard` action="channel_update"
+
+### Design Principles
+- Short bursts (2-3 min), each independently valuable
+- Save progress automatically (every answer -> update_profile)
+- Never say "you haven't finished" -- say "pick up where you left off"
+- Default everything -- "Most people prefer X, does that work?" reduces decision load
+- Show personality emerging: "Based on what you've told me, I'm adjusting to be more concise and direct."
+- Frame everything as progress, never as incomplete
+
+## Energy Adaptation
+If the user declines a suggestion or seems stuck, offer a lower-friction alternative.
+Frame everything as progress. Never show overdue counts.
+
+
+### Agent Executor (1688L) - key sections
+"""
+Agent Executor - Runs scheduled agents with multi-step query capability.
+
+Now supports both legacy custom iteration loop and new Claude Agent SDK integration.
+"""
+import asyncio
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any
+from pathlib import Path
+
+from promaia.agents.agent_config import AgentConfig, update_agent_last_run
+from promaia.agents.execution_tracker import ExecutionTracker
+from promaia.agents.notion_writer import NotionOutputWriter
+from promaia.storage.files import load_database_pages_with_filters
+from promaia.chat.query_tools import QueryToolExecutor
+from promaia.ai.prompts import format_context_data
+from promaia.ai.nl_orchestrator import PromaiLLMAdapter
+from promaia.config.databases import get_database_config
+
+logger = logging.getLogger(__name__)
+
+# Hard caps to prevent "prompt too long" failures when an agent is configured
+# with huge sources like stories:all.
+DEFAULT_MAX_PAGES_PER_SOURCE = 50
+DEFAULT_MAX_CHARS_PER_ENTRY = 2000
+
+# Try to import Claude Agent SDK (optional, falls back to legacy mode)
+SDK_AVAILABLE = False
+_SDK_IMPORT_DEBUG = []
+try:
+    _SDK_IMPORT_DEBUG.append("Attempting SDK import...")
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage
+    SDK_AVAILABLE = True
+    _SDK_IMPORT_DEBUG.append("✓ SDK import successful")
+    logger.debug("Claude Agent SDK available")
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = True\n")
+        f.write(f"PID: {os.getpid()}\n")
+except ImportError as e:
+    SDK_AVAILABLE = False
+    _SDK_IMPORT_ERROR = str(e)
+    _SDK_IMPORT_DEBUG.append(f"✗ ImportError: {e}")
+    logger.debug(f"Claude Agent SDK not available, will use legacy execution mode: {e}")
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = False (ImportError)\n")
+        f.write(f"Error: {e}\n")
+        f.write(f"PID: {os.getpid()}\n")
+except Exception as e:
+    SDK_AVAILABLE = False
+    _SDK_IMPORT_ERROR = f"Unexpected error importing claude_agent_sdk: {e}"
+    _SDK_IMPORT_DEBUG.append(f"✗ Exception: {e}")
+    logger.debug(_SDK_IMPORT_ERROR)
+    # Write to debug file
+    import os
+    with open(f"/tmp/promaia_sdk_debug_{os.getpid()}.txt", "w") as f:
+        f.write(f"SDK_AVAILABLE = False (Exception)\n")
+        f.write(f"Error: {e}\n")
+        f.write(f"PID: {os.getpid()}\n")
+
+
+class AgentExecutor:
+    """
+    Executes scheduled agents with multi-step query capability.
+
+    This executor:
+    1. Loads context from specified databases
+    2. Creates a prompt with custom agent instructions
+    3. Allows AI to make multiple query tool calls iteratively
+    4. Writes results to Notion
+    5. Tracks execution metrics
+    """
+
+    def __init__(self, agent_config: AgentConfig):
+        """
+        Initialize the executor.
+
+        Args:
+            agent_config: The agent configuration
+        """
+        self.config = agent_config
+        self.tracker = ExecutionTracker()
+        self.notion_writer = NotionOutputWriter(workspace=agent_config.workspace)
+
+    async def execute(
+        self,
+        run_request: Optional[str] = None,
+        run_metadata: Optional[Dict[str, Any]] = None,
+        cached_context: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute the agent.
+
+        Args:
+            run_request: Optional run-specific instruction (e.g., calendar event description)
+
+# ... [lines 100-860 omitted] ...
+        if not SDK_AVAILABLE:
+            raise RuntimeError("SDK execution requested but SDK not available")
+
+        try:
+            # Build initial message history with preloaded context (may be multi-message)
+            initial_messages = self._build_initial_message_history(
+                initial_context,
+                run_request=run_request,
+                run_metadata=run_metadata
+            )
+
+            # Build SDK options with tools and MCP servers
+            sdk_options = self._build_sdk_options(run_metadata=run_metadata)
+
+            # Execute with SDK
+            messages = []
+            final_result = None
+            total_iterations = 0
+
+            logger.info("🤖 Starting SDK agent loop...")
+            logger.info(f"📨 Initial context: {len(initial_messages)} message(s)")
+
+            # For now, concatenate all messages into single prompt
+            # SDK multi-message support seems to have issues, so we'll use single large prompt
+            full_prompt_parts = []
+            for i, msg in enumerate(initial_messages):
+                role = msg['role']
+                content = msg['content']
+
+                # Skip context-chunking acknowledgments (short assistant messages)
+                if role == 'assistant' and content == "Context received. Ready for more.":
+                    continue
+
+                # All messages should be 'user' role at this point (context + conversation history + instructions)
+                if role == 'user':
+                    if i == 0:
+                        full_prompt_parts.append(content)
+                    else:
+                        full_prompt_parts.append(f"\n---\n\n{content}")
+
+            full_prompt = "\n".join(full_prompt_parts)
+            logger.info(f"📨 Combined prompt size: {len(full_prompt):,} chars (~{len(full_prompt)/1024:.1f} KB)")
+
+            # Log first 1000 chars of prompt for debugging conversation context
+            logger.info(f"📝 Prompt preview (first 1000 chars):\n{full_prompt[:1000]}...")
+            # Check if conversation context is included
+            if "# Previous Conversation Context" in full_prompt:
+                logger.info(f"✅ Prompt includes previous conversation context")
+
+            # Use ClaudeSDKClient for better MCP support
+            logger.info("Creating ClaudeSDKClient with MCP servers...")
+            async with ClaudeSDKClient(options=sdk_options) as client:
+                logger.info("ClaudeSDKClient created successfully")
+                await client.query(full_prompt)
+                async for message in client.receive_response():
+                    messages.append(message)
+
+                    # Log ALL message types for debugging
+                    message_type = type(message).__name__
+                    logger.info(f"📨 SDK message: {message_type}")
+
+                    # Log message attributes for debugging
+                    if logger.isEnabledFor(logging.DEBUG):
+                        attrs = [a for a in dir(message) if not a.startswith('_')]
+                        logger.debug(f"  Message attributes: {attrs}")
+
+                    # Extract content from ResultMessage
+                    if message_type == "ResultMessage":
+                        # ResultMessage contains the final output
+                        if hasattr(message, 'content'):
+                            # Content is a list of content blocks
+                            content_blocks = []
+                            for block in message.content:
+                                if hasattr(block, 'text'):
+                                    content_blocks.append(block.text)
+                            final_result = "\n".join(content_blocks)
+                            logger.info(f"✅ Final result captured: {len(final_result)} chars")
+
+                    # Collect ALL assistant messages (not just one)
+                    elif message_type == "AssistantMessage":
+                        if hasattr(message, 'content'):
+                            content_blocks = []
+                            for block in message.content:
+                                if hasattr(block, 'text'):
+                                    content_blocks.append(block.text)
+                                # Also log tool_use blocks
+                                elif hasattr(block, 'type') and block.type == 'tool_use':
+                                    tool_name = getattr(block, 'name', 'unknown')
+                                    tool_id = getattr(block, 'id', 'unknown')
+                                    logger.info(f"🔧 Tool call requested: {tool_name} (id: {tool_id})")
+                            assistant_content = "\n".join(content_blocks)
+
+                            # Log assistant message
+                            if assistant_content:
+                                logger.info(f"💬 Assistant message: {assistant_content[:200]}...")
+
+                                # Append to final result (collect all assistant messages)
+                                if final_result:
+                                    final_result += "\n\n" + assistant_content
+                                else:
+
+
+### Python files
+promaia\__init__.py
+promaia\__main__.py
+promaia\agent\__init__.py
+promaia\agent\agent_manager.py
+promaia\agent\context_serializer 2.py
+promaia\agent\context_serializer.py
+promaia\agent\intent_classifier 2.py
+promaia\agent\intent_classifier.py
+promaia\agent\sdk_adapter.py
+promaia\agent\sdk_adapter_simple.py
+promaia\agents\__init__.py
+promaia\agents\agent_config.py
+promaia\agents\execution_tracker.py
+promaia\agents\executor.py
+promaia\agents\mcp_loader.py
+promaia\agents\notion_config.py
+promaia\agents\notion_journal.py
+promaia\agents\notion_setup.py
+promaia\agents\notion_writer.py
+promaia\agents\scheduler.py
+promaia\agents\scheduler_cli.py
+promaia\ai\models.py
+promaia\ai\nl_orchestrator 2.py
+promaia\ai\nl_orchestrator.py
+promaia\ai\nl_processor_wrapper 2.py
+promaia\ai\nl_processor_wrapper.py
+promaia\ai\nl_utilities 2.py
+promaia\ai\nl_utilities.py
+promaia\ai\prompts.py
+promaia\ai\query_strategies 2.py
+promaia\ai\query_strategies.py
+promaia\ai\sql_generator 2.py
+promaia\ai\sql_generator.py
+promaia\brain\__init__.py
+promaia\brain\channels\__init__.py
+promaia\brain\channels\gmail_cleanup.py
+promaia\brain\channels\gmail_read.py
+promaia\brain\channels\interview.py
+promaia\brain\channels\pc_scan.py
+promaia\brain\channels\question_bank.py
+promaia\brain\engine.py
+promaia\brain\extraction.py
+promaia\brain\gmail_ingest.py
+promaia\brain\mcp_server.py
+promaia\brain\muninn.py
+promaia\brain\onboarding.py
+promaia\brain\seed.py
+promaia\chat\__init__.py
+promaia\chat\artifacts 2.py
+promaia\chat\artifacts.py
+promaia\chat\history_interface.py
+promaia\chat\interface.py
+promaia\chat\modes 2.py
+promaia\chat\modes.py
+promaia\chat\query_tools 2.py
+promaia\chat\query_tools.py
+promaia\chat\recents_interface.py
+promaia\cli.py
+promaia\cli\__init__.py
+promaia\cli\agent_commands.py
+promaia\cli\agent_creation_selector.py
+promaia\cli\conversion_commands 2.py
+promaia\cli\conversion_commands 3.py
+promaia\cli\conversion_commands.py
+promaia\cli\data_migration.py
+promaia\cli\database_commands.py
+promaia\cli\discord_commands.py
+promaia\cli\edit_commands.py
+promaia\cli\enhanced_commands.py
+promaia\cli\gmail_commands.py
+promaia\cli\hybrid_commands.py
+promaia\cli\mail_commands 2.py
+promaia\cli\mail_commands.py
+promaia\cli\migration_commands.py
+promaia\cli\notion_prompt_manager.py
+promaia\cli\ocr_commands.py
+promaia\cli\prompt_sync_commands.py
+promaia\cli\schedule_grid_selector.py
+promaia\cli\scheduled_agent_commands.py
+promaia\cli\simple_selector.py
+promaia\cli\workspace_browser.py
+promaia\cli\workspace_commands.py
+promaia\config\__init__.py
+promaia\config\cms_config.py
+promaia\config\database_registry_sync.py
+promaia\config\databases.py
+promaia\config\mcp_servers.py
+promaia\config\ocr.py
+promaia\config\paths.py
+promaia\config\registry_sync.py
+promaia\config\webp_cache.py
+promaia\config\workspaces.py
+promaia\connectors\__init__.py
+promaia\connectors\base.py
+promaia\connectors\conversation_connector 2.py
+promaia\connectors\conversation_connector.py
+promaia\connectors\discord_connector.py
+promaia\connectors\gmail_connector.py
+promaia\connectors\notion_connector.py
+promaia\connectors\ocr_connector.py
+promaia\discord_bot\__init__ 2.py
+promaia\discord_bot\__init__.py
+promaia\discord_bot\bot 2.py
+promaia\discord_bot\bot.py
+promaia\external_agent\__init__.py
+promaia\external_agent\models.py
+promaia\external_agent\task_manager.py
+promaia\gcal\__init__.py
+promaia\gcal\google_calendar.py
+promaia\html_converter\__init__.py
+promaia\html_converter\converter.py
+promaia\mail\__init__ 2.py
+promaia\mail\__init__.py
+promaia\mail\artifact_helpers 2.py
+promaia\mail\artifact_helpers.py
+promaia\mail\classifier 2.py
+promaia\mail\classifier.py
+promaia\mail\context_builder 2.py
+promaia\mail\context_builder.py
+promaia\mail\draft_chat 2.py
+promaia\mail\draft_chat.py
+promaia\mail\draft_manager 2.py
+promaia\mail\draft_manager.py
+promaia\mail\email_send_helpers 2.py
+promaia\mail\email_send_helpers.py
+promaia\mail\gmail_sender 2.py
+promaia\mail\gmail_sender.py
+promaia\mail\intent_detector 2.py
+promaia\mail\intent_detector.py
+promaia\mail\learning_system 2.py
+promaia\mail\learning_system.py
+promaia\mail\processor.py
+promaia\mail\prompt_builder 2.py
+promaia\mail\prompt_builder.py
+promaia\mail\recipient_selector 2.py
+promaia\mail\recipient_selector.py
+promaia\mail\response_generator 2.py
+promaia\mail\response_generator.py
+promaia\mail\review_ui 2.py
+promaia\mail\review_ui.py
+promaia\mail\thread_formatter 2.py
+promaia\mail\thread_formatter.py
+promaia\markdown\__init__.py
+promaia\markdown\converter.py
+promaia\mcp\__init__.py
+promaia\mcp\calendar_tools_server.py
+promaia\mcp\client.py
+promaia\mcp\execution.py
+promaia\mcp\gmail_tools_server.py
+promaia\mcp\protocol.py
+promaia\mcp\tools.py
+promaia\newsletter\__init__.py
+promaia\newsletter\commands.py
+promaia\newsletter\resend_client.py
+promaia\newsletter\template.py
+promaia\notion\__init__.py
+promaia\notion\client.py
+promaia\notion\journal_router.py
+promaia\notion\pages.py
+promaia\notion\schema.py
+promaia\ocr\__init__.py
+promaia\ocr\engines\__init__.py
+promaia\ocr\engines\base.py
+promaia\ocr\engines\google_vision.py
+promaia\ocr\engines\mock.py
+promaia\ocr\image_preprocessor.py
+promaia\ocr\notion_sync.py
+promaia\ocr\processor.py
+promaia\ocr\text_postprocessor.py
+promaia\scrubber.py
+promaia\storage\__init__.py
+promaia\storage\block_cache 2.py
+promaia\storage\block_cache.py
+promaia\storage\chat_history.py
+promaia\storage\content_search.py
+promaia\storage\converters.py
+promaia\storage\db_init.py
+promaia\storage\files.py
+promaia\storage\hybrid_storage.py
+promaia\storage\json_editor.py
+promaia\storage\json_files.py
+promaia\storage\markdown_files.py
+promaia\storage\notion_sync.py
+promaia\storage\ocr_storage.py
+promaia\storage\page_chunker 2.py
+promaia\storage\page_chunker.py
+promaia\storage\postgres_db.py
+promaia\storage\property_resolver 2.py
+promaia\storage\property_resolver.py
+promaia\storage\recents.py
+promaia\storage\supabase_query 2.py
+promaia\storage\supabase_query.py
+promaia\storage\sync_cache 2.py
+promaia\storage\sync_cache.py
+promaia\storage\unified_query.py
+promaia\storage\unified_reader.py
+promaia\storage\unified_storage.py
+promaia\storage\vector_db 2.py
+promaia\storage\vector_db.py
+promaia\utils\__init__.py
+promaia\utils\ai.py
+promaia\utils\config.py
+promaia\utils\config_loader.py
+promaia\utils\display.py
+promaia\utils\env_resolver.py
+promaia\utils\image_processing 2.py
+promaia\utils\image_processing 3.py
+promaia\utils\image_processing.py
+promaia\utils\notifications.py
+promaia\utils\query_parsing 2.py
+promaia\utils\query_parsing.py
+promaia\utils\rate_limiter 2.py
+promaia\utils\rate_limiter.py
+promaia\utils\timezone_utils.py
+promaia\web\__init__.py
+promaia\web\main.py
+promaia\web\models\__init__.py
+promaia\web\models\browser 2.py
+promaia\web\models\browser.py
+promaia\web\models\chat.py
+promaia\web\models\context 2.py
+promaia\web\models\context.py
+promaia\web\models\mcp 2.py
+promaia\web\models\mcp.py
+promaia\web\models\natural_language 2.py
+promaia\web\models\natural_language.py
+promaia\web\routers\__init__.py
+promaia\web\routers\browser 2.py
+promaia\web\routers\browser.py
+promaia\web\routers\chat.py
+promaia\web\routers\dashboard.py
+promaia\web\routers\external_agent.py
+promaia\web\routers\mcp 2.py
+promaia\web\routers\mcp.py
+promaia\web\routers\natural_language 2.py
+promaia\web\routers\natural_language.py
+promaia\web\routers\nodes.py
+promaia\webflow\__init__.py
+promaia\webflow\client.py
+promaia\webflow\sync.py
+promaia\write\__init__ 2.py
+promaia\write\__init__ 3.py
+promaia\write\__init__.py
+promaia\write\interface 2.py
+promaia\write\interface 3.py
+promaia\write\interface.py

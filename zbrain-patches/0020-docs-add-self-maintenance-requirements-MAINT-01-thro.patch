@@ -1,0 +1,48 @@
+From e5fd713615a93ebbe90cc1a4638559a3fdef5f41 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 17:26:01 -0800
+Subject: [PATCH 20/68] docs: add self-maintenance requirements (MAINT-01
+ through MAINT-04)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Dependency intelligence layer — proactive monitoring of stack updates,
+deprecation alerts, and Green Hat opportunity flagging. Prevents
+situations like the google-generativeai deprecation going unnoticed.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/REQUIREMENTS.md | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index 1667dc3..ce8eb6e 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -47,6 +47,13 @@
+ - [ ] **DOCS-02**: Every commit has clear message explaining what changed and why
+ - [ ] **DOCS-03**: Modified upstream files documented in ZBRAIN.md with reasoning
+ 
++### Self-Maintenance
++
++- [ ] **MAINT-01**: Dependency intelligence monitors stack for updates (PyPI, GitHub releases)
++- [ ] **MAINT-02**: Evaluates update relevance — flags new capabilities that enable features, not just version bumps (Green Hat thinking)
++- [ ] **MAINT-03**: Catches deprecations early — alerts before EOL dates hit (prevents google-generativeai situation)
++- [ ] **MAINT-04**: Logs findings to brain.events with actionable recommendations
++
+ ## v1.1 Requirements (Deferred)
+ 
+ - **CAL-01**: Google Calendar integration for time management
+@@ -74,7 +81,7 @@
+ | — | — | — |
+ 
+ **Coverage:**
+-- v1.0 requirements: 20 total
++- v1.0 requirements: 24 total
+ - Mapped to phases: 0
+ - Unmapped: 20
+ 
+-- 
+2.51.0.windows.1
+

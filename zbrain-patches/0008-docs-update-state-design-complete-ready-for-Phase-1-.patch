@@ -1,0 +1,112 @@
+From 4e649124130effa718aaa2397fae16925ffdce8f Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 09:32:10 -0800
+Subject: [PATCH 08/68] =?UTF-8?q?docs:=20update=20state=20=E2=80=94=20desi?=
+ =?UTF-8?q?gn=20complete,=20ready=20for=20Phase=201=20GSD=20execution?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/STATE.md | 72 ++++++++++++++++++++++++++++++++--------------
+ 1 file changed, 51 insertions(+), 21 deletions(-)
+
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 3ac614a..6f3d0da 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,26 +2,56 @@
+ 
+ ## Current Position
+ 
+-Phase: Not started (requirements defined, roadmap next)
++Phase: Ready for Phase 1 planning via GSD
+ Plan: —
+-Status: Ready for roadmap creation
+-Last activity: 2026-03-04 — Requirements committed, research complete
++Status: Design complete, Gemini-reviewed, ready for `/gsd:plan-phase` on Phase 1
++Last activity: 2026-03-04 — Design docs finalized, Gemini 3.1 Pro review incorporated
+ 
+-## Project Reference
++## Next Session: What to Do
+ 
+-See: .planning/PROJECT.md (updated 2026-03-04)
++1. Run `/gsd:plan-phase` for Phase 1 (Postgres Foundation)
++2. Feed the existing design docs as context — don't re-research
++3. Use `--skip-research` flag since research is already done
++4. Key Phase 1 tasks from design doc:
++   - Merge postgres-sql-changeover branch into zbrain
++   - Configure Supabase connection
++   - Add pgvector extension + vector(768) columns with HNSW indexes
++   - Migrate vector_db.py from ChromaDB to pgvector
++   - Re-embed all existing content with gemini-embedding-001 (migration script)
++   - Add GIN indexes on tags/entities for hybrid search
++   - Verify all existing Promaia features still work
+ 
+-**Core value:** Claude has persistent, cross-session memory across all of Zack's projects — eliminating the amnesia problem.
+-**Current focus:** Milestone initialization
++## Design Documents (COMPLETE)
++
++- `docs/plans/2026-03-04-zbrain-promaia-merge-design.md` — Infrastructure (4 features, 5 phases)
++- `docs/plans/2026-03-04-zbrain-workflow-design.md` — Workflow & UX (ADHD-aware, DeBono, guardrails)
++- `.planning/REQUIREMENTS.md` — 20 requirements across 6 categories
++- `.planning/research/` — Stack, features, architecture, pitfalls research
++
++## Key Design Decisions (This Session)
++
++- **Architecture:** Hybrid (Approach C) — thin deterministic engine + smart instructions + persistent schema
++- **Mode detection:** Infer + confirm
++- **Phone→PC handoff:** Adjusted plan on login
++- **Heartbeat autonomy:** Safe actions allowed (feature branch commits, no external comms)
++- **DeBono:** Invisible by default
++- **Check-in cadence:** Ambient awareness, no formal check-ins
++- **Embedding type:** vector(768) not halfvec (Gemini review)
++- **Heartbeat execution:** Python AgentExecutor directly, not CLI subprocess (Gemini review)
++- **New table:** brain.events audit trail (Gemini review)
++- **Indexes:** HNSW on embeddings + GIN on tags/entities (Gemini review)
++- **Heartbeat guardrails:** Active user check, max 2 commits per cycle (Gemini review)
+ 
+-## Accumulated Context
++## Execution Strategy
+ 
+-- Extensive design session completed (see docs/plans/2026-03-04-zbrain-promaia-merge-design.md)
+-- Promaia codebase explored: 359 files, Python, connectors architecture, agent orchestration in dev
+-- Daughter's postgres-sql-changeover branch reviewed: 586-line schema, PostgresDB singleton, connection pooling
+-- Previous "Open Brain" plan at ~/.claude/plans/vast-gathering-widget.md — superseded by Promaia merge approach
+-- 5 YouTube videos analyzed (Nate Jones, Obsidian+Claude, NotebookLM)
+-- OpenClaw research completed — heartbeat pattern adopted, but staying in Claude ecosystem
++- GSD for phase-by-phase execution (plan each phase when ready to build)
++- Skip GSD roadmap/research stages — design docs serve as the spec
++- No roadmap file needed — phases defined in design doc
++
++## Project Reference
++
++See: .planning/PROJECT.md
++**Core value:** Claude has persistent, cross-session memory across all of Zack's projects — eliminating the amnesia problem.
+ 
+ ## Blockers
+ 
+@@ -29,12 +59,12 @@ None currently.
+ 
+ ## Upcoming Events
+ 
+-- **Promaia re-init (within ~1 week):** Daughter is re-initializing the repo to remove personal identifiers. Before that happens, export zbrain work as patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`. After re-init, clone fresh repo, create new zbrain branch, apply patches with `git am`. Additive work (new files) applies cleanly. Modified files (vector_db.py, postgres_db.py) may need manual re-application.
++- **Promaia re-init (within ~1 week):** Daughter re-initializing repo. Export patches before: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+ 
+-## Pending Todos
++## Git State
+ 
+-- [x] Create zbrain branch (done — branch exists, first commit made)
+-- [ ] Merge postgres-sql-changeover into zbrain
+-- [ ] Write ZBRAIN.md (running changelog of all changes for daughter's visibility)
+-- [ ] Update memory files with Promaia/zBrain context
+-- [ ] Export patches before daughter's re-init
++- Branch: `zbrain` (off `feature/agent-scheduler`)
++- Latest commits:
++  - d38967e docs: incorporate Gemini 3.1 Pro architectural review findings
++  - 2889f26 docs: add zBrain workflow & UX design
++  - ffcfa81 docs: update state — requirements complete, ready for roadmap
+-- 
+2.51.0.windows.1
+

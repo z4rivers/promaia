@@ -1,0 +1,46 @@
+From bd5a1dcde41e7e65197e17dabeeeccfdf1a67da5 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 21:40:39 -0800
+Subject: [PATCH 36/68] fix(brain): set output_dimensionality=768 for gemini
+ embeddings
+
+gemini-embedding-001 outputs 3072 dims by default, but the schema
+defines vector(768) and HNSW indexes cap at 2000 dims. Embeddings
+were silently failing to store, making semantic search return nothing.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/brain/schema.sql     | 2 +-
+ promaia/storage/vector_db.py | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/promaia/brain/schema.sql b/promaia/brain/schema.sql
+index 2a835aa..8b2f2ea 100644
+--- a/promaia/brain/schema.sql
++++ b/promaia/brain/schema.sql
+@@ -12,7 +12,7 @@ CREATE SCHEMA IF NOT EXISTS brain;
+ -- brain.memories
+ -- Core persistent memory store. Stores facts, notes, and
+ -- observations with semantic embeddings for similarity search.
+--- vector(768) matches gemini-embedding-001 output dimensions.
++-- vector(768) matches gemini-embedding-001 with output_dimensionality=768.
+ -- ============================================================
+ CREATE TABLE IF NOT EXISTS brain.memories (
+     id SERIAL PRIMARY KEY,
+diff --git a/promaia/storage/vector_db.py b/promaia/storage/vector_db.py
+index 984ba43..910f602 100644
+--- a/promaia/storage/vector_db.py
++++ b/promaia/storage/vector_db.py
+@@ -104,7 +104,8 @@ class VectorDBManager:
+             if self.embedding_provider == "google":
+                 result = self.genai_client.models.embed_content(
+                     model='gemini-embedding-001',
+-                    contents=text
++                    contents=text,
++                    config={'output_dimensionality': 768},
+                 )
+                 return result.embeddings[0].values
+             else:
+-- 
+2.51.0.windows.1
+

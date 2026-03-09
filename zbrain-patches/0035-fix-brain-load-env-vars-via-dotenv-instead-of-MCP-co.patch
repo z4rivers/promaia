@@ -1,0 +1,56 @@
+From 8c1b8a73364b17ae8c5c04b68aa4878a739d297f Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 21:32:29 -0800
+Subject: [PATCH 35/68] fix(brain): load env vars via dotenv instead of MCP
+ config passthrough
+
+Claude Code doesn't interpolate ${VAR} in .mcp.json env blocks, so the
+brain server was starting without DATABASE_URL or GOOGLE_API_KEY. Now
+the server loads .env itself at import time.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .mcp.json                   | 6 +-----
+ promaia/brain/mcp_server.py | 7 +++++++
+ 2 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/.mcp.json b/.mcp.json
+index 38dda79..0b1b051 100644
+--- a/.mcp.json
++++ b/.mcp.json
+@@ -3,11 +3,7 @@
+     "brain": {
+       "type": "stdio",
+       "command": "python",
+-      "args": ["-m", "promaia.brain.mcp_server"],
+-      "env": {
+-        "DATABASE_URL": "${DATABASE_URL}",
+-        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
+-      }
++      "args": ["-m", "promaia.brain.mcp_server"]
+     }
+   }
+ }
+diff --git a/promaia/brain/mcp_server.py b/promaia/brain/mcp_server.py
+index 570b63f..824019a 100644
+--- a/promaia/brain/mcp_server.py
++++ b/promaia/brain/mcp_server.py
+@@ -23,8 +23,15 @@ import logging
+ import os
+ import sys
+ import uuid
++from pathlib import Path
+ from typing import Any, Dict, List, Optional
+ 
++from dotenv import load_dotenv
++
++# Load .env from the project root (walk up from this file to find it)
++_project_root = Path(__file__).resolve().parents[2]
++load_dotenv(_project_root / ".env")
++
+ import numpy as np
+ import psycopg2.extras
+ from pgvector.psycopg2 import register_vector
+-- 
+2.51.0.windows.1
+

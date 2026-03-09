@@ -1,0 +1,30 @@
+From fc9605e74b3ce6a30801d651dbdbb3f7d2e7ec4b Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 07:14:26 -0800
+Subject: [PATCH 49/68] refactor(03.1-03): rename ADHD-Friendly Principles to
+ Design Principles
+
+- These interaction patterns are the default style, not a special accommodation
+- Short bursts, auto-save, no shame framing are just good design
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ CLAUDE.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index c487e78..0f681bc 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -80,7 +80,7 @@ When running the full onboarding:
+ 4. Photos channel is manual -- offer later: "Sometime you could walk me through photos that matter to you."
+ 5. After each channel, update progress: `mcp__brain__onboard` action="channel_update"
+ 
+-### ADHD-Friendly Principles
++### Design Principles
+ - Short bursts (2-3 min), each independently valuable
+ - Save progress automatically (every answer -> update_profile)
+ - Never say "you haven't finished" -- say "pick up where you left off"
+-- 
+2.51.0.windows.1
+

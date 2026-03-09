@@ -1,0 +1,1114 @@
+From 0bbb99db3d151b0f74cb62d238b5b0337b6e767e Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 09:49:43 -0800
+Subject: [PATCH 09/68] docs(01-postgres-foundation): create phase plan - 3
+ plans, 3 waves
+
+Plan 01 (Wave 1): Merge postgres branch, Supabase config, pgvector schema
+Plan 02 (Wave 2): ChromaDB->pgvector in vector_db.py, google-genai SDK migration
+Plan 03 (Wave 3): Re-embed migration, verification, ZBRAIN.md changelog
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/ROADMAP.md                          |  94 +++++
+ .../01-postgres-foundation/01-01-PLAN.md      | 305 +++++++++++++++
+ .../01-postgres-foundation/01-02-PLAN.md      | 347 ++++++++++++++++++
+ .../01-postgres-foundation/01-03-PLAN.md      | 319 ++++++++++++++++
+ 4 files changed, 1065 insertions(+)
+ create mode 100644 .planning/ROADMAP.md
+ create mode 100644 .planning/phases/01-postgres-foundation/01-01-PLAN.md
+ create mode 100644 .planning/phases/01-postgres-foundation/01-02-PLAN.md
+ create mode 100644 .planning/phases/01-postgres-foundation/01-03-PLAN.md
+
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+new file mode 100644
+index 0000000..c40382a
+--- /dev/null
++++ b/.planning/ROADMAP.md
+@@ -0,0 +1,94 @@
++# Roadmap: zBrain v1.0 Foundation
++
++## Phases
++
++- [ ] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB
++- [ ] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings
++- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
++- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
++- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
++
++## Phase Details
++
++### Phase 1: Postgres Foundation
++**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
++**Depends on:** Nothing
++**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
++**Success Criteria** (what must be TRUE):
++  1. Promaia connects to Supabase Postgres via session pooler
++  2. pgvector extension enabled with vector(768) columns and HNSW indexes
++  3. All existing Promaia features (sync, chat, query) work against Postgres
++  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
++  5. Existing content re-embedded with gemini-embedding-001
++  6. GIN indexes on tags/entities for hybrid search
++  7. google-generativeai replaced with google-genai SDK
++  8. ZBRAIN.md created documenting all changes
++**Plans:** 3 plans
++
++Plans:
++- [ ] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes
++- [ ] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
++- [ ] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
++
++### Phase 2: Brain Schema and MCP Tools
++**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
++**Depends on:** Phase 1
++**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
++**Success Criteria** (what must be TRUE):
++  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
++  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
++  3. Session briefing runs automatically on startup
++  4. Action extraction detects actionable items from conversation
++  5. Standing directives per project stored and queryable
++  6. Stale project alerts surface in briefings
++  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
++**Plans:** TBD
++
++### Phase 3: Gemini Routing
++**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
++**Depends on:** Phase 2
++**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
++**Success Criteria** (what must be TRUE):
++  1. ai/router.py routes tasks to appropriate model by type
++  2. Gemini Flash handles classification, summarization, embeddings
++  3. Claude Sonnet/Opus handles reasoning and interactive work
++  4. Gemini MCP research results automatically captured into brain.memories
++  5. YouTube analysis and deep research feed brain automatically
++**Plans:** TBD
++
++### Phase 4: Heartbeat Agent
++**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
++**Depends on:** Phase 2
++**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
++**Success Criteria** (what must be TRUE):
++  1. Windows Task Scheduler runs heartbeat on configurable interval
++  2. Heartbeat scans all projects and picks most stalled for deep work
++  3. Active user check: scan-only mode if user active within 15 min
++  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
++  5. Morning summary available in next session briefing
++  6. All activity logged to brain.events with source="heartbeat"
++**Plans:** TBD
++
++### Phase 5: iPhone Access
++**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
++**Depends on:** Phase 2
++**Requirements:** [ACCESS-01]
++**Success Criteria** (what must be TRUE):
++  1. Brain MCP endpoint accessible from iPhone via cloud
++  2. Mobile capture stores thoughts in brain.memories
++  3. PC session briefing picks up mobile captures automatically
++**Plans:** TBD
++
++## Progress
++
++| Phase | Plans Complete | Status | Completed |
++|-------|---|---|---|
++| 1. Postgres Foundation | 0/3 | Planned | - |
++| 2. Brain Schema and MCP Tools | 0/0 | Not started | - |
++| 3. Gemini Routing | 0/0 | Not started | - |
++| 4. Heartbeat Agent | 0/0 | Not started | - |
++| 5. iPhone Access | 0/0 | Not started | - |
++
++---
++*Created: 2026-03-04 from design docs*
++*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
+diff --git a/.planning/phases/01-postgres-foundation/01-01-PLAN.md b/.planning/phases/01-postgres-foundation/01-01-PLAN.md
+new file mode 100644
+index 0000000..cf06494
+--- /dev/null
++++ b/.planning/phases/01-postgres-foundation/01-01-PLAN.md
+@@ -0,0 +1,305 @@
++---
++phase: 01-postgres-foundation
++plan: 01
++type: execute
++wave: 1
++depends_on: []
++files_modified:
++  - promaia/storage/postgres_db.py
++  - promaia/storage/schema.sql
++  - promaia/storage/db_init.py
++  - promaia/storage/hybrid_storage.py
++  - promaia/storage/block_cache.py
++  - promaia/storage/content_search.py
++  - promaia/storage/ocr_storage.py
++  - promaia/storage/property_resolver.py
++  - promaia/storage/supabase_query.py
++  - promaia/storage/sync_cache.py
++  - promaia/storage/unified_query.py
++  - promaia/connectors/notion_connector.py
++  - promaia/agents/execution_tracker.py
++  - promaia/ai/nl_utilities.py
++  - promaia/ai/query_strategies.py
++  - promaia/ai/sql_generator.py
++  - promaia/config/database_registry_sync.py
++  - promaia/external_agent/task_manager.py
++  - promaia/mail/artifact_helpers.py
++  - promaia/mail/context_builder.py
++  - promaia/mail/draft_manager.py
++  - docs/env.template
++  - .env
++  - .gitignore
++autonomous: false
++requirements:
++  - STOR-01
++  - STOR-04
++user_setup:
++  - service: supabase
++    why: "Postgres database backend for all Promaia data"
++    env_vars:
++      - name: POSTGRES_PASSWORD
++        source: "Supabase Dashboard -> Project Settings -> Database -> Database password"
++    dashboard_config:
++      - task: "Verify database password is available"
++        location: "Supabase Dashboard -> Project dulqttfidcjeujyieuqw -> Settings -> Database"
++
++must_haves:
++  truths:
++    - "zbrain branch contains all postgres-sql-changeover code merged cleanly"
++    - "PostgresDB singleton connects to Supabase via session pooler (not local 192.168.0.69)"
++    - "Schema runs against Supabase without errors (all tables created)"
++    - "pgvector extension is enabled with vector(768) column type available"
++    - "HNSW indexes exist on embedding columns"
++    - "GIN indexes exist on tags/entities JSONB columns"
++  artifacts:
++    - path: "promaia/storage/postgres_db.py"
++      provides: "PostgresDB singleton with Supabase session pooler connection"
++      contains: "pooler.supabase.com"
++    - path: "promaia/storage/schema.sql"
++      provides: "Full Postgres schema including pgvector extension and indexes"
++      contains: "CREATE EXTENSION IF NOT EXISTS vector"
++    - path: "promaia/storage/db_init.py"
++      provides: "Database initialization script that runs schema against Supabase"
++  key_links:
++    - from: "promaia/storage/postgres_db.py"
++      to: "Supabase session pooler"
++      via: "POSTGRES_HOST env var or DATABASE_URL"
++      pattern: "pooler\\.supabase\\.com"
++    - from: "promaia/storage/schema.sql"
++      to: "pgvector extension"
++      via: "CREATE EXTENSION"
++      pattern: "CREATE EXTENSION.*vector"
++---
++
++<objective>
++Merge the postgres-sql-changeover branch into zbrain, reconfigure for Supabase cloud, and extend the schema with pgvector + indexes.
++
++Purpose: This is the foundation everything else depends on. Without Postgres connected to Supabase with pgvector enabled, no other Phase 1 work can proceed. The postgres-sql-changeover branch has 586-line schema + PostgresDB singleton + db_init.py + modified storage files that we need as our starting point.
++
++Output: Working Supabase connection with full schema deployed, pgvector extension enabled, HNSW + GIN indexes created.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/research/STACK.md
++@.planning/research/ARCHITECTURE.md
++@docs/plans/2026-03-04-zbrain-promaia-merge-design.md
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Merge postgres-sql-changeover branch and reconfigure for Supabase</name>
++  <files>
++    promaia/storage/postgres_db.py
++    promaia/storage/schema.sql
++    promaia/storage/db_init.py
++    promaia/storage/hybrid_storage.py
++    promaia/storage/block_cache.py
++    promaia/storage/content_search.py
++    promaia/storage/ocr_storage.py
++    promaia/storage/property_resolver.py
++    promaia/storage/supabase_query.py
++    promaia/storage/sync_cache.py
++    promaia/storage/unified_query.py
++    promaia/connectors/notion_connector.py
++    promaia/agents/execution_tracker.py
++    promaia/ai/nl_utilities.py
++    promaia/ai/query_strategies.py
++    promaia/ai/sql_generator.py
++    promaia/config/database_registry_sync.py
++    promaia/external_agent/task_manager.py
++    promaia/mail/artifact_helpers.py
++    promaia/mail/context_builder.py
++    promaia/mail/draft_manager.py
++    docs/env.template
++    .gitignore
++  </files>
++  <action>
++    1. Merge the `origin/postgres-sql-changeover` branch into current `zbrain` branch:
++       ```
++       git merge origin/postgres-sql-changeover --no-edit
++       ```
++       This brings in ~2300 lines of additions including postgres_db.py (556 lines), schema.sql (586 lines), db_init.py (242 lines), plus modifications to 20+ existing files that replace SQLite patterns with Postgres patterns.
++
++    2. Resolve any merge conflicts. The postgres branch was created off `feature/agent-scheduler` (same base as zbrain). Conflicts are unlikely since zbrain only added docs/plans/ files, but if any arise in .planning/ files, keep zbrain's versions.
++
++    3. After merge, modify `promaia/storage/postgres_db.py` to connect to Supabase instead of local Postgres:
++       - Change default host from `'192.168.0.69'` to support Supabase session pooler
++       - Add support for `DATABASE_URL` env var as primary connection method (Supabase session pooler format: `postgresql://postgres.dulqttfidcjeujyieuqw:[PASSWORD]@aws-0-us-west-1.pooler.supabase.com:5432/postgres`)
++       - Keep individual POSTGRES_HOST/PORT/DATABASE/USER/PASSWORD as fallback
++       - The session pooler is REQUIRED on Windows (IPv6 issues with direct connection)
++       - Add `sslmode='require'` to connection params for Supabase (cloud requires SSL)
++       - Keep the ThreadedConnectionPool and singleton pattern unchanged
++
++    4. Update `docs/env.template` to add Supabase-specific vars:
++       ```
++       # Supabase PostgreSQL (session pooler - required on Windows)
++       DATABASE_URL='postgresql://postgres.dulqttfidcjeujyieuqw:YOUR_PASSWORD@aws-0-us-west-1.pooler.supabase.com:5432/postgres'
++       # Or use individual vars:
++       POSTGRES_HOST='aws-0-us-west-1.pooler.supabase.com'
++       POSTGRES_PORT='5432'
++       POSTGRES_DATABASE='postgres'
++       POSTGRES_USER='postgres.dulqttfidcjeujyieuqw'
++       POSTGRES_PASSWORD='your_supabase_db_password'
++       ```
++
++    5. Add `chroma_db/` to `.gitignore` if not already present (ChromaDB local data folder being replaced).
++
++    6. Verify the merge compiled cleanly: `python -c "from promaia.storage.postgres_db import PostgresDB; print('import ok')"`.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "from promaia.storage.postgres_db import PostgresDB; print('PostgresDB import OK')" && python -c "from promaia.storage.db_init import init_database; print('db_init import OK')" && grep -q "pooler.supabase.com\|DATABASE_URL" promaia/storage/postgres_db.py && echo "Supabase config found" && grep -q "sslmode" promaia/storage/postgres_db.py && echo "SSL configured"</automated>
++    <manual>Verify git log shows merge commit from postgres-sql-changeover</manual>
++  </verify>
++  <done>
++    zbrain branch contains all postgres-sql-changeover code. PostgresDB singleton points to Supabase session pooler with SSL. env.template documents the new connection vars.
++  </done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Extend schema with pgvector extension, HNSW indexes, GIN indexes, and deploy to Supabase</name>
++  <files>
++    promaia/storage/schema.sql
++  </files>
++  <action>
++    1. Edit `promaia/storage/schema.sql` to add pgvector support at the TOP of the file (before any table definitions):
++       ```sql
++       -- Enable pgvector for semantic search
++       CREATE EXTENSION IF NOT EXISTS vector;
++       ```
++
++    2. Add a content_embeddings table (or add embedding column to existing content_items table). The design calls for embeddings alongside content. Add after the content_items table definition:
++       ```sql
++       -- Content embeddings for semantic search (replaces ChromaDB)
++       CREATE TABLE IF NOT EXISTS content_embeddings (
++           id SERIAL PRIMARY KEY,
++           page_id TEXT NOT NULL,
++           chunk_id TEXT,
++           content TEXT NOT NULL,
++           embedding vector(768) NOT NULL,
++           workspace TEXT,
++           database_name TEXT,
++           metadata JSONB DEFAULT '{}',
++           is_chunk BOOLEAN DEFAULT FALSE,
++           chunk_index INTEGER,
++           total_chunks INTEGER,
++           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
++           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
++           UNIQUE(page_id, chunk_id)
++       );
++       ```
++       Use `vector(768)` NOT `halfvec` per Gemini review finding. 768 dims matches gemini-embedding-001 output.
++
++    3. Add a property_embeddings table (replaces ChromaDB property collection):
++       ```sql
++       CREATE TABLE IF NOT EXISTS property_embeddings (
++           id SERIAL PRIMARY KEY,
++           page_id TEXT NOT NULL,
++           property_name TEXT NOT NULL,
++           property_type TEXT,
++           property_value TEXT NOT NULL,
++           embedding vector(768) NOT NULL,
++           workspace TEXT,
++           database_name TEXT,
++           metadata JSONB DEFAULT '{}',
++           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
++           UNIQUE(page_id, property_name)
++       );
++       ```
++
++    4. Add HNSW indexes on embedding columns (NOT IVFFlat per design decision):
++       ```sql
++       -- HNSW indexes for fast approximate nearest neighbor search
++       CREATE INDEX IF NOT EXISTS idx_content_embeddings_vector
++           ON content_embeddings USING hnsw (embedding vector_cosine_ops);
++       CREATE INDEX IF NOT EXISTS idx_property_embeddings_vector
++           ON property_embeddings USING hnsw (embedding vector_cosine_ops);
++       ```
++       Use `vector_cosine_ops` because the existing ChromaDB was configured with cosine similarity (`"hnsw:space": "cosine"`).
++
++    5. Add GIN indexes on JSONB metadata columns for hybrid search (keyword + vector):
++       ```sql
++       -- GIN indexes for hybrid search on metadata
++       CREATE INDEX IF NOT EXISTS idx_content_embeddings_metadata
++           ON content_embeddings USING gin (metadata);
++       CREATE INDEX IF NOT EXISTS idx_property_embeddings_metadata
++           ON property_embeddings USING gin (metadata);
++       ```
++
++    6. Add additional B-tree indexes for common query patterns:
++       ```sql
++       CREATE INDEX IF NOT EXISTS idx_content_embeddings_page_id
++           ON content_embeddings(page_id);
++       CREATE INDEX IF NOT EXISTS idx_content_embeddings_workspace
++           ON content_embeddings(workspace);
++       CREATE INDEX IF NOT EXISTS idx_property_embeddings_page_id
++           ON property_embeddings(page_id);
++       CREATE INDEX IF NOT EXISTS idx_property_embeddings_property
++           ON property_embeddings(property_name);
++       ```
++
++    7. Run the schema against Supabase to verify it deploys cleanly:
++       ```
++       python -m promaia.storage.db_init init
++       ```
++       This requires the user's .env to have the Supabase credentials configured. If the connection fails, this will be caught in the checkpoint.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && grep -c "vector(768)" promaia/storage/schema.sql && grep -c "USING hnsw" promaia/storage/schema.sql && grep -c "USING gin" promaia/storage/schema.sql && grep -q "CREATE EXTENSION.*vector" promaia/storage/schema.sql && echo "Schema extensions verified"</automated>
++    <manual>Run `python -m promaia.storage.db_init init` and verify tables created in Supabase dashboard</manual>
++  </verify>
++  <done>
++    schema.sql includes pgvector extension, content_embeddings and property_embeddings tables with vector(768) columns, HNSW indexes on embeddings, GIN indexes on metadata, and B-tree indexes on common query columns.
++  </done>
++</task>
++
++<task type="checkpoint:human-verify" gate="blocking">
++  <name>Checkpoint: Verify Supabase schema deployment</name>
++  <what-built>
++    Merged postgres-sql-changeover branch into zbrain. PostgresDB singleton reconfigured for Supabase session pooler with SSL. Schema extended with pgvector extension, content_embeddings and property_embeddings tables, HNSW and GIN indexes.
++  </what-built>
++  <how-to-verify>
++    1. Ensure your `.env` file has the Supabase database credentials:
++       - Either `DATABASE_URL` with the session pooler URL
++       - Or individual POSTGRES_HOST/PORT/DATABASE/USER/PASSWORD vars pointing to Supabase
++       - Get password from: Supabase Dashboard -> Project Settings -> Database -> Database password
++    2. Run: `python -m promaia.storage.db_init init`
++    3. Verify output shows tables created successfully
++    4. Check Supabase Dashboard -> Table Editor -> confirm content_embeddings and property_embeddings tables exist
++    5. In Supabase SQL Editor, run: `SELECT extname FROM pg_extension WHERE extname = 'vector';` -- should return 'vector'
++  </how-to-verify>
++  <resume-signal>Type "approved" if schema deployed to Supabase successfully, or describe any connection/schema issues</resume-signal>
++</task>
++
++</tasks>
++
++<verification>
++- `git log --oneline -5` shows merge commit from postgres-sql-changeover
++- `grep -c "vector(768)" promaia/storage/schema.sql` returns 2+ (content_embeddings + property_embeddings)
++- `grep "USING hnsw" promaia/storage/schema.sql` shows HNSW index definitions
++- `grep "USING gin" promaia/storage/schema.sql` shows GIN index definitions
++- `python -c "from promaia.storage.postgres_db import PostgresDB"` succeeds
++- Supabase connection works and schema deployed
++</verification>
++
++<success_criteria>
++- postgres-sql-changeover branch merged into zbrain
++- PostgresDB connects to Supabase via session pooler (not local 192.168.0.69)
++- pgvector extension enabled in Supabase
++- content_embeddings and property_embeddings tables exist with vector(768) columns
++- HNSW indexes on embedding columns
++- GIN indexes on metadata JSONB columns
++- Schema deployed to Supabase and verified by user
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/01-postgres-foundation/01-01-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/01-postgres-foundation/01-02-PLAN.md b/.planning/phases/01-postgres-foundation/01-02-PLAN.md
+new file mode 100644
+index 0000000..54f8fe8
+--- /dev/null
++++ b/.planning/phases/01-postgres-foundation/01-02-PLAN.md
+@@ -0,0 +1,347 @@
++---
++phase: 01-postgres-foundation
++plan: 02
++type: execute
++wave: 2
++depends_on:
++  - 01-01
++files_modified:
++  - promaia/storage/vector_db.py
++  - promaia/ai/nl_orchestrator.py
++  - promaia/chat/interface.py
++  - promaia/write/interface.py
++  - promaia/utils/image_processing.py
++  - promaia/web/routers/nodes.py
++  - promaia/web/routers/chat.py
++  - requirements.txt
++autonomous: true
++requirements:
++  - STOR-02
++  - STOR-03
++  - STOR-05
++
++must_haves:
++  truths:
++    - "vector_db.py uses pgvector SQL for all vector operations (no ChromaDB dependency)"
++    - "Embedding generation uses google-genai SDK with gemini-embedding-001 model"
++    - "VectorDBManager public interface unchanged (search, add_content, add_content_with_chunking, check_exists all have same signatures)"
++    - "All google.generativeai imports replaced with google.genai across the codebase"
++    - "requirements.txt has google-genai and pgvector, does not have chromadb or google-generativeai"
++  artifacts:
++    - path: "promaia/storage/vector_db.py"
++      provides: "pgvector-backed vector operations with gemini-embedding-001"
++      contains: "pgvector"
++    - path: "requirements.txt"
++      provides: "Updated dependencies"
++      contains: "google-genai"
++  key_links:
++    - from: "promaia/storage/vector_db.py"
++      to: "promaia/storage/postgres_db.py"
++      via: "PostgresDB singleton for database connections"
++      pattern: "from promaia\\.storage\\.postgres_db import"
++    - from: "promaia/storage/vector_db.py"
++      to: "google-genai SDK"
++      via: "embedding generation with gemini-embedding-001"
++      pattern: "genai\\.Client|embed_content|gemini-embedding-001"
++    - from: "promaia/storage/vector_db.py"
++      to: "content_embeddings table"
++      via: "pgvector SQL insert/query"
++      pattern: "content_embeddings|<=>|vector_cosine_ops"
++---
++
++<objective>
++Replace ChromaDB with pgvector in vector_db.py and migrate the entire codebase from deprecated google-generativeai SDK to google-genai SDK.
++
++Purpose: ChromaDB is a local file store that blocks cloud access (iPhone, heartbeat). pgvector puts vectors in Supabase alongside all other data. The google-generativeai SDK is deprecated (EOL Aug 2025, already past) and must be replaced with google-genai. The embedding model changes from OpenAI text-embedding-3-small to gemini-embedding-001 (768 dims, covered by existing Google AI Premium subscription).
++
++Output: Working vector_db.py backed by pgvector, all Gemini SDK calls migrated to google-genai, updated requirements.txt.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/research/STACK.md
++@.planning/research/ARCHITECTURE.md
++@.planning/phases/01-postgres-foundation/01-01-SUMMARY.md
++@promaia/storage/vector_db.py
++@promaia/storage/postgres_db.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Replace ChromaDB with pgvector in vector_db.py</name>
++  <files>
++    promaia/storage/vector_db.py
++  </files>
++  <action>
++    Rewrite the internals of `promaia/storage/vector_db.py` to use pgvector via the PostgresDB singleton instead of ChromaDB. CRITICAL: Preserve all public method signatures exactly as they are. Existing callers include:
++    - `storage/unified_query.py` calls `vector_db.search()`
++    - `storage/content_search.py` calls `vector_db.search()`
++    - `storage/notion_sync.py` / `storage/unified_storage.py` call `vector_db.add_content()`, `add_content_with_chunking()`
++    - `storage/hybrid_storage.py` calls `VectorDBManager()`, `search()`, `add_content()`, `add_content_with_chunking()`
++    - `ai/query_strategies.py` calls `VectorDBManager()`
++    - `mail/context_builder.py` calls `VectorDBManager()`
++
++    Changes required:
++
++    1. **Imports**: Remove all `chromadb` imports. Add:
++       ```python
++       import numpy as np
++       from pgvector.psycopg2 import register_vector
++       from promaia.storage.postgres_db import get_postgres_db
++       ```
++
++    2. **`__init__`**: Replace ChromaDB client initialization with:
++       - Get PostgresDB singleton via `get_postgres_db()`
++       - Register pgvector type with psycopg2: call `register_vector(conn)` on a connection from the pool
++       - Remove `self.chroma_path`, `self.client`, `self.collection`, `self.property_collection`
++       - Keep `self.collection_name` for table naming reference
++       - The constructor signature changes from `chroma_path` to accepting no args (or optional args that are ignored for backwards compat): `def __init__(self, chroma_path: str = None):` -- accept but ignore chroma_path for backward compatibility with callers.
++
++    3. **`_init_embedding_function`**: Replace OpenAI/sentence-transformers with google-genai:
++       ```python
++       from google import genai
++       self.genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
++       self.embedding_provider = "google"
++       self.embedding_model = "gemini-embedding-001"
++       ```
++       Do NOT use `google-generativeai` (deprecated). Do NOT use `text-embedding-004` (deprecated).
++
++    4. **`generate_embedding`**: Replace OpenAI/sentence-transformers with:
++       ```python
++       result = self.genai_client.models.embed_content(
++           model='gemini-embedding-001',
++           contents=text
++       )
++       return result.embeddings[0].values  # Returns list of 768 floats
++       ```
++
++    5. **`add_content`**: Replace ChromaDB upsert with pgvector SQL:
++       ```python
++       db = get_postgres_db()
++       embedding_array = np.array(embedding)
++       with db.get_connection() as conn:
++           with conn.cursor() as cur:
++               cur.execute("""
++                   INSERT INTO content_embeddings (page_id, content, embedding, workspace, database_name, metadata)
++                   VALUES (%s, %s, %s, %s, %s, %s)
++                   ON CONFLICT (page_id, chunk_id) DO UPDATE SET
++                       content = EXCLUDED.content,
++                       embedding = EXCLUDED.embedding,
++                       metadata = EXCLUDED.metadata,
++                       updated_at = CURRENT_TIMESTAMP
++               """, [page_id, content_text, embedding_array, workspace, database_name, json.dumps(clean_metadata)])
++               conn.commit()
++       ```
++       Note: For non-chunked content, set `chunk_id` to NULL. The UNIQUE constraint is on `(page_id, chunk_id)`.
++
++    6. **`add_content_with_chunking`**: Same pattern but iterate chunks, setting `chunk_id`, `chunk_index`, `total_chunks`, `is_chunk=True`.
++
++    7. **`add_property_embedding`**: Replace ChromaDB property_collection upsert with INSERT into property_embeddings table.
++
++    8. **`delete_property_embedding`**: Replace ChromaDB delete with `DELETE FROM property_embeddings WHERE page_id = %s AND property_name = %s`.
++
++    9. **`delete_property_embeddings`**: Replace ChromaDB batch delete with SQL DELETE with WHERE clause on property_name and optional filters.
++
++    10. **`search`**: Replace ChromaDB query with pgvector cosine distance:
++        ```python
++        db = get_postgres_db()
++        query_embedding = np.array(self.generate_embedding(query_text))
++        with db.get_connection() as conn:
++            register_vector(conn)
++            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
++                sql = """
++                    SELECT page_id, content,
++                           1 - (embedding <=> %s::vector) AS similarity_score,
++                           metadata
++                    FROM content_embeddings
++                    WHERE 1=1
++                """
++                params = [query_embedding]
++                # Add workspace filter if present in filters dict
++                if filters and 'workspace' in filters:
++                    sql += " AND workspace = %s"
++                    params.append(filters['workspace'])
++                # Handle ChromaDB-style $in filters for backward compat
++                if filters and 'database_name' in filters:
++                    if isinstance(filters['database_name'], dict) and '$in' in filters['database_name']:
++                        placeholders = ','.join(['%s'] * len(filters['database_name']['$in']))
++                        sql += f" AND database_name IN ({placeholders})"
++                        params.extend(filters['database_name']['$in'])
++                sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
++                params.extend([query_embedding, n_results])
++                cur.execute(sql, params)
++                rows = cur.fetchall()
++        ```
++        Filter results by `min_similarity` threshold. Return list of dicts matching the SAME format as current ChromaDB results: `{'page_id', 'similarity_score', 'distance', 'metadata'}`.
++
++    11. **`search_property`**: Same pgvector pattern but querying property_embeddings table.
++
++    12. **`check_exists`**: Replace ChromaDB get with `SELECT 1 FROM content_embeddings WHERE page_id = %s LIMIT 1`.
++
++    13. **`get_stats`**: Replace ChromaDB count with `SELECT COUNT(*) FROM content_embeddings`.
++
++    14. **`get_vector_db_manager` convenience function**: Update to not pass chroma_path.
++
++    IMPORTANT: Keep `estimate_tokens()` method unchanged (it doesn't touch ChromaDB).
++
++    IMPORTANT: The `register_vector(conn)` call must happen on each connection retrieved from the pool, because pgvector type registration is per-connection. Wrap it in a helper method.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "
++from promaia.storage.vector_db import VectorDBManager, get_vector_db_manager
++import inspect
++# Verify class exists and has all expected methods
++vdb_cls = VectorDBManager
++required_methods = ['search', 'add_content', 'add_content_with_chunking', 'check_exists', 'generate_embedding', 'get_stats', 'add_property_embedding', 'search_property', 'delete_property_embedding', 'delete_property_embeddings']
++for m in required_methods:
++    assert hasattr(vdb_cls, m), f'Missing method: {m}'
++    print(f'  OK: {m}')
++# Verify no chromadb imports
++import ast
++with open('promaia/storage/vector_db.py') as f:
++    source = f.read()
++assert 'chromadb' not in source, 'Still has chromadb references'
++assert 'ChromaDB' not in source.split('\"\"\"')[0], 'ChromaDB in active code'
++assert 'pgvector' in source or 'postgres_db' in source, 'Missing pgvector/postgres references'
++print('All vector_db.py checks passed')
++"</automated>
++  </verify>
++  <done>
++    vector_db.py uses pgvector SQL via PostgresDB singleton for all vector operations. No ChromaDB dependency. All public method signatures preserved. Embedding generation uses google-genai SDK with gemini-embedding-001.
++  </done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Migrate all google-generativeai imports to google-genai SDK and update requirements.txt</name>
++  <files>
++    promaia/ai/nl_orchestrator.py
++    promaia/chat/interface.py
++    promaia/write/interface.py
++    promaia/utils/image_processing.py
++    promaia/web/routers/nodes.py
++    promaia/web/routers/chat.py
++    requirements.txt
++  </files>
++  <action>
++    The deprecated `google-generativeai` SDK is used across 7 source files (excluding duplicate "2.py"/"3.py" copies). The migration pattern is consistent.
++
++    **Old pattern (google-generativeai):**
++    ```python
++    import google.generativeai as genai
++    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
++    model = genai.GenerativeModel("gemini-2.0-flash-exp")
++    response = model.generate_content(prompt)
++    ```
++
++    **New pattern (google-genai):**
++    ```python
++    from google import genai
++    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
++    response = client.models.generate_content(
++        model="gemini-2.0-flash-exp",
++        contents=prompt
++    )
++    ```
++
++    Key API differences to handle:
++    - `genai.configure(api_key=...)` becomes `genai.Client(api_key=...)`
++    - `genai.GenerativeModel(model_name)` is removed; model is passed per-call
++    - `model.generate_content(prompt)` becomes `client.models.generate_content(model=model_name, contents=prompt)`
++    - Response object: `response.text` stays the same in most cases
++    - For streaming: `model.generate_content(prompt, stream=True)` becomes `client.models.generate_content_stream(model=model_name, contents=prompt)`
++    - File API: `genai.upload_file(path)` becomes `client.files.upload(file=path)`
++    - File API: `genai.get_file(name)` becomes `client.files.get(name=name)`
++
++    Files to update (primary copies only, not "2.py" or "3.py" duplicates):
++
++    1. **`promaia/ai/nl_orchestrator.py`** (line 35):
++       - Change `import google.generativeai as genai` to `from google import genai`
++       - Change `genai.configure(api_key=...)` to create a client instance
++       - Change `genai.GenerativeModel(...)` to use `client.models.generate_content(model=..., contents=...)`
++
++    2. **`promaia/chat/interface.py`** (lines 39, 196-203, 8707-8721):
++       - Same import change
++       - Replace `genai.configure()` + `genai.GenerativeModel()` pattern
++       - This is a large file (8700+ lines) -- be careful to update all occurrences
++       - Search for ALL `genai.configure`, `genai.GenerativeModel`, `genai.embed_content` calls
++
++    3. **`promaia/write/interface.py`** (line 495):
++       - Same pattern change in the Gemini fallback code path
++
++    4. **`promaia/utils/image_processing.py`** (lines 356, 430, 506):
++       - Has File API usage: `genai.upload_file()`, `genai.get_file()`
++       - These become `client.files.upload()` and `client.files.get()`
++       - Multiple try/except blocks with `import google.generativeai as genai`
++
++    5. **`promaia/web/routers/nodes.py`** (line 10):
++       - Top-level import + `genai.configure()` + `genai.GenerativeModel()`
++
++    6. **`promaia/web/routers/chat.py`** (line 17):
++       - Same pattern
++
++    **DO NOT update the "2.py" and "3.py" duplicate files** (e.g., `interface 2.py`, `nl_orchestrator 2.py`). These appear to be backup copies and should not be modified.
++
++    **Requirements.txt changes:**
++    - Remove: `google-generativeai` (line 25)
++    - Remove: `chromadb==0.5.23` (line 94)
++    - Remove: `posthog>=2.4.0,<6.0.0` (line 95 -- only needed for chromadb telemetry)
++    - Remove: `sentence-transformers==3.3.1` (line 96 -- was embedding fallback, replaced by google-genai)
++    - Add: `google-genai>=1.65.0`
++    - Add: `pgvector>=0.4.2`
++    - Add: `psycopg2-binary>=2.9.0` (if not already present from postgres branch merge)
++    - Keep: `openai==1.76.0` (still used elsewhere, not being removed in Phase 1)
++    - Keep: `numpy==1.26.3` (already present, needed by pgvector)
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "
++# Check no google-generativeai imports remain in primary source files
++import os
++problem_files = []
++for root, dirs, files in os.walk('promaia'):
++    for f in files:
++        if f.endswith('.py') and ' 2' not in f and ' 3' not in f:
++            path = os.path.join(root, f)
++            with open(path) as fh:
++                content = fh.read()
++            if 'google.generativeai' in content:
++                problem_files.append(path)
++if problem_files:
++    print(f'FAIL: google-generativeai still in: {problem_files}')
++    exit(1)
++print('OK: No google-generativeai imports in primary source files')
++" && grep -q "google-genai" requirements.txt && echo "OK: google-genai in requirements" && grep -q "pgvector" requirements.txt && echo "OK: pgvector in requirements" && ! grep -q "^chromadb" requirements.txt && echo "OK: chromadb removed from requirements"</automated>
++  </verify>
++  <done>
++    All primary Python files use google-genai SDK (not google-generativeai). requirements.txt includes google-genai and pgvector, excludes chromadb and google-generativeai. Duplicate backup files ("2.py", "3.py") are NOT modified.
++  </done>
++</task>
++
++</tasks>
++
++<verification>
++- `python -c "from promaia.storage.vector_db import VectorDBManager"` succeeds with no chromadb import errors
++- `grep -r "google.generativeai" promaia/ --include="*.py" | grep -v " 2.py" | grep -v " 3.py"` returns empty (no deprecated imports in primary files)
++- `grep "google-genai" requirements.txt` finds the new SDK
++- `grep "pgvector" requirements.txt` finds pgvector
++- `grep "chromadb" requirements.txt` returns empty
++- All public methods on VectorDBManager have same signatures as before
++</verification>
++
++<success_criteria>
++- vector_db.py backed by pgvector (no ChromaDB code)
++- Embedding generation uses google-genai with gemini-embedding-001 (768 dims)
++- All google-generativeai usages in primary source files migrated to google-genai
++- requirements.txt updated: +google-genai, +pgvector; -chromadb, -google-generativeai, -sentence-transformers
++- VectorDBManager public interface preserved for all existing callers
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/01-postgres-foundation/01-02-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/01-postgres-foundation/01-03-PLAN.md b/.planning/phases/01-postgres-foundation/01-03-PLAN.md
+new file mode 100644
+index 0000000..6fb8fe7
+--- /dev/null
++++ b/.planning/phases/01-postgres-foundation/01-03-PLAN.md
+@@ -0,0 +1,319 @@
++---
++phase: 01-postgres-foundation
++plan: 03
++type: execute
++wave: 3
++depends_on:
++  - 01-02
++files_modified:
++  - scripts/migrate_embeddings.py
++  - ZBRAIN.md
++autonomous: false
++requirements:
++  - STOR-03
++  - DOCS-01
++  - DOCS-02
++  - DOCS-03
++
++must_haves:
++  truths:
++    - "All existing Promaia content has been re-embedded with gemini-embedding-001 (768 dims) in pgvector"
++    - "Existing Promaia features (sync, chat, query) work against Postgres backend"
++    - "ZBRAIN.md exists in repo root documenting all changes made in this phase"
++    - "Every commit in this phase has a clear message explaining what changed and why"
++  artifacts:
++    - path: "scripts/migrate_embeddings.py"
++      provides: "One-time migration script to re-embed all existing content from Promaia's content tables into pgvector"
++      min_lines: 50
++    - path: "ZBRAIN.md"
++      provides: "Running changelog for daughter's visibility into all zbrain changes"
++      min_lines: 30
++  key_links:
++    - from: "scripts/migrate_embeddings.py"
++      to: "promaia/storage/vector_db.py"
++      via: "Uses VectorDBManager.add_content() to store new embeddings"
++      pattern: "VectorDBManager|add_content"
++    - from: "scripts/migrate_embeddings.py"
++      to: "content_embeddings table"
++      via: "Reads from content_items/gmail_content/etc, embeds via gemini-embedding-001, writes to content_embeddings"
++      pattern: "content_items|gmail_content|gemini-embedding-001"
++---
++
++<objective>
++Re-embed all existing Promaia content with gemini-embedding-001 into pgvector, verify the full system works end-to-end, and create the ZBRAIN.md changelog.
++
++Purpose: Existing content was embedded with OpenAI text-embedding-3-small (1536 dims) in ChromaDB. pgvector now expects gemini-embedding-001 (768 dims). A migration script must re-embed everything. After migration, we verify the whole system works. ZBRAIN.md documents all Phase 1 changes so Zack's daughter can see what was modified and why.
++
++Output: All content re-embedded in pgvector, verified working system, ZBRAIN.md changelog.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/research/STACK.md
++@.planning/phases/01-postgres-foundation/01-01-SUMMARY.md
++@.planning/phases/01-postgres-foundation/01-02-SUMMARY.md
++@promaia/storage/vector_db.py
++@promaia/storage/postgres_db.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Create and run re-embedding migration script</name>
++  <files>
++    scripts/migrate_embeddings.py
++  </files>
++  <action>
++    Create `scripts/migrate_embeddings.py` -- a one-time migration script that reads all existing content from Promaia's Postgres content tables and re-embeds them into the new content_embeddings table using gemini-embedding-001.
++
++    The script should:
++
++    1. **Read content from source tables.** After the postgres-sql-changeover merge, content lives in Postgres tables: `content_items`, `gmail_content`, `notion_journal` (if it exists), and any other content tables from the 586-line schema. Query each table for rows with non-null content.
++
++    2. **Embed using VectorDBManager.** Import and instantiate `VectorDBManager` from `promaia.storage.vector_db` (which now uses google-genai + pgvector). Use its `add_content()` method to generate gemini-embedding-001 embeddings and store them in `content_embeddings`.
++
++    3. **Handle rate limiting.** Google AI API has rate limits. Add a configurable delay between embedding calls (default 0.1s). For bulk migration, this prevents 429 errors. Use `time.sleep()` between batches.
++
++    4. **Track progress.** Print progress: "Embedded X/Y items from content_items", etc. Use tqdm if available, fall back to print statements.
++
++    5. **Be idempotent.** Use the UPSERT pattern (ON CONFLICT DO UPDATE) so the script can be re-run safely if interrupted. Check if embedding already exists before re-embedding (skip if `content_embeddings` already has a row for that `page_id` with a non-null embedding, unless `--force` flag is passed).
++
++    6. **Support dry-run mode.** `--dry-run` flag counts how many items would be embedded without actually calling the embedding API.
++
++    7. **Support `--force` flag** to re-embed everything even if embeddings already exist.
++
++    8. **Script structure:**
++       ```python
++       #!/usr/bin/env python3
++       """
++       One-time migration: Re-embed all existing Promaia content with gemini-embedding-001.
++
++       Usage:
++           python scripts/migrate_embeddings.py              # Run migration
++           python scripts/migrate_embeddings.py --dry-run    # Count items only
++           python scripts/migrate_embeddings.py --force      # Re-embed everything
++       """
++       import argparse
++       import time
++       import sys
++       import os
++
++       # Add project root to path
++       sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++
++       from promaia.storage.postgres_db import get_postgres_db
++       from promaia.storage.vector_db import VectorDBManager
++
++       def migrate_table(table_name, content_column, page_id_column, vdb, dry_run=False, force=False, delay=0.1):
++           """Migrate embeddings from a single content table."""
++           db = get_postgres_db()
++           with db.get_connection() as conn:
++               with conn.cursor() as cur:
++                   cur.execute(f"SELECT {page_id_column}, {content_column} FROM {table_name} WHERE {content_column} IS NOT NULL AND {content_column} != ''")
++                   rows = cur.fetchall()
++
++           total = len(rows)
++           embedded = 0
++           skipped = 0
++
++           for page_id, content in rows:
++               if not force and vdb.check_exists(str(page_id)):
++                   skipped += 1
++                   continue
++               if dry_run:
++                   embedded += 1
++                   continue
++               try:
++                   success = vdb.add_content(str(page_id), content, {"source_table": table_name})
++                   if success:
++                       embedded += 1
++                   time.sleep(delay)
++               except Exception as e:
++                   print(f"  Error embedding {page_id}: {e}")
++
++           return total, embedded, skipped
++       ```
++
++    9. **Table mapping** (derive from schema.sql after merge):
++       - `content_items`: page_id = `id` or composite key, content = `content`
++       - `gmail_content`: page_id = `page_id`, content = `message_content`
++       - Any other content tables found in schema.sql
++
++    10. Run the migration: `python scripts/migrate_embeddings.py`
++        If no content exists yet in Postgres (tables are empty because no sync has been run against Supabase), the script should complete with "0 items to embed" and that is a valid success state.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "
++import os, sys
++sys.path.insert(0, '.')
++# Verify script exists and is valid Python
++assert os.path.exists('scripts/migrate_embeddings.py'), 'Migration script missing'
++import ast
++with open('scripts/migrate_embeddings.py') as f:
++    ast.parse(f.read())
++print('Migration script exists and parses as valid Python')
++" && python scripts/migrate_embeddings.py --dry-run 2>&1 | tail -5</automated>
++    <manual>After running the full migration (without --dry-run), check Supabase Dashboard -> Table Editor -> content_embeddings to see rows with embeddings</manual>
++  </verify>
++  <done>
++    Migration script exists, handles dry-run/force modes, is idempotent. When run, it re-embeds all existing content with gemini-embedding-001 into the content_embeddings table.
++  </done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Create ZBRAIN.md changelog</name>
++  <files>
++    ZBRAIN.md
++  </files>
++  <action>
++    Create `ZBRAIN.md` in the repo root. This is a running changelog for Zack's daughter to see what the zbrain branch changes and why. It should be clear, honest, and non-intrusive.
++
++    Structure:
++    ```markdown
++    # ZBRAIN.md - zBrain Changes Log
++
++    This file documents all changes made on the `zbrain` branch. It exists so my daughter (commodorebob) can see exactly what was modified, what was added, and why -- making cherry-picking or reviewing changes straightforward.
++
++    ## What is zBrain?
++
++    zBrain is a personal AI memory layer built on top of Promaia. It adds:
++    - Cloud-native storage (Supabase Postgres + pgvector)
++    - Proactive brain layer (memories, briefings, actions)
++    - Gemini model routing
++    - Heartbeat agent (autonomous overnight work)
++
++    All changes are additive or in the `brain.*` Postgres schema. Existing Promaia features are preserved.
++
++    ---
++
++    ## Phase 1: Postgres Foundation (YYYY-MM-DD)
++
++    ### What Changed
++
++    **Merged `postgres-sql-changeover` branch**
++    - Brought in PostgresDB singleton, schema.sql, db_init.py
++    - This was your existing work -- I completed it by pointing at Supabase instead of local Postgres
++
++    **Reconfigured for Supabase**
++    - `storage/postgres_db.py`: Connection now targets Supabase session pooler (was `192.168.0.69`)
++    - Added `DATABASE_URL` env var support + SSL requirement
++    - Updated `docs/env.template` with Supabase connection vars
++
++    **Replaced ChromaDB with pgvector**
++    - `storage/vector_db.py`: Completely rewritten internals (same public API)
++    - All vector operations now use pgvector SQL against Supabase
++    - Added `content_embeddings` and `property_embeddings` tables to schema.sql
++    - HNSW indexes on embedding columns for fast similarity search
++    - GIN indexes on metadata JSONB columns for hybrid search
++
++    **Migrated google-generativeai to google-genai SDK**
++    - `google-generativeai` was deprecated (EOL Aug 2025)
++    - All imports updated across: ai/nl_orchestrator.py, chat/interface.py, write/interface.py, utils/image_processing.py, web/routers/nodes.py, web/routers/chat.py
++    - Embedding model changed from OpenAI text-embedding-3-small to Google gemini-embedding-001 (768 dims)
++
++    **Updated requirements.txt**
++    - Added: google-genai, pgvector, psycopg2-binary
++    - Removed: chromadb, google-generativeai, sentence-transformers, posthog
++
++    **Re-embedded content**
++    - Created `scripts/migrate_embeddings.py` for one-time re-embedding
++    - All existing content re-embedded with gemini-embedding-001 (768 dims)
++
++    ### Files Modified (from upstream)
++    | File | Change | Why |
++    |------|--------|-----|
++    | storage/postgres_db.py | Connection target: Supabase | Cloud-native, iPhone accessible |
++    | storage/vector_db.py | ChromaDB -> pgvector | Cloud-native vectors, same DB |
++    | storage/schema.sql | +pgvector extension, +embedding tables | Vector storage in Postgres |
++    | ai/nl_orchestrator.py | google-generativeai -> google-genai | SDK deprecated |
++    | chat/interface.py | google-generativeai -> google-genai | SDK deprecated |
++    | write/interface.py | google-generativeai -> google-genai | SDK deprecated |
++    | utils/image_processing.py | google-generativeai -> google-genai | SDK deprecated |
++    | web/routers/nodes.py | google-generativeai -> google-genai | SDK deprecated |
++    | web/routers/chat.py | google-generativeai -> google-genai | SDK deprecated |
++    | requirements.txt | +google-genai, +pgvector, -chromadb | Updated deps |
++    | docs/env.template | +Supabase vars | New connection config |
++
++    ### Files Added
++    | File | Purpose |
++    |------|---------|
++    | scripts/migrate_embeddings.py | One-time re-embedding migration |
++    | ZBRAIN.md | This changelog |
++
++    ### Contribute-Back Value
++    - **Supabase connection**: HIGH -- you wanted Postgres, this completes it with cloud hosting
++    - **pgvector**: HIGH -- replaces ChromaDB with in-database vectors
++    - **google-genai migration**: HIGH -- the old SDK is deprecated, this is required eventually
++    ```
++
++    Fill in the actual date when creating the file. Adjust specific details based on what actually happened in Plans 01 and 02 (reference their SUMMARYs).
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && test -f ZBRAIN.md && echo "ZBRAIN.md exists" && wc -l ZBRAIN.md | grep -E "^[3-9][0-9]|^[1-9][0-9]{2}" && echo "Has sufficient content (30+ lines)"</automated>
++  </verify>
++  <done>
++    ZBRAIN.md exists in repo root with clear documentation of all Phase 1 changes, modified files with reasoning, and contribute-back value assessment.
++  </done>
++</task>
++
++<task type="checkpoint:human-verify" gate="blocking">
++  <name>Checkpoint: Verify Phase 1 end-to-end</name>
++  <what-built>
++    Complete Phase 1 Postgres Foundation:
++    1. Postgres branch merged and connected to Supabase
++    2. pgvector extension with HNSW + GIN indexes
++    3. vector_db.py rewritten to use pgvector (ChromaDB removed)
++    4. google-generativeai migrated to google-genai across all files
++    5. Existing content re-embedded with gemini-embedding-001
++    6. ZBRAIN.md changelog created
++  </what-built>
++  <how-to-verify>
++    1. Test vector search works:
++       ```
++       python -c "
++       from promaia.storage.vector_db import VectorDBManager
++       vdb = VectorDBManager()
++       stats = vdb.get_stats()
++       print('Vector DB stats:', stats)
++       results = vdb.search('test query', n_results=5)
++       print(f'Search returned {len(results)} results')
++       "
++       ```
++    2. If you have content synced, test that `maia chat` starts without errors
++    3. Check Supabase Dashboard:
++       - Table Editor shows content_embeddings with rows (if content exists)
++       - SQL Editor: `SELECT COUNT(*) FROM content_embeddings;` returns a number
++    4. Review ZBRAIN.md -- does it accurately describe what changed?
++    5. Run `git log --oneline -10` -- do commit messages clearly explain each change?
++  </how-to-verify>
++  <resume-signal>Type "approved" if Phase 1 is working, or describe any issues found</resume-signal>
++</task>
++
++</tasks>
++
++<verification>
++- `python scripts/migrate_embeddings.py --dry-run` runs without errors
++- `python -c "from promaia.storage.vector_db import VectorDBManager; vdb = VectorDBManager(); print(vdb.get_stats())"` succeeds
++- ZBRAIN.md exists with 30+ lines documenting Phase 1 changes
++- No `chromadb` imports in any primary .py file
++- No `google.generativeai` imports in any primary .py file
++- Vector search returns results (if content exists in Postgres)
++</verification>
++
++<success_criteria>
++- Migration script created, idempotent, handles dry-run and force modes
++- Existing content re-embedded with gemini-embedding-001 into content_embeddings table
++- ZBRAIN.md documents all Phase 1 changes clearly for daughter's review
++- End-to-end verification: vector search works against pgvector on Supabase
++- All commits have clear messages explaining what and why (DOCS-02)
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/01-postgres-foundation/01-03-SUMMARY.md`
++</output>
+-- 
+2.51.0.windows.1
+

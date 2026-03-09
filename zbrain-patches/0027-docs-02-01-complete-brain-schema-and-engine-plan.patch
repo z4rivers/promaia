@@ -1,0 +1,277 @@
+From f14424f26e3fdfe17837607bf5552bb4015b83f4 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 18:13:00 -0800
+Subject: [PATCH 27/68] docs(02-01): complete brain schema and engine plan
+
+- Add 02-01-SUMMARY.md with full execution record
+- Update STATE.md: phase 2 in progress, plan 02-01 complete
+- Update ROADMAP.md: 02-01 checked off, phase 2 progress 1/3
+- Update REQUIREMENTS.md: BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-06 complete
+---
+ .planning/REQUIREMENTS.md                     |  19 +--
+ .planning/ROADMAP.md                          |   4 +-
+ .planning/STATE.md                            |  33 +++--
+ .../02-01-SUMMARY.md                          | 132 ++++++++++++++++++
+ 4 files changed, 166 insertions(+), 22 deletions(-)
+ create mode 100644 .planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index ce8eb6e..4905779 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -15,12 +15,12 @@
+ 
+ ### Brain
+ 
+-- [ ] **BRAIN-01**: Brain schema stores memories with embeddings (semantic search)
+-- [ ] **BRAIN-02**: Domains represent life categories and projects
+-- [ ] **BRAIN-03**: Standing directives per project define direction, not task lists
++- [x] **BRAIN-01**: Brain schema stores memories with embeddings (semantic search) — brain.memories with vector(768) + HNSW (02-01)
++- [x] **BRAIN-02**: Domains represent life categories and projects — brain.domains with hierarchical parent_domain FK (02-01)
++- [x] **BRAIN-03**: Standing directives per project define direction, not task lists — brain.contexts with directive + stale_threshold_days (02-01)
+ - [ ] **BRAIN-04**: Actions auto-extracted from conversations with status tracking
+ - [ ] **BRAIN-05**: Session briefing runs automatically on startup (stalled projects, pending actions, recent activity)
+-- [ ] **BRAIN-06**: Stale alerts flag projects with no activity past threshold
++- [x] **BRAIN-06**: Stale alerts flag projects with no activity past threshold — suggest_next() in engine.py scores by staleness ratio (02-01)
+ 
+ ### Routing
+ 
+@@ -78,13 +78,16 @@
+ 
+ | Requirement | Phase | Status |
+ |-------------|-------|--------|
+-| — | — | — |
++| BRAIN-01 | 02-01 | Complete |
++| BRAIN-02 | 02-01 | Complete |
++| BRAIN-03 | 02-01 | Complete |
++| BRAIN-06 | 02-01 | Complete |
+ 
+ **Coverage:**
+ - v1.0 requirements: 24 total
+-- Mapped to phases: 0
+-- Unmapped: 20
++- Mapped to phases: 4 (Phase 2, Plan 01)
++- Complete: 9 (5 STOR, 4 BRAIN partial)
+ 
+ ---
+ *Requirements defined: 2026-03-04*
+-*Last updated: 2026-03-04 after initial definition*
++*Last updated: 2026-03-05 after 02-01 execution*
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index de68c95..d6b233a 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -45,7 +45,7 @@ Plans:
+ **Plans:** 3 plans
+ 
+ Plans:
+-- [ ] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension
++- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
+ - [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
+ - [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
+ 
+@@ -89,7 +89,7 @@ Plans:
+ | Phase | Plans Complete | Status | Completed |
+ |-------|---|---|---|
+ | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
+-| 2. Brain Schema and MCP Tools | 0/3 | Planning complete | - |
++| 2. Brain Schema and MCP Tools | 1/3 | In progress | - |
+ | 3. Gemini Routing | 0/0 | Not started | - |
+ | 4. Heartbeat Agent | 0/0 | Not started | - |
+ | 5. iPhone Access | 0/0 | Not started | - |
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 10b71dc..bce6909 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,21 +2,16 @@
+ 
+ ## Current Position
+ 
+-Phase: Phase 1 COMPLETE — ready for Phase 2 planning
+-Plan: —
+-Status: Phase 1 verified (8/8 must-haves passed)
+-Last activity: 2026-03-04 — Phase 1 Postgres Foundation complete
++Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
++Plan: 02-01 COMPLETE (brain schema + engine.py)
++Status: Plan 02-01 executed — 2/2 tasks, 7/7 verifications passed
++Last activity: 2026-03-05 — Brain schema SQL and deterministic engine functions complete
+ 
+ ## Next Session: What to Do
+ 
+-1. Run `/gsd:plan-phase 2` for Phase 2 (Brain Schema and MCP Tools)
+-2. Phase 2 depends on Phase 1 (complete) — no blockers
+-3. Key Phase 2 deliverables from roadmap:
+-   - Brain schema tables (memories, domains, contexts, actions, reviews, events, modes)
+-   - MCP tools: briefing, capture, search, recall, context, actions
+-   - Session briefing on startup
+-   - brain/engine.py deterministic functions
+-4. New MAINT requirements added — self-updating dependency intelligence (future phase)
++1. Execute Plan 02-02 (MCP Tools: briefing, capture, search, recall, context, actions)
++2. Apply brain schema to Supabase: `python -m promaia.storage.db_init init-brain`
++3. All 8 engine functions ready for MCP tool imports
+ 
+ ## Phase 1 Completion Summary
+ 
+@@ -69,7 +64,21 @@ None.
+ 
+ - **Promaia re-init (within ~1 week):** Daughter re-initializing repo. Export patches before: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+ 
++## Phase 2 Progress (2026-03-05)
++
++| Plan | What it did |
++|------|------------|
++| 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
++
++## Key Execution Decisions (2026-03-05)
++
++- **brain.* schema:** All 7 tables in dedicated Postgres schema (not public) — prevents naming collisions
++- **Guardrail pattern fix:** Separated 'main' and 'master' into individual single-term patterns — required for correct blocking of "push to main"
++- **suggest_next staleness cap:** 2.0 ceiling prevents severely stale domains from dominating energy-adjusted scoring
++- **apply_brain_schema() autocommit:** Matches existing init_database() pattern, executes each DDL statement independently
++
+ ## Git State
+ 
+ - Branch: `zbrain` (off `feature/agent-scheduler`)
+ - Phase 1 commits: cbad997 through e5fd713 (10 commits)
++- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine)
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md
+new file mode 100644
+index 0000000..d95e1c4
+--- /dev/null
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md
+@@ -0,0 +1,132 @@
++---
++phase: 02-brain-schema-and-mcp-tools
++plan: 01
++subsystem: database
++tags: [postgres, pgvector, hnsw, gin, brain-schema, python, sql]
++
++requires:
++  - phase: 01-postgres-foundation
++    provides: PostgresDB singleton, get_postgres_db(), vector(768)/HNSW pattern in public schema, db_init.py scaffold
++
++provides:
++  - brain Postgres schema with 7 tables (memories, domains, contexts, actions, reviews, events, modes)
++  - brain/schema.sql DDL — idempotent, all CREATE IF NOT EXISTS
++  - brain/engine.py with 8 deterministic functions for mode/context/budget management
++  - apply_brain_schema() in db_init.py with init-brain subcommand
++
++affects:
++  - 02-02 (MCP tools — all tools query brain.* tables)
++  - 02-03 (session briefing — reads brain.contexts, brain.events)
++  - heartbeat agent (uses engine.py guardrails, budget_check, track_time)
++
++tech-stack:
++  added: []
++  patterns:
++    - "brain schema in dedicated Postgres schema (not public) — prevents naming collisions"
++    - "vector(768) + HNSW cosine ops — same as public.content_embeddings"
++    - "GIN index on text[] arrays — fast tag lookup"
++    - "B-tree indexes on brain.events (type, source, created_at DESC) — event log query patterns"
++    - "All engine functions accept optional db= for mockable testing"
++    - "enforce_guardrails: single-term patterns block main/master independently"
++
++key-files:
++  created:
++    - promaia/brain/__init__.py
++    - promaia/brain/schema.sql
++    - promaia/brain/engine.py
++  modified:
++    - promaia/storage/db_init.py
++
++key-decisions:
++  - "brain schema lives in a dedicated 'brain' Postgres schema — all 7 tables under brain.* to avoid collision with public schema"
++  - "guardrails use separate single-term entries for 'main' and 'master' so either word alone triggers block without requiring both"
++  - "suggest_next scores: staleness_score + priority_score; energy='low' halves scores for priority<=3 items"
++  - "apply_brain_schema() uses autocommit=True per statement to match existing init_database() pattern"
++
++patterns-established:
++  - "Engine functions: pure Python + SQL, no LLM calls, optional db param for testability"
++  - "Mode detection: keyword hit count -> confidence (0.4 base + 0.15 per hit, capped at 0.95)"
++  - "Guardrail rule format: list of required_terms; all must match in action string"
++
++requirements-completed: [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-06]
++
++duration: 6min
++completed: 2026-03-05
++---
++
++# Phase 02 Plan 01: Brain Schema and Engine Summary
++
++**Brain Postgres schema (7 tables with HNSW/GIN indexes) and 8 deterministic engine functions for mode detection, guardrails, time tracking, budget management, and context save/restore**
++
++## Performance
++
++- **Duration:** 6 min
++- **Started:** 2026-03-05T02:04:48Z
++- **Completed:** 2026-03-05T02:10:14Z
++- **Tasks:** 2/2
++- **Files modified:** 4
++
++## Accomplishments
++
++- Created `promaia/brain/schema.sql` with all 7 brain tables: memories (vector(768) + HNSW + GIN on tags), domains, contexts, actions, reviews, events (B-tree on type/source/created_at), modes
++- Created `promaia/brain/engine.py` with 8 pure-Python deterministic functions — no LLM imports, all testable via optional db parameter
++- Extended `promaia/storage/db_init.py` with `apply_brain_schema()` function and `init-brain` CLI subcommand
++
++## Task Commits
++
++Each task was committed atomically:
++
++1. **Task 1: Create brain schema SQL and extend db_init.py** - `b0031df` (feat)
++2. **Task 2: Create brain/engine.py with 8 deterministic functions** - `a2d1c65` (feat)
++
++**Plan metadata:** (docs commit — next)
++
++## Files Created/Modified
++
++- `promaia/brain/__init__.py` — Brain package init with docstring describing module contents
++- `promaia/brain/schema.sql` — DDL for all 7 brain tables, HNSW index on memories.embedding, GIN on memories.tags, B-tree indexes on brain.events
++- `promaia/brain/engine.py` — 8 deterministic functions: detect_mode, confirm_mode, enforce_guardrails, track_time, budget_check, save_context, restore_context, suggest_next
++- `promaia/storage/db_init.py` — Added get_brain_schema_path(), apply_brain_schema(), init-brain subcommand
++
++## Decisions Made
++
++- **brain schema in dedicated Postgres schema:** All 7 tables live under `brain.*` to keep them separate from `public.*` tables. This avoids naming collisions (e.g., public already has no 'memories' table but future additions won't conflict).
++- **Guardrail pattern design:** Separated 'main' and 'master' into individual single-term block patterns. Original design had them combined (`['main', 'master']`) which required BOTH words to appear — incorrect. Each word independently signals a main branch operation.
++- **apply_brain_schema() uses autocommit=True:** Matches the existing `init_database()` pattern — executes each DDL statement individually. CREATE INDEX/TABLE IF NOT EXISTS are idempotent so this is safe.
++- **suggest_next staleness cap at 2.0:** Domains severely overdue don't get unbounded scores — prevents any single stale domain from completely dominating even with energy adjustments.
++
++## Deviations from Plan
++
++### Auto-fixed Issues
++
++**1. [Rule 1 - Bug] Fixed guardrails pattern for main/master branch detection**
++- **Found during:** Task 2 verification
++- **Issue:** `_BLOCK_PATTERNS` had `(['main', 'master'], None)` which requires both words in the action string. "push to main" only contains 'main', so it was incorrectly allowed.
++- **Fix:** Split into two separate entries: `(['main'], None)` and `(['master'], None)` so either word alone triggers the block.
++- **Files modified:** promaia/brain/engine.py
++- **Verification:** `enforce_guardrails('push to main', 'heartbeat') == False` now passes
++- **Committed in:** a2d1c65 (Task 2 commit)
++
++---
++
++**Total deviations:** 1 auto-fixed (Rule 1 - bug in guardrail pattern logic)
++**Impact on plan:** Essential correctness fix — the guardrails are a safety system and must block main branch operations reliably. No scope creep.
++
++## Issues Encountered
++
++None beyond the guardrails pattern fix above.
++
++## User Setup Required
++
++None — no external service configuration required. Brain schema is applied via `python -m promaia.storage.db_init init-brain` once Supabase connection is live (existing DATABASE_URL env var).
++
++## Next Phase Readiness
++
++- Brain schema SQL is ready to apply against Supabase (run `init-brain` subcommand)
++- All 8 engine functions importable and passing tests
++- Plan 02-02 (MCP tools) can build on brain.* tables and import from engine.py immediately
++- No blockers
++
++---
++*Phase: 02-brain-schema-and-mcp-tools*
++*Completed: 2026-03-05*
+-- 
+2.51.0.windows.1
+

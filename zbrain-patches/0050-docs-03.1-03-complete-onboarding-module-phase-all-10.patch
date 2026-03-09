@@ -1,0 +1,299 @@
+From e3341d0c3060b98a36544fbe4f0fe2b6931c73d5 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 07:41:18 -0800
+Subject: [PATCH 50/68] docs(03.1-03): complete onboarding module phase - all
+ 10 ONBOARD requirements satisfied
+
+- 03.1-03-SUMMARY.md: interview question bank, CLAUDE.md instructions, human verification approved
+- STATE.md: Phase 03.1 marked complete (3/3 plans), next steps updated
+- ROADMAP.md: Phase 03.1 marked complete with 3/3 plans
+- REQUIREMENTS.md: ONBOARD-01 through ONBOARD-10 all marked complete
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/REQUIREMENTS.md                     |  34 ++---
+ .planning/ROADMAP.md                          |   8 +-
+ .planning/STATE.md                            |  23 ++--
+ .../03.1-onboarding-module/03.1-03-SUMMARY.md | 124 ++++++++++++++++++
+ 4 files changed, 159 insertions(+), 30 deletions(-)
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index 00c1aa7..bb7a149 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -30,10 +30,10 @@
+ - [x] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
+ - [x] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
+ - [x] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
+-- [ ] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
+-- [ ] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
+-- [ ] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, ADHD-friendly
+-- [ ] **ONBOARD-10**: Onboarding follows ADHD-friendly principles: short bursts, instant value, resumable, no shame
++- [x] **ONBOARD-07**: Interview question bank covers all profile categories with OARS-informed questions
++- [x] **ONBOARD-08**: Interview orchestration selects next question based on profile coverage gaps
++- [x] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, design principles
++- [x] **ONBOARD-10**: Onboarding follows design principles: short bursts, instant value, resumable, no shame
+ 
+ ### Routing
+ 
+@@ -97,22 +97,22 @@
+ | BRAIN-06 | 02-01 | Complete |
+ | BRAIN-04 | 02-02 | Complete |
+ | BRAIN-05 | 02-02 | Complete |
+-| ONBOARD-01 | 03.1-01 | Planned |
+-| ONBOARD-02 | 03.1-01 | Planned |
+-| ONBOARD-03 | 03.1-01 | Planned |
+-| ONBOARD-04 | 03.1-02 | Planned |
+-| ONBOARD-05 | 03.1-02 | Planned |
+-| ONBOARD-06 | 03.1-02 | Planned |
+-| ONBOARD-07 | 03.1-03 | Planned |
+-| ONBOARD-08 | 03.1-03 | Planned |
+-| ONBOARD-09 | 03.1-03 | Planned |
+-| ONBOARD-10 | 03.1-03 | Planned |
++| ONBOARD-01 | 03.1-01 | Complete |
++| ONBOARD-02 | 03.1-01 | Complete |
++| ONBOARD-03 | 03.1-01 | Complete |
++| ONBOARD-04 | 03.1-02 | Complete |
++| ONBOARD-05 | 03.1-02 | Complete |
++| ONBOARD-06 | 03.1-02 | Complete |
++| ONBOARD-07 | 03.1-03 | Complete |
++| ONBOARD-08 | 03.1-03 | Complete |
++| ONBOARD-09 | 03.1-03 | Complete |
++| ONBOARD-10 | 03.1-03 | Complete |
+ 
+ **Coverage:**
+ - v1.0 requirements: 34 total (24 original + 10 onboarding)
+-- Mapped to phases: 16 (6 BRAIN complete, 10 ONBOARD planned)
+-- Complete: 11 (5 STOR, 6 BRAIN)
++- Mapped to phases: 26 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 2 mapped)
++- Complete: 21 (5 STOR, 6 BRAIN, 10 ONBOARD)
+ 
+ ---
+ *Requirements defined: 2026-03-04*
+-*Last updated: 2026-03-05 after 03.1 planning*
++*Last updated: 2026-03-05 after 03.1-03 complete (all ONBOARD requirements satisfied)*
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index e26d21e..68ede6d 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -5,7 +5,7 @@
+ - [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
+ - [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
+ - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+-- [ ] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (INSERTED)
++- [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
+ - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
+ - [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
+ 
+@@ -75,12 +75,12 @@ Plans:
+   5. Interview question bank covers all profile categories with OARS-informed questions
+   6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
+   7. Progressive profiling continues after initial interview via observation
+-**Plans:** 2/3 plans executed
++**Plans:** 3/3 plans complete
+ 
+ Plans:
+ - [x] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool (2026-03-05)
+ - [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
+-- [ ] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + verification
++- [x] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + human-verified (2026-03-05)
+ 
+ ### Phase 4: Heartbeat Agent
+ **Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
+@@ -112,7 +112,7 @@ Plans:
+ | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
+ | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
+ | 3. Gemini Routing | 0/0 | Not started | - |
+-| 3.1 Onboarding Module | 0/3 | Planned | - |
++| 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
+ | 4. Heartbeat Agent | 0/0 | Not started | - |
+ | 5. iPhone Access | 0/0 | Not started | - |
+ 
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index d2cdf0d..03bfc11 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,17 +2,17 @@
+ 
+ ## Current Position
+ 
+-Phase: Phase 03.1 — Onboarding Module
+-Plan: 2 of 3 complete
+-Status: 03.1-02 COMPLETE — PC scan and Gmail read channels + MCP tools (2026-03-05)
+-Last activity: 2026-03-05 — 03.1-02 SUMMARY.md finalized, 12 MCP tools verified
++Phase: Phase 03.1 — Onboarding Module COMPLETE
++Plan: 3 of 3 complete
++Status: 03.1-03 COMPLETE — Interview question bank, CLAUDE.md onboarding instructions, human verification approved (2026-03-05)
++Last activity: 2026-03-05 — Phase 03.1 fully complete, all 10 ONBOARD requirements satisfied
+ 
+ ## Next Session: What to Do
+ 
+-1. Run `/gsd:execute-phase` for Phase 03.1 Plan 03: Interview question bank + CLAUDE.md onboarding instructions
+-2. After 03.1 complete: resume Phase 3 (Gemini Routing) or Phase 4 (heartbeat autonomy)
+-3. Set up Gmail OAuth: `python -m promaia.cli.main workspace gmail-setup default zachary4rivers@gmail.com`
+-4. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
++1. Resume Phase 3 (Gemini Routing) or Phase 4 (Heartbeat Agent) — run `/gsd:plan-phase`
++2. Set up Gmail OAuth: `python -m promaia.cli.main workspace gmail-setup default zachary4rivers@gmail.com`
++3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
++4. Continue onboarding conversations -- profile is growing, keep feeding it
+ 
+ ## Phase 1 Completion Summary
+ 
+@@ -99,6 +99,7 @@ None.
+ |------|------------|
+ | 03.1-01 | Onboarding state engine: 2 new tables (onboarding_sessions, onboarding_progress), onboarding.py (5 functions), onboard MCP tool (10th tool), deployed to Supabase |
+ | 03.1-02 | PC scan channel (git analysis, file structure, Windows apps), Gmail read channel (contacts, patterns, topics), pc_scan + gmail_scan MCP tools (12 total) |
++| 03.1-03 | Interview question bank (16 questions, 9 categories, OARS technique), interview orchestration, CLAUDE.md onboarding instructions, human-verified APPROVED |
+ 
+ ## Key Execution Decisions (Phase 03.1, 2026-03-05)
+ 
+@@ -111,10 +112,14 @@ None.
+ - **Gmail metadata-only format:** thread fetch with format="metadata" + metadataHeaders for privacy-first scanning
+ - **Differentiated confidence:** PC scan 0.6, Gmail scan 0.5 — email patterns less direct than git timestamps
+ - **Channel module pattern:** standalone run_*() functions that accept db param and return result dicts
++- **Question bank 4-phase arc:** warm_up, current_state, gap_identification, commitment -- matches motivational interviewing structure
++- **Interview module is a selector:** Provides next question, does NOT drive conversation -- Claude uses CLAUDE.md instructions for that
++- **Design Principles (not ADHD-Friendly):** Short bursts, auto-save, no shame framing are the default style, not a special accommodation
++- **User verification positive:** Onboarding captures both stated and implied information effectively
+ 
+ ## Git State
+ 
+ - Branch: `zbrain` (off `feature/agent-scheduler`)
+ - Phase 1 commits: cbad997 through e5fd713 (10 commits)
+ - Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
+-- Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server), 551c08c (03.1-02 pc_scan), 613bcc7 (03.1-02 gmail_read), 0e6fa6d (03.1-02 mcp tools)
++- Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server), 551c08c (03.1-02 pc_scan), 613bcc7 (03.1-02 gmail_read), 0e6fa6d (03.1-02 mcp tools), e00e58b (03.1-03 question bank+interview), a8613e9 (03.1-03 CLAUDE.md instructions), fc9605e (03.1-03 rename Design Principles)
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md b/.planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md
+new file mode 100644
+index 0000000..15e20e2
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md
+@@ -0,0 +1,124 @@
++---
++phase: 03.1-onboarding-module
++plan: 03
++subsystem: brain, onboarding
++tags: [interview, question-bank, OARS, reciprocal-disclosure, progressive-profiling, CLAUDE-md]
++
++# Dependency graph
++requires:
++  - phase: 03.1-01
++    provides: "onboarding state engine, onboard MCP tool, EXPECTED_FIELDS constant"
++  - phase: 03.1-02
++    provides: "PC scan and Gmail read channels, pc_scan and gmail_scan MCP tools"
++provides:
++  - "Interview question bank with 16 questions across 9 profile categories"
++  - "Interview orchestration module (get_next_question, get_interview_state, mark_question_answered)"
++  - "CLAUDE.md onboarding instructions: conversational technique, reciprocal disclosure, progressive profiling, channel orchestration"
++affects: [heartbeat-agent, gemini-routing, onboarding-interview]
++
++# Tech tracking
++tech-stack:
++  added: []
++  patterns: [OARS-informed-questions, reciprocal-AI-disclosure, progressive-profiling, phase-ordered-interview]
++
++key-files:
++  created:
++    - promaia/brain/channels/question_bank.py
++    - promaia/brain/channels/interview.py
++  modified:
++    - CLAUDE.md
++
++key-decisions:
++  - "Question bank uses 4-phase arc (warm_up, current_state, gap_identification, commitment) matching motivational interviewing structure"
++  - "AI reciprocal disclosure is per-question, not per-category -- each question can optionally include what Claude shares about itself"
++  - "Interview module is a question selector, not a conversation driver -- Claude conducts the conversation using CLAUDE.md instructions"
++  - "CLAUDE.md onboarding section placed between Personal Profile and Energy Adaptation for logical flow"
++  - "Design principles (short bursts, resumable, no shame framing) are the default interaction style, not a special accommodation"
++
++patterns-established:
++  - "Question bank pattern: dict of categories -> list of question dicts with text, fields, phase, technique, follow_ups, ai_disclosure"
++  - "Interview orchestration pattern: stateless functions that query profile coverage to determine next question"
++  - "CLAUDE.md behavioral instruction pattern: section with subsections for different interaction modes"
++
++requirements-completed: [ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
++
++# Metrics
++duration: ~25min (across checkpoint pause)
++completed: 2026-03-05
++---
++
++# Phase 03.1 Plan 03: Interview Question Bank and CLAUDE.md Instructions Summary
++
++**OARS-informed interview question bank with 16 questions across 9 categories, interview orchestration module, and CLAUDE.md behavioral instructions for reciprocal disclosure, progressive profiling, and channel orchestration**
++
++## Performance
++
++- **Duration:** ~25 min (includes human verification checkpoint)
++- **Started:** 2026-03-05T14:30:00Z
++- **Completed:** 2026-03-05T15:12:07Z
++- **Tasks:** 3/3
++- **Files modified:** 3
++
++## Accomplishments
++- Question bank with 16 questions across 9 profile categories (identity, communication, cognitive_style, energy_patterns, values_and_motivation, emotional_landscape, work_patterns, neurodivergence, relationships) using OARS technique, narrative discovery, and values elicitation
++- Interview orchestration module that selects next question based on profile coverage gaps, respects phase ordering (warm_up -> current_state -> gap_identification -> commitment), and tracks answered questions via brain.events
++- CLAUDE.md onboarding section with 6 subsections: Starting, Conducting the Interview, Reciprocal Disclosure, Progressive Profiling, Channel Orchestration, and Design Principles
++- Human verification confirmed: onboarding interview works naturally, Claude captures stated and implied information, reciprocal disclosure feels genuine
++
++## Task Commits
++
++Each task was committed atomically:
++
++1. **Task 1: Question bank and interview orchestration** - `e00e58b` (feat)
++2. **Task 2: CLAUDE.md onboarding instructions** - `a8613e9` (feat)
++3. **Task 3: Onboarding flow verification** - checkpoint:human-verify APPROVED (no code commit)
++
++## Files Created/Modified
++- `promaia/brain/channels/question_bank.py` - 16 interview questions with OARS techniques, reciprocal AI disclosure, follow-ups, and field mappings
++- `promaia/brain/channels/interview.py` - Interview orchestration: get_interview_state, get_next_question, mark_question_answered
++- `CLAUDE.md` - Added Onboarding Interview section (Starting, Conducting, Reciprocal Disclosure, Progressive Profiling, Channel Orchestration, Design Principles)
++
++## Decisions Made
++- Question bank covers 9 categories with 4-phase arc matching motivational interviewing structure (warm_up first, commitment last)
++- AI disclosure is optional per-question -- some questions have natural reciprocal moments, others don't need them
++- Interview module is purely a question selector; Claude conducts the actual conversation using CLAUDE.md behavioral instructions
++- Progressive profiling section teaches Claude to continue learning after the initial interview through observation (source="inferred", confidence=0.5)
++- Design principles (short bursts, auto-save, no shame framing, default everything) positioned as the standard interaction style
++
++## Deviations from Plan
++
++None - plan executed exactly as written.
++
++## Issues Encountered
++
++None.
++
++## User Setup Required
++
++None - no external service configuration required for the interview channel. (Gmail OAuth still needed separately for gmail_scan, documented in 03.1-02-SUMMARY.md.)
++
++## User Feedback
++
++The user approved the human verification checkpoint with positive feedback:
++> "I've been feeding promaia info. It is getting to know me, doing a nice job of capturing what I am saying and implications of what I am saying!"
++
++This confirms the onboarding interview is working as designed -- Claude follows the instructions to capture both explicit statements and inferred implications.
++
++## Next Phase Readiness
++- Phase 03.1 (Onboarding Module) is now COMPLETE -- all 3 plans executed
++- All 10 ONBOARD requirements satisfied
++- Ready to resume Phase 3 (Gemini Routing) or Phase 4 (Heartbeat Agent)
++- Gmail OAuth setup still pending for full gmail_scan functionality
++
++## Self-Check: PASSED
++
++- FOUND: promaia/brain/channels/question_bank.py
++- FOUND: promaia/brain/channels/interview.py
++- FOUND: CLAUDE.md
++- FOUND: .planning/phases/03.1-onboarding-module/03.1-03-SUMMARY.md
++- FOUND: e00e58b (Task 1 commit)
++- FOUND: a8613e9 (Task 2 commit)
++
++---
++*Phase: 03.1-onboarding-module*
++*Completed: 2026-03-05*
+-- 
+2.51.0.windows.1
+

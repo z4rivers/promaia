@@ -1,0 +1,44 @@
+From 18b343758e3254eccbd504d8249241a2f49331c4 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 08:06:38 -0800
+Subject: [PATCH 51/68] fix(03.1): correct SQL column names in interview event
+ logging
+
+brain.events uses (type, payload) not (event_type, detail).
+Format payload as JSONB to match schema.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/brain/channels/interview.py | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/promaia/brain/channels/interview.py b/promaia/brain/channels/interview.py
+index 442a017..07686ce 100644
+--- a/promaia/brain/channels/interview.py
++++ b/promaia/brain/channels/interview.py
+@@ -17,6 +17,7 @@ Usage:
+         mark_question_answered,
+     )
+ """
++import json
+ import logging
+ from typing import Dict, List, Optional
+ 
+@@ -269,11 +270,11 @@ def mark_question_answered(
+         # Log event
+         db.execute(
+             """
+-            INSERT INTO brain.events (event_type, detail)
+-            VALUES ('interview_question', %s)
++            INSERT INTO brain.events (type, payload, source)
++            VALUES ('interview_question', %s::jsonb, 'onboarding')
+             """,
+             (
+-                f"category={category}, fields={','.join(fields_populated)}",
++                json.dumps({"category": category, "fields": fields_populated}),
+             ),
+         )
+ 
+-- 
+2.51.0.windows.1
+

@@ -1,0 +1,304 @@
+From b0031df402cfe05846c90b72ea46593156025a7f Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 18:06:36 -0800
+Subject: [PATCH 25/68] feat(02-01): create brain schema SQL and extend
+ db_init.py
+
+- Add promaia/brain/__init__.py package init
+- Add promaia/brain/schema.sql with 7 brain tables: memories (vector(768) + HNSW + GIN), domains, contexts, actions, reviews, events (B-tree indexes on type/source/created_at), modes
+- Extend promaia/storage/db_init.py with apply_brain_schema() function and init-brain subcommand
+---
+ promaia/brain/__init__.py  |   8 ++
+ promaia/brain/schema.sql   | 147 +++++++++++++++++++++++++++++++++++++
+ promaia/storage/db_init.py |  80 +++++++++++++++++---
+ 3 files changed, 226 insertions(+), 9 deletions(-)
+ create mode 100644 promaia/brain/__init__.py
+ create mode 100644 promaia/brain/schema.sql
+
+diff --git a/promaia/brain/__init__.py b/promaia/brain/__init__.py
+new file mode 100644
+index 0000000..42f6899
+--- /dev/null
++++ b/promaia/brain/__init__.py
+@@ -0,0 +1,8 @@
++"""
++Brain package for zBrain — persistent memory and AI OS layer.
++
++This package provides:
++- schema.sql: DDL for all 7 brain tables in the brain Postgres schema
++- engine.py: 8 deterministic functions for mode detection, guardrails,
++  time tracking, budget management, and context save/restore
++"""
+diff --git a/promaia/brain/schema.sql b/promaia/brain/schema.sql
+new file mode 100644
+index 0000000..2a835aa
+--- /dev/null
++++ b/promaia/brain/schema.sql
+@@ -0,0 +1,147 @@
++-- Brain Schema for zBrain
++-- All tables live under a dedicated 'brain' Postgres schema.
++-- Apply idempotently via apply_brain_schema() in promaia/storage/db_init.py.
++
++-- Requires pgvector extension (already enabled in public schema)
++CREATE EXTENSION IF NOT EXISTS vector;
++
++-- Create the brain schema
++CREATE SCHEMA IF NOT EXISTS brain;
++
++-- ============================================================
++-- brain.memories
++-- Core persistent memory store. Stores facts, notes, and
++-- observations with semantic embeddings for similarity search.
++-- vector(768) matches gemini-embedding-001 output dimensions.
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.memories (
++    id SERIAL PRIMARY KEY,
++    content TEXT NOT NULL,
++    summary TEXT,
++    domain TEXT,
++    tags TEXT[] DEFAULT '{}',
++    entities JSONB DEFAULT '{}',
++    embedding vector(768),
++    source TEXT,
++    source_id TEXT,
++    created_at TIMESTAMPTZ DEFAULT NOW(),
++    updated_at TIMESTAMPTZ DEFAULT NOW()
++);
++
++-- HNSW index for fast approximate nearest neighbor search (cosine similarity)
++-- Same pattern as content_embeddings in public schema
++CREATE INDEX IF NOT EXISTS idx_brain_memories_embedding
++    ON brain.memories USING hnsw (embedding vector_cosine_ops);
++
++-- GIN index on tags array for fast tag lookups
++CREATE INDEX IF NOT EXISTS idx_brain_memories_tags
++    ON brain.memories USING gin (tags);
++
++
++-- ============================================================
++-- brain.domains
++-- Life categories and projects. Hierarchical via parent_domain.
++-- Examples: "promaia", "heatpup", "hvac-brand", "personal"
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.domains (
++    id SERIAL PRIMARY KEY,
++    name TEXT NOT NULL UNIQUE,
++    description TEXT,
++    is_project BOOLEAN DEFAULT TRUE,
++    parent_domain INTEGER REFERENCES brain.domains(id),
++    created_at TIMESTAMPTZ DEFAULT NOW()
++);
++
++
++-- ============================================================
++-- brain.contexts
++-- Standing directives and current state per domain.
++-- Tracks what Claude should know about each project/life area.
++-- stale_threshold_days: how many days before context is considered stale.
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.contexts (
++    id SERIAL PRIMARY KEY,
++    domain_id INTEGER REFERENCES brain.domains(id) NOT NULL,
++    directive TEXT,
++    current_state TEXT,
++    last_updated TIMESTAMPTZ DEFAULT NOW(),
++    priority INTEGER DEFAULT 5,
++    stale_threshold_days INTEGER DEFAULT 7
++);
++
++
++-- ============================================================
++-- brain.actions
++-- Actionable items extracted from memories.
++-- status: pending (open), done (completed), stale (expired/irrelevant)
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.actions (
++    id SERIAL PRIMARY KEY,
++    memory_id INTEGER REFERENCES brain.memories(id),
++    domain_id INTEGER REFERENCES brain.domains(id),
++    description TEXT NOT NULL,
++    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'stale')),
++    extracted_at TIMESTAMPTZ DEFAULT NOW(),
++    completed_at TIMESTAMPTZ
++);
++
++
++-- ============================================================
++-- brain.reviews
++-- Periodic review records (weekly/monthly summaries).
++-- Tracks what was accomplished and which projects were touched.
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.reviews (
++    id SERIAL PRIMARY KEY,
++    period_start TIMESTAMPTZ,
++    period_end TIMESTAMPTZ,
++    summary TEXT,
++    projects_touched JSONB DEFAULT '[]',
++    actions_completed INTEGER DEFAULT 0,
++    created_at TIMESTAMPTZ DEFAULT NOW()
++);
++
++
++-- ============================================================
++-- brain.events
++-- Event log for all brain activity: captures, mode switches,
++-- heartbeat cycles, API calls, context saves.
++-- Used by engine.py for time tracking and budget checks.
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.events (
++    id SERIAL PRIMARY KEY,
++    type TEXT NOT NULL,
++    payload JSONB DEFAULT '{}',
++    source TEXT,
++    session_id TEXT,
++    created_at TIMESTAMPTZ DEFAULT NOW()
++);
++
++-- B-tree indexes for common event query patterns
++CREATE INDEX IF NOT EXISTS idx_brain_events_type
++    ON brain.events (type);
++
++CREATE INDEX IF NOT EXISTS idx_brain_events_source
++    ON brain.events (source);
++
++CREATE INDEX IF NOT EXISTS idx_brain_events_created_at
++    ON brain.events (created_at DESC);
++
++CREATE INDEX IF NOT EXISTS idx_brain_events_session_id
++    ON brain.events (session_id);
++
++
++-- ============================================================
++-- brain.modes
++-- Session mode tracking: working, planning, capturing, reviewing.
++-- One row per mode entry. Most recent row = current mode.
++-- context_snapshot captures domain context at mode entry time.
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.modes (
++    id SERIAL PRIMARY KEY,
++    session_id TEXT NOT NULL,
++    mode TEXT NOT NULL CHECK (mode IN ('working', 'planning', 'capturing', 'reviewing')),
++    entered_at TIMESTAMPTZ DEFAULT NOW(),
++    context_snapshot JSONB DEFAULT '{}',
++    triggered_by TEXT
++);
+diff --git a/promaia/storage/db_init.py b/promaia/storage/db_init.py
+index 1f49d11..58dc54a 100644
+--- a/promaia/storage/db_init.py
++++ b/promaia/storage/db_init.py
+@@ -2,9 +2,10 @@
+ Database initialization and management commands for Promaia.
+ 
+ Usage:
+-    python -m promaia.storage.db_init init     # Initialize database
+-    python -m promaia.storage.db_init status   # Check connection status
+-    python -m promaia.storage.db_init reset    # Drop and recreate all tables (DANGER!)
++    python -m promaia.storage.db_init init          # Initialize public schema
++    python -m promaia.storage.db_init init-brain     # Apply brain schema (idempotent)
++    python -m promaia.storage.db_init status         # Check connection status
++    python -m promaia.storage.db_init reset          # Drop and recreate all tables (DANGER!)
+ """
+ import os
+ import sys
+@@ -207,31 +208,92 @@ def create_database():
+         return False
+ 
+ 
++def get_brain_schema_path() -> Path:
++    """Get path to the brain schema.sql file."""
++    return Path(__file__).parent.parent / "brain" / "schema.sql"
++
++
++def apply_brain_schema():
++    """Apply the brain schema idempotently.
++
++    Reads promaia/brain/schema.sql, splits statements by semicolons,
++    and executes each within a transaction. Safe to run multiple times
++    (all DDL uses CREATE IF NOT EXISTS).
++
++    Returns True on success, False on failure.
++    """
++    from promaia.storage.postgres_db import get_postgres_db
++
++    logger.info("Applying brain schema...")
++
++    try:
++        db = get_postgres_db()
++
++        schema_path = get_brain_schema_path()
++        if not schema_path.exists():
++            logger.error(f"Brain schema file not found: {schema_path}", file=sys.stderr)
++            return False
++
++        with open(schema_path, 'r') as f:
++            sql = f.read()
++
++        # Split on semicolons and filter empty/comment-only statements
++        stmts = [s.strip() for s in sql.split(';') if s.strip()]
++
++        with db.get_connection() as conn:
++            conn.autocommit = True
++            with conn.cursor() as cursor:
++                for stmt in stmts:
++                    # Skip pure comment blocks
++                    non_comment = '\n'.join(
++                        line for line in stmt.splitlines()
++                        if not line.strip().startswith('--')
++                    ).strip()
++                    if not non_comment:
++                        continue
++                    try:
++                        cursor.execute(stmt)
++                    except Exception as e:
++                        if 'already exists' not in str(e).lower():
++                            logger.warning(f"Brain schema statement warning: {e}")
++
++        print("Brain schema applied successfully.", file=sys.stderr)
++        return True
++
++    except Exception as e:
++        logger.error(f"Brain schema application failed: {e}")
++        return False
++
++
+ def main():
+     """Main entry point for database management."""
+     if len(sys.argv) < 2:
+         print(__doc__)
+         sys.exit(1)
+-    
++
+     command = sys.argv[1].lower()
+-    
++
+     if command == 'init':
+         create_database()
+         success = init_database()
+         sys.exit(0 if success else 1)
+-    
++
++    elif command == 'init-brain':
++        success = apply_brain_schema()
++        sys.exit(0 if success else 1)
++
+     elif command == 'status':
+         success = check_status()
+         sys.exit(0 if success else 1)
+-    
++
+     elif command == 'reset':
+         success = reset_database()
+         sys.exit(0 if success else 1)
+-    
++
+     elif command == 'create':
+         success = create_database()
+         sys.exit(0 if success else 1)
+-    
++
+     else:
+         print(f"Unknown command: {command}")
+         print(__doc__)
+-- 
+2.51.0.windows.1
+

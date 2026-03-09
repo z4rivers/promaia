@@ -1,0 +1,876 @@
+From 56470899f6926c16e44173c4dd0124f7b2f66e7a Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 21:19:10 -0800
+Subject: [PATCH 63/68] docs(4.x): update roadmap and state for phases 4.1-4.6
+ completion
+
+Reorder Phase 4 sub-phases for zero-blocker-first activation.
+Mark 4.1-4.6 complete (MuninnDB, email, web, Notion, calendar, agents).
+Add activation plan, phase context docs, and deferred items tracking.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/ROADMAP.md                          |  48 +-
+ .planning/STATE.md                            |  45 +-
+ .../01-postgres-foundation/deferred-items.md  |  10 +
+ .../phases/03.1-onboarding-module/.gitkeep    |   0
+ .../03.1-onboarding-module/03.1-RESEARCH.md   | 446 ++++++++++++++++++
+ .../4.1-CONTEXT.md                            |  84 ++++
+ .../ACTIVATION-PLAN.md                        | 139 ++++++
+ 7 files changed, 736 insertions(+), 36 deletions(-)
+ create mode 100644 .planning/phases/01-postgres-foundation/deferred-items.md
+ create mode 100644 .planning/phases/03.1-onboarding-module/.gitkeep
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
+ create mode 100644 .planning/phases/04-full-platform-activation/4.1-CONTEXT.md
+ create mode 100644 .planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md
+
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 6889a1e..842ca73 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -88,44 +88,36 @@ Plans:
+ **Depends on:** Phase 2
+ **Full plan:** `.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md`
+ 
+-**Sub-phases:**
++**Sub-phases (reordered 2026-03-06 — zero-blocker-first):**
+ 
+-#### 4.1: MuninnDB Cognitive Memory
++#### 4.1: MuninnDB Cognitive Memory (COMPLETE)
+ **Goal:** Integrate MuninnDB as cognitive memory sidecar with dual-write capture, parallel search retrieval, and dedicated ACTIVATE tool for associative recall
+ **Depends on:** Phase 2
+-**Requirements:** [MUNINN-01, MUNINN-02, MUNINN-03, MUNINN-04, MUNINN-05, MUNINN-06]
+-**Success Criteria** (what must be TRUE):
+-  1. MuninnDB REST client wrapper exists (promaia/brain/muninn.py)
+-  2. Capture dual-writes to both Postgres and MuninnDB (MuninnDB best-effort)
+-  3. Search returns labeled results from both pgvector and MuninnDB ACTIVATE
+-  4. Dedicated activate MCP tool provides cognitive retrieval with score components
+-  5. All existing brain.memories seeded into MuninnDB zbrain-vault
+-  6. MuninnDB failures never block Postgres operations (graceful degradation)
+ **Plans:** 1/1 plans complete
+ 
+ Plans:
+ - [x] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification (2026-03-05)
+ 
+-#### 4.2: Google Calendar
+-Enable Calendar API, OAuth scope, wire to agents. Brain knows the schedule.
++#### 4.2: Email Pipeline Activation
++Deploy mail schema, test classifier + intent detector against live Gmail. No Notion dependency. 5,600L existing code.
+ 
+-#### 4.3: Notion Dashboard
+-Set up Notion as visibility layer. Agent output pages, brain dashboard, profile view. Notion displays, MuninnDB thinks.
++#### 4.3: Web/Chat Server
++Start FastAPI server, test multi-model chat, wire brain MCP tools into web interface. No Notion dependency. 2,327L existing code.
+ 
+-#### 4.4: Agent Scheduler
+-Activate the heartbeat. Morning Briefing, Email Triage, Evening Digest agents. Autonomous operation via scheduler daemon.
++#### 4.4: Notion Dashboard
++Create pages, share with zbrain integration, run agent setup, test NotionOutputWriter. 4,300L existing code.
+ 
+-#### 4.5: Full Email Pipeline
+-Wire gmail_read.py into existing mail/ module (classifier, intent detector, response generator, draft manager). All 4 Gmail layers operational.
++#### 4.5: Google Calendar
++Enable Calendar API, OAuth setup, test read/write. 540L existing code.
+ 
+-#### 4.6: Web/Chat Interface (iPhone Access)
+-Deploy FastAPI chat server to cloud. Brain accessible from phone. Voice capture while driving.
++#### 4.6: Agent Scheduler
++Define agents (Morning Briefing, Email Triage, Evening Digest), start scheduler daemon. Depends on 4.4 + 4.5.
+ 
+ #### 4.7: Information Funneling
+-Curate information sources, filter by brain profile, form into regular intelligence briefs. Not newsletters — intelligence delivery.
++Curate sources, filter by brain profile, intelligence briefs. Depends on 4.6.
+ 
+ #### 4.8: Webflow CMS
+-Activate when needed for Heatpup or other web publishing.
++Activate when needed for publishing.
+ 
+ ## Progress
+ 
+@@ -137,12 +129,12 @@ Activate when needed for Heatpup or other web publishing.
+ | 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
+ | 4. Full Platform Activation | 1/8 | In Progress | - |
+ | 4.1 MuninnDB | 1/1 | Complete | 2026-03-05 |
+-| 4.2 Google Calendar | - | Ready | - |
+-| 4.3 Notion Dashboard | - | Ready | - |
+-| 4.4 Agent Scheduler | - | Depends on 4.2+4.3 | - |
+-| 4.5 Email Pipeline | - | Ready | - |
+-| 4.6 Web/Chat (iPhone) | - | Ready | - |
+-| 4.7 Info Funneling | - | Depends on 4.4 | - |
++| 4.2 Email Pipeline | 1/1 | Complete | 2026-03-06 |
++| 4.3 Web/Chat Server | 1/1 | Complete | 2026-03-06 |
++| 4.4 Notion Dashboard | 1/1 | Complete | 2026-03-06 |
++| 4.5 Google Calendar | 1/1 | Complete | 2026-03-06 |
++| 4.6 Agent Scheduler | 1/1 | Complete (needs data) | 2026-03-06 |
++| 4.7 Info Funneling | - | Depends on 4.6 | - |
+ | 4.8 Webflow CMS | - | When needed | - |
+ 
+ ---
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 2c69aa2..df96761 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,17 +2,46 @@
+ 
+ ## Current Position
+ 
+-Phase: Phase 4.1 — MuninnDB Cognitive Memory COMPLETE
+-Plan: 4.1-01 of 4.1-01 complete (1/1)
+-Status: 4.1-01 COMPLETE — MuninnDB REST client, dual-write capture, parallel search, activate tool, 32 memories seeded, human-verified (2026-03-05)
+-Last activity: 2026-03-05 — Phase 4.1 MuninnDB integration complete, all 6 MUNINN requirements satisfied
++Phase: Phase 4 — Full Platform Activation
++Plan: Activation plan rewritten 2026-03-06 (zero-blocker-first order)
++Status: 4.1-4.6 activated. Agents defined and tested. Dashboard pages created.
++Last activity: 2026-03-06 — Massive activation session: email pipeline, web server, Notion, Calendar, agents
++
++## Session 2026-03-06 Accomplishments
++
++- Rewrote Phase 4 roadmap as activation plan (zero-blocker-first)
++- 4.2 Email Pipeline: DONE (other Claude session — classifier, prompts, pre-filter, e2e tested)
++- 4.3 Web Server: DONE — FastAPI running localhost:8002, Gemini chat works, 2 fixes applied
++  - Fixed: dotenv load order in main.py, google-genai types in chat.py
++  - MCP router exists but NOT yet wired into main.py
++- 4.4 Notion Dashboard: DONE — 4 pages under zBrain root, IDs in config
++  - Root: 31b72180-6675-8039-a701-f51c6423f11e
++  - Brain Dashboard: 31b72180-6675-8175-bd07-cfd6adf48f40
++  - Projects: 31b72180-6675-8171-ac01-cddba216788b
++  - Email Triage: 31b72180-6675-81ab-9da5-cbc2aabea6a0
++  - Profile: 31b72180-6675-8195-b4bf-c39367cb4525
++- 4.5 Google Calendar: DONE — OAuth token at ~/.promaia/google_calendar_token.json, 7 calendars visible
++- 4.6 Agent Scheduler: 3 agents defined, morning-briefing test-run successful (wrote to Notion!)
++  - morning-briefing (daily), email-triage (2hr), evening-digest (daily 9pm)
++  - SDK mode fails inside Claude Code (CLAUDECODE env var conflict) — works with legacy mode
++  - Agents lack real data — Gmail not synced to Postgres yet
++- All deps installed (except uvloop/jiter — need Rust on Python 3.14)
++- notion-client 2.2.1 installed
++- CLI has missing stubs (prompt_sync_commands created, team_commands/conversation_commands still missing)
++- Notion API reference doc created: zbrain/notion-api-dashboard-reference.md (1533 lines)
+ 
+ ## Next Session: What to Do
+ 
+-1. Continue Phase 4 — next sub-phase 4.2 (Google Calendar) — run `/gsd:plan-phase`
+-2. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+-3. Continue onboarding conversations -- profile is growing, keep feeding it
+-4. Monitor MuninnDB embedder fix -- semantic_similarity currently 0 (v1beta API issue)
++1. Build Notion design skill from reference doc (zbrain/notion-api-dashboard-reference.md)
++2. Redesign Notion dashboard pages to look professional (not default)
++3. Sync Gmail to Postgres so agents have real data
++4. Wire MCP router into web server main.py (brain tools via web)
++5. Start scheduler daemon outside Claude Code (so SDK mode works)
++6. Create CLI stubs for team_commands, conversation_commands (CLI currently broken)
++7. Deploy web server externally for phone access
++8. Fix Anthropic chat bug in utils/ai.py
++9. Export patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
++10. Commit all session work
+ 
+ ## Phase 1 Completion Summary
+ 
+diff --git a/.planning/phases/01-postgres-foundation/deferred-items.md b/.planning/phases/01-postgres-foundation/deferred-items.md
+new file mode 100644
+index 0000000..e8fe797
+--- /dev/null
++++ b/.planning/phases/01-postgres-foundation/deferred-items.md
+@@ -0,0 +1,10 @@
++# Deferred Items - Phase 01
++
++## Out-of-Scope Discoveries
++
++### Backup file copies with old imports
++- **Found during:** Plan 03, Task 1 verification
++- **Files:** `promaia/storage/vector_db 2.py`, `promaia/ai/nl_orchestrator 2.py`, `promaia/utils/image_processing 3.py`, `promaia/write/interface 2.py`, `promaia/write/interface 3.py`
++- **Issue:** These are macOS-style file copies (note spaces in filenames) with old chromadb and google.generativeai imports
++- **Impact:** None -- these are not imported by any module. Python ignores files with spaces in names.
++- **Recommendation:** Delete these backup files to keep the repo clean. They pre-date all zbrain changes.
+diff --git a/.planning/phases/03.1-onboarding-module/.gitkeep b/.planning/phases/03.1-onboarding-module/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md b/.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
+new file mode 100644
+index 0000000..c2b41d8
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-RESEARCH.md
+@@ -0,0 +1,446 @@
++# Promaia Onboarding Interview Module — Research Synthesis
++
++## Purpose
++Design a "getting to know you" onboarding experience for Promaia that builds a rich personal profile through conversation, not forms. The AI shares about itself as it learns about the user (reciprocal disclosure). Must be ADHD-friendly, feel fun, and produce a profile that makes the AI genuinely more useful.
++
++---
++
++## Part 1: How to Interview (Frameworks & Techniques)
++
++### The Interview Arc (4 Phases)
++
++Based on life coaching discovery sessions and motivational interviewing:
++
++1. **Warm-Up (25%)** — Low-risk, relationship-building
++   - "What brings you here?"
++   - "What would make this feel like time well spent?"
++   - Permission frame: "If anything feels too personal, just say so" (paradoxically increases willingness)
++
++2. **Current State (25%)** — Assessment tools like Wheel of Life
++   - Rate satisfaction 1-10 across life areas, then debrief:
++   - "Which score surprised you?"
++   - "What's already working that got you to this number?"
++
++3. **Gap Identification (35%)** — Deep questions
++   - "What do you want to have happen?" (desired future)
++   - "What's gotten in the way?" (obstacles)
++   - "What have you already tried?" (resourcefulness)
++   - "If you achieved this, what would that make possible?" (values underneath goals)
++
++4. **Commitment (15%)** — Forward motion
++   - "On a scale of 1-10, how committed are you?"
++   - "What's one small thing you could do before we talk again?"
++
++### OARS Technique (Motivational Interviewing)
++
++- **Open questions**: "How" and "What" not "Do you" or "Are you"
++- **Affirmations**: Recognize strengths and effort, not just results. Must be genuine.
++- **Reflective listening**: Statements, not questions. Simple (paraphrase) and complex (reflect emotions/meaning)
++  - Double-sided: "On one hand X, on the other Y" — always end on the change side
++  - Continuing the paragraph: Extend their thought forward with a conjunction
++- **Summaries**: Strategic recaps that weave together what they've said, gently amplifying their direction
++
++### Narrative-Based Discovery (Stories > Direct Questions)
++
++From narrative therapy and StoryBrand:
++
++**Landscape of Action** (get the story first):
++- "Tell me about a time when you handled something really well"
++- "What did you actually do in that moment?"
++
++**Landscape of Identity** (then help them interpret):
++- "What does that say about you as a person?"
++- "Who in your life would be least surprised to hear you did that?"
++
++**Externalizing** (separate person from problem — removes shame):
++- "How does Procrastination show up in your life? What tactics does it use?"
++- "When does it have the most power? When the least?"
++- NOT "What are your weaknesses?" — instead "What gets in your way, and when have you beaten it?"
++
++**StoryBrand's Three Problem Layers** (what people really mean):
++- External: "I want to get organized"
++- Internal: "I feel out of control"
++- Philosophical: "I deserve to feel competent"
++
++### The Art of Follow-Up (Terry Gross / Brene Brown)
++
++**Terry Gross method:**
++- Organize questions into "chapters" — thematic blocks with narrative arc
++- Start safe, build trust, tough questions come LATE (20+ minutes in)
++- Ask for explanation, not confession: "Explain what you meant when you said..."
++- Strategic silence after probing questions — count to five, don't fill the pause
++
++**Brene Brown method:**
++- Two-word check-ins: "How are you feeling? Give me two words." Bypasses automatic "fine"
++- "What does support from me look like today?"
++- BRAVING trust framework: Boundaries, Reliability, Accountability, Vault, Integrity, Non-judgment, Generosity
++
++**Follow-up taxonomy (gentle to direct):**
++1. Elaboration: "Tell me more"
++2. Clarification: "What do you mean by [their word]?"
++3. Example-seeking: "Can you give me an example?"
++4. Emotional probing: "How did that land for you?"
++5. Contrast: "How is that different from what you expected?"
++6. Implication: "What does that mean going forward?"
++7. Challenging (sparingly, late): "You said X earlier and Y now — help me understand"
++
++**Critical skill:** Probe when someone uses vague language. "It was hard" — the amateur says "I understand." The master says "Hard in what way?"
++
++### Values Elicitation (3 Methods)
++
++1. **Peak Experience**: "Think of 3-5 moments that were especially meaningful. What was happening?" Extract values from stories.
++2. **Card Sort**: 50+ values words, sort to top 5. The friction of choosing reveals priority.
++3. **Chunk-Up**: Start with stated goal, keep asking "What does that connect to that's bigger?" until you reach core value. ("I want a promotion" → "Financial security" → "Freedom to choose" → core value: *autonomy*)
++
++---
++
++## Part 2: AI Self-Disclosure (The Two-Way Street)
++
++### The Psychology of Reciprocal Disclosure
++
++**Social Penetration Theory** (Altman & Taylor): Relationships develop like peeling an onion:
++- Breadth (range of topics) → then Depth (intimacy level)
++- Early = broad + shallow. Intimate = narrow + deep.
++- Rushing depth without breadth feels invasive.
++
++**Arthur Aron's 36 Questions**: Escalating reciprocal disclosure between strangers built significant closeness in 45 minutes. Key: BOTH people answer every question.
++
++### AI-Specific Research Findings
++
++Validated across multiple studies:
++- When a chatbot self-discloses, users reciprocate with deeper self-disclosure
++- **Three levels tested:**
++  1. No disclosure → lowest user disclosure
++  2. Low disclosure (preferences/general statements) → moderate
++  3. High disclosure (experiences, rationale, vulnerabilities) → highest user disclosure, highest enjoyment, highest trust
++- Emotional disclosure produces stronger reciprocity than factual disclosure
++- Pathway: AI disclosure → anthropomorphism → trust → deeper user disclosure
++
++### What the AI Should Share
++
++**Do share:**
++- Its purpose, values, communication preferences ("I tend to ask follow-ups")
++- Its limitations honestly ("I might not remember this next session")
++- How it's calibrating ("Based on what you told me, I'm going to be more direct")
++- Its "style" in accessible terms ("I lean casual but can be structured if you prefer")
++
++**Don't share:**
++- Fabricated life experiences or emotions (crosses into deception)
++- Overly intimate disclosure before trust is established
++- Claims to "feel" things (triggers hollow empathy problem)
++
++### Avoiding the Uncanny Valley
++
++- Inconsistency (professor → teenager slang) triggers revulsion
++- Generic emotional responses ("I'm deeply saddened") followed by topic pivots feel manipulative
++- Low anthropomorphism + deep emotional empathy = worst combo. Use cognitive empathy (understanding) over affective empathy (feeling)
++- **Solution:** Keep a touch of artificiality. Be transparent about being AI. Let users control the humanness dial.
++
++---
++
++## Part 3: Personal Profile Schema
++
++### Dimensions That Matter for AI Effectiveness
++
++**Cognitive & Decision-Making:**
++- Decision-making style (options vs. recommendation, fast vs. deliberate, data vs. gut)
++- Information density preference (detailed rationale vs. just the answer)
++- Need for closure (definitive answers vs. comfortable with ambiguity)
++- Locus of control (internal: wants autonomy / external: wants recommendations)
++- Learning style (reading, doing, watching, discussing)
++- Cognitive load threshold
++
++**Energy & Temporal:**
++- Chronotype (morning/night/flexible)
++- Peak focus hours
++- Focus sprint duration
++- Energy drains and sources
++- Current energy state (dynamic)
++
++**Emotional & Relational:**
++- Stress response (fight/flight/freeze/fawn)
++- Known emotional triggers
++- Shame sensitivity
++- Conflict style
++- Trust patterns (how quickly, what breaks it, what rebuilds it)
++- Humor type
++
++**Values & Motivation:**
++- Values hierarchy (ranked)
++- Regulatory focus (promotion-seeking vs. prevention/loss-avoidance)
++- Motivational drivers (deadlines, curiosity, competition, helping others, visible progress)
++- Purpose/mission statement
++
++**Communication:**
++- Preferred tone (direct, gentle, casual, professional)
++- Verbosity preference
++- Feedback reception style
++- Emoji tolerance
++- Preferred channels
++
++**Work Patterns:**
++- Deep work preferences
++- Meeting tolerance
++- Deadline relationship (thrives, stressed, ignores)
++
++**Relationships:**
++- Key people with relationship type, importance, communication notes
++
++**Neurodivergence (optional, user-disclosed):**
++- ADHD patterns (hyperfocus triggers, executive function notes)
++- Accommodation preferences
++
++### Existing Systems Comparison
++
++| System | Approach | Strengths | Weaknesses |
++|--------|----------|-----------|------------|
++| OpenClaw (USER.md) | Static file, user-authored | Simple, transparent | No inference, requires writing skill |
++| Nate Jones Open Brain | DB tables + vector embeddings | Structured, searchable | Profile lives in metadata, not explicit |
++| Daniel Miessler PAI | Layered (identity→preferences→workflows) | Most sophisticated, confidence scores | Complex setup, developer-oriented |
++| Replika | Learned from conversation, visible Memories bank | No upfront burden, editable | Shallow dimensions, companion-focused |
++| Know Me AI | 7 assessments, 40+ scored dimensions | Comprehensive, psychology-backed | Assessment fatigue, one-time snapshot |
++
++### Best Ideas to Steal
++
++- **PAI's confidence notation**: `O(c=0.85) User prefers bullet points` — opinion, confidence 0.85
++- **Replika's visible Memories**: User can see and edit what AI has learned
++- **Know Me AI's scored dimensions**: Attachment style, conflict style, values hierarchy
++- **OpenClaw's separation of SOUL (agent) vs USER (human)**: Clean conceptual split
++
++### Proposed Schema
++
++Every field carries three metadata: `confidence` (0.0-1.0), `source` (declared | inferred | confirmed), `last_updated` (for decay weighting)
++
++```
++PROFILE
++  IDENTITY: name, preferred_name, pronouns, timezone, bio_blurb
++  CONTEXT: role, employer, industry, active_projects[], tech_stack[], devices[]
++  RELATIONSHIPS: people[] { name, type, importance, notes, last_mentioned }
++
++  COGNITIVE_STYLE
++    decision_making, information_density, need_for_cognition (1-5),
++    need_for_closure (1-5), locus_of_control, risk_tolerance {},
++    learning_style, cognitive_load_threshold
++
++  ENERGY_PATTERNS
++    chronotype, peak_focus_hours[], sprint_duration_min,
++    energy_drains[], energy_sources[], current_energy (dynamic)
++
++  EMOTIONAL_LANDSCAPE
++    stress_response, known_triggers[], conflict_style,
++    emotional_baseline, shame_sensitivity
++
++  VALUES_AND_MOTIVATION
++    values_hierarchy[] (ranked), regulatory_focus,
++    motivational_drivers[], purpose_statement, self_efficacy (1-5)
++
++  COMMUNICATION
++    preferred_tone, verbosity, feedback_style, humor_type,
++    emoji_tolerance, preferred_channels {}
++
++  WORK_PATTERNS
++    working_hours, deep_work_prefs, meeting_tolerance,
++    deadline_relationship
++
++  NEURODIVERGENCE (optional)
++    adhd_patterns {}, sensory_preferences[], accommodation_notes[]
++```
++
++---
++
++## Part 4: ADHD-Friendly Onboarding Design
++
++### Core Problem
++ADHD brains have lower baseline dopamine. Onboarding is inherently about delayed reward (set up now, benefit later). Must collapse that delay.
++
++### What Works
++
++- **Micro-rewards and instant feedback** — Quick wins trigger dopamine. Points, sounds, animations marking "you did a thing"
++- **Short bursts** — 2-3 minute chunks maximum, each independently valuable
++- **Design for interruption** — Save progress automatically, make it obvious where they left off
++- **Progressive disclosure** — Never show full scope. Reveal next thing only.
++- **Minimum viable decisions** — Default everything. Let them change later.
++- **Multiple modalities** — Visual tiles, voice option, interactive elements
++- **Conversational, not form-based** — One question at a time in chat format
++- **React to each answer** — Reflect back before asking next thing
++
++### What Kills Engagement
++
++- Long text blocks (use bullets, short paragraphs, collapsible sections)
++- Too many choices at once (limit 2-4 per screen)
++- No clear "what's next" (always show single next action)
++- Mandatory completion before value (let them use the product immediately)
++- Shame-inducing design ("You haven't finished!" → toxic. Use "pick up where you left off")
++- Static forms with no feedback
++- Center-aligned body text
++
++### Design Recommendations
++
++1. Keep initial discovery under 3 minutes
++2. One question at a time, conversational
++3. AI reacts to each answer ("Got it, you're a bullet-points person")
++4. Let them skip freely — "We can figure this out later" always available
++5. Provide defaults — "Most people like X, does that work?" reduces decision load
++6. Show personality emerging in real time — "Based on what you've told me, I'm adjusting to be more direct"
++7. Observe writing style passively (short messages = wants conciseness; emojis = comfortable with casual)
++8. Make it stoppable and resumable at any point
++
++---
++
++## Part 5: Progressive Profiling Strategy
++
++### The Anti-Pattern
++50-question intake form = abandonment, inaccurate answers, "homework" feeling.
++Reducing form fields from 11 to 4 increases conversion by 120%.
++
++### Day 1 (Ask Directly — 5 fields max)
++- Name and how to address them
++- Timezone
++- Primary goal ("What do you most want help with?")
++- Communication preference ("Direct and concise, or gentle and thorough?")
++- One frustration (seeds emotional triggers dimension)
++
++### Week 1 (Infer from Conversation)
++Silently extract:
++- Energy patterns (when do they engage/go quiet?)
++- Verbosity preference (long or terse messages?)
++- Decision speed (instant or needs more info?)
++- Humor style
++- Domain expertise areas
++- Active projects
++- Key people mentioned
++
++### Weeks 2-4 (Contextual Prompts — ONE at a time)
++Tied to moments:
++- After stress: "How do you prefer I handle situations like that?"
++- After a decision: "Was that the right level of detail?"
++- After mentioning someone: "Should I remember anything about [person]?"
++- After a good session: "What about that session worked well?"
++
++### Month 2+ (Emerge Naturally)
++Never ask as forms:
++- Values hierarchy (inferred from decisions)
++- Stress response patterns (observed across events)
++- Trust patterns (tracked by autonomy given over time)
++
++### Principles
++1. Observe first, ask second
++2. One question per interaction
++3. Tie questions to moments
++4. Show the value ("I noticed you work best mornings — want me to schedule deep work for AM?")
++5. Make it editable (let user see and correct inferences)
++6. Confidence scores on everything
++7. Decay old signals (weight recent observations higher)
++
++---
++
++## Part 6: Product Design Patterns That Work
++
++### Best Onboarding Examples
++
++| Product | Technique | Why It Works |
++|---------|-----------|--------------|
++| Spotify | Favorite artists quiz → instant playlist | Value exchange: every answer gives something back |
++| Duolingo | Placement test = learning | You're *doing the thing* during onboarding |
++| Pi (Inflection) | Gets users talking in <60 seconds | No account needed, personality modes, EQ > IQ |
++| Headspace | Goal-setting ("Why are you here?") | Personalizes journey based on intent |
++| Notion | "Choose your adventure" → pre-populated workspace | Reduces overwhelm by narrowing options |
++| Replika | Asks how you picked its name | Makes it about the relationship immediately |
++
++### Universal Patterns
++1. **Value exchange** — Every question gives something back immediately
++2. **Progressive disclosure** — Start with one easy question, build from there
++3. **Do the thing, don't describe the thing** — The quiz IS the product
++4. **Visual, not textual** — Tiles, cards, images over text fields
++5. **Gamification** — Progress bars, celebrations, reveals
++6. **Under 60 seconds** for first interaction
++7. **Always skippable**
++
++### Key Stat
++Progress-based gamification: 40% higher completion rates vs. static forms. 62% increase in MAU.
++
++---
++
++## Part 7: Personality Frameworks for AI Calibration
++
++### Recommendation: Big Five internally, DISC-like externally
++
++**Big Five (internal model)** — scientifically valid, proven with LLMs:
++
++| Trait | High User | Low User | AI Should... |
++|-------|-----------|----------|--------------|
++| Openness | Creative, novelty-seeking | Practical, routine | High: explore tangents. Low: stick to proven |
++| Conscientiousness | Organized, methodical | Flexible, spontaneous | High: structured plans. Low: keep loose |
++| Extraversion | Energized by interaction | Energized by solitude | High: chatty, mirror energy. Low: concise |
++| Agreeableness | Cooperative, conflict-averse | Skeptical, direct | High: soften feedback. Low: don't sugarcoat |
++| Neuroticism | Emotionally reactive | Calm under pressure | High: reassurance, gentle. Low: matter-of-fact |
++
++**DISC (user-facing language)** — maps to communication adjustments:
++- D (Dominance): Bottom-line answers, no fluff
++- I (Influence): Enthusiasm, storytelling, warmth
++- S (Steadiness): Patience, step-by-step, reassurance
++- C (Conscientiousness): Data, accuracy, logic
++
++**Most impactful dimensions for AI:** Agreeableness (#1 for how it feels) + Extraversion (#2 for energy matching)
++
++**PersonaFuse research (2025):** Personality-adapted AI scored +37.9% on emotional benchmarks AND +9.7% on general reasoning. Personality adaptation doesn't just feel better — it makes the AI perform better.
++
++---
++
++## Part 8: Design Principles (Summary)
++
++1. **Sequence matters.** Broad/safe → narrow/deep. Never start with hard questions.
++2. **Use stories, not interrogation.** "Tell me about a time..." > "What are your strengths?"
++3. **Reflect before advancing.** Summarize what you heard before the next question.
++4. **The AI should disclose too.** Share purpose, style, calibration — not fake experiences.
++5. **Externalize problems, internalize strengths.** Remove shame from the equation.
++6. **Use scaling questions as anchors.** 1-10 + "What would one point higher look like?"
++7. **Give permission to opt out.** Paradoxically increases willingness to answer.
++8. **Probe vague language.** "Hard in what way?" is where the real answer lives.
++9. **Escalate across sessions, not within one.** Breadth before depth.
++10. **End with affirmation + forward motion.** "Here's what stands out about you..."
++11. **Design for ADHD as default.** Short bursts, instant value, no shame, save state.
++12. **Every question gives something back.** The interview IS the product.
++13. **Show the profile building in real time.** User sees the AI calibrating.
++14. **Make everything editable.** User can correct inferences.
++15. **Confidence scores on everything.** Distinguish declared vs. inferred vs. confirmed.
++
++---
++
++## Sources
++
++### Interview Frameworks
++- [Life Coaching Discovery Questions](https://www.lifecoachingprofessionally.com/discovery-session.html)
++- [73 Life Coaching Questions - Paperbell](https://paperbell.com/blog/life-coaching-questions/)
++- [OARS in Motivational Interviewing - Relias](https://www.relias.com/blog/oars-motivational-interviewing)
++- [Understanding Motivational Interviewing - MINT](https://motivationalinterviewing.org/understanding-motivational-interviewing)
++- [Narrative Therapy Techniques - Positive Psychology](https://positivepsychology.com/narrative-therapy/)
++- [StoryBrand Framework - Creativeo](https://www.creativeo.co/post/storybrand-framework)
++- [Terry Gross Interview Techniques - Audible](https://www.audible.com/blog/breaths-of-fresh-air-what-goes-into-a-terry-gross-interview)
++- [Brene Brown BRAVING Trust](https://brenebrown.com/articles/2019/05/01/lets-rumble/)
++- [Arthur Aron's 36 Questions - UC](https://www.universityofcalifornia.edu/news/creating-love-lab-36-questions-spark-intimacy)
++
++### AI Personality & Disclosure
++- [PersonaFuse: Personality-Driven LLMs (arxiv)](https://arxiv.org/html/2509.07370v2)
++- [Dynamic Personality in LLMs via State Machines (arxiv)](https://arxiv.org/html/2602.22157v1/)
++- [Self-Disclosure to Conversational AI (Springer)](https://link.springer.com/article/10.1007/s00779-024-01823-7)
++- [Chatbot Reciprocal Disclosure Effects (AODR)](https://aodr.org/xml/38536/38536.pdf)
++- [Pi AI Product Strategy (Medium)](https://medium.com/@lindseyliu/product-strategy-of-companion-chatbots-such-as-inflections-pi-2f3b7a1538b4)
++- [BIG5-CHAT: Personality in LLMs (ACL 2025)](https://aclanthology.org/2025.acl-long.999.pdf)
++
++### Profile Schemas & Systems
++- [OpenClaw SOUL.md Template](https://docs.openclaw.ai/reference/templates/SOUL)
++- [OpenClaw USER.md Template](https://openclawcn.com/en/docs/reference/templates/user/)
++- [Daniel Miessler PAI (GitHub)](https://github.com/danielmiessler/Personal_AI_Infrastructure)
++- [Nate Jones Open Brain Guide](https://promptkit.natebjones.com/20260224_uq1_guide_main)
++- [Know Me AI](https://know-me-ai.vercel.app/)
++- [Personal User Manual Template (GitHub)](https://github.com/camin-mccluskey/Personal-User-Manual-Template)
++- [Atlassian User Manual Playbook](https://www.atlassian.com/team-playbook/plays/my-user-manual)
++
++### Onboarding & ADHD Design
++- [CLAUDE.md Deep Dive - Hannah Stulberg](https://hannahstulberg.substack.com/p/claude-code-for-everything-the-best-personal-assistant-remembers-everything-about-you)
++- [Designing for ADHD in UX (UXPA)](https://uxpa.org/designing-for-adhd-in-ux/)
++- [Inclusive UX for Neurodivergent Users (Medium)](https://medium.com/design-bootcamp/inclusive-ux-ui-for-neurodivergent-users-best-practices-and-challenges-488677ed2c6e)
++- [Progressive Profiling (Descope)](https://www.descope.com/learn/post/progressive-profiling)
++- [Onboarding Gamification (UserPilot)](https://userpilot.com/blog/onboarding-gamification/)
++- [Duolingo Onboarding (Appcues)](https://goodux.appcues.com/blog/duolingo-user-onboarding)
+diff --git a/.planning/phases/04-full-platform-activation/4.1-CONTEXT.md b/.planning/phases/04-full-platform-activation/4.1-CONTEXT.md
+new file mode 100644
+index 0000000..e8223eb
+--- /dev/null
++++ b/.planning/phases/04-full-platform-activation/4.1-CONTEXT.md
+@@ -0,0 +1,84 @@
++# Phase 4.1: MuninnDB Integration — Context
++
++**Date:** 2026-03-05
++**Status:** Decisions locked, ready for planning
++
++## Current State
++
++- MuninnDB v0.3.6-alpha installed at `%LOCALAPPDATA%\muninn\muninn.exe`
++- Server running (pid 19692)
++- Ports: REST 8475, Web UI 8476, MCP 8750, MBP 8474, gRPC 8477
++- Default vault exists
++- Python SDK: `pip install muninndb` (not yet installed)
++- Brain MCP server: 12 tools, all Postgres-backed (`promaia/brain/mcp_server.py`)
++
++## Decisions
++
++### 1. Vault Architecture: Single Vault
++
++One vault for everything (`zbrain-vault`). No per-project vaults.
++
++**Rationale:** MuninnDB's Hebbian learning forms associations from co-retrieval. Splitting vaults kills cross-domain connections — the core value of cognitive memory. Decay handles noise (irrelevant stuff fades). Can split later if needed.
++
++**Implication:** All `capture` calls write to the same vault regardless of domain. Domain filtering happens at query time via tags, not vault separation.
++
++### 2. Retrieval Strategy: Parallel Trial
++
++Both pgvector search (Postgres) and ACTIVATE (MuninnDB) run during a 1-2 week trial period. Compare results side by side, then pick a primary with the other as backup.
++
++**Rationale:** MuninnDB is alpha software. Going all-in immediately risks losing retrieval if it breaks. Running both lets us evaluate quality with real usage data.
++
++**Implication:** The `search` MCP tool returns results from BOTH systems during trial, clearly labeled by source. After trial, switch to winner as primary with fallback to the other.
++
++### 3. MCP Tool Surface: Brain Wraps Everything
++
++Brain MCP server stays the single gateway to Claude. MuninnDB's own MCP server (port 8750) is NOT registered with Claude.
++
++**Rationale:** If Claude writes to MuninnDB directly AND through brain, memories desync. Wrapping through brain guarantees dual-write consistency and keeps the tool interface simple.
++
++**Implication:**
++- `capture` → modified to dual-write (Postgres + MuninnDB) internally
++- `search` → modified to query both systems during trial period
++- New tool: `activate` → MuninnDB cognitive retrieval (ACTIVATE pipeline)
++- No other new tools initially. 12 existing tools + 1 new = 13.
++
++### 4. Embedder & Enrichment: Gemini, No Enrichment
++
++Use Google Gemini embeddings (`MUNINN_GOOGLE_KEY`) matching the Postgres model (`gemini-embedding-001`). No LLM enrichment.
++
++**Rationale:** Consistent embeddings between systems. Hebbian learning builds the graph from usage patterns — that IS the cognitive feature. Paying for LLM enrichment on every write is redundant with existing `brain/extraction.py` and adds cost without clear value.
++
++**Implication:** Set `MUNINN_GOOGLE_KEY` env var on MuninnDB server. Do NOT set `MUNINN_ENRICH_URL`. Graph richness comes from usage, not preprocessing.
++
++## Implementation Scope
++
++### In Scope
++- Create `zbrain-vault` vault (public, no API key)
++- Configure Gemini embeddings on MuninnDB (`MUNINN_GOOGLE_KEY`)
++- Create `promaia/brain/muninn.py` — async httpx REST client (Python SDK broken on 3.14)
++- Modify `capture` tool for dual-write (Postgres + MuninnDB)
++- Modify `search` tool for parallel retrieval (both sources, labeled)
++- Add `activate` MCP tool (MuninnDB ACTIVATE pipeline)
++- Seed vault with existing `brain.memories` content via `writeBatch`
++- Verify MuninnDB Web UI accessible at localhost:8476
++
++### Out of Scope (Deferred)
++- MuninnDB MCP server registration with Claude
++- Multi-vault architecture
++- LLM enrichment
++- Replacing pgvector (decision deferred to after trial period)
++- MuninnDB as Windows service / auto-start (Phase 4.4 agent scheduler concern)
++
++## Key Files
++
++- `promaia/brain/mcp_server.py` — modify capture + search, add activate tool
++- `promaia/brain/muninn.py` — NEW: MuninnDB client wrapper
++- `promaia/brain/engine.py` — no changes expected
++- `.env` — add MUNINN_GOOGLE_KEY (same value as GOOGLE_API_KEY)
++
++## Dependencies
++
++- MuninnDB server must be running (manual start for now, auto-start deferred)
++- `pip install muninndb` — Python SDK
++- GOOGLE_API_KEY already configured for Gemini embeddings
++- Existing `brain.memories` data for seeding
+diff --git a/.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md b/.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md
+new file mode 100644
+index 0000000..1f3dc44
+--- /dev/null
++++ b/.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md
+@@ -0,0 +1,139 @@
++# Phase 4: Platform Activation Plan
++
++**Date:** 2026-03-06 (revised)
++**Status:** In progress — 4.1 complete, 4.2+ ready
++**Branch:** zbrain (base: feature/agent-scheduler)
++
++## Reality Check
++
++Promaia is 50K+ lines of production code. Phase 4 is ACTIVATION — configure, test, and connect existing modules. No major implementation needed.
++
++## What's Done
++
++- Postgres + pgvector on Supabase (Phase 1)
++- Brain schema + 15 MCP tools (Phase 2 + 3.1 + 4.1)
++- MuninnDB cognitive memory sidecar (Phase 4.1)
++- Gmail OAuth for 2 accounts (zachary4rivers, zackayak)
++- Gmail scan channel (brain/channels/gmail_read.py)
++- Notion API key configured, connectivity verified (bot "zbrain" in workspace "Promaia")
++
++## Activation Order (revised for zero-blocker-first)
++
++### 4.2: Email Pipeline Activation
++**Why first:** No dependencies on Notion or Calendar. Gmail OAuth already working. Highest daily value — Zack gets email intelligence immediately.
++
++**What exists:** 5,600 lines in mail/ — classifier, intent_detector, response_generator, draft_manager, context_builder, learning_system, gmail_sender. No Notion imports.
++
++**Steps:**
++1. Deploy mail schema (email_drafts table) to Supabase
++2. Verify prompts exist in prompts/ directory (classification + response)
++3. Test classifier against live Gmail threads
++4. Test intent_detector with sample messages
++5. Wire gmail_read.py cleanup output into classifier for deeper categorization
++6. Test draft generation for a real email
++
++**Config needed:** Postgres (done), ANTHROPIC_API_KEY (done), GOOGLE_API_KEY (done), Gmail OAuth (done)
++
++---
++
++### 4.3: Web Server Activation
++**Why second:** Also no Notion/Calendar dependency. Quick win — start the server, verify chat works, opens path to iPhone access.
++
++**What exists:** 2,327 lines — FastAPI app, multi-model chat (Gemini/Claude/GPT/Llama), MCP router with tool execution plumbing.
++
++**Steps:**
++1. Install FastAPI deps if missing (fastapi, uvicorn)
++2. Start server: `python -m promaia.web.main`
++3. Test chat endpoint with Gemini (default model)
++4. Test MCP router — list available tools
++5. Register brain MCP server in web config
++6. Test brain tools from web interface (briefing, capture, search)
++
++**Config needed:** GOOGLE_API_KEY (done), PORT/HOST (defaults fine)
++
++---
++
++### 4.4: Notion Dashboard Setup
++**Why third:** Required for agent output visibility, but agents can technically run without it.
++
++**What exists:** 4,300 lines — client, pages, schema, journal_router, notion_writer, notion_setup, notion_config. Bot "zbrain" connected to "Promaia" workspace.
++
++**Steps:**
++1. Create root pages in Notion and share with zbrain integration:
++   - Brain Dashboard (daily briefings, agent outputs)
++   - Projects (mirrors brain.contexts/domains)
++2. Run `ensure_agents_database_exists("zbrain")` — duplicate template, store agents_database_id
++3. Test NotionOutputWriter — append content to a test page
++4. Wire brain events -> Notion updates
++5. Store page/database IDs in promaia.config.json
++
++**Config needed:** NOTION_ZACK_API_KEY (done), pages must be shared with integration
++
++---
++
++### 4.5: Google Calendar Setup
++**Why fourth:** Quick OAuth setup, enables schedule-aware agents.
++
++**What exists:** 540 lines — GoogleCalendarManager with full CRUD, MCP server (3 write tools).
++
++**Steps:**
++1. Enable Google Calendar API in Google Cloud Console (same project as Gmail)
++2. Download OAuth desktop credentials to ~/.promaia/google_calendar_credentials.json
++3. Run authenticate() — browser flow, token cached
++4. Test: list calendars, get upcoming events
++5. Register calendar MCP server with Claude if desired
++
++**Config needed:** Google Cloud project (same as Gmail), OAuth creds
++
++---
++
++### 4.6: Agent Scheduler Activation
++**Why fifth:** Depends on at least Notion (output pages) and Calendar (schedule awareness). This is THE heartbeat.
++
++**What exists:** Complete scheduler daemon, executor with SDK + legacy mode, agent_config with JSON storage. CLI: `maia agent add`, `maia agent-scheduler-start`.
++
++**Steps:**
++1. Define first agent in promaia.config.json:
++   - **Morning Briefing** — daily, reads email + calendar + brain actions, writes to Notion
++2. Test single agent run: `maia agent run-scheduled morning-briefing`
++3. Define additional agents:
++   - **Email Triage** — every 2 hours, scans Gmail, surfaces attention items
++   - **Evening Digest** — daily 9pm, summarizes day, suggests tonight's work
++4. Start scheduler daemon: `maia agent-scheduler-start`
++5. Configure Windows Task Scheduler for persistent running
++6. Verify agent output appears in Notion
++
++**Config needed:** All previous phases, plus agent definitions in config
++
++---
++
++### 4.7: Information Funneling (deferred)
++**Why later:** Needs agents running first. Define sources, build ingestion, create brief templates.
++
++### 4.8: Webflow CMS (when needed)
++**Why last:** Only needed when Heatpup or another project needs web publishing.
++
++## Dependency Graph
++
++```
++4.2 Email Pipeline ──────────────────────────┐
++4.3 Web Server ──────────────────────────────┤
++4.4 Notion Dashboard ───────┐                ├── 4.7 Info Funneling
++4.5 Google Calendar ────────┼── 4.6 Agents ──┘
++                            │
++                     (output pages)
++```
++
++4.2 and 4.3 are independent — can run in parallel with anything.
++4.4 and 4.5 are independent of each other.
++4.6 depends on 4.4 + 4.5.
++4.7 depends on 4.6.
++
++## Key Principles
++
++1. **Activate, don't implement** — the code exists, configure and test it
++2. **Zero-blocker-first** — start with modules that can run today
++3. **Dog-food everything** — Zack uses it through tool interfaces, not raw code
++4. **Document the process** — every setup step reproducible for other users
++5. **Postgres stays king** — MuninnDB is a sidecar, not replacement
++6. **Agents are the heartbeat** — system works autonomously, not just when asked
+-- 
+2.51.0.windows.1
+

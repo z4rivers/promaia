@@ -1,0 +1,2103 @@
+From 47696ff769aa8caaf68cbe45b7200354feb7b2a5 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 21:19:17 -0800
+Subject: [PATCH 64/68] docs(zbrain): add Notion API reference and working
+ session notes
+
+Notion API dashboard reference (1533 lines) covering all block types,
+colors, layouts, database properties, and design patterns.
+Session context notes for continuity.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ zbrain/last session ended with.txt       |  305 +++++
+ zbrain/notion-api-dashboard-reference.md | 1532 ++++++++++++++++++++++
+ zbrain/zbrain-muninn_dynamic_memory.txt  |  225 ++++
+ 3 files changed, 2062 insertions(+)
+ create mode 100644 zbrain/last session ended with.txt
+ create mode 100644 zbrain/notion-api-dashboard-reference.md
+ create mode 100644 zbrain/zbrain-muninn_dynamic_memory.txt
+
+diff --git a/zbrain/last session ended with.txt b/zbrain/last session ended with.txt
+new file mode 100644
+index 0000000..288a3e6
+--- /dev/null
++++ b/zbrain/last session ended with.txt	
+@@ -0,0 +1,305 @@
++last session ended with:
++   Here's what's preserved for the next session:
++
++    Plan file: ~/.claude/plans/vast-gathering-widget.md — full plan + all open questions, pushback history, YouTube research, OpenClaw research, technical inventory, and Zach's design intent.
++
++    Memory file: ~/.claude/projects/C--Users-Zachary-Turner/memory/digital-infrastructure.md — updated with all Layer 0 completions from today, Layer 1 decisions, user work style, and the "proactive agents not passive storage"
++  direction.
++
++    To resume next session, say: "We're working on the Open Brain plan. Read the plan file at ~/.claude/plans/vast-gathering-widget.md and the memory file at digital-infrastructure.md. The plan is NOT approved yet — I want to keep
++    refining."
++
++    The next session should focus on the open questions at the bottom of the plan file — especially what "proactive" means concretely for you, and drafting the standing directives for each project.
++
++
++● Ready when you are. What would you like to work on?
++
++❯ the most critical things Open Claw is really improving is context management - handing much work off to low cost models, using higher levels of compute when helpful.
++  I don't see any of that in this plan so far.
++
++● Let me read the current plan and memory to understand what's there and what's missing.
++
++● Recalled 1 memory, read 1 file (ctrl+o to expand)
++
++● You're right — that's a big gap. The plan is basically "memory database + MCP" but doesn't address the core innovation: intelligent orchestration of compute. Let me research what OpenClaw actually does here so I can update the plan
++  properly.
++
++● Explore(Research OpenClaw context management)
++  ⎿  Done (18 tool uses · 44.9k tokens · 5m 6s)
++  (ctrl+o to expand)
++
++❯ To be clear , it is March of 2026
++
++● Good call — and noted on the date. The research gives a solid picture of OpenClaw's architecture regardless. Here's what's clearly missing from the plan:
++
++  The current plan treats "Claude" as a monolith. Every tool call, every heartbeat check, every action extraction — it all implicitly goes through one model at one cost level. OpenClaw's real innovation is a tiered compute architecture:
++
++  1. Cheap/free for routine work — heartbeat checks, classification, action extraction, summarization
++  2. Mid-tier for moderate work — code generation, drafting, explanation
++  3. Expensive only when needed — architecture decisions, novel reasoning, complex judgment
++
++  Plus context management — not dumping everything into every call. Compression, pruning, assembling only relevant context per task.
++
++  Before I rewrite the plan section, I need to understand your specific situation:
++  ⎿  Tool use rejected with user message: The user wants to clarify these questions.
++         This means they may have additional information, context or questions for you.
++         Take their response into account and then reformulate the questions if appropriate.
++         Start by asking them what they would like to clarify.
++
++         Questions asked:
++     - "Your Google AI Premium ($125/mo) includes Gemini API access. Should Gemini Flash be the 'cheap model' tier for routine tasks (action extraction, classification, heartbeat checks) — keeping Claude for complex reasoning only?"
++       (No answer provided)
++     - "For the heartbeat agent running overnight — Claude Code CLI is included in your Max subscription. Should the heartbeat use Claude Code CLI (free with Max) for ALL autonomous work, or should routine checks go through cheap API
++     calls (Gemini Flash) and only escalate to Claude Code for real work?"
++       (No answer provided)
++     - "Context management — when Claude starts a session, should the system intelligently assemble context (only load relevant project memories, compress old history) or load everything and let Claude sort it out?"
++       (No answer provided)
++
++● What would you like to clarify?
++
++✻ Cogitated for 3m 13s
++
++❯ With all the people working on these systems - we should not be building my system from scratch! That's why I'm pointing you to all the work being done, so you can piece together solutions other people have JUST COME UP WITH -
++  the mix that solves these pieces in smart ways.
++
++● You're absolutely right. I was designing a custom system from scratch when the whole point is that people have already solved these problems. The plan should be about assembling existing tools, not building a custom brain MCP from
++  zero.
++
++  Let me research what's actually available right now that you can plug together.
++
++● 3 Explore agents finished (ctrl+o to expand)
++   ├─ Research OpenClaw setup and features · 15 tool uses · 38.1k tokens
++   │  ⎿  Done
++   ├─ Research existing memory MCP servers · 19 tool uses · 39.0k tokens
++   │  ⎿  Done
++   └─ Research model routing orchestration tools · 11 tool uses · 35.8k tokens
++      ⎿  Done
++
++❯ I love using Claude, so I need to know how to stay in the Claude universe while getting benefits that drove the massive success and development of Open Claw which is now Open AI-centric.
++  I don't want massive AI bills or to run afoul of Anthropic TOS.
++
++● This completely reframes the plan. Here's what the research reveals:
++
++  You don't need OpenClaw. You already have most of its capabilities in Claude Code + Max.
++
++  - Model routing: Claude Code already lets you spawn agents at haiku/sonnet/opus tiers — all included in your $199/mo Max. Haiku for cheap work, Opus for complex reasoning. No extra API bills.
++  - Context management: Claude Code already compresses context automatically. Auto-memory persists across sessions.
++  - Heartbeat: Windows Task Scheduler + Claude Code CLI = autonomous agent that runs on your Max subscription.
++  - Memory: Multiple ready-made MCP memory servers exist — no need to build a custom brain MCP from scratch.
++
++  The original plan was building infrastructure that already exists. Let me rewrite it as an assembly plan — plugging together existing pieces within the Claude ecosystem.
++
++● Updated plan
++  ⎿  /plan to preview
++
++● The plan is completely rewritten. The key shift:
++
++  Old plan: Build a custom brain MCP from scratch (database schema, edge functions, embedding pipeline, custom tools)
++
++  New plan: Assemble existing pieces within the Claude ecosystem:
++  - Claude Code's built-in haiku/sonnet/opus routing = model tiering (free with Max)
++  - Existing MCP memory servers = persistent memory (free or ~$10/mo)
++  - System instructions = proactive behavior (free)
++  - Windows Task Scheduler + Claude CLI = heartbeat agent (free with Max)
++
++  No OpenClaw needed. No Anthropic ToS violations. No massive API bills. The only new cost is $4-14/mo (Obsidian Sync + optionally Mem0).
++
++  I have a few questions to finalize before this is ready:
++
++● User answered Claude's questions:
++  ⎿  · Is capturing thoughts from your iPhone while driving a day-1 requirement? This determines whether we start with a free local memory server (PC-only) or go straight to a cloud-backed option (accessible from claude.ai on
++     iPhone). → Yes, day-1 requirement
++
++❯ I belive Nate, don't believe he'd be advising the 2nd brain without good reason.
++
++● Good point — and Nate's right. Postgres + pgvector + MCP is the correct foundation. I wasn't dismissing it — I was saying we don't need to write the schema, embedding pipeline, and MCP server from scratch when existing implementations
++   already do Postgres + pgvector + MCP.
++
++  Specifically, mcp-mem0 and Open Brain both already implement Nate's exact pattern (Postgres + pgvector + MCP) and can plug into your existing Supabase. That's the "assemble, don't build" approach — use someone else's implementation of
++   the pattern Nate advocates.
++
++  Let me update the plan to make this clearer — Supabase/Postgres stays as the brain backend (Nate's approach), with cloud access for iPhone day-1, but using an existing implementation as the starting point.
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Now let me also update the open questions since iPhone is settled:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Here's where the plan stands now:
++
++  Nate's Postgres + pgvector approach stays — it's the right call for a cloud-native brain that works from iPhone day-1. We just use an existing implementation (mcp-mem0 or Open Brain) instead of writing the schema/MCP/embedding
++  pipeline from scratch.
++
++  OpenClaw's innovations are covered within Claude:
++  - Model tiering → Claude Code's haiku/sonnet/opus agents (included in Max)
++  - Context management → Claude Code's built-in compression + smart memory retrieval
++  - Heartbeat → Task Scheduler + Claude CLI (included in Max)
++  - Proactive behavior → system instructions, not custom code
++
++  New cost: ~$4/mo (Obsidian Sync). Everything else runs on existing subscriptions.
++
++● User answered Claude's questions:
++  ⎿  · Does this direction feel right? Postgres brain (Nate's approach) + existing MCP implementation + Claude Code's built-in model routing + Task Scheduler heartbeat. Or is there something else from the OpenClaw world you feel is
++      still missing? → Are full agent team capabilities already on in my Claude setup? I want to see you include Gamini as a subagent more - just as I now have yo uset to use Google deep research and nano-bana for their specialty
++     skills.
++
++● Great questions. Let me check your current setup and then update the plan with Gemini as a first-class participant.
++
++● Read 2 files (ctrl+o to expand)
++
++❯ And Claude Memory isn't deep persistent - including incoming info from all different sources - email, youtube scraped, etc.
++
++● Yes — agent teams is already ON (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1). And you're right about Claude's memory — it's shallow, conversation-scoped. The real brain is the Postgres database that ingests from everywhere.
++
++  And you already have Gemini connected as MCP tools — deep research, image gen, search, YouTube analysis, code execution. That's a whole capability layer the plan wasn't leveraging.
++
++  Let me update the plan with all of this:
++
++● Read 1 file (ctrl+o to expand)
++
++● Now let me do a significant rewrite incorporating Gemini as a multi-model partner and the multi-source ingestion point:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Now update the model routing section to include Gemini:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Now update the system instructions section to include Gemini routing:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Update the "What This Gets You" section and costs:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Now update the open questions:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Here's what changed:
++
++  Gemini is now a first-class participant, not an afterthought. It's already connected in your setup as MCP tools. The plan uses it for:
++  - Cheap processing (Flash) alongside Claude Haiku
++  - Deep research with Google grounding
++  - Image gen (nano banana)
++  - YouTube analysis → ingest to brain
++  - Document/URL analysis → ingest to brain
++
++  The brain is NOT Claude's auto-memory. It's Postgres on Supabase that ingests from everywhere — conversations, YouTube, web research, documents. Every interaction makes it smarter.
++
++  Multi-source ingestion is now explicit — the brain gets fed from YouTube videos, web articles, documents, and URLs through Gemini's existing MCP tools, not just from chat conversations.
++
++  New cost: $4/mo. Everything else uses your three existing subscriptions.
++
++● User answered Claude's questions:
++  ⎿  · Does this multi-model architecture (Claude for reasoning + Gemini for cheap work/research/ingestion + Postgres brain) capture what you were pointing me toward? Or is there still a gap? → Research the MCP options deeper
++
++● 2 Explore agents finished (ctrl+o to expand)
++   ├─ Deep research mcp-mem0 Supabase · 25 tool uses · 46.6k tokens
++   │  ⎿  Done
++   └─ Deep research Open Brain project · 45 tool uses · 56.8k tokens
++      ⎿  Done
++
++● The research is definitive. Let me update the plan with clear conclusions.
++
++  Key findings:
++  - mcp-mem0 (Cole Medin): Skip. Template project, 4 commits total, no auth, only 3 tools. Not production-ready.
++  - Open Brain (benclawbot): This IS Nate Jones' actual system. Docker-based, Postgres + pgvector + MCP, multi-source ingestion, works with Supabase, Streamlit dashboard. Production-ready.
++  - Mem0 self-hosted: Most mature (41K stars, AWS uses it), but heavier (3 containers) and overkill for single-user.
++  - iPhone access: All options need ngrok or cloud deployment to expose the MCP server. Universal requirement.
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Now update open questions and costs to reflect the definitive choice:
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Updated plan
++  ⎿  Error editing file
++
++● Read 1 file (ctrl+o to expand)
++
++● Updated plan
++  ⎿  /plan to preview
++
++● Plan is updated. Here's the summary of what the research found:
++
++  Open Brain (Nate Jones' system) is the clear winner:
++  - It's literally Nate's system — the one he teaches in his guides
++  - Docker-based, points to your existing Supabase with a separate schema
++  - MCP server on port 8080 + Streamlit dashboard + REST API
++  - Multi-source ingestion built in (not just chat)
++  - ~$0.10-0.30/mo on your existing Supabase Pro
++  - ngrok bridges it to iPhone
++
++  mcp-mem0 is dead: 4 commits, 3 tools, no auth, template project. Skip.
++
++  Mem0 self-hosted is the upgrade path if you outgrow Open Brain (41K stars, AWS uses it, but heavier with 3 containers + Neo4j).
++  ⎿  Tool use rejected with user message: The user wants to clarify these questions.
++         This means they may have additional information, context or questions for you.
++         Take their response into account and then reformulate the questions if appropriate.
++         Start by asking them what they would like to clarify.
++
++         Questions asked:
++     - "Three remaining questions before this plan is ready. Which should the heartbeat agent do when it wakes up overnight?"
++       Answer: Quick check on all, deep work on one
++     - "For iPhone access — your PC needs to be running for ngrok to work. Is that OK, or do you want always-on access?"
++       (No answer provided)
++     - "Beyond conversations, what sources should feed the brain on day 1?"
++       (No answer provided)
++
++● Got it — heartbeat does a quick scan of all projects, then deep work on the most stalled one. What would you like to clarify about the other two questions?
++
++✻ Cooked for 13m 34s
++
++❯ what are performance implications of local or VPS?
++
++● Good question. Let me break it down practically:
++
++  Your database (Supabase) is in the cloud regardless. So the MCP server is always making network calls to Supabase — the question is just where the MCP server sits.
++
++  Local (PC + ngrok):
++  - Claude Code on PC: MCP server is localhost → instant to reach, then one network hop to Supabase. Fast.
++  - iPhone via claude.ai: Request path is iPhone → claude.ai → ngrok servers → your PC → Supabase. 3+ hops. ngrok free tier adds ~100-200ms latency. Paid ngrok is faster.
++  - Downside: PC must be on. But your heartbeat agent also needs the PC on overnight, so this is already a requirement.
++
++  VPS ($5/mo — Railway, Render, etc.):
++  - Claude Code on PC: MCP calls go over the internet to the VPS → adds ~20-50ms per call. Slightly slower for PC usage.
++  - iPhone via claude.ai: iPhone → claude.ai → VPS → Supabase. Direct, no ngrok middleman. Faster and more reliable from phone.
++  - Upside: Always on, no dependency on your PC being awake.
++
++  The practical reality:
++  - Your heartbeat needs the PC running anyway → PC is already on overnight
++  - If PC is on, ngrok is on → iPhone access works
++  - The only time VPS helps is when your PC is genuinely off and you want to capture thoughts from your phone
++
++  Performance difference is small. Both paths hit Supabase over the internet. The real difference is availability (always-on vs PC-dependent) not speed.
++
++● User declined to answer questions
++
+diff --git a/zbrain/notion-api-dashboard-reference.md b/zbrain/notion-api-dashboard-reference.md
+new file mode 100644
+index 0000000..8358a61
+--- /dev/null
++++ b/zbrain/notion-api-dashboard-reference.md
+@@ -0,0 +1,1532 @@
++# Notion API Dashboard Design Reference
++
++> Comprehensive reference for creating beautiful Notion dashboard pages via the API.
++> Researched March 2026. Covers API versions `2022-06-28` and `2025-09-03`.
++
++---
++
++## Table of Contents
++
++1. [API Versions](#1-api-versions)
++2. [All Block Types](#2-all-block-types-with-json-payloads)
++3. [Rich Text & Annotations](#3-rich-text--annotations)
++4. [Colors & Styling](#4-colors--styling)
++5. [Page-Level Design (Icons, Covers)](#5-page-level-design)
++6. [Column Layouts](#6-column-layouts)
++7. [Inline Databases](#7-inline-databases)
++8. [Database Property Types](#8-database-property-types)
++9. [Database Views](#9-database-views)
++10. [API Limits & Constraints](#10-api-limits--constraints)
++11. [Markdown Content API (New)](#11-markdown-content-api)
++12. [2025-2026 Platform Updates](#12-2025-2026-platform-updates)
++13. [Dashboard Design Patterns](#13-dashboard-design-patterns)
++
++---
++
++## 1. API Versions
++
++### `2022-06-28` (Legacy, Still Supported)
++- Set via header: `Notion-Version: 2022-06-28`
++- Full block type support as documented below
++- Single data source per database
++- Will continue working for existing single-source databases
++
++### `2025-09-03` (Current)
++- Set via header: `Notion-Version: 2025-09-03`
++- **Multi-source databases**: separates "databases" (containers) from "data sources" (tables)
++- **Markdown Content API**: three new endpoints for markdown-based page creation/editing
++- **NOT backward-compatible** for multi-source database operations
++- SDK v5.0.0+ only works well with this version
++- New endpoint: `List data source templates`
++- New parameters: `template` on Create Page, `template` and `erase_content` on Update Page
++
++---
++
++## 2. All Block Types with JSON Payloads
++
++### Base Block Structure
++
++Every block follows this pattern:
++
++```json
++{
++  "object": "block",
++  "type": "<block_type>",
++  "<block_type>": {
++    // type-specific properties
++  }
++}
++```
++
++When appending blocks, use `POST /v1/blocks/{block_id}/children` with a `children` array.
++
++---
++
++### 2.1 Paragraph
++
++```json
++{
++  "object": "block",
++  "type": "paragraph",
++  "paragraph": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "Hello world",
++          "link": null
++        }
++      }
++    ],
++    "color": "default"
++  }
++}
++```
++
++**Supports children**: Yes (nested blocks)
++
++---
++
++### 2.2 Headings (heading_1, heading_2, heading_3)
++
++```json
++{
++  "object": "block",
++  "type": "heading_1",
++  "heading_1": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "Section Title"
++        }
++      }
++    ],
++    "color": "default",
++    "is_toggleable": false
++  }
++}
++```
++
++**Key property**: `is_toggleable` (boolean)
++- When `true`, heading acts as a toggle and supports children
++- When `false`, heading is static (no children)
++- To un-toggle: remove all children first, then set `is_toggleable: false`
++- Works for all three heading levels
++
++**Note**: Notion does NOT have heading_4 or deeper.
++
++---
++
++### 2.3 Callout
++
++```json
++{
++  "object": "block",
++  "type": "callout",
++  "callout": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "Important information here"
++        }
++      }
++    ],
++    "icon": {
++      "type": "emoji",
++      "emoji": "💡"
++    },
++    "color": "blue_background"
++  }
++}
++```
++
++**Icon options**:
++```json
++// Emoji icon
++"icon": { "type": "emoji", "emoji": "🔥" }
++
++// External image icon
++"icon": { "type": "external", "external": { "url": "https://example.com/icon.png" } }
++```
++
++**Supports children**: Yes (blocks nested inside the callout)
++
++---
++
++### 2.4 Quote
++
++```json
++{
++  "object": "block",
++  "type": "quote",
++  "quote": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "A meaningful quote"
++        }
++      }
++    ],
++    "color": "default"
++  }
++}
++```
++
++**Supports children**: Yes
++
++---
++
++### 2.5 Bulleted List Item
++
++```json
++{
++  "object": "block",
++  "type": "bulleted_list_item",
++  "bulleted_list_item": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "List item text"
++        }
++      }
++    ],
++    "color": "default"
++  }
++}
++```
++
++**Supports children**: Yes (nested sub-bullets)
++
++---
++
++### 2.6 Numbered List Item
++
++```json
++{
++  "object": "block",
++  "type": "numbered_list_item",
++  "numbered_list_item": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "First item"
++        }
++      }
++    ],
++    "color": "default"
++  }
++}
++```
++
++**Supports children**: Yes
++
++---
++
++### 2.7 To-Do
++
++```json
++{
++  "object": "block",
++  "type": "to_do",
++  "to_do": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "Task to complete"
++        }
++      }
++    ],
++    "checked": false,
++    "color": "default"
++  }
++}
++```
++
++**Supports children**: Yes
++
++---
++
++### 2.8 Toggle
++
++```json
++{
++  "object": "block",
++  "type": "toggle",
++  "toggle": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "Click to expand"
++        }
++      }
++    ],
++    "color": "default"
++  },
++  "children": [
++    {
++      "object": "block",
++      "type": "paragraph",
++      "paragraph": {
++        "rich_text": [
++          {
++            "type": "text",
++            "text": {
++              "content": "Hidden content revealed on toggle"
++            }
++          }
++        ]
++      }
++    }
++  ]
++}
++```
++
++**Supports children**: Yes (the content inside the toggle)
++
++---
++
++### 2.9 Code
++
++```json
++{
++  "object": "block",
++  "type": "code",
++  "code": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": {
++          "content": "console.log('hello');"
++        }
++      }
++    ],
++    "language": "javascript",
++    "caption": []
++  }
++}
++```
++
++**Language values**: `"abap"`, `"arduino"`, `"bash"`, `"basic"`, `"c"`, `"clojure"`, `"coffeescript"`, `"c++"`, `"c#"`, `"css"`, `"dart"`, `"diff"`, `"docker"`, `"elixir"`, `"elm"`, `"erlang"`, `"flow"`, `"fortran"`, `"f#"`, `"gherkin"`, `"glsl"`, `"go"`, `"graphql"`, `"groovy"`, `"haskell"`, `"html"`, `"java"`, `"javascript"`, `"json"`, `"julia"`, `"kotlin"`, `"latex"`, `"less"`, `"lisp"`, `"livescript"`, `"lua"`, `"makefile"`, `"markdown"`, `"markup"`, `"matlab"`, `"mermaid"`, `"nix"`, `"objective-c"`, `"ocaml"`, `"pascal"`, `"perl"`, `"php"`, `"plain text"`, `"powershell"`, `"prolog"`, `"protobuf"`, `"python"`, `"r"`, `"reason"`, `"ruby"`, `"rust"`, `"sass"`, `"scala"`, `"scheme"`, `"scss"`, `"shell"`, `"sql"`, `"swift"`, `"typescript"`, `"vb.net"`, `"verilog"`, `"vhdl"`, `"visual basic"`, `"webassembly"`, `"xml"`, `"yaml"`, `"java/c/c++/c#"`
++
++---
++
++### 2.10 Divider
++
++```json
++{
++  "object": "block",
++  "type": "divider",
++  "divider": {}
++}
++```
++
++**No properties** -- just an empty object.
++
++---
++
++### 2.11 Table of Contents
++
++```json
++{
++  "object": "block",
++  "type": "table_of_contents",
++  "table_of_contents": {
++    "color": "default"
++  }
++}
++```
++
++---
++
++### 2.12 Breadcrumb
++
++```json
++{
++  "object": "block",
++  "type": "breadcrumb",
++  "breadcrumb": {}
++}
++```
++
++**No properties** -- just an empty object.
++
++---
++
++### 2.13 Column List & Column
++
++```json
++{
++  "object": "block",
++  "type": "column_list",
++  "column_list": {},
++  "children": [
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "object": "block",
++          "type": "paragraph",
++          "paragraph": {
++            "rich_text": [
++              {
++                "type": "text",
++                "text": { "content": "Column 1 content" }
++              }
++            ]
++          }
++        }
++      ]
++    },
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "object": "block",
++          "type": "paragraph",
++          "paragraph": {
++            "rich_text": [
++              {
++                "type": "text",
++                "text": { "content": "Column 2 content" }
++              }
++            ]
++          }
++        }
++      ]
++    }
++  ]
++}
++```
++
++**Critical constraints**:
++- Minimum: **2 columns** when creating
++- Each column must have **at least 1 child block**
++- Columns can only be children of `column_list`
++- `column_list` can only contain `column` children
++- Maximum: ~5 columns (UI supports up to 5; API likely similar)
++- Columns can contain ANY block type except other columns
++
++---
++
++### 2.14 Bookmark
++
++```json
++{
++  "object": "block",
++  "type": "bookmark",
++  "bookmark": {
++    "caption": [
++      {
++        "type": "text",
++        "text": { "content": "My bookmark caption" }
++      }
++    ],
++    "url": "https://example.com"
++  }
++}
++```
++
++---
++
++### 2.15 Embed
++
++```json
++{
++  "object": "block",
++  "type": "embed",
++  "embed": {
++    "url": "https://www.youtube.com/watch?v=example",
++    "caption": []
++  }
++}
++```
++
++**Supported embed sources**: YouTube, Twitter/X, Google Maps, Google Drive, Figma, Invision, Framer, Whimsical, Miro, Abstract, Loom, Excalidraw, Sketch, Replit, CodePen, and more.
++
++---
++
++### 2.16 Link Preview
++
++```json
++{
++  "object": "block",
++  "type": "link_preview",
++  "link_preview": {
++    "url": "https://github.com/org/repo/pull/123"
++  }
++}
++```
++
++**Note**: Cannot be created via API; read-only. Created when users paste URLs in the Notion UI.
++
++---
++
++### 2.17 Image
++
++```json
++{
++  "object": "block",
++  "type": "image",
++  "image": {
++    "type": "external",
++    "external": {
++      "url": "https://example.com/image.png"
++    },
++    "caption": [
++      {
++        "type": "text",
++        "text": { "content": "Image description" }
++      }
++    ]
++  }
++}
++```
++
++---
++
++### 2.18 Video
++
++```json
++{
++  "object": "block",
++  "type": "video",
++  "video": {
++    "type": "external",
++    "external": {
++      "url": "https://www.youtube.com/watch?v=example"
++    },
++    "caption": []
++  }
++}
++```
++
++---
++
++### 2.19 File
++
++```json
++{
++  "object": "block",
++  "type": "file",
++  "file": {
++    "type": "external",
++    "external": {
++      "url": "https://example.com/document.pdf"
++    },
++    "caption": [],
++    "name": "document.pdf"
++  }
++}
++```
++
++---
++
++### 2.20 PDF
++
++```json
++{
++  "object": "block",
++  "type": "pdf",
++  "pdf": {
++    "type": "external",
++    "external": {
++      "url": "https://example.com/file.pdf"
++    },
++    "caption": []
++  }
++}
++```
++
++---
++
++### 2.21 Audio
++
++```json
++{
++  "object": "block",
++  "type": "audio",
++  "audio": {
++    "type": "external",
++    "external": {
++      "url": "https://example.com/audio.mp3"
++    },
++    "caption": []
++  }
++}
++```
++
++**Note**: Only the caption can be modified via API; the URL is read-only after creation.
++
++---
++
++### 2.22 Equation
++
++```json
++{
++  "object": "block",
++  "type": "equation",
++  "equation": {
++    "expression": "E = mc^2"
++  }
++}
++```
++
++Uses KaTeX syntax for mathematical expressions.
++
++---
++
++### 2.23 Synced Block
++
++**Original (source) synced block**:
++```json
++{
++  "object": "block",
++  "type": "synced_block",
++  "synced_block": {
++    "synced_from": null
++  },
++  "children": [
++    {
++      "object": "block",
++      "type": "paragraph",
++      "paragraph": {
++        "rich_text": [
++          {
++            "type": "text",
++            "text": { "content": "This content syncs everywhere" }
++          }
++        ]
++      }
++    }
++  ]
++}
++```
++
++**Reference (synced copy) synced block**:
++```json
++{
++  "object": "block",
++  "type": "synced_block",
++  "synced_block": {
++    "synced_from": {
++      "type": "block_id",
++      "block_id": "original-block-uuid"
++    }
++  }
++}
++```
++
++**Note**: API does NOT support updating synced block content.
++
++---
++
++### 2.24 Table
++
++```json
++{
++  "object": "block",
++  "type": "table",
++  "table": {
++    "table_width": 3,
++    "has_column_header": true,
++    "has_row_header": false
++  },
++  "children": [
++    {
++      "object": "block",
++      "type": "table_row",
++      "table_row": {
++        "cells": [
++          [{ "type": "text", "text": { "content": "Header 1" } }],
++          [{ "type": "text", "text": { "content": "Header 2" } }],
++          [{ "type": "text", "text": { "content": "Header 3" } }]
++        ]
++      }
++    },
++    {
++      "object": "block",
++      "type": "table_row",
++      "table_row": {
++        "cells": [
++          [{ "type": "text", "text": { "content": "Cell 1" } }],
++          [{ "type": "text", "text": { "content": "Cell 2" } }],
++          [{ "type": "text", "text": { "content": "Cell 3" } }]
++        ]
++      }
++    }
++  ]
++}
++```
++
++**Key rules**:
++- `table_width` can ONLY be set at creation time
++- Must have at least 1 `table_row` whose `cells` array length matches `table_width`
++- Each cell is an array of rich text objects
++
++---
++
++### 2.25 Table Row
++
++```json
++{
++  "object": "block",
++  "type": "table_row",
++  "table_row": {
++    "cells": [
++      [{ "type": "text", "text": { "content": "Cell content" } }],
++      [{ "type": "text", "text": { "content": "Another cell" } }]
++    ]
++  }
++}
++```
++
++---
++
++### 2.26 Child Page
++
++```json
++{
++  "object": "block",
++  "type": "child_page",
++  "child_page": {
++    "title": "Sub Page Name"
++  }
++}
++```
++
++---
++
++### 2.27 Child Database
++
++```json
++{
++  "object": "block",
++  "type": "child_database",
++  "child_database": {
++    "title": "My Inline Database"
++  }
++}
++```
++
++**Note**: To create a full inline database with properties, use `POST /v1/databases` with `is_inline: true` and `parent.page_id`.
++
++---
++
++### 2.28 Link to Page
++
++```json
++{
++  "object": "block",
++  "type": "link_to_page",
++  "link_to_page": {
++    "type": "page_id",
++    "page_id": "target-page-uuid"
++  }
++}
++```
++
++Also supports `"type": "database_id"` with `"database_id"`.
++
++---
++
++### 2.29 Template (DEPRECATED)
++
++```json
++{
++  "object": "block",
++  "type": "template",
++  "template": {
++    "rich_text": [
++      {
++        "type": "text",
++        "text": { "content": "Template button text" }
++      }
++    ]
++  },
++  "children": [
++    // blocks that get duplicated when template is used
++  ]
++}
++```
++
++**WARNING**: As of March 27, 2023, creation of template blocks via API is NO LONGER SUPPORTED. Existing template blocks can still be read.
++
++---
++
++### Block Types Summary Table
++
++| Block Type | Supports Children | Supports Color | Creatable via API |
++|---|---|---|---|
++| paragraph | Yes | Yes | Yes |
++| heading_1/2/3 | When is_toggleable=true | Yes | Yes |
++| callout | Yes | Yes | Yes |
++| quote | Yes | Yes | Yes |
++| bulleted_list_item | Yes | Yes | Yes |
++| numbered_list_item | Yes | Yes | Yes |
++| to_do | Yes | Yes | Yes |
++| toggle | Yes | Yes | Yes |
++| code | No | No | Yes |
++| divider | No | No | Yes |
++| table_of_contents | No | Yes | Yes |
++| breadcrumb | No | No | Yes |
++| column_list | Yes (columns only) | No | Yes |
++| column | Yes (any except column) | No | Yes |
++| bookmark | No | No | Yes |
++| embed | No | No | Yes |
++| image | No | No | Yes |
++| video | No | No | Yes |
++| file | No | No | Yes |
++| pdf | No | No | Yes |
++| audio | No | No | Yes |
++| equation | No | No | Yes |
++| synced_block | Yes (original only) | No | Yes |
++| table | Yes (table_rows only) | No | Yes |
++| table_row | No | No | Yes |
++| child_page | Yes | No | Yes |
++| child_database | Yes | No | Yes |
++| link_to_page | No | No | Yes |
++| link_preview | No | No | **No** (read-only) |
++| template | Yes | No | **No** (deprecated) |
++
++---
++
++## 3. Rich Text & Annotations
++
++### Rich Text Object Structure
++
++```json
++{
++  "type": "text",
++  "text": {
++    "content": "Styled text here",
++    "link": {
++      "url": "https://example.com"
++    }
++  },
++  "annotations": {
++    "bold": true,
++    "italic": false,
++    "strikethrough": false,
++    "underline": false,
++    "code": false,
++    "color": "red"
++  },
++  "plain_text": "Styled text here",
++  "href": "https://example.com"
++}
++```
++
++### Rich Text Types
++
++1. **text** -- Plain text with optional link
++2. **mention** -- References to pages, users, dates, databases
++3. **equation** -- Inline KaTeX expression
++
++### Mention Types
++
++```json
++// User mention
++{ "type": "mention", "mention": { "type": "user", "user": { "id": "user-uuid" } } }
++
++// Page mention
++{ "type": "mention", "mention": { "type": "page", "page": { "id": "page-uuid" } } }
++
++// Date mention
++{ "type": "mention", "mention": { "type": "date", "date": { "start": "2026-03-05" } } }
++
++// Database mention
++{ "type": "mention", "mention": { "type": "database", "database": { "id": "db-uuid" } } }
++```
++
++### Inline Equation
++
++```json
++{
++  "type": "equation",
++  "equation": {
++    "expression": "\\frac{a}{b}"
++  },
++  "annotations": { "bold": false, "italic": false, "strikethrough": false, "underline": false, "code": false, "color": "default" },
++  "plain_text": "\\frac{a}{b}",
++  "href": null
++}
++```
++
++---
++
++## 4. Colors & Styling
++
++### All Available Color Values
++
++**Text colors** (apply to the text itself):
++| Value | Description |
++|---|---|
++| `"default"` | Default text color (black in light mode, white in dark mode) |
++| `"gray"` | Gray text |
++| `"brown"` | Brown text |
++| `"orange"` | Orange text |
++| `"yellow"` | Yellow text |
++| `"green"` | Green text |
++| `"blue"` | Blue text |
++| `"purple"` | Purple text |
++| `"pink"` | Pink text |
++| `"red"` | Red text |
++
++**Background colors** (apply to the block or text background):
++| Value | Description |
++|---|---|
++| `"gray_background"` | Gray background |
++| `"brown_background"` | Brown background |
++| `"orange_background"` | Orange background |
++| `"yellow_background"` | Yellow background |
++| `"green_background"` | Green background |
++| `"blue_background"` | Blue background |
++| `"purple_background"` | Purple background |
++| `"pink_background"` | Pink background |
++| `"red_background"` | Red background |
++
++**Total**: 10 text colors + 9 background colors = **19 color values**
++
++### Where Colors Apply
++
++- **Block-level color**: Set on the block's `color` property (paragraph, heading, callout, quote, list items, to-do, toggle, table_of_contents)
++- **Inline text color**: Set in `annotations.color` within rich text objects
++- You can combine: a block with `blue_background` containing text with `annotations.color: "red"`
++
++### Notion Hex Codes (for reference when rendering externally)
++
++**Light Mode Text Colors**:
++| Color | Hex |
++|---|---|
++| Default | `#37352F` |
++| Gray | `#9B9A97` |
++| Brown | `#64473A` |
++| Orange | `#D9730D` |
++| Yellow | `#DFAB01` |
++| Green | `#0F7B6C` |
++| Blue | `#0B6E99` |
++| Purple | `#6940A5` |
++| Pink | `#AD1A72` |
++| Red | `#E03E3E` |
++
++**Light Mode Background Colors**:
++| Color | Hex |
++|---|---|
++| Gray | `#EBECED` |
++| Brown | `#E9E5E3` |
++| Orange | `#FAEBDD` |
++| Yellow | `#FBF3DB` |
++| Green | `#DDEDEA` |
++| Blue | `#DDEBF1` |
++| Purple | `#EAE4F2` |
++| Pink | `#F4DFEB` |
++| Red | `#FBE4E4` |
++
++---
++
++## 5. Page-Level Design
++
++### Setting Page Icon
++
++**Emoji icon**:
++```json
++PATCH /v1/pages/{page_id}
++{
++  "icon": {
++    "type": "emoji",
++    "emoji": "🚀"
++  }
++}
++```
++
++**External image icon**:
++```json
++{
++  "icon": {
++    "type": "external",
++    "external": {
++      "url": "https://example.com/icon.png"
++    }
++  }
++}
++```
++
++**Custom emoji** (workspace-specific):
++```json
++{
++  "icon": {
++    "type": "custom_emoji",
++    "custom_emoji": {
++      "id": "custom-emoji-uuid",
++      "name": "company_logo",
++      "url": "https://..."
++    }
++  }
++}
++```
++
++### Setting Page Cover
++
++```json
++PATCH /v1/pages/{page_id}
++{
++  "cover": {
++    "type": "external",
++    "external": {
++      "url": "https://images.unsplash.com/photo-example"
++    }
++  }
++}
++```
++
++**Best practices for covers**:
++- Optimal dimensions: 1500x600px (or wider)
++- Use high-quality images from Unsplash, custom brand images, or gradients
++- Cover crops from center, so place important content centrally
++
++### Creating a Page with Icon + Cover + Content
++
++```json
++POST /v1/pages
++{
++  "parent": {
++    "page_id": "parent-page-uuid"
++  },
++  "icon": {
++    "type": "emoji",
++    "emoji": "📊"
++  },
++  "cover": {
++    "type": "external",
++    "external": {
++      "url": "https://images.unsplash.com/photo-gradient"
++    }
++  },
++  "properties": {
++    "title": [
++      {
++        "type": "text",
++        "text": {
++          "content": "My Dashboard"
++        }
++      }
++    ]
++  },
++  "children": [
++    // block content here
++  ]
++}
++```
++
++---
++
++## 6. Column Layouts
++
++### Two-Column Layout
++
++```json
++{
++  "object": "block",
++  "type": "column_list",
++  "column_list": {},
++  "children": [
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "type": "callout",
++          "callout": {
++            "rich_text": [{ "type": "text", "text": { "content": "Status: Active" } }],
++            "icon": { "type": "emoji", "emoji": "🟢" },
++            "color": "green_background"
++          }
++        }
++      ]
++    },
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "type": "callout",
++          "callout": {
++            "rich_text": [{ "type": "text", "text": { "content": "Next Review: March 10" } }],
++            "icon": { "type": "emoji", "emoji": "📅" },
++            "color": "blue_background"
++          }
++        }
++      ]
++    }
++  ]
++}
++```
++
++### Three-Column Dashboard Header
++
++```json
++{
++  "object": "block",
++  "type": "column_list",
++  "column_list": {},
++  "children": [
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "type": "callout",
++          "callout": {
++            "rich_text": [{ "type": "text", "text": { "content": "12 Active Projects" } }],
++            "icon": { "type": "emoji", "emoji": "📁" },
++            "color": "purple_background"
++          }
++        }
++      ]
++    },
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "type": "callout",
++          "callout": {
++            "rich_text": [{ "type": "text", "text": { "content": "5 Tasks Due Today" } }],
++            "icon": { "type": "emoji", "emoji": "⚡" },
++            "color": "yellow_background"
++          }
++        }
++      ]
++    },
++    {
++      "object": "block",
++      "type": "column",
++      "column": {},
++      "children": [
++        {
++          "type": "callout",
++          "callout": {
++            "rich_text": [{ "type": "text", "text": { "content": "87% Completion Rate" } }],
++            "icon": { "type": "emoji", "emoji": "📈" },
++            "color": "green_background"
++          }
++        }
++      ]
++    }
++  ]
++}
++```
++
++### Layout Rules
++
++| Rule | Detail |
++|---|---|
++| Minimum columns | 2 |
++| Maximum columns | ~5 (UI limit; API may accept more) |
++| Column width | Auto-distributed equally; NOT controllable via API |
++| Nested column_list | NOT allowed (no columns inside columns) |
++| Required children | Each column MUST have at least 1 child |
++| Column content | Any block type EXCEPT column/column_list |
++
++---
++
++## 7. Inline Databases
++
++### Creating an Inline Database
++
++```json
++POST /v1/databases
++{
++  "parent": {
++    "type": "page_id",
++    "page_id": "parent-page-uuid"
++  },
++  "is_inline": true,
++  "title": [
++    {
++      "type": "text",
++      "text": { "content": "Task Tracker" }
++    }
++  ],
++  "properties": {
++    "Name": {
++      "title": {}
++    },
++    "Status": {
++      "select": {
++        "options": [
++          { "name": "Not Started", "color": "red" },
++          { "name": "In Progress", "color": "yellow" },
++          { "name": "Done", "color": "green" }
++        ]
++      }
++    },
++    "Due Date": {
++      "date": {}
++    },
++    "Assignee": {
++      "people": {}
++    },
++    "Priority": {
++      "select": {
++        "options": [
++          { "name": "High", "color": "red" },
++          { "name": "Medium", "color": "orange" },
++          { "name": "Low", "color": "blue" }
++        ]
++      }
++    }
++  }
++}
++```
++
++**Key**: `"is_inline": true` makes it appear embedded in the page (not as a child page).
++
++---
++
++## 8. Database Property Types
++
++### All Supported Property Types
++
++| Type | API Key | Creatable | Notes |
++|---|---|---|---|
++| Title | `"title": {}` | Yes | Exactly one per database (required) |
++| Rich Text | `"rich_text": {}` | Yes | Multi-line text |
++| Number | `"number": { "format": "number" }` | Yes | Formats: number, number_with_commas, percent, dollar, euro, pound, yen, ruble, rupee, won, yuan, real, lira, rupiah, franc, hong_kong_dollar, new_zealand_dollar, krona, norwegian_krone, mexican_peso, rand, new_taiwan_dollar, danish_krone, zloty, baht, forint, koruna, shekel, chilean_peso, philippine_peso, dirham, colombian_peso, riyal, ringgit, leu, argentine_peso |
++| Select | `"select": { "options": [...] }` | Yes | Single choice |
++| Multi-Select | `"multi_select": { "options": [...] }` | Yes | Multiple choices |
++| Status | `"status": {}` | Yes | Groups: To-do, In progress, Complete |
++| Date | `"date": {}` | Yes | Supports start/end dates |
++| People | `"people": {}` | Yes | Workspace members |
++| Files | `"files": {}` | Yes | Attachments |
++| Checkbox | `"checkbox": {}` | Yes | Boolean |
++| URL | `"url": {}` | Yes | Web links |
++| Email | `"email": {}` | Yes | Email addresses |
++| Phone Number | `"phone_number": {}` | Yes | Phone numbers |
++| Formula | `"formula": { "expression": "..." }` | Yes | Computed values |
++| Relation | `"relation": { "database_id": "..." }` | Yes | Links to another database |
++| Rollup | `"rollup": { ... }` | Yes | Aggregates from relation |
++| Created Time | `"created_time": {}` | Yes | Auto-filled |
++| Created By | `"created_by": {}` | Yes | Auto-filled |
++| Last Edited Time | `"last_edited_time": {}` | Yes | Auto-filled |
++| Last Edited By | `"last_edited_by": {}` | Yes | Auto-filled |
++| Unique ID | `"unique_id": {}` | Yes | Auto-incrementing ID |
++| Button | N/A | **No** | UI-only, not creatable via API |
++
++### Select/Multi-Select Color Options
++
++Available colors for select options: `"default"`, `"gray"`, `"brown"`, `"orange"`, `"yellow"`, `"green"`, `"blue"`, `"purple"`, `"pink"`, `"red"`
++
++---
++
++## 9. Database Views
++
++### View Types Available in Notion
++
++| View | Description | Best For |
++|---|---|---|
++| Table | Spreadsheet-like rows/columns | Data-heavy views, bulk editing |
++| Board | Kanban columns grouped by property | Status tracking, workflows |
++| List | Compact single-column list | Simple overviews, reading lists |
++| Calendar | Monthly/weekly calendar | Date-based planning |
++| Timeline | Gantt-chart style | Project timelines, dependencies |
++| Gallery | Card grid with previews | Visual content, portfolios |
++
++### API Limitations for Views
++
++**IMPORTANT**: The Notion API does NOT currently provide endpoints to:
++- Create database views programmatically
++- Configure view layout (gallery, board, etc.)
++- Set view filters or sorts as "saved views"
++- Control card size, preview properties, or grouping in views
++
++**What you CAN do via API**:
++- Create the database with properties (the data schema)
++- Query the database with filters and sorts (ad-hoc, not saved)
++- The default view when creating a database via API is **Table view**
++- Views must be configured manually in the Notion UI or via the Notion MCP server
++
++### Workaround: Query with Filters/Sorts
++
++```json
++POST /v1/databases/{database_id}/query
++{
++  "filter": {
++    "property": "Status",
++    "select": {
++      "equals": "In Progress"
++    }
++  },
++  "sorts": [
++    {
++      "property": "Due Date",
++      "direction": "ascending"
++    }
++  ]
++}
++```
++
++---
++
++## 10. API Limits & Constraints
++
++### Request Limits
++
++| Limit | Value |
++|---|---|
++| Rate limit | 3 requests/second per integration |
++| Block children per request | 100 blocks max |
++| Payload size | 1000 block elements, 500KB max |
++| Nesting depth per request | **2 levels** max |
++| Rich text array length | 100 rich text objects per block |
++| Rich text content length | 2000 characters per rich text object |
++| Page title length | 2000 characters |
++| Database title length | 2000 characters |
++
++### Nesting Depth Workaround
++
++Since only 2 levels of nesting are allowed per request, deeper structures require multiple API calls:
++
++1. Create top-level blocks (returns block IDs)
++2. Append children to those blocks using their IDs
++3. Repeat for deeper nesting
++
++```
++Request 1: Create column_list > columns > paragraphs (2 levels)
++Request 2: Append to a paragraph ID > toggle > content (2 more levels)
++```
++
++### Page Width
++
++- Notion pages have two width modes: **default** (narrow, ~720px) and **full width**
++- **Full width is NOT controllable via API** -- must be set in UI
++- All API-created pages default to narrow width
++
++---
++
++## 11. Markdown Content API
++
++### New in API Version 2025-09-03
++
++Three endpoints for working with page content as markdown instead of block JSON:
++
++### Create Page with Markdown
++
++```
++POST /v1/pages
++Notion-Version: 2025-09-03
++```
++
++```json
++{
++  "parent": { "page_id": "parent-uuid" },
++  "properties": {
++    "title": [{ "type": "text", "text": { "content": "My Page" } }]
++  },
++  "markdown": "# Section 1\n\nThis is a paragraph.\n\n## Subsection\n\n- Item 1\n- Item 2\n\n> A blockquote\n\n```python\nprint('hello')\n```"
++}
++```
++
++**Rules**:
++- `markdown` is mutually exclusive with `children` and `content`
++- Use `\n` for newlines in JSON strings
++- If `properties.title` is omitted, first `# h1` is extracted as title
++
++### Read Page as Markdown
++
++```
++GET /v1/pages/{page_id}/markdown
++Notion-Version: 2025-09-03
++```
++
++Optional query parameter: `include_transcript=true` (for AI meeting notes)
++
++### Update Page with Markdown
++
++```
++PATCH /v1/pages/{page_id}/markdown
++Notion-Version: 2025-09-03
++```
++
++Uses ellipsis-based selections for partial updates.
++
++---
++
++## 12. 2025-2026 Platform Updates
++
++### Notion 3.0 -- AI Agents (September 2025)
++- AI rebuilt from the ground up as autonomous Agents
++- Personal Agents: work up to 20+ minutes on multi-step tasks
++- Can build project plans, compile feedback, draft reports, update hundreds of DB entries
++- State-of-the-art memory system using Notion pages/databases
++
++### Notion 3.2 -- Mobile AI (January 2026)
++- Mobile AI support
++- New AI models
++- People directory
++
++### Notion 3.3 -- Custom Agents (February 2026)
++- Fully autonomous custom agents
++- Trigger or schedule-based execution (24/7)
++- Automate: task triaging, internal Q&A, daily standups, status reports
++- 21,000+ custom agents created by early testers
++
++### Workers
++- Code execution environment for building custom AI Agent tools
++- Developers write arbitrary code that Agents can execute
++- Massive extensibility leap
++
++### Notion Slides
++- Native presentation feature
++- Turn any Notion page into professional slides
++- Auto-formats pages into clean slide layout
++- Updates to source page instantly reflected
++
++### API-Specific Updates
++- Markdown Content API (3 endpoints)
++- Multi-source databases (v2025-09-03)
++- `UnsupportedBlockObjectResponse` now includes `block_type` string
++- `notion-query-data-sources` MCP tool (Enterprise)
++- File upload endpoint with `mode: "external_url"` for importing
++
++### Official Notion MCP Server
++- GitHub: `makenotion/notion-mcp-server`
++- Available for integration with AI tools (Claude, etc.)
++
++---
++
++## 13. Dashboard Design Patterns
++
++### Pattern 1: KPI Header Row
++
++Use a `column_list` with callout blocks for key metrics:
++
++```json
++// 3-column header with colored callouts
++column_list > [
++  column > callout (green_background, "12 Active"),
++  column > callout (yellow_background, "5 Due Today"),
++  column > callout (red_background, "2 Overdue")
++]
++```
++
++### Pattern 2: Section Organization
++
++```json
++// Divider
++divider
++
++// Toggle heading for collapsible sections
++heading_2 (is_toggleable: true, "📋 Current Sprint")
++  > child_database (inline task tracker)
++
++divider
++
++heading_2 (is_toggleable: true, "📊 Metrics")
++  > table (status summary)
++```
++
++### Pattern 3: Status Dashboard
++
++```json
++// Page setup
++icon: "📊"
++cover: gradient or branded image
++
++// Breadcrumb for navigation context
++breadcrumb
++
++// Title area (auto from page title)
++
++// KPI row
++column_list (3 columns of callouts)
++
++// Divider
++divider
++
++// Quick links section
++heading_2 "Quick Links"
++column_list [
++  column > bookmark(url1), bookmark(url2)
++  column > bookmark(url3), bookmark(url4)
++]
++
++// Task section
++heading_2 (is_toggleable: true) "Active Tasks"
++  > child_database (inline, is_inline: true)
++
++// Notes section
++heading_2 (is_toggleable: true) "Recent Notes"
++  > synced_block (from notes page)
++
++// Table of contents (at top or bottom)
++table_of_contents
++```
++
++### Design Best Practices
++
++1. **Use callout blocks as "cards"** -- combine emoji icons + background colors for visual hierarchy
++2. **Toggle headings for sections** -- keeps the page clean; users expand what they need
++3. **Dividers between major sections** -- visual separation
++4. **Columns for side-by-side comparisons** -- 2-3 columns works best (4+ gets cramped)
++5. **Consistent color scheme** -- pick 2-3 background colors and use them consistently
++6. **Emoji as visual anchors** -- use consistent emoji per category (📁 projects, ⚡ tasks, 📅 dates)
++7. **Table of contents** -- for pages with 4+ sections
++8. **Inline databases** -- the most powerful dashboard component; use for dynamic content
++9. **Synced blocks** -- reuse content across dashboard pages (change once, updates everywhere)
++10. **Cover + icon** -- first impression matters; use branded or thematic images
++
++### Color Pairing Recommendations
++
++| Purpose | Background | Text/Icon |
++|---|---|---|
++| Success/Active | `green_background` | 🟢 ✅ |
++| Warning/Pending | `yellow_background` | ⚠️ 🔶 |
++| Error/Overdue | `red_background` | 🔴 ❌ |
++| Info/Neutral | `blue_background` | 💡 ℹ️ |
++| Creative/Feature | `purple_background` | 🎨 ✨ |
++| Archive/Inactive | `gray_background` | 📦 🗃️ |
++
++---
++
++## Appendix: Complete API Endpoint Reference for Dashboard Building
++
++| Action | Method | Endpoint |
++|---|---|---|
++| Create page | POST | `/v1/pages` |
++| Update page (icon, cover) | PATCH | `/v1/pages/{page_id}` |
++| Append blocks | PATCH | `/v1/blocks/{block_id}/children` |
++| Retrieve block children | GET | `/v1/blocks/{block_id}/children` |
++| Update block | PATCH | `/v1/blocks/{block_id}` |
++| Delete block | DELETE | `/v1/blocks/{block_id}` |
++| Create database | POST | `/v1/databases` |
++| Query database | POST | `/v1/databases/{database_id}/query` |
++| Update database | PATCH | `/v1/databases/{database_id}` |
++| Create page (markdown) | POST | `/v1/pages` (with `markdown` param) |
++| Read page markdown | GET | `/v1/pages/{page_id}/markdown` |
++| Update page markdown | PATCH | `/v1/pages/{page_id}/markdown` |
++| Search | POST | `/v1/search` |
++
++**Base URL**: `https://api.notion.com`
++
++**Required Headers**:
++```
++Authorization: Bearer {integration_token}
++Notion-Version: 2025-09-03
++Content-Type: application/json
++```
+diff --git a/zbrain/zbrain-muninn_dynamic_memory.txt b/zbrain/zbrain-muninn_dynamic_memory.txt
+new file mode 100644
+index 0000000..3e18b1a
+--- /dev/null
++++ b/zbrain/zbrain-muninn_dynamic_memory.txt
+@@ -0,0 +1,225 @@
++zbrain — Project Context for Claude
++=====================================
++
++WHAT THIS IS
++------------
++zbrain is Zack's personal branch of Promaia, a personal AI assistant platform built by his daughter Koii Benvenutto. Zack forked Promaia to create zbrain — his own second brain implementation. He is both the sole user and the developer of zbrain. Koii may cherry-pick ideas from zbrain back into Promaia, but zbrain is Zack's independent implementation.
++
++Zack is a non-programmer who builds with AI assistance. He has learned React, TypeScript, and Git through AI-assisted development. Plain language always. No fluff.
++
++
++WHO ZACK IS
++-----------
++Day job: HVAC estimator, Climate Control Inc., Portland OR / SW Washington. Carrier dealer. 15+ years.
++Goal: Engineer a career change through entrepreneurial projects built with AI.
++
++Projects in development:
++- Heatpup — HVAC system selection tool for homeowners, system simulator for pros
++- Maybe Cat — Cat-powered answer engine. Pick a shelter cat, ask it questions, get cat answers.
++- PURRfoot — Converts a paper towel roll into an undercover pillow; makes room in bed for feet or cats
++- Hope Cookie — Fortune cookie reinvented as coffee/tea companion; different flavor profile, cat-shaped shell
++- Petal Policy — Flower subscription marketed as relationship insurance
++- Click Pedal — Satisfying foot fidget device
++
++Measures success by: Real users, real money. Ships mean nothing until they matter to someone else.
++Thinks in: Patterns, systems, wholeness. Christopher Alexander is deeply intuitive to him.
++Communication style: Direct. Plain language. High information density. No jargon.
++
++
++THE MEMORY LAYER: MUNINNDB
++--------------------------
++zbrain integrates MuninnDB as its cognitive memory substrate.
++
++GitHub: github.com/scrypster/muninndb
++Docs: muninndb.com/docs
++Released: March 5, 2026 by MJ Bonanno (@scrypster)
++License: BSL 1.1 (free for personal use) -> Apache 2.0 in 2030
++Format: Single binary, zero dependencies, MCP-native
++Patent: U.S. Provisional Patent Application filed February 26, 2026
++
++Creator profile: MJ Bonanno is a software architect and Director of Engineering at HyphenFi, a fintech lending automation platform. Deep infrastructure engineering background. MuninnDB is not a side hustle — it's a serious project from someone with the resources and credentials to build it properly.
++
++What MuninnDB is NOT:
++Not a vector store. Not a RAG wrapper. Not a graph database. Not a filing cabinet with search.
++
++What MuninnDB IS:
++A storage engine that implements cognitive memory as math primitives — the way a brain actually works. This is why it makes intuitive sense for a second brain: a real brain doesn't store data, it learns from patterns, forgets what doesn't matter, and strengthens connections between things that fire together.
++
++
++THREE CORE PRIMITIVES
++---------------------
++
++1. EBBINGHAUS DECAY (Recency)
++Memories fade over time unless reinforced. Priority score computed at query time:
++B(M) = ln(n+1) - d x ln(ageDays/(n+1))
++
++Fresh + frequently accessed memories surface first. Old + unused memories fade but never delete. Deterministic — same inputs, same score, every time.
++
++2. HEBBIAN LEARNING (Association)
++"Neurons that fire together, wire together" — as database math.
++
++When two memories are retrieved together, their association strengthens automatically. Co-activation log (50-entry ring buffer) feeds a background worker. Bidirectional weighted links between engrams. Strong associations can rescue faded memories. Links form from usage — not from manual design.
++
++This is automatic mind-mapping. You don't build the graph. The graph builds itself from how you actually use the system.
++
++3. BAYESIAN CONFIDENCE
++Every memory has a confidence score (0-1). Contradictory information lowers confidence. Consistent reinforcement raises it. The database tracks belief strength, not just existence.
++
++
++THE ACTIVATE PIPELINE
++---------------------
++Primary query type. Six parallel phases, all under 20ms:
++
++Phase 1: Embed + tokenize the context string
++Phase 2: Parallel retrieval — BM25 full-text search + HNSW vector search + decay-filtered pool
++Phase 3: RRF fusion of three result lists
++Phase 4: Hebbian boost from co-activation weights
++Phase 5: BFS graph traversal (depth 2, hop penalty scoring)
++Phase 6: Composite score + "Why" explanation builder
++
++Every ACTIVATE call is both retrieval AND a learning event. Hebbian weights update on every query. The database gets smarter with use — no application code required.
++
++One ACTIVATE call replaces: full-text search + vector search + decay logic + association scoring + graph traversal.
++
++
++KEY VOCABULARY
++--------------
++Engram: A memory trace. Contains concept, content, confidence (0-1), relevance score, and weighted associations to other engrams.
++Vault: A namespace for engrams. One vault per user, project, or context.
++muninn_guide: MCP tool that tells Claude how to use memory. Vault-aware. No manual prompting needed.
++ERF: Engram Record Format. Three tiers — Hot (L1 cache), Warm (disk), Cold (archive).
++
++
++PROTOCOLS (four interfaces, same cognitive engine)
++--------------------------------------------------
++MCP — port 8750, 35 tools, native to Claude/Cursor/VS Code
++REST — port 8475, HTTP/JSON
++gRPC — port 8477, Protobuf
++MBP — port 8474, Binary, under 10ms ACK
++
++
++API OPERATIONS (35 MCP tools)
++-----------------------------
++Write: write(), writeBatch() (up to 50 engrams), decide() (decision tracking)
++Retrieve: activate(), search(), traverse(), session()
++Manage: evolve(), consolidate(), link(), restore()
++Monitor: stats(), subscribe()
++
++
++INSTALLATION
++------------
++curl -sSL https://muninndb.com/install.sh | sh
++muninn start
++muninn init   <- guided setup, auto-connects Claude Desktop/Cursor/VS Code
++
++Web UI at localhost:8476 after install. Shows engrams, confidence scores, Hebbian weights, "Why" explanations.
++
++
++VAULT STRATEGY FOR ZBRAIN
++--------------------------
++Recommended structure:
++- zack-personal: Preferences, context, communication style, personal decisions
++- heatpup: Design decisions, user research, HVAC domain knowledge
++- climate-control: Day job — clients, projects, technical knowledge
++- maybe-cat: Cat answer engine product
++- (additional vaults per project, or single vault with tags)
++
++
++SEEDING STRATEGY
++----------------
++Most valuable early action: writeBatch 20-50 engrams as cognitive primer before first real use.
++
++Examples:
++- concept: "work context" — "Zack is HVAC estimator at Climate Control Inc., Portland OR. Carrier dealer. 15+ years. Non-programmer building with AI assistance."
++- concept: "communication style" — "Prefers plain language, no fluff, direct answers. Minimal jargon. High information density. Gets frustrated with unnecessary complexity."
++- concept: "decision framework" — "Measures success by real users and real money. Ships mean nothing until they matter to someone else."
++- concept: "design philosophy" — "Thinks in patterns and wholeness. Christopher Alexander deeply intuitive. Prefers systems that emerge from use rather than systems that require manual maintenance."
++- concept: "heatpup" — "HVAC selection tool for homeowners, system simulator for pros. React/TypeScript. Active development."
++- concept: "maybe-cat" — "Cat-powered answer engine. User picks an adoptable shelter cat. Asks it questions. Cat answers in ways only cats would."
++
++
++INTELLECTUAL FRAMEWORK
++----------------------
++MuninnDB implements what these thinkers described theoretically — not as metaphor, as math.
++
++HERMANN EBBINGHAUS (1885)
++Core idea: Memory decays predictably over time unless reinforced. The forgetting curve.
++In MuninnDB: The decay primitive. Engrams fade by math, not by deletion.
++For zbrain: Don't worry about managing what zbrain remembers. The system handles recency automatically.
++
++GEORGE MILLER (1956)
++Core idea: Human working memory holds 7 (+/-2) items. We need external systems to extend cognitive bandwidth.
++In MuninnDB: ACT-R temporal weighting surfaces the most relevant memories so zbrain doesn't flood context with everything it knows.
++For zbrain: MuninnDB is the cognitive offloading system. It handles what to surface so you don't have to manage it.
++
++DOUGLAS HOFSTADTER
++Core idea: Strange loops. Patterns that activate other patterns. Meaning emerges from recursive self-reference.
++In MuninnDB: Hebbian recursion. Engrams that fire together strengthen each other. Chains of association create emergent meaning.
++For zbrain: The longer zbrain runs, the richer the associations become. Meaning accumulates without being designed.
++
++MARVIN MINSKY — Society of Mind
++Core idea: The mind is not one thing — it's a society of competing agents. No central decider. Intelligence emerges from competition.
++In MuninnDB: Engrams actively compete for relevance via composite scoring. No single memory dominates. The most relevant surface.
++For zbrain: zbrain doesn't have one "memory." It has a society of memories that compete to be relevant.
++
++ANDY CLARK — Extended Mind Theory
++Core idea: Cognition doesn't happen only in the skull. We think with our tools, our notebooks, our environment.
++In MuninnDB: MuninnDB is outside zbrain but part of how it thinks. Not a database backend — a cognitive substrate.
++For zbrain: zbrain + MuninnDB is one thinking system. The boundary between the AI and its memory is dissolved.
++
++EDWARD DE BONO — Lateral Thinking
++Core idea: The mind is a self-organizing patterning system. Patterns form from experience, not design. Lateral thinking disrupts dominant patterns to find new paths.
++In MuninnDB: Associations emerge from usage. The graph is never manually designed — it self-organizes around what actually fires together.
++For zbrain: Don't try to architect how zbrain connects ideas. Use it. The connections will form themselves.
++
++CHRISTOPHER ALEXANDER — Centers and Wholeness
++Core idea: Living structure emerges when centers strengthen each other. Wholeness is not designed top-down — it grows from the interaction of parts.
++In MuninnDB: Hebbian weights create a living structure of associations. Each query strengthens related engrams. The whole becomes more coherent with use.
++For zbrain: This is why MuninnDB made immediate intuitive sense to Zack. It IS Alexander's architecture applied to cognitive infrastructure. Centers (engrams) strengthen each other through co-activation. Wholeness (coherent memory) emerges from use.
++
++
++THE BIG PICTURE
++---------------
++Promaia + MuninnDB is not a personal assistant with a database backend.
++It is a thinking partner with a cognitive substrate.
++
++An implementation of what de Bono, Clark, Alexander, Hofstadter, Minsky, Ebbinghaus, and Miller described theoretically — but nobody built at the infrastructure layer until March 5, 2026.
++
++There is no benchmark for cognitive memory databases because there were none before today.
++The builders here now will write the benchmarks everyone else chases.
++
++
++INTEGRATION SEQUENCE
++--------------------
++1. Install (5 min): curl -sSL https://muninndb.com/install.sh | sh
++2. Start: muninn start
++3. Connect: muninn init — select Claude Desktop
++4. First call: muninn_guide — database instructs Claude on usage, vault-aware, zero prompt engineering
++5. Seed vault: writeBatch core context (20-50 engrams)
++6. Use normally: MuninnDB activates relevant memories, strengthens associations, fades unused, manages itself
++7. Monitor: localhost:8476 web UI
++
++
++COMPARISON TO ALTERNATIVES
++---------------------------
++vs. Mem0/MemGPT/Zep/Letta: Memory wrappers using LLMs for extraction + vector stores. No engine-level cognitive primitives.
++vs. Postgres: Stores data. MuninnDB stores memory that evolves with use.
++vs. Vector DBs: Cosine similarity only. MuninnDB adds temporal weighting, Hebbian boosts, Bayesian confidence.
++vs. Graph DBs: Model relationships you define. MuninnDB learns associations from usage automatically.
++
++
++HONEST ASSESSMENT
++-----------------
++Risks worth knowing:
++- Brand new software, zero production track record
++- Single-person project, bus factor risk
++- 8 GitHub stars as of release day
++- Another binary/port/failure mode to manage
++- Complexity tax for developers who need to understand the 6-phase pipeline
++
++Why zbrain is doing it anyway:
++- Infrastructure matches how Zack already thinks (patterns, centers, wholeness)
++- A second brain should function like a brain — this is the only option that does
++- MJ Bonanno has the credentials, resources, and track record to see this through
++- Early enough to shape the implementation from the ground up
++- "The agents people will build in 2027 will have memory like this." — muninndb.com
+-- 
+2.51.0.windows.1
+

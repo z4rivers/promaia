@@ -1,0 +1,673 @@
+From a3d27ebb7c68d6591bcf3351dbff48a98ea5d2e2 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 17:54:35 -0800
+Subject: [PATCH 23/68] docs(02): create phase plan for brain schema and MCP
+ tools
+
+3 plans across 3 waves covering BRAIN-01 through BRAIN-06:
+- Plan 01 (Wave 1): Brain schema SQL (7 tables) + engine.py (8 functions)
+- Plan 02 (Wave 2): MCP server (7 tools) + action extraction with instructor
+- Plan 03 (Wave 3): CLAUDE.md instructions + .mcp.json + seed data + verification
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/ROADMAP.md                          |   9 +-
+ .../02-01-PLAN.md                             | 166 ++++++++++++
+ .../02-02-PLAN.md                             | 197 ++++++++++++++
+ .../02-03-PLAN.md                             | 240 ++++++++++++++++++
+ 4 files changed, 610 insertions(+), 2 deletions(-)
+ create mode 100644 .planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
+ create mode 100644 .planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
+ create mode 100644 .planning/phases/02-brain-schema-and-mcp-tools/02-03-PLAN.md
+
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index e322df6..de68c95 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -42,7 +42,12 @@ Plans:
+   5. Standing directives per project stored and queryable
+   6. Stale project alerts surface in briefings
+   7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
+-**Plans:** TBD
++**Plans:** 3 plans
++
++Plans:
++- [ ] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension
++- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
++- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
+ 
+ ### Phase 3: Gemini Routing
+ **Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
+@@ -84,7 +89,7 @@ Plans:
+ | Phase | Plans Complete | Status | Completed |
+ |-------|---|---|---|
+ | 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
+-| 2. Brain Schema and MCP Tools | 0/0 | Not started | - |
++| 2. Brain Schema and MCP Tools | 0/3 | Planning complete | - |
+ | 3. Gemini Routing | 0/0 | Not started | - |
+ | 4. Heartbeat Agent | 0/0 | Not started | - |
+ | 5. iPhone Access | 0/0 | Not started | - |
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
+new file mode 100644
+index 0000000..a884ccf
+--- /dev/null
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
+@@ -0,0 +1,166 @@
++---
++phase: 02-brain-schema-and-mcp-tools
++plan: 01
++type: execute
++wave: 1
++depends_on: []
++files_modified:
++  - promaia/brain/__init__.py
++  - promaia/brain/schema.sql
++  - promaia/brain/engine.py
++  - promaia/storage/db_init.py
++  - requirements.txt
++autonomous: true
++requirements: [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-06]
++
++must_haves:
++  truths:
++    - "Brain schema tables exist in Postgres under the brain schema (memories, domains, contexts, actions, reviews, events, modes)"
++    - "brain.memories has a vector(768) column with HNSW index for semantic search"
++    - "brain.domains stores life categories and projects"
++    - "brain.contexts stores standing directives with stale_threshold_days"
++    - "engine.py contains deterministic functions for mode detection, guardrails, time tracking, budget check, context save/restore, and suggest_next"
++    - "db_init.py can apply brain schema idempotently"
++  artifacts:
++    - path: "promaia/brain/__init__.py"
++      provides: "Brain package init"
++    - path: "promaia/brain/schema.sql"
++      provides: "All brain schema DDL"
++      contains: "CREATE TABLE IF NOT EXISTS brain.memories"
++    - path: "promaia/brain/engine.py"
++      provides: "8 deterministic functions"
++      exports: ["detect_mode", "confirm_mode", "enforce_guardrails", "track_time", "budget_check", "save_context", "restore_context", "suggest_next"]
++    - path: "promaia/storage/db_init.py"
++      provides: "Brain schema application function"
++      contains: "apply_brain_schema"
++  key_links:
++    - from: "promaia/storage/db_init.py"
++      to: "promaia/brain/schema.sql"
++      via: "reads SQL file and executes against Postgres"
++      pattern: "brain.*schema"
++    - from: "promaia/brain/engine.py"
++      to: "promaia/storage/postgres_db.py"
++      via: "imports PostgresDB for SQL queries against brain.* tables"
++      pattern: "get_postgres_db|PostgresDB"
++---
++
++<objective>
++Create the brain schema SQL and deterministic engine functions — the foundation that all MCP tools build on.
++
++Purpose: Establishes the data model (7 tables in a dedicated `brain` Postgres schema) and the pure-Python engine functions that enforce guardrails, detect modes, and manage context. These are prerequisites for every MCP tool in Plan 02.
++
++Output: `promaia/brain/schema.sql` (DDL), `promaia/brain/engine.py` (8 functions), extended `db_init.py` with `apply_brain_schema()`.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-RESEARCH.md
++
++# Phase 1 established patterns for Postgres queries and pgvector:
++@promaia/storage/postgres_db.py
++@promaia/storage/schema.sql
++@promaia/storage/db_init.py
++@promaia/storage/vector_db.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Create brain schema SQL and extend db_init.py</name>
++  <files>promaia/brain/__init__.py, promaia/brain/schema.sql, promaia/storage/db_init.py</files>
++  <action>
++Create the `promaia/brain/` directory and package:
++
++1. Create `promaia/brain/__init__.py` — empty init file for the brain package.
++
++2. Create `promaia/brain/schema.sql` with the following tables (all under `CREATE SCHEMA IF NOT EXISTS brain;`):
++
++   - `brain.memories` — id SERIAL PK, content TEXT NOT NULL, summary TEXT, domain TEXT, tags TEXT[] DEFAULT '{}', entities JSONB DEFAULT '{}', embedding vector(768), source TEXT, source_id TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(). Add HNSW index on embedding with vector_cosine_ops (same pattern as content_embeddings in public schema). Add GIN index on tags.
++
++   - `brain.domains` — id SERIAL PK, name TEXT NOT NULL UNIQUE, description TEXT, is_project BOOLEAN DEFAULT TRUE, parent_domain INTEGER REFERENCES brain.domains(id), created_at TIMESTAMPTZ DEFAULT NOW().
++
++   - `brain.contexts` — id SERIAL PK, domain_id INTEGER REFERENCES brain.domains(id) NOT NULL, directive TEXT, current_state TEXT, last_updated TIMESTAMPTZ DEFAULT NOW(), priority INTEGER DEFAULT 5, stale_threshold_days INTEGER DEFAULT 7.
++
++   - `brain.actions` — id SERIAL PK, memory_id INTEGER REFERENCES brain.memories(id), domain_id INTEGER REFERENCES brain.domains(id), description TEXT NOT NULL, status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'stale')), extracted_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ.
++
++   - `brain.reviews` — id SERIAL PK, period_start TIMESTAMPTZ, period_end TIMESTAMPTZ, summary TEXT, projects_touched JSONB DEFAULT '[]', actions_completed INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW().
++
++   - `brain.events` — id SERIAL PK, type TEXT NOT NULL, payload JSONB DEFAULT '{}', source TEXT, session_id TEXT, created_at TIMESTAMPTZ DEFAULT NOW(). Add B-tree indexes on type, source, and created_at DESC.
++
++   - `brain.modes` — id SERIAL PK, session_id TEXT NOT NULL, mode TEXT NOT NULL CHECK (mode IN ('working', 'planning', 'capturing', 'reviewing')), entered_at TIMESTAMPTZ DEFAULT NOW(), context_snapshot JSONB DEFAULT '{}', triggered_by TEXT.
++
++   All DDL uses `CREATE TABLE IF NOT EXISTS` for idempotency.
++
++3. Extend `promaia/storage/db_init.py` — add an `apply_brain_schema()` function that reads `promaia/brain/schema.sql`, splits by semicolons if needed, and executes against Postgres using the existing `get_postgres_db()` pattern. Wire it into the existing init flow (call it after the public schema is applied, or add a separate `init-brain` subcommand). Log success to stderr.
++  </action>
++  <verify>
++    <automated>python -c "import os; sql = open('promaia/brain/schema.sql').read(); tables = ['brain.memories', 'brain.domains', 'brain.contexts', 'brain.actions', 'brain.reviews', 'brain.events', 'brain.modes']; missing = [t for t in tables if t not in sql]; assert not missing, f'Missing tables: {missing}'; assert 'vector(768)' in sql; assert 'HNSW' in sql.upper() or 'hnsw' in sql; assert 'CREATE SCHEMA IF NOT EXISTS brain' in sql; print('Schema SQL validated')"</automated>
++    <manual>Verify schema.sql contains all 7 brain tables with correct columns, HNSW index on memories embedding, GIN index on tags</manual>
++  </verify>
++  <done>brain/schema.sql has 7 tables (memories with vector(768) + HNSW, domains, contexts, actions, reviews, events, modes), db_init.py has apply_brain_schema() function, brain/__init__.py exists</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Create brain/engine.py with 8 deterministic functions</name>
++  <files>promaia/brain/engine.py</files>
++  <action>
++Create `promaia/brain/engine.py` with 8 deterministic functions. CRITICAL: No LLM calls inside any of these functions. Pure Python + SQL via PostgresDB.
++
++1. `detect_mode(message: str) -> dict` — Returns `{mode: str, confidence: float}`. Uses keyword/phrase heuristics to classify user intent:
++   - "working" keywords: build, implement, code, fix, create, deploy, commit, run
++   - "planning" keywords: plan, think about, consider, design, architect, should we, what if
++   - "capturing" keywords: remember, note, capture, save, don't forget, I need to
++   - "reviewing" keywords: review, check, look at, status, how's, briefing, summary
++   Default to "working" with confidence 0.3 if no match. Return highest-confidence mode.
++
++2. `confirm_mode(detected: str, current: str) -> str` — If detected != current, return a natural confirmation string like "Sounds like we're planning — I'll explore options before making changes. Right?" For each mode, have a distinct confirmation phrase. If same mode, return empty string.
++
++3. `enforce_guardrails(action: str, source: str) -> bool` — Returns True if action is allowed. Block: "main" or "master" branch operations, "send" + "email"/"message"/"slack", "delete" + critical patterns, "merge" + "pr"/"pull request". Allow everything else. Source parameter distinguishes "heartbeat" (strict) from "session" (lenient).
++
++4. `track_time(session_id: str, domain_id: int, db=None) -> float` — Query `brain.events` for the earliest event with this session_id and domain_id, return elapsed seconds since then. If no events found, return 0.0. Use `get_postgres_db()` if db is None.
++
++5. `budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict` — Query `brain.events` where source='heartbeat' and session_id=cycle_id, count API calls (type='api_call'), sum payload->>'cost' values. Return `{remaining: float, exceeded: bool, calls: int}`.
++
++6. `save_context(session_id: str, domain_id: int, db=None) -> dict` — Insert a snapshot into `brain.events` with type='context_save', payload containing domain_id, timestamp, and a JSON snapshot of the current brain.contexts row for that domain. Return the snapshot dict.
++
++7. `restore_context(session_id: str, db=None) -> dict` — Query the most recent 'context_save' event, parse and return its payload. Return empty dict if none found.
++
++8. `suggest_next(domains: list, energy: str = None, db=None) -> dict` — Given a list of domain dicts (from brain.contexts + brain.domains), score each by: staleness (days since last_updated / stale_threshold_days, capped at 2.0), priority (inverse, so priority 1 scores highest), and energy adjustment (if energy='low', halve scores for high-effort items marked priority <= 3). Return `{domain: str, action: str, score: float, reason: str}` for the top pick. If energy is None, skip energy adjustment.
++
++Import pattern: `from promaia.storage.postgres_db import get_postgres_db`. Accept optional `db` parameter in functions that do SQL so they're testable with mocks.
++  </action>
++  <verify>
++    <automated>python -c "from promaia.brain.engine import detect_mode, confirm_mode, enforce_guardrails, suggest_next; r = detect_mode('let me build this feature'); assert r['mode'] == 'working', f'Got {r}'; r2 = detect_mode('let me think about the architecture'); assert r2['mode'] == 'planning', f'Got {r2}'; assert enforce_guardrails('commit to feature-x', 'session') == True; assert enforce_guardrails('push to main', 'heartbeat') == False; print('engine.py functions validated')"</automated>
++  </verify>
++  <done>engine.py has 8 deterministic functions (detect_mode, confirm_mode, enforce_guardrails, track_time, budget_check, save_context, restore_context, suggest_next), all importable, no LLM calls inside any function, all accept optional db parameter for testability</done>
++</task>
++
++</tasks>
++
++<verification>
++1. `promaia/brain/__init__.py` exists
++2. `promaia/brain/schema.sql` contains DDL for all 7 tables with HNSW + GIN indexes
++3. `promaia/brain/engine.py` exports 8 functions, all deterministic (no genai/anthropic imports)
++4. `promaia/storage/db_init.py` has `apply_brain_schema()` function
++5. All functions are importable without errors
++6. detect_mode returns correct modes for test inputs
++7. enforce_guardrails blocks main branch operations and allows feature branch operations
++</verification>
++
++<success_criteria>
++- Brain schema SQL file ready for deployment (7 tables, HNSW on memories, GIN on tags)
++- Engine functions importable and working with keyword heuristics
++- db_init.py extended to apply brain schema
++- No LLM dependencies in engine.py
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
+new file mode 100644
+index 0000000..a50c1b0
+--- /dev/null
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
+@@ -0,0 +1,197 @@
++---
++phase: 02-brain-schema-and-mcp-tools
++plan: 02
++type: execute
++wave: 2
++depends_on: ["02-01"]
++files_modified:
++  - promaia/brain/mcp_server.py
++  - promaia/brain/extraction.py
++  - requirements.txt
++autonomous: true
++requirements: [BRAIN-01, BRAIN-04, BRAIN-05, BRAIN-06]
++
++must_haves:
++  truths:
++    - "MCP server exposes 7 tools: briefing, capture, search, recall, context, update_context, actions"
++    - "Briefing tool returns stale projects, pending actions, and recent heartbeat activity"
++    - "Capture tool stores a memory with embedding and auto-extracts actions"
++    - "Search tool performs semantic vector search across brain.memories"
++    - "Action extraction detects actionable items from text using Gemini Flash via instructor"
++    - "Stale alerts surface in briefing output when last_updated exceeds threshold"
++  artifacts:
++    - path: "promaia/brain/mcp_server.py"
++      provides: "Brain MCP server with 7 tools"
++      contains: "server = Server"
++      min_lines: 200
++    - path: "promaia/brain/extraction.py"
++      provides: "Action extraction via instructor + Gemini Flash"
++      contains: "ExtractedAction"
++      exports: ["extract_actions"]
++  key_links:
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/storage/postgres_db.py"
++      via: "get_postgres_db() for all brain.* SQL queries"
++      pattern: "get_postgres_db"
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/brain/engine.py"
++      via: "imports engine functions for mode detection and context management"
++      pattern: "from promaia.brain.engine import"
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/brain/extraction.py"
++      via: "imports extract_actions for capture tool"
++      pattern: "from promaia.brain.extraction import"
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/storage/vector_db.py"
++      via: "uses VectorDBManager.generate_embedding() for memory embedding generation"
++      pattern: "generate_embedding"
++---
++
++<objective>
++Build the brain MCP server with all 7 tools and the action extraction module — the functional core that Claude interacts with.
++
++Purpose: This is the primary interface layer. Claude calls these tools to get briefings, capture thoughts, search memories, and manage project context. The briefing tool surfaces stale alerts (BRAIN-06), the capture tool auto-extracts actions (BRAIN-04), and search provides semantic memory retrieval (BRAIN-01).
++
++Output: `promaia/brain/mcp_server.py` (MCP server with 7 tools), `promaia/brain/extraction.py` (instructor-based action extraction).
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-RESEARCH.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md
++
++# Existing MCP server pattern to mirror:
++@promaia/mcp/gmail_tools_server.py
++
++# Postgres and vector patterns from Phase 1:
++@promaia/storage/postgres_db.py
++@promaia/storage/vector_db.py
++
++# Engine functions from Plan 01:
++@promaia/brain/engine.py
++@promaia/brain/schema.sql
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Create action extraction module with instructor + Gemini Flash</name>
++  <files>promaia/brain/extraction.py, requirements.txt</files>
++  <action>
++Create `promaia/brain/extraction.py` for structured action extraction from text.
++
++1. Define Pydantic models:
++   - `ExtractedAction(BaseModel)` — description: str, domain: Optional[str] = None, urgency: str = "normal" (choices: "urgent", "normal", "someday")
++   - `ActionExtractionResult(BaseModel)` — actions: List[ExtractedAction], has_actions: bool
++
++2. Create `extract_actions(text: str) -> ActionExtractionResult` function:
++   - Use the `instructor` library with google-genai SDK.
++   - Initialize: `from google import genai; client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))`. Then wrap with `instructor.from_genai(client)`.
++   - If `instructor.from_genai` fails (API mismatch), fall back to raw Gemini Flash with `response_mime_type="application/json"` and parse with Pydantic manually.
++   - Prompt: "Extract any actionable items from this text. Look for: 'I need to...', 'don't forget...', 'we should...', 'make sure to...', explicit commitments. If no actions found, return has_actions=False with empty list."
++   - Use model `gemini-2.0-flash` (fast, cheap).
++   - Wrap in try/except — if extraction fails, return ActionExtractionResult(actions=[], has_actions=False) and log the error.
++
++3. Add `instructor` to `requirements.txt` (add line: `instructor>=1.0.0`).
++
++PITFALL (from research): Use `instructor.from_genai(client)` NOT `instructor.from_provider("google/gemini-flash")`. The from_provider string API may not work correctly. If from_genai is not available in the installed version, implement the fallback: call Gemini Flash directly with `response_mime_type="application/json"`, define the JSON schema manually, parse the response with Pydantic's `model_validate_json()`.
++  </action>
++  <verify>
++    <automated>python -c "from promaia.brain.extraction import extract_actions, ExtractedAction, ActionExtractionResult; print('extraction module imports OK'); r = ActionExtractionResult(actions=[], has_actions=False); print(f'Pydantic models OK: {r}')"</automated>
++    <manual>Verify instructor is in requirements.txt, extraction.py has proper error handling for API failures</manual>
++  </verify>
++  <done>extraction.py exports extract_actions function with Pydantic models, instructor added to requirements.txt, function handles API failures gracefully with fallback</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Create brain MCP server with 7 tools</name>
++  <files>promaia/brain/mcp_server.py</files>
++  <action>
++Create `promaia/brain/mcp_server.py` using the low-level `mcp` SDK pattern (matching `promaia/mcp/gmail_tools_server.py`).
++
++1. Server setup:
++   ```python
++   import asyncio, logging, os, uuid, json
++   from mcp.server import Server
++   from mcp.server.stdio import stdio_server
++   from mcp.types import Tool, TextContent
++   from promaia.storage.postgres_db import get_postgres_db
++   from promaia.brain import engine
++   from promaia.brain.extraction import extract_actions
++   ```
++   Generate a session UUID at module level: `SESSION_ID = str(uuid.uuid4())`
++
++2. Register 7 tools via `@server.list_tools()`:
++
++   **briefing** — No required params. Returns stale projects (query brain.contexts JOIN brain.domains WHERE NOW() - last_updated > stale_threshold_days * INTERVAL '1 day'), pending actions (brain.actions WHERE status='pending', LIMIT 10), recent heartbeat activity (brain.events WHERE source='heartbeat' AND created_at > NOW() - INTERVAL '24 hours'). Log a 'briefing' event to brain.events. Format output as concise text.
++
++   **capture** — Required: content (string). Optional: domain (string). Insert row into brain.memories with content, domain, source='session', source_id=SESSION_ID. After insert, generate embedding async: use VectorDBManager.generate_embedding(content), then UPDATE brain.memories SET embedding = %s WHERE id = %s. Call extract_actions(content) — if has_actions, insert each into brain.actions with the memory_id. Log 'capture' event. Return brief confirmation: "Captured." or "Captured. Extracted N action(s)."
++
++   **search** — Required: query (string). Optional: limit (int, default 10). Generate query embedding via VectorDBManager.generate_embedding(query). Query brain.memories with `embedding <=> %s::vector AS distance ORDER BY distance LIMIT %s`. Must call `register_vector(conn)` on the connection before the query (PITFALL from research). Return formatted results.
++
++   **recall** — Optional: domain (string), days (int, default 30), limit (int, default 20). Query brain.memories filtered by domain (if provided) and created_at > NOW() - days * INTERVAL '1 day'. Order by created_at DESC. Return formatted results.
++
++   **context** — Required: domain (string). Query brain.contexts JOIN brain.domains WHERE domains.name = domain. Return directive, current_state, last_updated, priority, stale_threshold_days. If not found, return "No context found for domain: {domain}".
++
++   **update_context** — Required: domain (string). Optional: directive (string), current_state (string), priority (int). UPDATE brain.contexts SET the provided fields, plus last_updated = NOW(), WHERE domain_id = (SELECT id FROM brain.domains WHERE name = domain). If no context row exists, INSERT one (upsert pattern). Log 'context_update' event. Return brief confirmation.
++
++   **actions** — Optional: status (string, default 'pending'), domain (string), mark_done (int — action ID to mark as done). If mark_done provided, UPDATE brain.actions SET status='done', completed_at=NOW() WHERE id=mark_done. Otherwise, SELECT from brain.actions filtered by status and domain. Return formatted list.
++
++3. `@server.call_tool()` dispatcher routes to handler functions by tool name.
++
++4. Main entry point:
++   ```python
++   async def main():
++       logging.basicConfig(level=logging.INFO, stream=__import__('sys').stderr)
++       async with stdio_server() as (read_stream, write_stream):
++           await server.run(read_stream, write_stream, server.create_initialization_options())
++
++   if __name__ == "__main__":
++       asyncio.run(main())
++   ```
++
++PITFALLS to avoid:
++- Call `register_vector(conn)` before ANY query that touches the embedding column (search, capture with embedding update).
++- Use `psycopg2.extras.RealDictCursor` for queries that return named fields.
++- Embedding generation in capture: insert the memory row first WITHOUT embedding, return the confirmation immediately, then update the embedding. Use `asyncio.create_task()` to generate and update embedding after the response is sent, OR do it synchronously since the MCP call is already async. For Phase 2 simplicity, synchronous is fine (200-500ms acceptable).
++- Session briefing idempotency: check brain.events for an existing 'briefing' event with today's session_id. If found, still return the briefing data but skip logging a duplicate event.
++  </action>
++  <verify>
++    <automated>python -c "from promaia.brain.mcp_server import server; import asyncio; tools = asyncio.run(server.list_tools()); names = [t.name for t in tools]; expected = ['briefing', 'capture', 'search', 'recall', 'context', 'update_context', 'actions']; missing = [n for n in expected if n not in names]; assert not missing, f'Missing tools: {missing}'; print(f'MCP server has {len(tools)} tools: {names}')"</automated>
++    <manual>Verify all 7 tools are registered with correct input schemas, handler functions reference brain.* tables</manual>
++  </verify>
++  <done>mcp_server.py registers 7 tools (briefing, capture, search, recall, context, update_context, actions), all tool handlers query brain.* tables via PostgresDB, capture tool calls extract_actions and generates embeddings, search tool uses pgvector with register_vector, briefing surfaces stale projects and pending actions</done>
++</task>
++
++</tasks>
++
++<verification>
++1. `promaia/brain/extraction.py` imports without errors
++2. `promaia/brain/mcp_server.py` imports without errors
++3. MCP server lists exactly 7 tools with correct names
++4. `instructor` is in requirements.txt
++5. No direct LLM calls in mcp_server.py handlers (extraction.py handles that)
++6. Search tool uses register_vector pattern from vector_db.py
++7. Capture tool inserts into brain.memories and brain.actions
++8. Briefing tool queries stale projects, pending actions, recent heartbeat
++</verification>
++
++<success_criteria>
++- MCP server starts and lists 7 tools
++- extraction.py can import and construct Pydantic models
++- All tool handlers reference correct brain.* tables
++- Capture flow: insert memory -> extract actions -> generate embedding
++- Briefing flow: stale projects + pending actions + heartbeat activity
++- Search flow: generate query embedding -> pgvector cosine similarity
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/02-brain-schema-and-mcp-tools/02-02-SUMMARY.md`
++</output>
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-03-PLAN.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-PLAN.md
+new file mode 100644
+index 0000000..aef8a87
+--- /dev/null
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-PLAN.md
+@@ -0,0 +1,240 @@
++---
++phase: 02-brain-schema-and-mcp-tools
++plan: 03
++type: execute
++wave: 3
++depends_on: ["02-02"]
++files_modified:
++  - CLAUDE.md
++  - .mcp.json
++  - promaia/brain/seed.py
++autonomous: false
++requirements: [BRAIN-02, BRAIN-03, BRAIN-05]
++
++must_haves:
++  truths:
++    - "CLAUDE.md contains system instructions that trigger briefing on session start"
++    - "CLAUDE.md instructs Claude to call capture when user shares thoughts"
++    - "CLAUDE.md instructs Claude to call context before project work"
++    - ".mcp.json registers the brain MCP server for project-scoped availability"
++    - "Seed data populates brain.domains with Zack's known projects"
++    - "Seed data populates brain.contexts with placeholder directives for each domain"
++    - "MCP server starts and responds to tool calls"
++  artifacts:
++    - path: "CLAUDE.md"
++      provides: "System instructions for proactive brain behavior"
++      contains: "mcp__brain__briefing"
++      min_lines: 15
++    - path: ".mcp.json"
++      provides: "Project-scoped MCP server registration"
++      contains: "promaia.brain.mcp_server"
++    - path: "promaia/brain/seed.py"
++      provides: "Domain and context seed data script"
++      contains: "brain.domains"
++  key_links:
++    - from: "CLAUDE.md"
++      to: "promaia/brain/mcp_server.py"
++      via: "system instructions reference brain MCP tool names"
++      pattern: "mcp__brain__"
++    - from: ".mcp.json"
++      to: "promaia/brain/mcp_server.py"
++      via: "registers MCP server as stdio transport"
++      pattern: "promaia\\.brain\\.mcp_server"
++    - from: "promaia/brain/seed.py"
++      to: "promaia/storage/postgres_db.py"
++      via: "inserts seed data into brain.domains and brain.contexts"
++      pattern: "get_postgres_db"
++---
++
++<objective>
++Wire everything together — system instructions, MCP registration, seed data, and end-to-end verification.
++
++Purpose: Without system instructions in CLAUDE.md, the brain tools exist but Claude never calls them proactively. Without .mcp.json, the server isn't registered. Without seed data, briefings have nothing to report. This plan makes the brain layer operational.
++
++Output: `CLAUDE.md` (system instructions), `.mcp.json` (server registration), `promaia/brain/seed.py` (initial domains and directives), verified end-to-end.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/PROJECT.md
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-RESEARCH.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-01-SUMMARY.md
++@.planning/phases/02-brain-schema-and-mcp-tools/02-02-SUMMARY.md
++
++# Design doc for system instruction text:
++@docs/plans/2026-03-04-zbrain-workflow-design.md
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Create CLAUDE.md, .mcp.json, and seed data script</name>
++  <files>CLAUDE.md, .mcp.json, promaia/brain/seed.py</files>
++  <action>
++1. Create `CLAUDE.md` at repo root with zBrain system instructions. Include:
++
++   ```markdown
++   # zBrain: Proactive Brain Instructions
++
++   ## Session Start
++   At the start of every session (first message only), call `mcp__brain__briefing` automatically before responding.
++   Present the briefing concisely — what changed, what's pending, suggested flow.
++   End with a numbered suggestion list and "Start with #1?"
++
++   ## Capture
++   When the user shares a thought, observation, or decision worth remembering,
++   call `mcp__brain__capture` with the content and inferred domain.
++   When the user says "I need to...", "don't forget...", or makes a commitment,
++   call `mcp__brain__capture` — the system will auto-extract the action.
++   Keep confirmations brief: "Captured." or "Captured. Updated Heatpup context." — not a paragraph.
++
++   ## Project Context
++   When starting work on a project, call `mcp__brain__context` first to get
++   the current state and standing directive.
++   When a project's direction changes based on conversation, call `mcp__brain__update_context`.
++
++   ## Ambient Awareness
++   Do not interrupt flow state. Hold context suggestions until the next natural pause.
++   After completing a task, if there are pending actions for other projects, mention them briefly.
++   Frame staleness as opportunity, not guilt: "Heatpup is ready for attention whenever you are."
++
++   ## Energy Adaptation
++   If the user declines a suggestion or seems stuck, offer a lower-friction alternative.
++   Frame everything as progress. Never show overdue counts.
++   ```
++
++   If a CLAUDE.md already exists, APPEND the zBrain section (do not overwrite existing content).
++
++2. Create `.mcp.json` at repo root:
++   ```json
++   {
++     "mcpServers": {
++       "brain": {
++         "type": "stdio",
++         "command": "python",
++         "args": ["-m", "promaia.brain.mcp_server"],
++         "env": {
++           "DATABASE_URL": "${DATABASE_URL}",
++           "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
++         }
++       }
++     }
++   }
++   ```
++
++   If `.mcp.json` already exists, ADD the "brain" entry to the existing mcpServers object (do not overwrite other servers).
++
++3. Create `promaia/brain/seed.py` — a runnable script that seeds initial domains and contexts:
++
++   Domains to seed (INSERT ... ON CONFLICT (name) DO NOTHING for idempotency):
++   - Heatpup (is_project=TRUE, description="Heat pump comparison tool — Portland market")
++   - HVAC Brand (is_project=TRUE, description="Portland Area Heat Pump Expert — independent marketing brand")
++   - PURRfoot (is_project=TRUE, description="Cat fort pillow / foot comfort product")
++   - Promaia (is_project=TRUE, description="Content management + agent platform — daughter's project")
++   - zBrain (is_project=TRUE, description="Personal AI OS built on Promaia")
++   - Catpool (is_project=FALSE, description="Shared resource between Maybecat and Hopecookie")
++   - Hopecookie (is_project=TRUE, description="Public project")
++   - Maybecat (is_project=TRUE, description="Ask cats for questionable answers — public")
++   - HVAC Work (is_project=FALSE, description="Climate Control Inc day job — HVAC sales")
++   - Personal (is_project=FALSE, description="Personal life, family, health, finances")
++
++   After domain insert, seed brain.contexts for project domains with placeholder directives:
++   - Heatpup: directive="Working public calculator. Research competitor features and Portland energy rates.", stale_threshold_days=7, priority=3
++   - HVAC Brand: directive="Build independent Portland marketing presence. Draft social posts and track rebate updates.", stale_threshold_days=14, priority=4
++   - PURRfoot: directive="On hold. Research only — packaging materials and suppliers.", stale_threshold_days=30, priority=8
++   - Promaia: directive="Branch & contribute back. Document changes in ZBRAIN.md.", stale_threshold_days=7, priority=2
++   - zBrain: directive="Build brain layer. Current phase: schema + MCP tools.", stale_threshold_days=3, priority=1
++
++   Make the script runnable: `python -m promaia.brain.seed`
++
++   Use `get_postgres_db()` for all database operations. Use `INSERT ... ON CONFLICT` for idempotency.
++  </action>
++  <verify>
++    <automated>python -c "import json; mcp = json.load(open('.mcp.json')); assert 'brain' in mcp['mcpServers'], 'brain not in mcpServers'; assert 'promaia.brain.mcp_server' in str(mcp['mcpServers']['brain']['args']), 'wrong module path'; print('.mcp.json validated'); import os; assert os.path.exists('CLAUDE.md'), 'CLAUDE.md missing'; content = open('CLAUDE.md').read(); assert 'mcp__brain__briefing' in content, 'briefing instruction missing'; assert 'mcp__brain__capture' in content, 'capture instruction missing'; print('CLAUDE.md validated'); from promaia.brain.seed import main; print('seed.py imports OK')"</automated>
++    <manual>Review CLAUDE.md instructions for tone and completeness, verify .mcp.json has correct env vars</manual>
++  </verify>
++  <done>CLAUDE.md has proactive brain instructions (briefing on startup, capture on thoughts, context before project work), .mcp.json registers brain server with stdio transport, seed.py has 10 domains and 5 contexts with placeholder directives</done>
++</task>
++
++<task type="checkpoint:human-verify" gate="blocking">
++  <name>Task 2: Verify brain MCP server starts and tools respond</name>
++  <files>promaia/brain/mcp_server.py, promaia/brain/seed.py, CLAUDE.md, .mcp.json</files>
++  <action>
++Human verification of the complete brain layer. Apply schema, seed data, start MCP server, and verify end-to-end in Claude Code.
++
++Steps for the user:
++1. Apply brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"` — verify 7 brain.* tables in Supabase Dashboard.
++2. Run seed data: `python -m promaia.brain.seed` — verify 10 domains and 5 contexts in Supabase.
++3. Test MCP server starts: `python -m promaia.brain.mcp_server` (should hang on stdio — Ctrl+C to stop).
++4. Register with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
++5. New Claude Code session: `/mcp` shows brain connected, briefing fires on startup, search returns empty, capture extracts actions.
++  </action>
++  <verify>
++    <automated>python -c "from promaia.brain.mcp_server import server; from promaia.brain.seed import main; from promaia.brain.engine import detect_mode; import os; assert os.path.exists('CLAUDE.md'); assert os.path.exists('.mcp.json'); print('All brain modules importable, config files exist')"</automated>
++    <manual>User verifies: schema deployed, seed data visible, MCP server connected in Claude Code, briefing tool fires, capture extracts actions</manual>
++  </verify>
++  <done>Brain schema deployed to Supabase, seed data populated, MCP server running and registered in Claude Code, briefing fires on session start, capture extracts actions</done>
++  <what-built>Complete brain layer: schema (7 tables), engine (8 functions), MCP server (7 tools), action extraction, system instructions, seed data</what-built>
++  <how-to-verify>
++1. Apply brain schema to Supabase:
++   ```bash
++   python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"
++   ```
++   Verify in Supabase Dashboard -> Table Editor: brain.memories, brain.domains, brain.contexts, brain.actions, brain.reviews, brain.events, brain.modes tables exist.
++
++2. Run seed data:
++   ```bash
++   python -m promaia.brain.seed
++   ```
++   Verify in Supabase Dashboard -> Table Editor -> brain.domains: 10 domains exist. brain.contexts: 5 context rows with directives.
++
++3. Test MCP server starts:
++   ```bash
++   python -m promaia.brain.mcp_server
++   ```
++   (Should hang waiting for stdio input — this means it started successfully. Ctrl+C to stop.)
++
++4. Register with Claude Code (if not already):
++   ```bash
++   claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server
++   ```
++
++5. In a new Claude Code session, verify:
++   - `/mcp` shows the brain server connected
++   - The briefing tool fires automatically on session start
++   - Ask Claude to search memories: should return "No memories found" (empty table)
++   - Say "I need to update the calculator pricing" — Claude should call capture and report action extraction
++
++6. Type "approved" if everything works, or describe any issues.
++  </how-to-verify>
++  <resume-signal>Type "approved" or describe issues found during verification</resume-signal>
++</task>
++
++</tasks>
++
++<verification>
++1. CLAUDE.md exists with brain system instructions
++2. .mcp.json registers brain server with correct module path and env vars
++3. seed.py creates domains and contexts idempotently
++4. MCP server starts via `python -m promaia.brain.mcp_server`
++5. Brain schema applies to Supabase without errors
++6. Seed data visible in Supabase Dashboard
++7. Claude Code recognizes brain MCP server and can call tools
++</verification>
++
++<success_criteria>
++- CLAUDE.md instructs Claude to call briefing on session start, capture on thoughts, context before project work
++- .mcp.json registers brain MCP server for project-scoped use
++- Seed data populates 10 domains and 5 contexts
++- End-to-end: Claude Code session starts, calls briefing, reports stale projects (none yet, all fresh), and responds to capture requests
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md`
++</output>
+-- 
+2.51.0.windows.1
+

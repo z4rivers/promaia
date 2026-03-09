@@ -1,0 +1,51 @@
+From 52fab796e02eb905c04d834fb561c2fd0d33f678 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 17:58:08 -0800
+Subject: [PATCH 24/68] fix(02): revise plans based on checker feedback
+
+- 02-01 Task 1: make SQL semicolon-splitting mandatory (not optional)
+- 02-02 Task 2: add VectorDBManager import to server setup boilerplate
+- 02-02 must_haves: add dedicated recall tool truth
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md | 2 +-
+ .planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
+index a884ccf..8df7529 100644
+--- a/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-01-PLAN.md
+@@ -98,7 +98,7 @@ Create the `promaia/brain/` directory and package:
+ 
+    All DDL uses `CREATE TABLE IF NOT EXISTS` for idempotency.
+ 
+-3. Extend `promaia/storage/db_init.py` — add an `apply_brain_schema()` function that reads `promaia/brain/schema.sql`, splits by semicolons if needed, and executes against Postgres using the existing `get_postgres_db()` pattern. Wire it into the existing init flow (call it after the public schema is applied, or add a separate `init-brain` subcommand). Log success to stderr.
++3. Extend `promaia/storage/db_init.py` — add an `apply_brain_schema()` function that reads `promaia/brain/schema.sql`, splits SQL by semicolons, and executes each statement individually within a transaction (psycopg2 cannot execute multi-statement SQL in a single `execute()` call). Pattern: `stmts = [s.strip() for s in sql.split(';') if s.strip()]; for stmt in stmts: db.execute(stmt)`. Use the existing `get_postgres_db()` pattern. Wire it into the existing init flow (call it after the public schema is applied, or add a separate `init-brain` subcommand). Log success to stderr.
+   </action>
+   <verify>
+     <automated>python -c "import os; sql = open('promaia/brain/schema.sql').read(); tables = ['brain.memories', 'brain.domains', 'brain.contexts', 'brain.actions', 'brain.reviews', 'brain.events', 'brain.modes']; missing = [t for t in tables if t not in sql]; assert not missing, f'Missing tables: {missing}'; assert 'vector(768)' in sql; assert 'HNSW' in sql.upper() or 'hnsw' in sql; assert 'CREATE SCHEMA IF NOT EXISTS brain' in sql; print('Schema SQL validated')"</automated>
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
+index a50c1b0..95866ab 100644
+--- a/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-02-PLAN.md
+@@ -18,6 +18,7 @@ must_haves:
+     - "Capture tool stores a memory with embedding and auto-extracts actions"
+     - "Search tool performs semantic vector search across brain.memories"
+     - "Action extraction detects actionable items from text using Gemini Flash via instructor"
++    - "Recall tool returns recent memories filtered by domain or time range"
+     - "Stale alerts surface in briefing output when last_updated exceeds threshold"
+   artifacts:
+     - path: "promaia/brain/mcp_server.py"
+@@ -123,6 +124,7 @@ Create `promaia/brain/mcp_server.py` using the low-level `mcp` SDK pattern (matc
+    from mcp.server.stdio import stdio_server
+    from mcp.types import Tool, TextContent
+    from promaia.storage.postgres_db import get_postgres_db
++   from promaia.storage.vector_db import VectorDBManager
+    from promaia.brain import engine
+    from promaia.brain.extraction import extract_actions
+    ```
+-- 
+2.51.0.windows.1
+

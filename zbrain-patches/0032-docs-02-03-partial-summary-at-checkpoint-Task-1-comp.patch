@@ -1,0 +1,394 @@
+From 3d026b8d9746aa13107eb51e5dcafb5aecc30078 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 18:26:13 -0800
+Subject: [PATCH 32/68] =?UTF-8?q?docs(02-03):=20partial=20summary=20at=20c?=
+ =?UTF-8?q?heckpoint=20=E2=80=94=20Task=201=20complete,=20Task=202=20await?=
+ =?UTF-8?q?ing=20human-verify?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 02-03-SUMMARY.md: CLAUDE.md + .mcp.json + seed.py documented
+- STATE.md: updated position to 02-03 Task 2 checkpoint
+- ROADMAP.md: Phase 2 plan count updated (3 plans, 3 summaries)
+---
+ .planning/ROADMAP.md                          | 198 +++++++++---------
+ .planning/STATE.md                            |  18 +-
+ .../02-03-SUMMARY.md                          | 114 ++++++++++
+ 3 files changed, 224 insertions(+), 106 deletions(-)
+ create mode 100644 .planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
+
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 4481e20..6c090d8 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -1,99 +1,99 @@
+-# Roadmap: zBrain v1.0 Foundation
+-
+-## Phases
+-
+-- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
+-- [ ] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings
+-- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+-- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
+-- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
+-
+-## Phase Details
+-
+-### Phase 1: Postgres Foundation
+-**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
+-**Depends on:** Nothing
+-**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
+-**Success Criteria** (what must be TRUE):
+-  1. Promaia connects to Supabase Postgres via session pooler
+-  2. pgvector extension enabled with vector(768) columns and HNSW indexes
+-  3. All existing Promaia features (sync, chat, query) work against Postgres
+-  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
+-  5. Existing content re-embedded with gemini-embedding-001
+-  6. GIN indexes on tags/entities for hybrid search
+-  7. google-generativeai replaced with google-genai SDK
+-  8. ZBRAIN.md created documenting all changes
+-**Plans:** 3 plans
+-
+-Plans:
+-- [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
+-- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
+-- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
+-
+-### Phase 2: Brain Schema and MCP Tools
+-**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
+-**Depends on:** Phase 1
+-**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
+-**Success Criteria** (what must be TRUE):
+-  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
+-  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
+-  3. Session briefing runs automatically on startup
+-  4. Action extraction detects actionable items from conversation
+-  5. Standing directives per project stored and queryable
+-  6. Stale project alerts surface in briefings
+-  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
+-**Plans:** 2/3 plans executed
+-
+-Plans:
+-- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
+-- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
+-- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
+-
+-### Phase 3: Gemini Routing
+-**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
+-**Depends on:** Phase 2
+-**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
+-**Success Criteria** (what must be TRUE):
+-  1. ai/router.py routes tasks to appropriate model by type
+-  2. Gemini Flash handles classification, summarization, embeddings
+-  3. Claude Sonnet/Opus handles reasoning and interactive work
+-  4. Gemini MCP research results automatically captured into brain.memories
+-  5. YouTube analysis and deep research feed brain automatically
+-**Plans:** TBD
+-
+-### Phase 4: Heartbeat Agent
+-**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
+-**Depends on:** Phase 2
+-**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
+-**Success Criteria** (what must be TRUE):
+-  1. Windows Task Scheduler runs heartbeat on configurable interval
+-  2. Heartbeat scans all projects and picks most stalled for deep work
+-  3. Active user check: scan-only mode if user active within 15 min
+-  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
+-  5. Morning summary available in next session briefing
+-  6. All activity logged to brain.events with source="heartbeat"
+-**Plans:** TBD
+-
+-### Phase 5: iPhone Access
+-**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
+-**Depends on:** Phase 2
+-**Requirements:** [ACCESS-01]
+-**Success Criteria** (what must be TRUE):
+-  1. Brain MCP endpoint accessible from iPhone via cloud
+-  2. Mobile capture stores thoughts in brain.memories
+-  3. PC session briefing picks up mobile captures automatically
+-**Plans:** TBD
+-
+-## Progress
+-
+-| Phase | Plans Complete | Status | Completed |
+-|-------|---|---|---|
+-| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
+-| 2. Brain Schema and MCP Tools | 2/3 | In Progress|  |
+-| 3. Gemini Routing | 0/0 | Not started | - |
+-| 4. Heartbeat Agent | 0/0 | Not started | - |
+-| 5. iPhone Access | 0/0 | Not started | - |
+-
+----
+-*Created: 2026-03-04 from design docs*
+-*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
++# Roadmap: zBrain v1.0 Foundation
++
++## Phases
++
++- [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
++- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
++- [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
++- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
++- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
++
++## Phase Details
++
++### Phase 1: Postgres Foundation
++**Goal:** Replace SQLite+ChromaDB with Supabase Postgres+pgvector so all data is cloud-native and accessible from any device
++**Depends on:** Nothing
++**Requirements:** [STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, DOCS-01, DOCS-02, DOCS-03]
++**Success Criteria** (what must be TRUE):
++  1. Promaia connects to Supabase Postgres via session pooler
++  2. pgvector extension enabled with vector(768) columns and HNSW indexes
++  3. All existing Promaia features (sync, chat, query) work against Postgres
++  4. ChromaDB dependency removed; vector_db.py uses pgvector adapter
++  5. Existing content re-embedded with gemini-embedding-001
++  6. GIN indexes on tags/entities for hybrid search
++  7. google-generativeai replaced with google-genai SDK
++  8. ZBRAIN.md created documenting all changes
++**Plans:** 3 plans
++
++Plans:
++- [x] 01-01-PLAN.md -- Merge postgres branch, configure Supabase, extend schema with pgvector + indexes (CHECKPOINT: awaiting Supabase deployment verification)
++- [x] 01-02-PLAN.md -- Replace ChromaDB with pgvector in vector_db.py, migrate google-genai SDK, update requirements
++- [x] 01-03-PLAN.md -- Re-embed migration script, end-to-end verification, ZBRAIN.md changelog
++
++### Phase 2: Brain Schema and MCP Tools
++**Goal:** Add proactive brain layer — memories, domains, contexts, actions, reviews, events tables plus MCP tools for briefing, capture, search, and system instructions
++**Depends on:** Phase 1
++**Requirements:** [BRAIN-01, BRAIN-02, BRAIN-03, BRAIN-04, BRAIN-05, BRAIN-06]
++**Success Criteria** (what must be TRUE):
++  1. Brain schema tables created (memories, domains, contexts, actions, reviews, events, modes)
++  2. MCP tools working: briefing, capture, search, recall, context, update_context, actions
++  3. Session briefing runs automatically on startup
++  4. Action extraction detects actionable items from conversation
++  5. Standing directives per project stored and queryable
++  6. Stale project alerts surface in briefings
++  7. brain/engine.py deterministic functions operational (mode detection, guardrails, time tracking, budget, context save/restore)
++**Plans:** 3/3 plans complete
++
++Plans:
++- [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
++- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
++- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
++
++### Phase 3: Gemini Routing
++**Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
++**Depends on:** Phase 2
++**Requirements:** [ROUTE-01, ROUTE-02, ROUTE-03, ROUTE-04]
++**Success Criteria** (what must be TRUE):
++  1. ai/router.py routes tasks to appropriate model by type
++  2. Gemini Flash handles classification, summarization, embeddings
++  3. Claude Sonnet/Opus handles reasoning and interactive work
++  4. Gemini MCP research results automatically captured into brain.memories
++  5. YouTube analysis and deep research feed brain automatically
++**Plans:** TBD
++
++### Phase 4: Heartbeat Agent
++**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
++**Depends on:** Phase 2
++**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
++**Success Criteria** (what must be TRUE):
++  1. Windows Task Scheduler runs heartbeat on configurable interval
++  2. Heartbeat scans all projects and picks most stalled for deep work
++  3. Active user check: scan-only mode if user active within 15 min
++  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
++  5. Morning summary available in next session briefing
++  6. All activity logged to brain.events with source="heartbeat"
++**Plans:** TBD
++
++### Phase 5: iPhone Access
++**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
++**Depends on:** Phase 2
++**Requirements:** [ACCESS-01]
++**Success Criteria** (what must be TRUE):
++  1. Brain MCP endpoint accessible from iPhone via cloud
++  2. Mobile capture stores thoughts in brain.memories
++  3. PC session briefing picks up mobile captures automatically
++**Plans:** TBD
++
++## Progress
++
++| Phase | Plans Complete | Status | Completed |
++|-------|---|---|---|
++| 1. Postgres Foundation | 3/3 | Complete | 2026-03-04 |
++| 2. Brain Schema and MCP Tools | 3/3 | Complete   | 2026-03-05 |
++| 3. Gemini Routing | 0/0 | Not started | - |
++| 4. Heartbeat Agent | 0/0 | Not started | - |
++| 5. iPhone Access | 0/0 | Not started | - |
++
++---
++*Created: 2026-03-04 from design docs*
++*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index c0e4bb6..057bd3e 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -3,15 +3,15 @@
+ ## Current Position
+ 
+ Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
+-Plan: 02-02 COMPLETE (brain MCP server + action extraction)
+-Status: Plan 02-02 executed — 2/2 tasks, 8/8 verifications passed
+-Last activity: 2026-03-05 — Brain MCP server (7 tools) and extraction.py complete
++Plan: 02-03 — Task 1 COMPLETE, Task 2 awaiting human-verify checkpoint
++Status: 02-03 task 1 committed (0fae709) — CLAUDE.md, .mcp.json, seed.py created
++Last activity: 2026-03-05 — System instructions, MCP registration, seed data complete
+ 
+ ## Next Session: What to Do
+ 
+-1. Apply brain schema to Supabase: `python -m promaia.storage.db_init init-brain`
+-2. Execute Plan 02-03 (if exists) or move to Phase 3 (heartbeat autonomy)
+-3. Configure Claude system prompt to connect to the brain MCP server
++1. Complete 02-03 checkpoint verification (apply schema, run seed, register MCP in Claude Code)
++2. After approval: finalize 02-03 SUMMARY.md, update STATE.md, move to Phase 3
++3. Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
+ 
+ ## Phase 1 Completion Summary
+ 
+@@ -70,6 +70,7 @@ None.
+ |------|------------|
+ | 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
+ | 02-02 | Brain MCP server (7 tools), extraction.py (instructor + Gemini Flash), requirements.txt updated |
++| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts) — Task 2 awaiting human-verify |
+ 
+ ## Key Execution Decisions (2026-03-05)
+ 
+@@ -81,9 +82,12 @@ None.
+ - **Lazy DB singletons in MCP:** get_db()/get_vector_mgr() deferred to first tool call — avoids connection startup at import time
+ - **Embedding failure non-fatal in capture:** Memory row persisted even if embedding generation fails (embedding=NULL)
+ - **Briefing event idempotency:** Checks brain.events for same session_id + date before inserting briefing event
++- **CLAUDE.md at repo root:** Claude Code picks up CLAUDE.md from project root automatically — applies to all sessions in this repo
++- **seed.py fetch-after-upsert:** INSERT ON CONFLICT DO NOTHING, then SELECT for domain_id — cleaner than ON CONFLICT DO UPDATE RETURNING
++- **Context existence check:** brain.contexts uses explicit SELECT before INSERT (no unique constraint on domain_id to leverage ON CONFLICT)
+ 
+ ## Git State
+ 
+ - Branch: `zbrain` (off `feature/agent-scheduler`)
+ - Phase 1 commits: cbad997 through e5fd713 (10 commits)
+-- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server)
++- Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
+new file mode 100644
+index 0000000..1966d68
+--- /dev/null
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
+@@ -0,0 +1,114 @@
++---
++phase: 02-brain-schema-and-mcp-tools
++plan: 03
++subsystem: infra
++tags: [mcp, claude, brain, zBrain, postgres, seed-data, system-instructions]
++
++# Dependency graph
++requires:
++  - phase: 02-02
++    provides: brain MCP server (7 tools), extraction.py (instructor + Gemini Flash)
++  - phase: 02-01
++    provides: brain schema (7 tables), engine.py (8 deterministic functions)
++provides:
++  - CLAUDE.md with proactive brain system instructions (briefing/capture/context/ambient/energy)
++  - .mcp.json registering brain MCP server for project-scoped stdio transport
++  - promaia/brain/seed.py with 10 domains and 5 contexts (idempotent)
++affects: [03-heartbeat, all-future-sessions]
++
++# Tech tracking
++tech-stack:
++  added: []
++  patterns:
++    - System instructions pattern: CLAUDE.md at repo root triggers proactive MCP tool calls
++    - .mcp.json stdio registration pattern: project-scoped MCP server with env var passthrough
++    - Idempotent seed pattern: INSERT ... ON CONFLICT (name) DO NOTHING + fetch for domain_ids
++
++key-files:
++  created:
++    - CLAUDE.md
++    - .mcp.json
++    - promaia/brain/seed.py
++  modified: []
++
++key-decisions:
++  - "CLAUDE.md at repo root: project-scoped system instructions that Claude Code picks up automatically for all sessions in this repo"
++  - "seed.py uses fetch-after-upsert pattern for domain IDs: INSERT ON CONFLICT DO NOTHING then SELECT — avoids needing RETURNING with ON CONFLICT"
++  - "Context seeding uses explicit existence check rather than ON CONFLICT: brain.contexts has no unique constraint other than domain_id, so manual check is cleaner"
++
++patterns-established:
++  - "Seed script pattern: runnable as python -m promaia.brain.seed, uses get_postgres_db() singleton, idempotent via ON CONFLICT"
++  - "MCP registration pattern: .mcp.json at repo root, stdio transport, env vars as ${VAR} references"
++
++requirements-completed: [BRAIN-02, BRAIN-03, BRAIN-05]
++
++# Metrics
++duration: 2min
++completed: 2026-03-05
++---
++
++# Phase 2 Plan 03: System Instructions, MCP Registration, and Seed Data Summary
++
++**CLAUDE.md proactive brain instructions + .mcp.json stdio registration + idempotent seed.py for 10 domains and 5 contexts — brain layer fully wired**
++
++## Performance
++
++- **Duration:** 2 min
++- **Started:** 2026-03-05T02:22:31Z
++- **Completed:** 2026-03-05T02:24:15Z
++- **Tasks:** 1/2 (Task 2 is checkpoint:human-verify — awaiting user verification)
++- **Files modified:** 3
++
++## Accomplishments
++
++- CLAUDE.md with 5 behavior sections: session start briefing, capture on thoughts, project context loading, ambient awareness, energy adaptation — all using mcp__brain__ tool names
++- .mcp.json registering brain server as stdio transport with DATABASE_URL and GOOGLE_API_KEY env passthrough
++- seed.py that populates 10 domains (7 projects, 3 non-projects) and 5 project contexts with directives, stale thresholds, and priorities — fully idempotent
++
++## Task Commits
++
++Each task was committed atomically:
++
++1. **Task 1: CLAUDE.md, .mcp.json, and seed data script** - `0fae709` (feat)
++
++**Task 2 (checkpoint:human-verify):** Awaiting user verification of schema deployment, seed data, and MCP server in Claude Code.
++
++## Files Created/Modified
++
++- `CLAUDE.md` - Proactive brain instructions: briefing on session start, capture on thoughts, context before project work, ambient awareness, energy adaptation
++- `.mcp.json` - MCP server registration: stdio transport, python -m promaia.brain.mcp_server, DATABASE_URL + GOOGLE_API_KEY env
++- `promaia/brain/seed.py` - Seed script: 10 domains (Heatpup, HVAC Brand, PURRfoot, Promaia, zBrain, Catpool, Hopecookie, Maybecat, HVAC Work, Personal) + 5 contexts with directives
++
++## Decisions Made
++
++- **CLAUDE.md at repo root:** Claude Code picks up CLAUDE.md from the project root automatically. Placing it here (not in promaia/) ensures it applies to all Claude Code sessions in this repo.
++- **seed.py fetch-after-upsert pattern:** `INSERT ... ON CONFLICT (name) DO NOTHING` followed by `SELECT id` to get domain IDs. Cleaner than `INSERT ... ON CONFLICT DO UPDATE ... RETURNING id` which requires a dummy update.
++- **Context existence check:** brain.contexts has no unique constraint other than foreign key on domain_id, so a manual `SELECT` before `INSERT` is used rather than ON CONFLICT — avoids schema assumption.
++
++## Deviations from Plan
++
++None - plan executed exactly as written.
++
++## Issues Encountered
++
++None.
++
++## User Setup Required
++
++Task 2 (checkpoint:human-verify) requires user action:
++
++1. Apply brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"`
++2. Run seed data: `python -m promaia.brain.seed`
++3. Test MCP server starts: `python -m promaia.brain.mcp_server` (hang on stdio = success, Ctrl+C to stop)
++4. Register with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
++5. New Claude Code session: verify /mcp shows brain connected, briefing fires on startup
++
++## Next Phase Readiness
++
++- Complete brain layer: schema (7 tables) + engine (8 functions) + MCP server (7 tools) + action extraction + system instructions + seed data
++- Ready for Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, max 2 commits/cycle)
++- Once Task 2 verified: all zBrain Phase 2 requirements complete
++
++---
++*Phase: 02-brain-schema-and-mcp-tools*
++*Completed: 2026-03-05*
+-- 
+2.51.0.windows.1
+

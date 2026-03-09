@@ -1,0 +1,183 @@
+From 180e04efcfea81a4a01ca518a5f937d0adad4ad9 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 16:44:49 -0800
+Subject: [PATCH 55/68] feat(4.1-01): create MuninnDB REST client wrapper
+
+- Async httpx client wrapping MuninnDB REST API (port 8475)
+- 6 methods: health, write, write_batch, activate, stats, close
+- Module-level async singleton via get_muninn() with health check caching
+- Graceful degradation: write() returns None on failure, never raises
+- No dependency on broken muninndb Python SDK (Python 3.14 packaging bug)
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/brain/muninn.py | 157 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 157 insertions(+)
+ create mode 100644 promaia/brain/muninn.py
+
+diff --git a/promaia/brain/muninn.py b/promaia/brain/muninn.py
+new file mode 100644
+index 0000000..ead97ed
+--- /dev/null
++++ b/promaia/brain/muninn.py
+@@ -0,0 +1,157 @@
++"""
++MuninnDB REST client for zBrain cognitive memory sidecar.
++
++Wraps MuninnDB's REST API (port 8475) using async httpx. The Python SDK
++(muninndb / muninn-python) is broken on Python 3.14 due to a packaging bug
++that installs zero code files. Direct REST calls via httpx are reliable and
++httpx is already a project dependency.
++
++MuninnDB handles embedding generation server-side via MUNINN_GOOGLE_KEY.
++This client sends text only -- no client-side embedding generation.
++
++Usage:
++    from promaia.brain.muninn import get_muninn
++
++    muninn = await get_muninn()
++    if muninn:
++        await muninn.write(concept="short label", content="full text")
++        results = await muninn.activate(context=["what am I thinking about?"])
++"""
++
++import logging
++from typing import Optional
++
++import httpx
++
++logger = logging.getLogger(__name__)
++
++
++class MuninnClient:
++    """Async REST client for MuninnDB cognitive memory database."""
++
++    def __init__(
++        self,
++        base_url: str = "http://localhost:8475",
++        vault: str = "zbrain-vault",
++        timeout: float = 5.0,
++    ):
++        self._vault = vault
++        self._client = httpx.AsyncClient(
++            base_url=base_url,
++            timeout=timeout,
++        )
++
++    async def health(self) -> bool:
++        """Check if MuninnDB is reachable. GET /api/health."""
++        try:
++            r = await self._client.get("/api/health")
++            return r.status_code == 200
++        except Exception:
++            return False
++
++    async def write(
++        self,
++        concept: str,
++        content: str,
++        tags: list[str] | None = None,
++        confidence: float = 0.9,
++    ) -> str | None:
++        """Write a single engram. Returns ULID id on success, None on failure.
++
++        POST /api/engrams. Logs warning on failure but does NOT raise --
++        callers use this in best-effort dual-write paths.
++        """
++        try:
++            r = await self._client.post("/api/engrams", json={
++                "vault": self._vault,
++                "concept": concept,
++                "content": content,
++                "tags": tags or [],
++                "confidence": confidence,
++            })
++            r.raise_for_status()
++            return r.json().get("id")
++        except Exception as e:
++            logger.warning(f"MuninnDB write failed: {e}")
++            return None
++
++    async def write_batch(self, engrams: list[dict]) -> list[dict]:
++        """Write multiple engrams in one call. Returns list of result dicts.
++
++        POST /api/engrams/batch. Each engram dict should have keys:
++        concept, content, tags, confidence.
++
++        Raises on failure -- batch is used for seeding, not in hot path.
++        """
++        r = await self._client.post("/api/engrams/batch", json={
++            "vault": self._vault,
++            "engrams": engrams,
++        })
++        r.raise_for_status()
++        return r.json().get("results", [])
++
++    async def activate(
++        self,
++        context: list[str],
++        max_results: int = 10,
++        threshold: float = 0.1,
++    ) -> dict:
++        """Run ACTIVATE cognitive retrieval pipeline.
++
++        POST /api/activate. Returns full response dict containing:
++        query_id, total_found, activations, latency_ms, brief.
++
++        Raises on failure.
++        """
++        r = await self._client.post("/api/activate", json={
++            "vault": self._vault,
++            "context": context,
++            "max_results": max_results,
++            "threshold": threshold,
++        })
++        r.raise_for_status()
++        return r.json()
++
++    async def stats(self) -> dict:
++        """Get vault statistics. GET /api/stats?vault={vault}.
++
++        Useful for verifying embedder config (check index_size > 0).
++        """
++        r = await self._client.get("/api/stats", params={"vault": self._vault})
++        r.raise_for_status()
++        return r.json()
++
++    async def close(self) -> None:
++        """Close the underlying httpx client."""
++        await self._client.aclose()
++
++
++# ---------------------------------------------------------------------------
++# Module-level lazy singleton
++# ---------------------------------------------------------------------------
++
++_muninn: MuninnClient | None = None
++_muninn_checked: bool = False
++
++
++async def get_muninn() -> Optional[MuninnClient]:
++    """Return MuninnDB client singleton, or None if unavailable.
++
++    Checks health once on first call. If MuninnDB is unreachable,
++    caches None to avoid repeated connection attempts. All callers
++    are async handlers so the await is fine.
++    """
++    global _muninn, _muninn_checked
++    if not _muninn_checked:
++        _muninn_checked = True
++        client = MuninnClient()
++        if await client.health():
++            _muninn = client
++            logger.info("MuninnDB connected (zbrain-vault)")
++        else:
++            logger.warning(
++                "MuninnDB unreachable at localhost:8475 "
++                "-- cognitive memory disabled"
++            )
++            await client.close()
++    return _muninn
+-- 
+2.51.0.windows.1
+

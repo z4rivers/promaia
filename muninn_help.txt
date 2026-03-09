@@ -1,0 +1,77 @@
+
+muninn — a cognitive memory database
+
+QUICK START
+
+  muninn       # status check / drop into shell
+  muninn init  # guided setup (or re-run to reconfigure)
+  muninn start # start all services in background
+
+COMMANDS
+
+  muninn init                      First-time setup wizard — connects your AI tools
+  muninn start                     Start all services in background
+  muninn stop                      Stop the running server
+  muninn restart                   Stop and restart
+  muninn status                    Show which services are running
+  muninn                           Status check / drop into interactive shell
+  muninn shell                     Interactive shell (alias: bare muninn when running)
+  muninn logs                      Show last 25 lines + tail
+  muninn logs 50                   Show last 50 lines + tail
+  muninn logs --no-follow          Print recent lines and exit
+  muninn show vaults               List all vaults (requires server running)
+  muninn vault <command>           Vault management (create, list, delete, clear, clone, merge, export, import)
+  muninn api-key <command>         API key management (create, list, revoke)
+  muninn admin change-password     Change the admin password
+  muninn backup --output <dir>     Offline point-in-time backup (server must be stopped)
+  muninn cluster                   Cluster management (info, status, failover, add-node, remove-node)
+  muninn completion <shell>        Shell completion (bash/zsh/fish)
+  muninn upgrade                   Check for and install updates
+  muninn help                      Show this message
+
+SERVER FLAGS  (used with: muninn start)
+
+  --data <dir>                 Data directory (default: ~/.muninn/data)
+  --mcp-addr <addr>            MCP listen address (default: :8750)
+  --mcp-token <tok>            MCP bearer token for AI tool auth
+  --dev                        Serve web assets from ./web (hot-reload, dev only)
+
+AI TOOL INTEGRATION  (MCP — Model Context Protocol)
+
+  MuninnDB exposes an MCP server that AI tools connect to for memory.
+  Run muninn init to configure Claude Desktop, Cursor, or Windsurf automatically.
+
+  MCP endpoint: http://localhost:8750/mcp
+  MUNINNDB_MCP_URL             Override MCP server URL
+  MUNINNDB_DATA                Override default data directory
+
+PORTS
+
+  :8474    MBP  — binary protocol
+  :8475    REST — JSON API
+  :8476    UI   — web dashboard (http://localhost:8476)
+  :8750    MCP  — AI tool integration
+
+EMBEDDERS  (optional — enable semantic similarity search)
+
+  MUNINN_OLLAMA_URL            Local Ollama embed model (e.g. ollama://localhost:11434/nomic-embed-text)
+  MUNINN_OPENAI_KEY            OpenAI embeddings API key (text-embedding-3-small, 1536d)
+  MUNINN_VOYAGE_KEY            Voyage AI embeddings API key (voyage-3, 1024d)
+  MUNINN_COHERE_KEY            Cohere embeddings API key (embed-v4, 1024d)
+  MUNINN_GOOGLE_KEY            Google Gemini embeddings API key (text-embedding-004, 768d)
+  MUNINN_JINA_KEY              Jina embeddings API key (jina-embeddings-v3, 1024d)
+  MUNINN_MISTRAL_KEY           Mistral embeddings API key (mistral-embed, 1024d)
+
+LLM ENRICHMENT  (optional — auto-extract entities, relationships, summaries)
+
+  Set MUNINN_ENRICH_URL to enable background LLM enrichment on every new memory.
+  One provider at a time. URL scheme selects the provider:
+
+  Ollama (local, no key):      MUNINN_ENRICH_URL=ollama://localhost:11434/llama3.2
+  OpenAI:                      MUNINN_ENRICH_URL=openai://gpt-4o-mini
+                               MUNINN_ENRICH_API_KEY=sk-...
+  Anthropic:                   MUNINN_ENRICH_URL=anthropic://claude-haiku-4-5-20251001
+                               MUNINN_ANTHROPIC_KEY=sk-ant-...  (or MUNINN_ENRICH_API_KEY)
+
+  Enrichment runs asynchronously and does not block memory writes.
+

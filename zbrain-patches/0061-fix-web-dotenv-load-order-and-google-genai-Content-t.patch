@@ -1,0 +1,107 @@
+From f7032f3b592d380d484802e5f52a7d1fad84d568 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 21:18:55 -0800
+Subject: [PATCH 61/68] fix(web): dotenv load order and google-genai Content
+ types
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Load .env before importing routers (they read env vars at module level).
+Use proper google.genai types.Content/Part objects instead of raw dicts
+in Gemini chat handler — fixes type errors with google-genai SDK.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/web/main.py         | 15 +++++++--------
+ promaia/web/routers/chat.py | 15 ++++++++-------
+ 2 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/promaia/web/main.py b/promaia/web/main.py
+index 97cdf88..046e3bd 100644
+--- a/promaia/web/main.py
++++ b/promaia/web/main.py
+@@ -1,17 +1,16 @@
+-from fastapi import FastAPI
+-from fastapi.middleware.cors import CORSMiddleware
+-from promaia.web.routers import chat as chat_router
+-import uvicorn
+-import os # For dotenv
++import os
+ from dotenv import load_dotenv
+ 
+-# Load environment variables from .env file in the project root
+-# This assumes your .env file is in the root of the 'maia' project directory
+-# (i.e., parent of the 'maia' package directory)
++# Load environment variables BEFORE importing routers (they read env vars at module level)
+ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ dotenv_path = os.path.join(PROJECT_ROOT, '.env')
+ load_dotenv(dotenv_path=dotenv_path)
+ 
++from fastapi import FastAPI
++from fastapi.middleware.cors import CORSMiddleware
++from promaia.web.routers import chat as chat_router
++import uvicorn
++
+ app = FastAPI(
+     title="Maia Web API",
+     description="API endpoints for Maia project, including chat functionality.",
+diff --git a/promaia/web/routers/chat.py b/promaia/web/routers/chat.py
+index 4e1eafd..c418aa6 100644
+--- a/promaia/web/routers/chat.py
++++ b/promaia/web/routers/chat.py
+@@ -169,7 +169,7 @@ async def get_initial_message():
+         response = await asyncio.to_thread(
+             gemini_genai_client.models.generate_content,
+             model=gemini_model_name,
+-            contents=[{'role': 'user', 'parts': [enhanced_instruction]}],
++            contents=enhanced_instruction,
+             config=types.GenerateContentConfig(
+                 system_instruction=system_prompt_str,
+                 temperature=1.0,  # Higher temperature for more creativity and variety
+@@ -382,7 +382,9 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
+     if not model_id:
+         model_id = gemini_model_name
+ 
+-    # Build conversation history for Gemini
++    from google.genai import types
++
++    # Build conversation history for Gemini using proper Content objects
+     gemini_messages = []
+     for msg in message_history:
+         role = 'user' if msg.role == 'user' else 'model'
+@@ -398,27 +400,26 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
+ 
+         parts = []
+         if text_content:
+-            parts.append(text_content)
++            parts.append(types.Part.from_text(text=text_content))
+ 
+         # Add images to message parts
+         for img in msg_images:
+             parts.append(format_image_for_gemini(img.data, img.media_type))
+ 
+-        gemini_messages.append({'role': role, 'parts': parts})
++        gemini_messages.append(types.Content(role=role, parts=parts))
+ 
+     # Add current user message with images
+     current_parts = []
+     if user_message:
+-        current_parts.append(user_message)
++        current_parts.append(types.Part.from_text(text=user_message))
+ 
+     for img in images:
+         current_parts.append(format_image_for_gemini(img.data, img.media_type))
+ 
+-    gemini_messages.append({'role': 'user', 'parts': current_parts})
++    gemini_messages.append(types.Content(role='user', parts=current_parts))
+ 
+     debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {len(images)} images")
+ 
+-    from google.genai import types
+     response = await asyncio.to_thread(
+         gemini_genai_client.models.generate_content,
+         model=model_id,
+-- 
+2.51.0.windows.1
+

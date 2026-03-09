@@ -1,0 +1,176 @@
+From d38967e6e424094b35c93ac8bfc14890e23915e8 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 09:30:23 -0800
+Subject: [PATCH 07/68] docs: incorporate Gemini 3.1 Pro architectural review
+ findings
+
+Key changes: vector(768) instead of halfvec, heartbeat uses Python
+AgentExecutor directly instead of CLI subprocess, added brain.events
+audit trail table, re-embed migration script in Phase 1, GIN indexes
+for hybrid search, active-user check before heartbeat deep work,
+max 2 commits per heartbeat cycle.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .../2026-03-04-zbrain-promaia-merge-design.md | 25 +++++++++---
+ .../2026-03-04-zbrain-workflow-design.md      | 40 ++++++++++++++++---
+ 2 files changed, 54 insertions(+), 11 deletions(-)
+
+diff --git a/docs/plans/2026-03-04-zbrain-promaia-merge-design.md b/docs/plans/2026-03-04-zbrain-promaia-merge-design.md
+index 387a959..866bb14 100644
+--- a/docs/plans/2026-03-04-zbrain-promaia-merge-design.md
++++ b/docs/plans/2026-03-04-zbrain-promaia-merge-design.md
+@@ -24,9 +24,10 @@ zBrain is Zack's personal AI operating system — proactive agents that manage h
+ **What zBrain adds:**
+ - Merge the postgres branch into `zbrain` as the foundation
+ - Swap connection config from local Postgres to Supabase (dulqttfidcjeujyieuqw)
+-- Add pgvector extension + `halfvec(768)` columns with HNSW indexes (replacing ChromaDB)
++- Add pgvector extension + `vector(768)` columns with HNSW indexes (replacing ChromaDB)
+ - Add `brain` schema tables (see Feature 2) alongside existing Promaia tables
+-- Google `text-embedding-004` for embeddings (covered by existing Google AI Premium)
++- Google `gemini-embedding-001` for embeddings (covered by existing Google AI Premium)
++- Re-embed all existing Promaia content with new embedding model (migration script)
+ 
+ **Connection strategy:**
+ ```
+@@ -62,7 +63,7 @@ Promaia's existing tables (`content_items`, `gmail_content`, `notion_journal`, e
+ -- What Zack has been thinking about, from all sources
+ brain.memories (
+   id, content, summary, domain, tags, entities,
+-  embedding halfvec(768), source, source_id,
++  embedding vector(768), source, source_id,
+   created_at, updated_at
+ )
+ 
+@@ -89,6 +90,12 @@ brain.reviews (
+   id, period_start, period_end, summary,
+   projects_touched, actions_completed, created_at
+ )
++
++-- Chronological audit trail for all brain activity
++brain.events (
++  id, type, payload jsonb,
++  source, session_id, created_at
++)
+ ```
+ 
+ **New MCP tools (exposed via system instructions):**
+@@ -133,9 +140,10 @@ When user says "I need to..." — extract the action.
+ ```
+ Windows Task Scheduler
+   → runs every 4 hours (configurable)
+-  → launches: claude-code --non-interactive --script heartbeat.py
++  → launches: python -m promaia.brain.heartbeat
+ 
+-heartbeat.py:
++heartbeat.py (uses AgentExecutor class directly, no CLI subprocess):
++  0. Check for active user session (last activity < 15 min → scan only, skip deep work)
+   1. Call `briefing` to get system state
+   2. Identify most stalled project (longest since last activity)
+   3. Read that project's directive from `brain.contexts`
+@@ -154,6 +162,9 @@ heartbeat.py:
+ - Logs everything — Zack reviews in morning briefing
+ - Max runtime per session (30 min default)
+ - Budget cap on API calls per heartbeat cycle
++- Max 2 commits per heartbeat cycle
++- Active user check: skip deep work if user session active within 15 min
++- All activity logged to brain.events for audit trail
+ 
+ **Quick scan + deep work pattern:**
+ - Quick scan: Check all projects (2 min) — any blockers, any stale items, any pending actions past due
+@@ -203,8 +214,10 @@ Zack already has Gemini connected as MCP tools in his Claude Code setup. The int
+ Phase 1: Postgres Foundation (Week 1)
+ ├── Merge postgres-sql-changeover branch into zbrain
+ ├── Configure Supabase connection
+-├── Add pgvector extension + embedding columns
++├── Add pgvector extension + vector(768) columns with HNSW indexes
+ ├── Migrate vector_db.py from ChromaDB to pgvector
++├── Re-embed all existing content with gemini-embedding-001 (migration script)
++├── Add GIN indexes on tags/entities columns for hybrid search
+ ├── Verify all existing Promaia features still work
+ │
+ Phase 2: Brain Schema + MCP Tools (Week 1-2)
+diff --git a/docs/plans/2026-03-04-zbrain-workflow-design.md b/docs/plans/2026-03-04-zbrain-workflow-design.md
+index 39c9622..6635757 100644
+--- a/docs/plans/2026-03-04-zbrain-workflow-design.md
++++ b/docs/plans/2026-03-04-zbrain-workflow-design.md
+@@ -54,9 +54,9 @@ Mode transitions are logged so zBrain can reference them: "Earlier you were plan
+ 
+ ### Layer 1 — Brain Schema (Postgres/Supabase)
+ 
+-All tables from the original design doc (`brain.memories`, `brain.domains`, `brain.contexts`, `brain.actions`, `brain.reviews`) plus `brain.modes` above.
++All tables from the original design doc (`brain.memories`, `brain.domains`, `brain.contexts`, `brain.actions`, `brain.reviews`) plus `brain.modes` above, plus `brain.events` (chronological audit trail — type, payload jsonb, source, session_id, created_at).
+ 
+-Unified search across all sources — phone captures, heartbeat research, Promaia-synced Gmail/Notion/Discord content — via a single semantic query against `brain.memories` with pgvector.
++Unified search across all sources — phone captures, heartbeat research, Promaia-synced Gmail/Notion/Discord content — via a single semantic query against `brain.memories` with pgvector. Uses `vector(768)` (not halfvec) with HNSW indexes on embeddings plus GIN indexes on tags/entities for hybrid search.
+ 
+ ### Layer 2 — Deterministic Engine (`brain/engine.py`)
+ 
+@@ -181,6 +181,13 @@ Supabase is the shared brain. Mobile and PC don't talk to each other — they bo
+ 
+ ```
+ Windows Task Scheduler → every 4 hours (configurable)
++  → launches: python -m promaia.brain.heartbeat
++  → Uses AgentExecutor class directly (no CLI subprocess)
++│
++├─ Phase 0: Active User Check
++│   ├─ Query last user activity timestamp
++│   ├─ If active within 15 min → scan only, skip deep work
++│   └─ If inactive → proceed normally
+ │
+ ├─ Phase 1: Quick Scan (2 min cap)
+ │   ├─ Query all brain.contexts ordered by staleness
+@@ -225,9 +232,11 @@ Windows Task Scheduler → every 4 hours (configurable)
+ - Exceed per-cycle budget cap
+ 
+ **Heartbeat ALWAYS:**
+-- Logs everything with `source="heartbeat"`
++- Logs everything with `source="heartbeat"` to `brain.events` audit trail
+ - Generates summary for morning briefing
+ - Respects 30-minute max runtime
++- Max 2 commits per cycle
++- Checks for active user session before deep work (skip if active within 15 min)
+ 
+ ### Standing Directives
+ 
+@@ -363,10 +372,10 @@ These principles are drawn from research on ADHD productivity, Russell Barkley's
+ Unchanged from original design doc. The workflow layer (this document) is implemented primarily in Phase 2 (brain schema + MCP tools) with the engine.py functions, and refined through Phases 3-5 as more capabilities come online.
+ 
+ ```
+-Phase 1: Postgres Foundation
++Phase 1: Postgres Foundation (includes re-embed migration, GIN indexes)
+ Phase 2: Brain Schema + MCP Tools + engine.py + System Instructions
+ Phase 3: Gemini Routing + Brain Ingestion Pipeline
+-Phase 4: Heartbeat Agent + Guardrails
++Phase 4: Heartbeat Agent + Guardrails (Python direct, not CLI; active user check)
+ Phase 5: Mobile Access (iPhone/iPad)
+ ```
+ 
+@@ -416,3 +425,24 @@ Phase 5: Mobile Access (iPhone/iPad)
+ | Adaptive learning? | Yes. System auto-adjusts based on accumulated memories, observed patterns, confirmed preferences |
+ | GSD integration? | Internalized patterns (decomposition, checkpointing, verification) — not file artifacts |
+ | ADHD design? | Core principles baked into system instructions: no shame, minimum viable decisions, energy adaptation, body double posture |
++
++---
++
++## 12. Gemini 3.1 Pro Architectural Review (Post-Design)
++
++Design reviewed by Gemini 3.1 Pro (High thinking) on 2026-03-04. Changes incorporated:
++
++| Finding | Action Taken |
++|---------|-------------|
++| Embedding incompatibility (OpenAI 1536d vs Gemini 768d) | Added re-embed migration script to Phase 1 |
++| `halfvec` is bleeding-edge, unnecessary risk | Changed to standard `vector(768)` |
++| Heartbeat should use Python AgentExecutor, not CLI subprocess | Changed heartbeat architecture to direct Python invocation |
++| Need active-user check before heartbeat deep work | Added Phase 0 check: skip deep work if user active within 15 min |
++| Missing audit trail for debugging agent behavior | Added `brain.events` table (type, payload jsonb, source, session_id) |
++| Need hybrid search (keyword + vector) | Added GIN indexes on tags/entities columns |
++| Unlimited heartbeat commits risk git spaghetti | Capped at max 2 commits per cycle |
++
++Findings noted but deferred:
++- Mode detection: start with Haiku/Flash classifier, not regex. Revisit if latency is an issue.
++- `cull_context` function: needed but refinement for Phase 2 tuning.
++- Energy detection: infer from behavior first, ask explicitly only if uncertain.
+-- 
+2.51.0.windows.1
+

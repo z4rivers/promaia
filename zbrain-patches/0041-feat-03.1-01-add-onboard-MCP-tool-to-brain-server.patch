@@ -1,0 +1,240 @@
+From 456adfe771a0d69965e8d99ad58d03bb175b33a5 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 05:51:48 -0800
+Subject: [PATCH 41/68] feat(03.1-01): add onboard MCP tool to brain server
+
+- 10th tool: onboard with start/status/channel_update/complete actions
+- _handle_onboard dispatches to onboarding.py engine functions
+- Status output includes channel table, profile coverage %, suggested next
+- Imports from promaia.brain.onboarding module
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/brain/mcp_server.py | 168 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 165 insertions(+), 3 deletions(-)
+
+diff --git a/promaia/brain/mcp_server.py b/promaia/brain/mcp_server.py
+index e37324f..bc5aec0 100644
+--- a/promaia/brain/mcp_server.py
++++ b/promaia/brain/mcp_server.py
+@@ -1,9 +1,10 @@
+ """
+-Brain MCP Server — 9 tools for zBrain.
++Brain MCP Server — 10 tools for zBrain.
+ 
+ Exposes Claude's persistent memory system as MCP tools over stdio.
+ Claude calls these tools to get briefings, capture thoughts, search memories,
+-manage project context, track actions, and maintain a personal profile.
++manage project context, track actions, maintain a personal profile, and
++manage the onboarding flow.
+ 
+ Tools:
+     briefing        — stale projects + pending actions + recent heartbeat activity
+@@ -15,6 +16,7 @@ Tools:
+     actions         — list or mark-done brain actions
+     profile         — read personal profile (all or by category)
+     update_profile  — set a profile field with value, confidence, and source
++    onboard         — manage the onboarding flow (start/status/channel_update/complete)
+ 
+ Usage:
+     python -m promaia.brain.mcp_server
+@@ -50,6 +52,11 @@ from promaia.storage.postgres_db import get_postgres_db
+ from promaia.storage.vector_db import VectorDBManager
+ from promaia.brain import engine
+ from promaia.brain.extraction import extract_actions
++from promaia.brain.onboarding import (
++    start_onboarding, get_onboarding_status,
++    mark_channel_progress, get_profile_coverage,
++    complete_onboarding, EXPECTED_FIELDS,
++)
+ 
+ # ---------------------------------------------------------------------------
+ # Logging
+@@ -87,7 +94,7 @@ def get_vector_mgr():
+ 
+ @server.list_tools()
+ async def list_tools() -> list[Tool]:
+-    """Enumerate all 9 brain tools."""
++    """Enumerate all 10 brain tools."""
+     return [
+         Tool(
+             name="briefing",
+@@ -302,6 +309,44 @@ async def list_tools() -> list[Tool]:
+                 "required": ["category", "field", "value"]
+             }
+         ),
++        Tool(
++            name="onboard",
++            description=(
++                "Manage the onboarding flow. Actions: "
++                "'start' begins or resumes onboarding, "
++                "'status' returns current progress and profile coverage gaps, "
++                "'channel_update' marks a channel's progress, "
++                "'complete' finalizes onboarding. "
++                "Use 'status' to know what profile areas still need exploration."
++            ),
++            inputSchema={
++                "type": "object",
++                "properties": {
++                    "action": {
++                        "type": "string",
++                        "description": "One of: start, status, channel_update, complete",
++                        "enum": ["start", "status", "channel_update", "complete"]
++                    },
++                    "channel": {
++                        "type": "string",
++                        "description": "Channel name (for channel_update): interview, pc_scan, gmail, photos"
++                    },
++                    "channel_status": {
++                        "type": "string",
++                        "description": "New status (for channel_update): in_progress, complete, skipped"
++                    },
++                    "fields_populated": {
++                        "type": "integer",
++                        "description": "Number of profile fields this channel contributed (for channel_update)"
++                    },
++                    "notes": {
++                        "type": "string",
++                        "description": "Free-form notes about what was covered (for channel_update)"
++                    }
++                },
++                "required": ["action"]
++            }
++        ),
+     ]
+ 
+ 
+@@ -332,6 +377,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+             return await _handle_profile(arguments)
+         elif name == "update_profile":
+             return await _handle_update_profile(arguments)
++        elif name == "onboard":
++            return await _handle_onboard(arguments)
+         else:
+             return [TextContent(type="text", text=f"Unknown tool: {name}")]
+     except Exception as e:
+@@ -976,6 +1023,121 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
+         return [TextContent(type="text", text=f"Profile update error: {e}")]
+ 
+ 
++async def _handle_onboard(args: dict) -> list[TextContent]:
++    """Manage the onboarding flow: start, status, channel_update, complete."""
++    db = get_db()
++    action = args.get("action", "").strip()
++
++    if action == "start":
++        result = start_onboarding(db=db)
++        if result.get('error'):
++            return [TextContent(type="text", text=f"Error starting onboarding: {result['error']}")]
++
++        lines = ["# Onboarding Started\n"]
++        lines.append(f"**Session ID:** {result['session_id']}")
++        lines.append(f"**Status:** {result['status']}\n")
++        lines.append("## Channels")
++        for ch in result.get('channels', []):
++            lines.append(f"- **{ch['channel']}**: {ch['status']}")
++        return [TextContent(type="text", text="\n".join(lines))]
++
++    elif action == "status":
++        result = get_onboarding_status(db=db)
++        if result is None:
++            return [TextContent(type="text", text="No active onboarding session. Use action='start' to begin.")]
++
++        lines = ["# Onboarding Progress\n"]
++        lines.append(f"**Session ID:** {result['session_id']}")
++        lines.append(f"**Status:** {result['status']}")
++        lines.append(f"**Started:** {result.get('started_at', 'unknown')}")
++        lines.append(f"**Last activity:** {result.get('last_activity', 'unknown')}\n")
++
++        # Channel table
++        lines.append("## Channel Progress\n")
++        lines.append("| Channel | Status | Fields |")
++        lines.append("|---------|--------|--------|")
++        for ch in result.get('channels', []):
++            lines.append(f"| {ch['channel']} | {ch['status']} | {ch['fields_populated']} |")
++
++        # Profile coverage
++        coverage = result.get('profile_coverage', {})
++        if coverage:
++            lines.append("\n## Profile Coverage\n")
++            lines.append("| Category | Populated | Expected | Fill % |")
++            lines.append("|----------|-----------|----------|--------|")
++            total_pop = 0
++            total_exp = 0
++            lowest = []  # track for suggested next
++            for cat, info in sorted(coverage.items()):
++                pop = info['populated']
++                exp = info['expected']
++                total_pop += pop
++                total_exp += exp
++                pct = int((pop / exp) * 100) if exp > 0 else 0
++                lines.append(f"| {cat} | {pop} | {exp} | {pct}% |")
++                lowest.append((pct, cat, info.get('missing', [])))
++
++            overall_pct = int((total_pop / total_exp) * 100) if total_exp > 0 else 0
++            lines.append(f"\n**Overall:** {total_pop}/{total_exp} fields ({overall_pct}%)")
++
++            # Suggested next: 3 categories with lowest fill
++            lowest.sort(key=lambda x: x[0])
++            lines.append("\n## Suggested Next\n")
++            for pct, cat, missing in lowest[:3]:
++                missing_preview = ', '.join(missing[:4])
++                if len(missing) > 4:
++                    missing_preview += f", +{len(missing) - 4} more"
++                lines.append(f"- **{cat}** ({pct}% filled): missing {missing_preview}")
++
++        return [TextContent(type="text", text="\n".join(lines))]
++
++    elif action == "channel_update":
++        channel = args.get("channel", "").strip()
++        channel_status = args.get("channel_status", "").strip()
++        fields_pop = args.get("fields_populated")
++        notes = args.get("notes")
++
++        if not channel or not channel_status:
++            return [TextContent(type="text", text="Error: channel and channel_status are required for channel_update.")]
++
++        # Get current active session to find session_id
++        status_result = get_onboarding_status(db=db)
++        if status_result is None:
++            return [TextContent(type="text", text="No active onboarding session. Use action='start' first.")]
++
++        session_id = status_result['session_id']
++        success = mark_channel_progress(
++            session_id=session_id,
++            channel=channel,
++            status=channel_status,
++            fields_populated=fields_pop,
++            notes=notes,
++            db=db,
++        )
++
++        if success:
++            return [TextContent(type="text", text=f"Channel '{channel}' updated to '{channel_status}'.")]
++        else:
++            return [TextContent(type="text", text=f"Failed to update channel '{channel}'.")]
++
++    elif action == "complete":
++        # Get current session
++        status_result = get_onboarding_status(db=db)
++        if status_result is None:
++            return [TextContent(type="text", text="No active onboarding session to complete.")]
++
++        session_id = status_result['session_id']
++        success = complete_onboarding(session_id=session_id, db=db)
++
++        if success:
++            return [TextContent(type="text", text="Onboarding complete! Profile coverage saved.")]
++        else:
++            return [TextContent(type="text", text="Failed to complete onboarding.")]
++
++    else:
++        return [TextContent(type="text", text=f"Unknown onboard action: '{action}'. Use: start, status, channel_update, complete")]
++
++
+ # ---------------------------------------------------------------------------
+ # Helpers
+ # ---------------------------------------------------------------------------
+-- 
+2.51.0.windows.1
+

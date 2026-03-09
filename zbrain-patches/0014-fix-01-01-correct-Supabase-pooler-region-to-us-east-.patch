@@ -1,0 +1,47 @@
+From 903376f764a81185e1690ffa8cca2e04aa4cc05e Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 11:28:10 -0800
+Subject: [PATCH 14/68] fix(01-01): correct Supabase pooler region to us-east-1
+
+New 'promaia' Supabase project is in us-east-1, not us-west-1.
+Updated pooler host in postgres_db.py and env.template.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ docs/env.template              | 4 ++--
+ promaia/storage/postgres_db.py | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/docs/env.template b/docs/env.template
+index 460464d..1cf149c 100644
+--- a/docs/env.template
++++ b/docs/env.template
+@@ -58,10 +58,10 @@ GMAIL_TRASS_EMAIL='your_business_email@company.com'
+ # PostgreSQL / Supabase Configuration
+ # Use DATABASE_URL for Supabase session pooler (REQUIRED on Windows — avoids IPv6 issues)
+ # Get your password from: Supabase Dashboard -> Project Settings -> Database -> Database password
+-DATABASE_URL='postgresql://postgres.jbcspnoqvtvvddifuhth:YOUR_PASSWORD@aws-0-us-west-1.pooler.supabase.com:5432/postgres'
++DATABASE_URL='postgresql://postgres.jbcspnoqvtvvddifuhth:YOUR_PASSWORD@aws-1-us-east-1.pooler.supabase.com:5432/postgres'
+ 
+ # Or use individual vars (DATABASE_URL takes priority if both are set):
+-POSTGRES_HOST='aws-0-us-west-1.pooler.supabase.com'
++POSTGRES_HOST='aws-1-us-east-1.pooler.supabase.com'
+ POSTGRES_PORT='5432'
+ POSTGRES_DATABASE='postgres'
+ POSTGRES_USER='postgres.jbcspnoqvtvvddifuhth'
+diff --git a/promaia/storage/postgres_db.py b/promaia/storage/postgres_db.py
+index f55604a..d08c9a5 100644
+--- a/promaia/storage/postgres_db.py
++++ b/promaia/storage/postgres_db.py
+@@ -26,7 +26,7 @@ from promaia.utils.config import load_environment
+ logger = logging.getLogger(__name__)
+ 
+ # Supabase project session pooler hostname (used as default host when no env vars set)
+-SUPABASE_POOLER_HOST = 'aws-0-us-west-1.pooler.supabase.com'
++SUPABASE_POOLER_HOST = 'aws-1-us-east-1.pooler.supabase.com'
+ SUPABASE_PROJECT_REF = 'jbcspnoqvtvvddifuhth'
+ 
+ 
+-- 
+2.51.0.windows.1
+

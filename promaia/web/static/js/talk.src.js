@@ -27,6 +27,8 @@ let playingNodes = [];
 // DOM
 // ---------------------------------------------------------------------------
 const micBtn = document.getElementById('mic-btn');
+const endBtn = document.getElementById('end-btn');
+const vadModeBtns = document.querySelectorAll('.vad-mode-btn');
 const statusLabel = document.getElementById('talk-status');
 const messagesEl = document.getElementById('messages');
 const feedsEl = document.getElementById('feeds');
@@ -134,7 +136,7 @@ function connectWebSocket() {
 // ---------------------------------------------------------------------------
 function queuePlayback(base64Data) {
     if (!playCtx) {
-        // Gemini standard TTS format is 24000Hz PCM
+        console.warn("Play context not initialized synchronously. Creating late (iOS may block this).");
         playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         nextPlayTime = playCtx.currentTime;
     }
@@ -204,7 +206,10 @@ async function startCapture() {
     });
     
     // Gemini Live API expects 16kHz audio out of the box
-    captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    // Context is normally created synchronously during micBtn click to bypass iOS Safari blocking
+    if (!captureCtx) {
+        captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    }
     const source = captureCtx.createMediaStreamSource(captureStream);
     
     // Create script processor to read raw PCM frames
@@ -259,6 +264,8 @@ function stopCapture() {
     }
 }
 
+let currentVadMode = 'normal';
+
 // ---------------------------------------------------------------------------
 // VAD initialization (Used purely for UI State and Interruptions)
 // ---------------------------------------------------------------------------
@@ -267,13 +274,28 @@ async function initVAD() {
     if (!window.vad || !window.vad.MicVAD) {
         throw new Error("VAD library not loaded from CDN yet.");
     }
+    
+    // Cleanup old vad if swapping modes
+    if (vad) {
+        try { vad.pause(); } catch(e) {}
+    }
 
-    vad = await window.vad.MicVAD.new({
+    const modeConfig = currentVadMode === 'driving' ? {
+        positiveSpeechThreshold: 0.95,
+        negativeSpeechThreshold: 0.75,
+        redemptionFrames: 15,
+        minSpeechFrames: 8,
+        preSpeechPadFrames: 3,
+    } : {
         positiveSpeechThreshold: 0.82,
         negativeSpeechThreshold: 0.6,
         redemptionFrames: 8,
         minSpeechFrames: 5,
         preSpeechPadFrames: 3,
+    };
+
+    vad = await window.vad.MicVAD.new({
+        ...modeConfig,
 
         onSpeechStart: () => {
             console.log('[VAD] Speech started - Interruption triggered');
@@ -312,6 +334,7 @@ async function initVAD() {
 async function startConversation() {
     conversationMode = true;
     micBtn.classList.add('active');
+    endBtn.classList.add('visible');
     feedsEl.classList.add('dimmed');
     setStatus('connecting');
 
@@ -337,6 +360,7 @@ async function startConversation() {
 function stopConversation() {
     conversationMode = false;
     micBtn.classList.remove('active');
+    endBtn.classList.remove('visible');
     feedsEl.classList.remove('dimmed');
     setStatus('idle');
     
@@ -376,13 +400,34 @@ function sendText(text) {
 micBtn.addEventListener('click', () => {
     if (navigator.vibrate) navigator.vibrate(50);
     
-    // Unlock iOS AudioContext on the very first user interaction
-    if (!playCtx) {
-        playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        nextPlayTime = playCtx.currentTime;
-    }
-    if (playCtx.state === 'suspended') {
-        playCtx.resume();
+    // 1. Force completely synchronous initialization of ALL AudioContexts for iOS Safari
+    try {
+        if (!playCtx) {
+            playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            nextPlayTime = playCtx.currentTime;
+            
+            // Hack to unlock iOS audio output immediately
+            const osc = playCtx.createOscillator();
+            osc.connect(playCtx.destination);
+            osc.start(0);
+            osc.stop(0.001);
+        } else if (playCtx.state === 'suspended') {
+            playCtx.resume();
+        }
+
+        if (!captureCtx) {
+            captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            
+            // Hack to unlock iOS audio input pipeline immediately
+            const osc2 = captureCtx.createOscillator();
+            osc2.connect(captureCtx.destination);
+            osc2.start(0);
+            osc2.stop(0.001);
+        } else if (captureCtx.state === 'suspended') {
+            captureCtx.resume();
+        }
+    } catch (e) {
+        console.error("Audio Context Unlock Error:", e);
     }
 
     if (!conversationMode) {
@@ -407,13 +452,27 @@ micBtn.addEventListener('click', () => {
     }
 });
 
-// Add a double-click / long-press equivalent to actually stop the conversation
-micBtn.addEventListener('dblclick', (e) => {
-    e.preventDefault();
+endBtn.addEventListener('click', () => {
+    if (navigator.vibrate) navigator.vibrate(50);
     if (conversationMode) {
-        console.log('[UI] Conversation stopped via double click');
+        console.log('[UI] Conversation stopped via End Call button');
         stopConversation();
     }
+});
+
+vadModeBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+        vadModeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentVadMode = btn.dataset.mode;
+        
+        // If we are currently in a conversation, we need to hot-swap the VAD
+        if (conversationMode && vad) {
+            console.log(`[VAD] Hot-swapping to ${currentVadMode} mode`);
+            await initVAD();
+            vad.start();
+        }
+    });
 });
 
 kbToggle.addEventListener('click', () => {

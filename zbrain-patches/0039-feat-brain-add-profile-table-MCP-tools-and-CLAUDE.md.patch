@@ -1,0 +1,380 @@
+From 78cff21727b1d05ca16838bafc3a5a3670028648 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 05:47:18 -0800
+Subject: [PATCH 39/68] feat(brain): add profile table, MCP tools, and
+ CLAUDE.md instructions
+
+- brain.profile table with key-value rows, confidence scores, source
+  tracking (declared/inferred/confirmed), and vector embeddings
+- profile + update_profile MCP tools with semantic search support
+- CLAUDE.md Personal Profile section for reciprocal disclosure guidance
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ CLAUDE.md                   |  10 ++
+ promaia/brain/mcp_server.py | 256 ++++++++++++++++++++++++++++++++++--
+ promaia/brain/schema.sql    |  29 ++++
+ 3 files changed, 285 insertions(+), 10 deletions(-)
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 7b50686..97730b2 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -22,6 +22,16 @@ Do not interrupt flow state. Hold context suggestions until the next natural pau
+ After completing a task, if there are pending actions for other projects, mention them briefly.
+ Frame staleness as opportunity, not guilt: "Heatpup is ready for attention whenever you are."
+ 
++## Personal Profile
++Call `mcp__brain__profile` at session start (alongside briefing) to load the user's profile.
++Use profile data to calibrate tone, verbosity, energy level, and communication style.
++During conversations, when the user reveals something about themselves — preferences,
++values, habits, triggers, relationships — call `mcp__brain__update_profile` to save it.
++Use source="declared" when the user states it directly, "inferred" when you observe it,
++"confirmed" when the user validates an inference.
++When updating the profile, briefly share what you learned: "Noted — you prefer direct answers.
++I'm adjusting." (reciprocal disclosure).
++
+ ## Energy Adaptation
+ If the user declines a suggestion or seems stuck, offer a lower-friction alternative.
+ Frame everything as progress. Never show overdue counts.
+diff --git a/promaia/brain/mcp_server.py b/promaia/brain/mcp_server.py
+index 824019a..e37324f 100644
+--- a/promaia/brain/mcp_server.py
++++ b/promaia/brain/mcp_server.py
+@@ -1,18 +1,20 @@
+ """
+-Brain MCP Server — 7 tools for zBrain.
++Brain MCP Server — 9 tools for zBrain.
+ 
+ Exposes Claude's persistent memory system as MCP tools over stdio.
+ Claude calls these tools to get briefings, capture thoughts, search memories,
+-manage project context, and track actions.
++manage project context, track actions, and maintain a personal profile.
+ 
+ Tools:
+-    briefing       — stale projects + pending actions + recent heartbeat activity
+-    capture        — store memory with embedding, auto-extract actions
+-    search         — semantic vector search across brain.memories
+-    recall         — recent memories filtered by domain or time range
+-    context        — read a domain's directive and current state
+-    update_context — write/upsert a domain's context
+-    actions        — list or mark-done brain actions
++    briefing        — stale projects + pending actions + recent heartbeat activity
++    capture         — store memory with embedding, auto-extract actions
++    search          — semantic vector search across brain.memories
++    recall          — recent memories filtered by domain or time range
++    context         — read a domain's directive and current state
++    update_context  — write/upsert a domain's context
++    actions         — list or mark-done brain actions
++    profile         — read personal profile (all or by category)
++    update_profile  — set a profile field with value, confidence, and source
+ 
+ Usage:
+     python -m promaia.brain.mcp_server
+@@ -85,7 +87,7 @@ def get_vector_mgr():
+ 
+ @server.list_tools()
+ async def list_tools() -> list[Tool]:
+-    """Enumerate all 7 brain tools."""
++    """Enumerate all 9 brain tools."""
+     return [
+         Tool(
+             name="briefing",
+@@ -242,6 +244,64 @@ async def list_tools() -> list[Tool]:
+                 "required": []
+             }
+         ),
++        Tool(
++            name="profile",
++            description=(
++                "Read the user's personal profile. Returns all dimensions or "
++                "a specific category. Categories include: identity, cognitive_style, "
++                "energy_patterns, emotional_landscape, values_and_motivation, "
++                "communication, work_patterns, relationships, neurodivergence."
++            ),
++            inputSchema={
++                "type": "object",
++                "properties": {
++                    "category": {
++                        "type": "string",
++                        "description": "Filter by category (optional). Leave empty for full profile."
++                    },
++                    "query": {
++                        "type": "string",
++                        "description": "Semantic search across profile (optional). E.g. 'what motivates me'"
++                    }
++                },
++                "required": []
++            }
++        ),
++        Tool(
++            name="update_profile",
++            description=(
++                "Set or update a personal profile field. Each field has a category, "
++                "name, value, confidence score (0.0-1.0), and source "
++                "(declared=user said it, inferred=AI observed it, confirmed=user verified inference). "
++                "Use this during onboarding interviews, when learning about the user, "
++                "or when the user corrects a previous inference."
++            ),
++            inputSchema={
++                "type": "object",
++                "properties": {
++                    "category": {
++                        "type": "string",
++                        "description": "Profile category (e.g. 'cognitive_style', 'communication', 'values_and_motivation')."
++                    },
++                    "field": {
++                        "type": "string",
++                        "description": "Field name (e.g. 'decision_making', 'humor_type', 'chronotype')."
++                    },
++                    "value": {
++                        "description": "The value — can be string, number, array, or object."
++                    },
++                    "confidence": {
++                        "type": "number",
++                        "description": "Confidence 0.0-1.0 (default 0.8 for declared, 0.5 for inferred)."
++                    },
++                    "source": {
++                        "type": "string",
++                        "description": "Source: 'declared', 'inferred', or 'confirmed' (default 'declared')."
++                    }
++                },
++                "required": ["category", "field", "value"]
++            }
++        ),
+     ]
+ 
+ 
+@@ -268,6 +328,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+             return await _handle_update_context(arguments)
+         elif name == "actions":
+             return await _handle_actions(arguments)
++        elif name == "profile":
++            return await _handle_profile(arguments)
++        elif name == "update_profile":
++            return await _handle_update_profile(arguments)
+         else:
+             return [TextContent(type="text", text=f"Unknown tool: {name}")]
+     except Exception as e:
+@@ -740,6 +804,178 @@ async def _handle_actions(args: dict) -> list[TextContent]:
+         return [TextContent(type="text", text=f"Actions error: {e}")]
+ 
+ 
++async def _handle_profile(args: dict) -> list[TextContent]:
++    """Read user profile — full, by category, or by semantic search."""
++    db = get_db()
++    category = args.get("category", "").strip() or None
++    query = args.get("query", "").strip() or None
++
++    # Semantic search path
++    if query:
++        try:
++            vector_mgr = get_vector_mgr()
++            query_embedding = vector_mgr.generate_embedding(query)
++            query_array = np.array(query_embedding)
++
++            with db.get_connection() as conn:
++                register_vector(conn)
++                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
++                    cur.execute(
++                        """
++                        SELECT category, field, value, confidence, source, updated_at,
++                               embedding <=> %s::vector AS distance
++                        FROM brain.profile
++                        WHERE embedding IS NOT NULL
++                        ORDER BY distance ASC
++                        LIMIT 10
++                        """,
++                        (query_array,),
++                    )
++                    rows = [dict(r) for r in cur.fetchall()]
++
++            if not rows:
++                return [TextContent(type="text", text="No profile data found.")]
++
++            lines = [f"# Profile Search: {query}\n"]
++            for row in rows:
++                similarity = 1 - float(row['distance'])
++                lines.append(
++                    f"- **{row['category']}.{row['field']}**: "
++                    f"{json.dumps(row['value'])} "
++                    f"(confidence: {row['confidence']}, source: {row['source']}, "
++                    f"similarity: {similarity:.2f})"
++                )
++            return [TextContent(type="text", text="\n".join(lines))]
++
++        except Exception as e:
++            logger.error(f"profile search failed: {e}", exc_info=True)
++            return [TextContent(type="text", text=f"Profile search error: {e}")]
++
++    # Category or full profile path
++    try:
++        if category:
++            rows = db.fetch_all(
++                """
++                SELECT category, field, value, confidence, source, updated_at
++                FROM brain.profile
++                WHERE category = %s
++                ORDER BY field
++                """,
++                (category,),
++            )
++        else:
++            rows = db.fetch_all(
++                """
++                SELECT category, field, value, confidence, source, updated_at
++                FROM brain.profile
++                ORDER BY category, field
++                """
++            )
++
++        if not rows:
++            if category:
++                return [TextContent(type="text", text=f"No profile data for category: {category}")]
++            return [TextContent(type="text", text="Profile is empty. Start the onboarding interview to populate it.")]
++
++        lines = ["# Personal Profile\n"]
++        current_cat = None
++        for row in rows:
++            if row['category'] != current_cat:
++                current_cat = row['category']
++                lines.append(f"\n## {current_cat.replace('_', ' ').title()}")
++
++            source_badge = {"declared": "D", "inferred": "I", "confirmed": "C"}.get(row['source'], "?")
++            conf_pct = int(row['confidence'] * 100)
++            lines.append(
++                f"- **{row['field']}**: {json.dumps(row['value'])} "
++                f"[{source_badge} {conf_pct}%]"
++            )
++
++        return [TextContent(type="text", text="\n".join(lines))]
++
++    except Exception as e:
++        logger.error(f"profile read failed: {e}", exc_info=True)
++        return [TextContent(type="text", text=f"Profile error: {e}")]
++
++
++async def _handle_update_profile(args: dict) -> list[TextContent]:
++    """Set or update a single profile field with confidence and source tracking."""
++    db = get_db()
++    category = args.get("category", "").strip()
++    field = args.get("field", "").strip()
++    value = args.get("value")
++
++    if not category or not field or value is None:
++        return [TextContent(type="text", text="Error: category, field, and value are required.")]
++
++    source = args.get("source", "declared")
++    if source not in ("declared", "inferred", "confirmed"):
++        source = "declared"
++
++    # Default confidence based on source
++    default_confidence = {"declared": 0.8, "inferred": 0.5, "confirmed": 0.9}.get(source, 0.5)
++    confidence = float(args.get("confidence", default_confidence))
++
++    value_json = json.dumps(value)
++
++    try:
++        # Upsert the profile field
++        db.execute(
++            """
++            INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
++            VALUES (%s, %s, %s::jsonb, %s, %s, NOW())
++            ON CONFLICT (category, field) DO UPDATE SET
++                value = EXCLUDED.value,
++                confidence = EXCLUDED.confidence,
++                source = EXCLUDED.source,
++                updated_at = NOW()
++            """,
++            (category, field, value_json, confidence, source),
++        )
++
++        # Generate embedding for the field description + value (enables semantic search)
++        try:
++            embed_text = f"{category} {field}: {value_json}"
++            vector_mgr = get_vector_mgr()
++            embedding = vector_mgr.generate_embedding(embed_text)
++            embedding_array = np.array(embedding)
++
++            with db.get_connection() as conn:
++                register_vector(conn)
++                with conn.cursor() as cur:
++                    cur.execute(
++                        """
++                        UPDATE brain.profile SET embedding = %s
++                        WHERE category = %s AND field = %s
++                        """,
++                        (embedding_array, category, field),
++                    )
++        except Exception as e:
++            logger.warning(f"Profile embedding failed for {category}.{field}: {e}")
++
++        # Log the profile update event
++        try:
++            db.execute(
++                """
++                INSERT INTO brain.events (type, payload, source, session_id)
++                VALUES ('profile_update', %s::jsonb, 'session', %s)
++                """,
++                (json.dumps({"category": category, "field": field}), SESSION_ID),
++            )
++        except Exception as e:
++            logger.warning(f"Could not log profile_update event: {e}")
++
++        source_badge = {"declared": "D", "inferred": "I", "confirmed": "C"}.get(source, "?")
++        return [TextContent(
++            type="text",
++            text=f"Profile updated: {category}.{field} = {value_json} [{source_badge} {int(confidence * 100)}%]"
++        )]
++
++    except Exception as e:
++        logger.error(f"update_profile failed: {e}", exc_info=True)
++        return [TextContent(type="text", text=f"Profile update error: {e}")]
++
++
+ # ---------------------------------------------------------------------------
+ # Helpers
+ # ---------------------------------------------------------------------------
+diff --git a/promaia/brain/schema.sql b/promaia/brain/schema.sql
+index 8b2f2ea..843eb89 100644
+--- a/promaia/brain/schema.sql
++++ b/promaia/brain/schema.sql
+@@ -131,6 +131,35 @@ CREATE INDEX IF NOT EXISTS idx_brain_events_session_id
+     ON brain.events (session_id);
+ 
+ 
++-- ============================================================
++-- brain.profile
++-- Personal profile for the user. Key-value rows per dimension
++-- so new dimensions can be added without schema changes.
++-- Each field carries confidence (0.0-1.0), source tracking
++-- (declared/inferred/confirmed), and timestamps for decay.
++-- Embedding column enables semantic search ("what motivates me?").
++-- ============================================================
++CREATE TABLE IF NOT EXISTS brain.profile (
++    id SERIAL PRIMARY KEY,
++    category TEXT NOT NULL,
++    field TEXT NOT NULL,
++    value JSONB NOT NULL,
++    confidence FLOAT DEFAULT 0.5,
++    source TEXT DEFAULT 'declared' CHECK (source IN ('declared', 'inferred', 'confirmed')),
++    updated_at TIMESTAMPTZ DEFAULT NOW(),
++    embedding vector(768),
++    UNIQUE(category, field)
++);
++
++-- HNSW index for semantic search over profile dimensions
++CREATE INDEX IF NOT EXISTS idx_brain_profile_embedding
++    ON brain.profile USING hnsw (embedding vector_cosine_ops);
++
++-- B-tree on category for fast filtered lookups
++CREATE INDEX IF NOT EXISTS idx_brain_profile_category
++    ON brain.profile (category);
++
++
+ -- ============================================================
+ -- brain.modes
+ -- Session mode tracking: working, planning, capturing, reviewing.
+-- 
+2.51.0.windows.1
+

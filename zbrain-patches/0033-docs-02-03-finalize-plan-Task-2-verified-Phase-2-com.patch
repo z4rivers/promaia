@@ -1,0 +1,179 @@
+From c315b9f5ab9166ddd0fd0db9b7eade1dce8917de Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 18:59:10 -0800
+Subject: [PATCH 33/68] =?UTF-8?q?docs(02-03):=20finalize=20plan=20?=
+ =?UTF-8?q?=E2=80=94=20Task=202=20verified,=20Phase=202=20complete?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 02-03-SUMMARY.md: updated to 2/2 tasks complete, self-check passed, user approval documented
+- STATE.md: advanced to Phase 3 ready, Phase 2 fully complete
+- ROADMAP.md: 02-02 and 02-03 marked complete (checkboxes updated)
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/ROADMAP.md                          |  6 +--
+ .planning/STATE.md                            | 16 ++++----
+ .../02-03-SUMMARY.md                          | 41 +++++++++++++------
+ 3 files changed, 39 insertions(+), 24 deletions(-)
+
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 6c090d8..27fe23f 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -3,7 +3,7 @@
+ ## Phases
+ 
+ - [x] **Phase 1: Postgres Foundation** - Supabase/pgvector backend replacing SQLite+ChromaDB (2026-03-04)
+-- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
++- [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
+ - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+ - [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
+ - [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
+@@ -46,8 +46,8 @@ Plans:
+ 
+ Plans:
+ - [x] 02-01-PLAN.md -- Brain schema SQL (7 tables) + engine.py (8 deterministic functions) + db_init extension (2026-03-05)
+-- [ ] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor
+-- [ ] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (CHECKPOINT)
++- [x] 02-02-PLAN.md -- MCP server (7 tools: briefing, capture, search, recall, context, update_context, actions) + action extraction with instructor (2026-03-05)
++- [x] 02-03-PLAN.md -- CLAUDE.md system instructions + .mcp.json registration + seed data + end-to-end verification (2026-03-05)
+ 
+ ### Phase 3: Gemini Routing
+ **Goal:** Intelligent model routing so each model handles what it's best at, plus brain ingestion from Gemini research tools
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 057bd3e..524d677 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,16 +2,16 @@
+ 
+ ## Current Position
+ 
+-Phase: Phase 2 — Brain Schema and MCP Tools (in progress)
+-Plan: 02-03 — Task 1 COMPLETE, Task 2 awaiting human-verify checkpoint
+-Status: 02-03 task 1 committed (0fae709) — CLAUDE.md, .mcp.json, seed.py created
+-Last activity: 2026-03-05 — System instructions, MCP registration, seed data complete
++Phase: Phase 3 — Gemini Routing (not started)
++Plan: N/A — Phase 2 fully complete, awaiting Phase 3 plan
++Status: Phase 2 COMPLETE — all 3 plans delivered and verified (2026-03-05)
++Last activity: 2026-03-05 — 02-03 SUMMARY.md finalized, user approved MCP verification checkpoint
+ 
+ ## Next Session: What to Do
+ 
+-1. Complete 02-03 checkpoint verification (apply schema, run seed, register MCP in Claude Code)
+-2. After approval: finalize 02-03 SUMMARY.md, update STATE.md, move to Phase 3
+-3. Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
++1. Run `/gsd:plan-phase` for Phase 3: Gemini Routing (ai/router.py, model routing by task type, brain ingestion from Gemini research)
++2. Phase 4 is also unblocked: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
++3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+ 
+ ## Phase 1 Completion Summary
+ 
+@@ -70,7 +70,7 @@ None.
+ |------|------------|
+ | 02-01 | Created brain schema (7 tables, HNSW+GIN), engine.py (8 deterministic functions), extended db_init.py with apply_brain_schema() |
+ | 02-02 | Brain MCP server (7 tools), extraction.py (instructor + Gemini Flash), requirements.txt updated |
+-| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts) — Task 2 awaiting human-verify |
++| 02-03 | CLAUDE.md (proactive brain instructions), .mcp.json (stdio MCP registration), seed.py (10 domains, 5 contexts), end-to-end verified — COMPLETE |
+ 
+ ## Key Execution Decisions (2026-03-05)
+ 
+diff --git a/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
+index 1966d68..f2721f2 100644
+--- a/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
++++ b/.planning/phases/02-brain-schema-and-mcp-tools/02-03-SUMMARY.md
+@@ -14,6 +14,7 @@ provides:
+   - CLAUDE.md with proactive brain system instructions (briefing/capture/context/ambient/energy)
+   - .mcp.json registering brain MCP server for project-scoped stdio transport
+   - promaia/brain/seed.py with 10 domains and 5 contexts (idempotent)
++  - Brain layer verified end-to-end: schema deployed, seed data populated, MCP server connected in Claude Code
+ affects: [03-heartbeat, all-future-sessions]
+ 
+ # Tech tracking
+@@ -43,20 +44,20 @@ patterns-established:
+ requirements-completed: [BRAIN-02, BRAIN-03, BRAIN-05]
+ 
+ # Metrics
+-duration: 2min
++duration: 3min
+ completed: 2026-03-05
+ ---
+ 
+ # Phase 2 Plan 03: System Instructions, MCP Registration, and Seed Data Summary
+ 
+-**CLAUDE.md proactive brain instructions + .mcp.json stdio registration + idempotent seed.py for 10 domains and 5 contexts — brain layer fully wired**
++**CLAUDE.md proactive brain instructions + .mcp.json stdio registration + idempotent seed.py for 10 domains and 5 contexts — brain layer fully wired and verified end-to-end**
+ 
+ ## Performance
+ 
+-- **Duration:** 2 min
++- **Duration:** 3 min
+ - **Started:** 2026-03-05T02:22:31Z
+-- **Completed:** 2026-03-05T02:24:15Z
+-- **Tasks:** 1/2 (Task 2 is checkpoint:human-verify — awaiting user verification)
++- **Completed:** 2026-03-05T02:25:00Z
++- **Tasks:** 2/2
+ - **Files modified:** 3
+ 
+ ## Accomplishments
+@@ -64,14 +65,16 @@ completed: 2026-03-05
+ - CLAUDE.md with 5 behavior sections: session start briefing, capture on thoughts, project context loading, ambient awareness, energy adaptation — all using mcp__brain__ tool names
+ - .mcp.json registering brain server as stdio transport with DATABASE_URL and GOOGLE_API_KEY env passthrough
+ - seed.py that populates 10 domains (7 projects, 3 non-projects) and 5 project contexts with directives, stale thresholds, and priorities — fully idempotent
++- End-to-end verified: brain schema deployed to Supabase, seed data populated, MCP server starts and registers in Claude Code, briefing fires on session start
+ 
+ ## Task Commits
+ 
+ Each task was committed atomically:
+ 
+ 1. **Task 1: CLAUDE.md, .mcp.json, and seed data script** - `0fae709` (feat)
++2. **Task 2: Verify brain MCP server starts and tools respond** - checkpoint:human-verify, approved by user
+ 
+-**Task 2 (checkpoint:human-verify):** Awaiting user verification of schema deployment, seed data, and MCP server in Claude Code.
++**Plan metadata:** (final docs commit — see below)
+ 
+ ## Files Created/Modified
+ 
+@@ -95,19 +98,31 @@ None.
+ 
+ ## User Setup Required
+ 
+-Task 2 (checkpoint:human-verify) requires user action:
++User completed end-to-end verification:
+ 
+-1. Apply brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"`
+-2. Run seed data: `python -m promaia.brain.seed`
+-3. Test MCP server starts: `python -m promaia.brain.mcp_server` (hang on stdio = success, Ctrl+C to stop)
+-4. Register with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
+-5. New Claude Code session: verify /mcp shows brain connected, briefing fires on startup
++1. Applied brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"` — 7 brain.* tables deployed to Supabase
++2. Ran seed data: `python -m promaia.brain.seed` — 10 domains and 5 contexts populated
++3. Tested MCP server starts: `python -m promaia.brain.mcp_server` — hangs on stdio as expected
++4. Registered with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`
++5. Verified in new Claude Code session: /mcp shows brain connected, briefing fires on startup, capture extracts actions
++
++All steps approved by user.
+ 
+ ## Next Phase Readiness
+ 
+ - Complete brain layer: schema (7 tables) + engine (8 functions) + MCP server (7 tools) + action extraction + system instructions + seed data
+ - Ready for Phase 3: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, max 2 commits/cycle)
+-- Once Task 2 verified: all zBrain Phase 2 requirements complete
++- Phase 2 is fully complete — all 3 plans delivered and verified
++
++---
++
++## Self-Check: PASSED
++
++- `CLAUDE.md` exists at repo root — confirmed (contains mcp__brain__briefing, mcp__brain__capture)
++- `.mcp.json` exists at repo root — confirmed (contains promaia.brain.mcp_server)
++- `promaia/brain/seed.py` exists — confirmed
++- Commit `0fae709` exists — confirmed (feat(02-03) — CLAUDE.md, .mcp.json, seed.py)
++- Commit `3d026b8` exists — confirmed (docs(02-03) — partial checkpoint summary)
+ 
+ ---
+ *Phase: 02-brain-schema-and-mcp-tools*
+-- 
+2.51.0.windows.1
+

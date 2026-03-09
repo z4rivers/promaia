@@ -1,0 +1,339 @@
+From cb7d86ca56eba2b9dea3dce98a8b0b4591633674 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 22:08:31 -0800
+Subject: [PATCH 68/68] feat(dashboard): wire live Postgres data into web
+ dashboard
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Replace hardcoded stubs with real brain queries — counts, actions,
+projects, and recent memories all flow from live database. Fix
+gmail_read date anchor for historical scans.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/STATE.md                   |  60 ++++++----
+ promaia/brain/channels/gmail_read.py |  10 +-
+ promaia/web/routers/dashboard.py     | 165 ++++++++++++++++++++-------
+ 3 files changed, 170 insertions(+), 65 deletions(-)
+
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 046a21b..677519b 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -4,8 +4,8 @@
+ 
+ Phase: Phase 4 — Full Platform Activation + Dashboard Design
+ Plan: Web dashboard as primary display layer (not Notion)
+-Status: 4.1-4.6 activated. Design system approved. Research complete. Implementation next.
+-Last activity: 2026-03-07 — Design brainstorming session: 6-skin Japanese dashboard system
++Status: Dashboard wired to live Postgres. Server verified. All skins rendering. Actions & contexts populated.
++Last activity: 2026-03-08 — Dashboard wired to live brain data, contexts populated, actions seeded
+ 
+ ## Session 2026-03-07 Accomplishments
+ 
+@@ -69,34 +69,46 @@ promaia/web/
+     dashboard.py       <- Routes: read Postgres -> render templates
+ ```
+ 
+-## Next Session: What to Do
++## Session 2026-03-08 Accomplishments
++
++### Dashboard Wired to Live Data
++- Replaced hardcoded stubs in `dashboard.py` with real Postgres queries
++- `_get_brain_data()` queries brain.memories, brain.actions, brain.contexts in one call
++- Counts, actions, projects, and recent memories all flow from live DB
++- All 6 skins verified rendering (200 OK)
++- Server verified: `/`, `/dashboard`, `/api/health`, `/api/mcp/servers`, `/api/chat/models` all working
+ 
+-### Priority 1: Write Design Doc + Implementation Plan
+-- Consolidate both design briefs into `docs/plans/2026-03-07-dashboard-design.md`
+-- Create implementation plan (writing-plans skill)
+-- Commit design doc
++### Data Populated
++- All 5 project contexts updated with current_state descriptions
++- 4 pending actions seeded into brain.actions
++- Fixed: installed `jsonref` dependency (instructor path was failing)
++- Discovered: Gemini free tier quota exhausted — action auto-extraction blocked until quota resets
+ 
+-### Priority 2: Build Dashboard (the main event)
+-- `base.html` template with skin-switching CSS variables
+-- `dashboard.py` router reading from Postgres (brain memories, actions, contexts)
+-- Stone Garden skin first (default), then all 6
+-- 5 page templates
++### Issues Found
++- `jsonref` was missing — instructor import chain broken (now fixed)
++- Gemini 2.0 Flash free tier quota exhausted — action extraction silently returns empty
++- Consider: paid Gemini tier or local extraction fallback
+ 
+-### Priority 3: Gmail Ingest Pipeline
+-- `promaia/agents/gmail_ingest.py` — daemon syncing Gmail -> gmail_content table
+-- `query_gmail` tool in brain MCP server
+-- Wire agents to real email data
++## Next Session: What to Do
+ 
+-### Priority 4: MCP Router (3 quick fixes)
+-- Fix `get_mcp_server_configs()` import in mcp_servers.py
+-- Register MCP router in main.py
+-- Add brain server entry to mcp_servers.json
++### Priority 1: Agent Scheduler (the heartbeat)
++- Wire Morning Briefing, Email Triage, Evening Digest agents with real data
++- Define agent schedules and triggers
++- Connect to existing agent framework in promaia/agents/
+ 
+-### Priority 5: Remaining items
+-- CLI stubs (team_commands, conversation_commands)
+-- Export patches: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+-- Deploy web server externally for phone access
++### Priority 2: Deploy for iPhone
++- Deploy web server externally (Render, Railway, or VPS)
++- Mobile-first testing with all 6 skins
++- Voice interface consideration
++
++### Priority 3: Export Patches (safety net)
++- `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
++- Before Josie/Rose re-init Promaia repo
++
++### Priority 4: Remaining
+ - Fix Anthropic chat bug in utils/ai.py
++- CLI stubs (team_commands, conversation_commands)
++- Gemini routing (Phase 3 — model router)
+ 
+ ## Notion Page IDs (still valid — Notion stays as agent backend)
+ - Root: 31b72180-6675-8039-a701-f51c6423f11e
+diff --git a/promaia/brain/channels/gmail_read.py b/promaia/brain/channels/gmail_read.py
+index a6b521e..9e80023 100644
+--- a/promaia/brain/channels/gmail_read.py
++++ b/promaia/brain/channels/gmail_read.py
+@@ -253,7 +253,15 @@ def _scan_account(
+ 
+ def _fetch_recent_messages(service, days_back: int, max_emails: int, before_date: Optional[str] = None) -> List[Dict]:
+     """Fetch recent email metadata from Gmail API."""
+-    after_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y/%m/%d")
++    # Calculate after_date relative to before_date (not now) when scanning historical windows
++    if before_date:
++        try:
++            anchor = datetime.strptime(before_date, "%Y/%m/%d").replace(tzinfo=timezone.utc)
++        except ValueError:
++            anchor = datetime.now(timezone.utc)
++    else:
++        anchor = datetime.now(timezone.utc)
++    after_date = (anchor - timedelta(days=days_back)).strftime("%Y/%m/%d")
+     query = f"after:{after_date}"
+     if before_date:
+         query += f" before:{before_date}"
+diff --git a/promaia/web/routers/dashboard.py b/promaia/web/routers/dashboard.py
+index 3adf54e..04b938b 100644
+--- a/promaia/web/routers/dashboard.py
++++ b/promaia/web/routers/dashboard.py
+@@ -1,20 +1,17 @@
+ """
+-Dashboard router — serves the Promaia web dashboard.
+-
+-Wire into main.py:
+-    from fastapi.staticfiles import StaticFiles
+-    from promaia.web.routers import dashboard as dashboard_router
+-    app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+-    app.include_router(dashboard_router.router)
++Dashboard router — serves the Promaia web dashboard with live brain data.
+ """
+ 
++import logging
++import os
++from datetime import datetime
++
+ from fastapi import APIRouter, Request
+ from fastapi.responses import HTMLResponse
+ from fastapi.templating import Jinja2Templates
+-from datetime import datetime
+-import os
+ 
+ router = APIRouter(tags=["dashboard"])
++logger = logging.getLogger(__name__)
+ 
+ # Templates directory relative to this file
+ templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+@@ -40,15 +37,128 @@ def _format_day(dt: datetime) -> str:
+         return dt.strftime("%A, %B %#d")
+ 
+ 
++def _get_brain_data() -> dict:
++    """Query live brain data from Postgres. Returns dashboard-ready dicts."""
++    try:
++        from promaia.storage.postgres_db import get_postgres_db
++        db = get_postgres_db()
++
++        # Counts (single roundtrip)
++        counts = db.fetch_one(
++            """
++            SELECT
++                (SELECT COUNT(*) FROM brain.memories) as memory_count,
++                (SELECT COUNT(*) FROM brain.actions WHERE status = 'pending') as action_count,
++                (SELECT COUNT(*) FROM brain.contexts) as context_count
++            """
++        ) or {"memory_count": 0, "action_count": 0, "context_count": 0}
++
++        # Pending/active actions
++        actions_rows = db.fetch_all(
++            """
++            SELECT a.description, a.status, d.name AS domain_name
++            FROM brain.actions a
++            LEFT JOIN brain.domains d ON d.id = a.domain_id
++            WHERE a.status IN ('pending', 'active')
++            ORDER BY a.extracted_at DESC
++            LIMIT 10
++            """
++        )
++        actions = [
++            {
++                "text": row["description"],
++                "domain": row.get("domain_name") or "general",
++                "status": row["status"],
++            }
++            for row in actions_rows
++        ]
++
++        # Projects from contexts
++        project_rows = db.fetch_all(
++            """
++            SELECT d.name, c.current_state, c.last_updated, c.priority,
++                   EXTRACT(DAY FROM NOW() - c.last_updated)::int as days_stale
++            FROM brain.contexts c
++            JOIN brain.domains d ON d.id = c.domain_id
++            ORDER BY c.priority ASC, c.last_updated DESC
++            """
++        )
++        projects = []
++        for row in project_rows:
++            days = row.get("days_stale") or 0
++            if days > 14:
++                status = "resting"
++            else:
++                status = "active"
++            detail = row.get("current_state") or ""
++            if len(detail) > 80:
++                detail = detail[:77] + "..."
++            projects.append({
++                "name": row["name"],
++                "status": status,
++                "detail": detail,
++            })
++
++        # Recent memories
++        memory_rows = db.fetch_all(
++            """
++            SELECT content, domain, created_at
++            FROM brain.memories
++            ORDER BY created_at DESC
++            LIMIT 5
++            """
++        )
++        recent_memories = []
++        for row in memory_rows:
++            created = row.get("created_at")
++            if created:
++                now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now()
++                delta = (now - created).days
++                if delta == 0:
++                    time_str = "today"
++                elif delta == 1:
++                    time_str = "yesterday"
++                else:
++                    time_str = f"{delta} days ago"
++            else:
++                time_str = ""
++            content = row.get("content") or ""
++            if len(content) > 120:
++                content = content[:117] + "..."
++            recent_memories.append({
++                "content": content,
++                "domain": row.get("domain") or "general",
++                "created_at": time_str,
++            })
++
++        return {
++            "brain_status": {
++                "memories": counts["memory_count"],
++                "actions": counts["action_count"],
++                "contexts": counts["context_count"],
++            },
++            "actions": actions,
++            "projects": projects,
++            "recent_memories": recent_memories,
++        }
++
++    except Exception as e:
++        logger.warning(f"Brain data unavailable: {e}")
++        return {
++            "brain_status": {"memories": 0, "actions": 0, "contexts": 0},
++            "actions": [],
++            "projects": [],
++            "recent_memories": [],
++        }
++
++
+ @router.get("/", response_class=HTMLResponse)
+ @router.get("/dashboard", response_class=HTMLResponse)
+ async def dashboard(request: Request, skin: str = None):
+-    """Render the main dashboard."""
+-    # Resolve skin
++    """Render the main dashboard with live brain data."""
+     if skin not in VALID_SKINS:
+         skin = DEFAULT_SKIN
+ 
+-    # Time-aware greeting
+     hour = datetime.now().hour
+     if hour < 12:
+         greeting = "Good morning"
+@@ -57,11 +167,11 @@ async def dashboard(request: Request, skin: str = None):
+     else:
+         greeting = "Good evening"
+ 
+-    # Date
+     now = datetime.now()
+     date_str = _format_day(now)
+ 
+-    # TODO: Wire to real brain data via brain.recall / brain.actions
++    brain = _get_brain_data()
++
+     context = {
+         "request": request,
+         "skin": skin,
+@@ -69,32 +179,7 @@ async def dashboard(request: Request, skin: str = None):
+         "greeting": greeting,
+         "date_str": date_str,
+         "user_name": "Zack",
+-        "brain_status": {"memories": 14, "actions": 3, "contexts": 2},
+-        "actions": [
+-            {"text": "Review dashboard skins", "domain": "promaia", "status": "active"},
+-            {"text": "Set up Gmail ingest", "domain": "promaia", "status": "pending"},
+-        ],
+-        "projects": [
+-            {"name": "Promaia Brain", "status": "active", "detail": "Dashboard build in progress"},
+-            {"name": "Heatpup", "status": "resting", "detail": "Last touched 2 weeks ago"},
+-        ],
+-        "recent_memories": [
+-            {
+-                "content": "Dashboard is the primary display layer, not Notion",
+-                "domain": "promaia",
+-                "created_at": "today",
+-            },
+-            {
+-                "content": "6-skin design system approved: 3 traditional + 3 young",
+-                "domain": "promaia",
+-                "created_at": "today",
+-            },
+-            {
+-                "content": "MCP router needs 3 fixes to wire in",
+-                "domain": "promaia",
+-                "created_at": "yesterday",
+-            },
+-        ],
++        **brain,
+     }
+ 
+     return templates.TemplateResponse("dashboard.html", context)
+-- 
+2.51.0.windows.1
+

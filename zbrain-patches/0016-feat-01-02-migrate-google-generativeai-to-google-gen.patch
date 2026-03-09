@@ -1,0 +1,527 @@
+From 56c50062357bb136f56137ab8e20c8ab6f6aae1f Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 17:12:04 -0800
+Subject: [PATCH 16/68] feat(01-02): migrate google-generativeai to
+ google-genai SDK and update requirements
+
+- Replace all google-generativeai imports with google-genai across 6 source files
+- Add GeminiModelAdapter class in chat/interface.py for backward compat with existing callers
+- Update File API calls to use client.files.upload() / client.files.get()
+- requirements.txt: +google-genai>=1.65.0, +pgvector>=0.4.2; -chromadb, -google-generativeai, -sentence-transformers, -posthog
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/ai/nl_orchestrator.py     | 12 +++--
+ promaia/chat/interface.py         | 78 +++++++++++++++++++++++++++----
+ promaia/utils/image_processing.py | 20 +++++---
+ promaia/web/routers/chat.py       | 74 ++++++++++++++---------------
+ promaia/web/routers/nodes.py      | 20 ++++----
+ promaia/write/interface.py        | 30 ++++++------
+ requirements.txt                  |  8 ++--
+ 7 files changed, 152 insertions(+), 90 deletions(-)
+
+diff --git a/promaia/ai/nl_orchestrator.py b/promaia/ai/nl_orchestrator.py
+index 4131345..22a43e5 100644
+--- a/promaia/ai/nl_orchestrator.py
++++ b/promaia/ai/nl_orchestrator.py
+@@ -32,7 +32,7 @@ from .query_strategies import QueryStrategy, SQLQueryStrategy, VectorQueryStrate
+ # LLM Adapter (copied to avoid langchain dependencies)
+ from anthropic import Anthropic
+ from openai import OpenAI
+-import google.generativeai as genai
++from google import genai
+ 
+ 
+ class MockResponse:
+@@ -71,9 +71,10 @@ class PromaiLLMAdapter:
+                             return
+                         elif client_type == "gemini":
+                             self.client_type = "gemini"
+-                            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
++                            self.genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+                             from promaia.ai.models import get_current_google_model
+-                            self.client = genai.GenerativeModel(get_current_google_model())
++                            self.client_model_name = get_current_google_model()
++                            self.client = self.genai_client  # Reference for compatibility
+                             return
+                     except Exception as e:
+                         print(f"⚠️  Failed to setup {client_type} client: {e}")
+@@ -113,7 +114,10 @@ class PromaiLLMAdapter:
+             return MockResponse(response.content[0].text)
+             
+         elif self.client_type == "gemini":
+-            response = self.client.generate_content(prompt.strip())
++            response = self.genai_client.models.generate_content(
++                model=self.client_model_name,
++                contents=prompt.strip()
++            )
+             return MockResponse(response.text)
+         
+         else:
+diff --git a/promaia/chat/interface.py b/promaia/chat/interface.py
+index 8c5a995..7693810 100644
+--- a/promaia/chat/interface.py
++++ b/promaia/chat/interface.py
+@@ -36,7 +36,7 @@ from promaia.storage.chat_history import ChatHistoryManager
+ from promaia.storage.recents import RecentsManager
+ from promaia.utils.query_parsing import parse_vs_queries_with_params
+ 
+-import google.generativeai as genai
++from google import genai
+ 
+ # Setup logging
+ logger = logging.getLogger(__name__)
+@@ -191,16 +191,80 @@ openai_client = None
+ if os.getenv("OPENAI_API_KEY"):
+     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+ 
++class GeminiModelAdapter:
++    """Adapter that wraps google-genai Client to provide the old GenerativeModel interface.
++
++    This allows existing callers (gemini_client.generate_content(...)) to work
++    without rewriting deeply-nested code paths throughout the 8700+ line file.
++    """
++
++    def __init__(self, client, model_name, system_instruction=None):
++        self._client = client
++        self._model_name = model_name
++        self._system_instruction = system_instruction
++
++    def generate_content(self, contents, generation_config=None, **kwargs):
++        """Wrap client.models.generate_content with old-style interface."""
++        call_kwargs = {
++            'model': self._model_name,
++            'contents': contents,
++        }
++        if generation_config:
++            from google.genai import types
++            config = types.GenerateContentConfig(**generation_config)
++            if self._system_instruction:
++                config.system_instruction = self._system_instruction
++            call_kwargs['config'] = config
++        elif self._system_instruction:
++            from google.genai import types
++            call_kwargs['config'] = types.GenerateContentConfig(
++                system_instruction=self._system_instruction
++            )
++        return self._client.models.generate_content(**call_kwargs)
++
++    def start_chat(self, history=None):
++        """Create a chat session adapter."""
++        return GeminiChatAdapter(self._client, self._model_name, self._system_instruction, history)
++
++
++class GeminiChatAdapter:
++    """Adapter for Gemini chat sessions using google-genai SDK."""
++
++    def __init__(self, client, model_name, system_instruction=None, history=None):
++        self._client = client
++        self._model_name = model_name
++        self._system_instruction = system_instruction
++        self._history = history or []
++
++    def send_message(self, content, generation_config=None):
++        """Send a message and get a response."""
++        call_kwargs = {
++            'model': self._model_name,
++            'contents': content,
++        }
++        if generation_config or self._system_instruction:
++            from google.genai import types
++            config_params = generation_config or {}
++            config = types.GenerateContentConfig(**config_params)
++            if self._system_instruction:
++                config.system_instruction = self._system_instruction
++            call_kwargs['config'] = config
++        return self._client.models.generate_content(**call_kwargs)
++
++
+ gemini_client = None
++gemini_genai_client = None
++gemini_model_name_chat = None
+ if os.getenv("GOOGLE_API_KEY"):
+-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
++    gemini_genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+     from promaia.ai.models import get_current_google_model, GOOGLE_MODELS
+     # Use selected model ID if available, otherwise use default
+     selected_model = os.getenv("SELECTED_MODEL_ID")
+     if selected_model and "gemini" in selected_model.lower():
+-        gemini_client = genai.GenerativeModel(selected_model)
++        gemini_model_name_chat = selected_model
+     else:
+-        gemini_client = genai.GenerativeModel(get_current_google_model())
++        gemini_model_name_chat = get_current_google_model()
++    gemini_client = GeminiModelAdapter(gemini_genai_client, gemini_model_name_chat)
+ 
+ current_api = get_api_preference()
+ os.environ["API_TYPE"] = current_api
+@@ -8704,7 +8768,6 @@ def _format_openai_with_images(system_prompt, messages_for_api, current_message_
+ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_images):
+     """Format Gemini content with image support (base64 and File API)."""
+     from promaia.utils.image_processing import format_image_for_gemini
+-    import google.generativeai as genai
+     from promaia.ai.models import get_current_google_model
+     import os
+ 
+@@ -8718,9 +8781,8 @@ def _format_gemini_with_images(system_prompt, messages_for_api, current_message_
+     else:
+         model_name = get_current_google_model()
+ 
+-    current_gemini_model = genai.GenerativeModel(
+-        model_name=model_name,
+-        system_instruction=system_prompt
++    current_gemini_model = GeminiModelAdapter(
++        gemini_genai_client, model_name, system_instruction=system_prompt
+     )
+ 
+     # Build conversation history
+diff --git a/promaia/utils/image_processing.py b/promaia/utils/image_processing.py
+index a71484e..8ee678e 100644
+--- a/promaia/utils/image_processing.py
++++ b/promaia/utils/image_processing.py
+@@ -353,9 +353,9 @@ def upload_image_to_gemini_file_api(image_path: str, display_name: str = None) -
+         RuntimeError: If upload fails
+     """
+     try:
+-        import google.generativeai as genai
++        from google import genai
+     except ImportError:
+-        raise ImportError("google-generativeai package is required for File API. Install with: pip install google-generativeai")
++        raise ImportError("google-genai package is required for File API. Install with: pip install google-genai")
+ 
+     if not os.path.exists(image_path):
+         raise FileNotFoundError(f"Image file not found: {image_path}")
+@@ -373,7 +373,8 @@ def upload_image_to_gemini_file_api(image_path: str, display_name: str = None) -
+         if display_name is None:
+             display_name = os.path.basename(image_path)
+ 
+-        uploaded_file = genai.upload_file(path=image_path, display_name=display_name)
++        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
++        uploaded_file = client.files.upload(file=image_path, config={'display_name': display_name})
+ 
+         # Return the file URI
+         return uploaded_file.uri
+@@ -427,11 +428,15 @@ def process_document_for_gemini(document_path: str) -> Dict[str, Any]:
+             raise ValueError(f"Unsupported document format: {ext}")
+ 
+     try:
+-        import google.generativeai as genai
++        from google import genai
+ 
+         # Upload file to Gemini File API
+         display_name = os.path.basename(document_path)
+-        uploaded_file = genai.upload_file(path=document_path, display_name=display_name, mime_type=mime_type)
++        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
++        uploaded_file = client.files.upload(
++            file=document_path,
++            config={'display_name': display_name, 'mime_type': mime_type}
++        )
+ 
+         # Return the file URI
+         return {
+@@ -503,9 +508,10 @@ def format_image_for_gemini(base64_data: str = None, media_type: str = None, fil
+     if file_uri:
+         # Return File API reference
+         try:
+-            import google.generativeai as genai
++            from google import genai
++            client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+             # Get file reference from URI
+-            return genai.get_file(name=file_uri.split('/')[-1])
++            return client.files.get(name=file_uri.split('/')[-1])
+         except Exception:
+             # If getting file fails, return raw URI string (Gemini accepts this too)
+             return {"file_uri": file_uri}
+diff --git a/promaia/web/routers/chat.py b/promaia/web/routers/chat.py
+index dfdf182..4e1eafd 100644
+--- a/promaia/web/routers/chat.py
++++ b/promaia/web/routers/chat.py
+@@ -14,7 +14,7 @@ from promaia.storage.files import load_database_pages_with_filters
+ 
+ import os
+ import traceback
+-import google.generativeai as genai
++from google import genai
+ import asyncio
+ import uuid
+ import random
+@@ -36,9 +36,10 @@ openai_client = None
+ llama_base_url = None
+ 
+ # Initialize Gemini
++gemini_genai_client = None
+ if os.getenv("GOOGLE_API_KEY"):
+     try:
+-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
++        gemini_genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+         gemini_client_initialized = True
+         debug_print(f"Gemini API configured. Model to be used: {gemini_model_name}")
+     except Exception as e:
+@@ -143,20 +144,14 @@ async def get_initial_message():
+         return InitialMessageOutput(message=initial_message, conversation_id=conversation_id)  # Return default message as fallback
+ 
+     try:
+-        # Initialize the model with the system prompt
+-        current_gemini_model = genai.GenerativeModel(
+-            model_name=gemini_model_name,
+-            system_instruction=system_prompt_str 
+-        )
+-        
+         # Load the instruction from the markdown file
+         instruction = load_initial_message_prompt()
+-        
++
+         # Add a subtle randomness injection to encourage variety
+         # This gives the AI a slightly different "mental state" each time
+         conversation_starters = [
+             "with fresh curiosity",
+-            "with genuine interest", 
++            "with genuine interest",
+             "with thoughtful reflection",
+             "with warm engagement",
+             "with open wonder",
+@@ -164,22 +159,25 @@ async def get_initial_message():
+             "with mindful presence",
+             "with gentle inquiry"
+         ]
+-        
++
+         random_starter = random.choice(conversation_starters)
+         enhanced_instruction = f"{instruction} Approach this {random_starter}."
+-        
++
+         debug_print(f"Attempting to generate initial message with Gemini using enhanced prompt. Starter: {random_starter}")
+-        
++
++        from google.genai import types
+         response = await asyncio.to_thread(
+-            current_gemini_model.generate_content,
++            gemini_genai_client.models.generate_content,
++            model=gemini_model_name,
+             contents=[{'role': 'user', 'parts': [enhanced_instruction]}],
+-            generation_config={
+-                "temperature": 1.0,  # Higher temperature for more creativity and variety
+-                "top_p": 0.95,       # Nucleus sampling for diverse but coherent responses
+-                "top_k": 40,         # Limit to top 40 tokens for good variety without randomness
+-                "max_output_tokens": 150,  # Keep it concise
+-                "candidate_count": 1,      # Generate one response
+-            }
++            config=types.GenerateContentConfig(
++                system_instruction=system_prompt_str,
++                temperature=1.0,  # Higher temperature for more creativity and variety
++                top_p=0.95,       # Nucleus sampling for diverse but coherent responses
++                top_k=40,         # Limit to top 40 tokens for good variety without randomness
++                max_output_tokens=150,  # Keep it concise
++                candidate_count=1,      # Generate one response
++            )
+         )
+         
+         if response and response.text:
+@@ -384,16 +382,11 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
+     if not model_id:
+         model_id = gemini_model_name
+ 
+-    current_gemini_model = genai.GenerativeModel(
+-        model_name=model_id,
+-        system_instruction=system_prompt
+-    )
+-    
+     # Build conversation history for Gemini
+     gemini_messages = []
+     for msg in message_history:
+         role = 'user' if msg.role == 'user' else 'model'
+-        
++
+         # Handle message content (text + images)
+         if hasattr(msg, 'get_text_content'):
+             text_content = msg.get_text_content()
+@@ -402,35 +395,38 @@ async def _handle_gemini(user_message: str, images: List[ImageData], message_his
+             # Backward compatibility
+             text_content = str(msg.content)
+             msg_images = []
+-        
++
+         parts = []
+         if text_content:
+             parts.append(text_content)
+-        
++
+         # Add images to message parts
+         for img in msg_images:
+             parts.append(format_image_for_gemini(img.data, img.media_type))
+-        
++
+         gemini_messages.append({'role': role, 'parts': parts})
+-    
++
+     # Add current user message with images
+     current_parts = []
+     if user_message:
+         current_parts.append(user_message)
+-    
++
+     for img in images:
+         current_parts.append(format_image_for_gemini(img.data, img.media_type))
+-    
++
+     gemini_messages.append({'role': 'user', 'parts': current_parts})
+-    
++
+     debug_print(f"Calling Gemini with {len(gemini_messages)} messages and {len(images)} images")
+-    
++
++    from google.genai import types
+     response = await asyncio.to_thread(
+-        current_gemini_model.generate_content,
++        gemini_genai_client.models.generate_content,
++        model=model_id,
+         contents=gemini_messages,
+-        generation_config={
+-            "temperature": 0.7,
+-        }
++        config=types.GenerateContentConfig(
++            system_instruction=system_prompt,
++            temperature=0.7,
++        )
+     )
+     
+     ai_reply_content = response.text
+diff --git a/promaia/web/routers/nodes.py b/promaia/web/routers/nodes.py
+index 8a8913d..328a044 100644
+--- a/promaia/web/routers/nodes.py
++++ b/promaia/web/routers/nodes.py
+@@ -7,7 +7,7 @@ import os
+ # AI model clients
+ from anthropic import Anthropic
+ from openai import OpenAI
+-import google.generativeai as genai
++from google import genai
+ 
+ # Maia specific imports
+ from promaia.storage.unified_reader import read_database_content
+@@ -59,9 +59,7 @@ if os.getenv("OPENAI_API_KEY"):
+ 
+ gemini_client = None
+ if os.getenv("GOOGLE_API_KEY"):
+-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+-    # The model is initialized later with the system prompt
+-    gemini_client = "configured" # Placeholder to indicate it's ready
++    gemini_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+ 
+ # Local Llama client (using OpenAI-compatible endpoint)
+ llama_client = None
+@@ -171,18 +169,18 @@ def _call_gemini(system_prompt: str, user_message: str, model_data: Dict) -> str
+     if not gemini_client:
+         raise ValueError("Gemini client not initialized. Check GOOGLE_API_KEY.")
+ 
+-    generation_config = genai.types.GenerationConfig(
++    from google.genai import types
++    config = types.GenerateContentConfig(
+         max_output_tokens=model_data.get("max_tokens", 2048),
+         temperature=model_data.get("temperature", 0.7),
+-    )
+-    
+-    model = genai.GenerativeModel(
+-        model_name=model_data.get("model", "gemini-1.5-pro-latest"),
+-        generation_config=generation_config,
+         system_instruction=system_prompt,
+     )
+ 
+-    response = model.generate_content(user_message)
++    response = gemini_client.models.generate_content(
++        model=model_data.get("model", "gemini-1.5-pro-latest"),
++        contents=user_message,
++        config=config,
++    )
+     return response.text
+ 
+ def _call_llama(system_prompt: str, user_message: str, model_data: Dict) -> str:
+diff --git a/promaia/write/interface.py b/promaia/write/interface.py
+index 4f4c4e7..4b9ebf3 100644
+--- a/promaia/write/interface.py
++++ b/promaia/write/interface.py
+@@ -491,37 +491,35 @@ async def write_blog_post(days=None, custom_prompt=None, push_to_notion=True, ma
+                 }, indent=2))
+                 
+         elif api_type == "gemini":
+-            # Google sync client used here
+-            import google.generativeai as genai
+-            
++            # Google genai client used here
++            from google import genai as genai_sdk
++
+             # Configure API Key
+             google_api_key = os.getenv("GOOGLE_API_KEY")
+             if not google_api_key:
+                 console.print("[error]GOOGLE_API_KEY environment variable not set.[/error]")
+                 return
+-            genai.configure(api_key=google_api_key)
++            gemini_client = genai_sdk.Client(api_key=google_api_key)
+ 
+-            # Initialize Model
++            # Get model name
+             from promaia.ai.models import get_current_google_model
+-            model = genai.GenerativeModel(get_current_google_model())
++            gemini_model_name = get_current_google_model()
+ 
+-            # Start chat session
+-            chat = model.start_chat(history=[])
+-            
+             # Combine system prompt and main prompt for Gemini
+             # The API expects a list of content parts
+             gemini_contents = [
+                 system_prompt, # System instructions first
+                 "Please write a blog post based on the journal entries and webflow content provided." # Then the standard user request
+             ]
+-            
+-            response = model.generate_content(
+-                # Pass combined prompts in contents
++
++            from google.genai import types
++            response = gemini_client.models.generate_content(
++                model=gemini_model_name,
+                 contents=gemini_contents,
+-                generation_config={
+-                    "temperature": 0.7,
+-                    "max_output_tokens": 4000
+-                }
++                config=types.GenerateContentConfig(
++                    temperature=0.7,
++                    max_output_tokens=4000
++                )
+             )
+             blog_content = response.text
+             # Save the response to a file without output
+diff --git a/requirements.txt b/requirements.txt
+index a4cb5ec..5f9149d 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -22,7 +22,7 @@ docutils==0.21.2
+ fastapi==0.115.12
+ flake8==7.2.0
+ frozenlist==1.6.0
+-google-generativeai
++google-genai>=1.65.0
+ google-auth==2.35.0
+ google-auth-oauthlib==1.2.1
+ google-api-python-client==2.158.0
+@@ -91,14 +91,12 @@ watchfiles==1.0.5
+ wcwidth==0.2.13
+ websockets==15.0.1
+ yarl==1.20.0
+-chromadb==0.5.23
+-posthog>=2.4.0,<6.0.0  # Fix telemetry errors with chromadb 0.5.23
+-sentence-transformers==3.3.1
++pgvector>=0.4.2
+ 
+ # OCR dependencies
+ google-cloud-vision==3.7.0
+ opencv-python==4.9.0.80
+ 
+ # PostgreSQL
+-psycopg2-binary==2.9.9
++psycopg2-binary>=2.9.9
+ numpy==1.26.3
+-- 
+2.51.0.windows.1
+

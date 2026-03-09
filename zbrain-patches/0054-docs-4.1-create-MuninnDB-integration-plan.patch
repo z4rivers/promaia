@@ -1,0 +1,642 @@
+From 5c2a896e909e382e3b03c26380173bd4b139d8af Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 16:12:42 -0800
+Subject: [PATCH 54/68] docs(4.1): create MuninnDB integration plan
+
+Phase 4.1 planned as single plan with 3 tasks: REST client wrapper,
+MCP server modifications (dual-write capture, parallel search, activate tool),
+and configuration/seeding/verification checkpoint.
+
+Added MUNINN-01 through MUNINN-06 requirement IDs to REQUIREMENTS.md.
+Updated ROADMAP.md with Phase 4.1 details, success criteria, and plan listing.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/REQUIREMENTS.md                     |  22 +-
+ .planning/ROADMAP.md                          |  94 ++--
+ .../4.1-01-PLAN.md                            | 440 ++++++++++++++++++
+ 3 files changed, 521 insertions(+), 35 deletions(-)
+ create mode 100644 .planning/phases/04-full-platform-activation/4.1-01-PLAN.md
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index bb7a149..433d385 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -35,6 +35,15 @@
+ - [x] **ONBOARD-09**: CLAUDE.md contains onboarding instructions: reciprocal disclosure, progressive profiling, design principles
+ - [x] **ONBOARD-10**: Onboarding follows design principles: short bursts, instant value, resumable, no shame
+ 
++### MuninnDB Cognitive Memory (Phase 4.1)
++
++- [ ] **MUNINN-01**: MuninnDB REST client wrapper exists (promaia/brain/muninn.py) using httpx, not SDK
++- [ ] **MUNINN-02**: Capture MCP tool dual-writes to Postgres AND MuninnDB (MuninnDB is best-effort, never blocks)
++- [ ] **MUNINN-03**: Search MCP tool returns results from both pgvector and MuninnDB ACTIVATE, labeled by source
++- [ ] **MUNINN-04**: Activate MCP tool (#13) provides dedicated MuninnDB cognitive retrieval with score components
++- [ ] **MUNINN-05**: All existing brain.memories seeded into MuninnDB zbrain-vault with embeddings
++- [ ] **MUNINN-06**: MuninnDB failures never block Postgres operations (graceful degradation)
++
+ ### Routing
+ 
+ - [ ] **ROUTE-01**: Task-based model router (ai/router.py) assigns models by task type
+@@ -107,12 +116,19 @@
+ | ONBOARD-08 | 03.1-03 | Complete |
+ | ONBOARD-09 | 03.1-03 | Complete |
+ | ONBOARD-10 | 03.1-03 | Complete |
++| MUNINN-01 | 4.1-01 | Planned |
++| MUNINN-02 | 4.1-01 | Planned |
++| MUNINN-03 | 4.1-01 | Planned |
++| MUNINN-04 | 4.1-01 | Planned |
++| MUNINN-05 | 4.1-01 | Planned |
++| MUNINN-06 | 4.1-01 | Planned |
+ 
+ **Coverage:**
+-- v1.0 requirements: 34 total (24 original + 10 onboarding)
+-- Mapped to phases: 26 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 2 mapped)
++- v1.0 requirements: 40 total (24 original + 10 onboarding + 6 MuninnDB)
++- Mapped to phases: 32 (6 BRAIN, 10 ONBOARD, 5 STOR, 3 DOCS, 6 MUNINN, 2 mapped)
+ - Complete: 21 (5 STOR, 6 BRAIN, 10 ONBOARD)
++- Planned: 6 (6 MUNINN)
+ 
+ ---
+ *Requirements defined: 2026-03-04*
+-*Last updated: 2026-03-05 after 03.1-03 complete (all ONBOARD requirements satisfied)*
++*Last updated: 2026-03-05 — Added MUNINN-01 through MUNINN-06 for Phase 4.1*
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 68ede6d..3147804 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -6,8 +6,16 @@
+ - [x] **Phase 2: Brain Schema and MCP Tools** - Proactive brain layer with memories, domains, actions, briefings (completed 2026-03-05)
+ - [ ] **Phase 3: Gemini Routing** - Intelligent model router and brain ingestion pipeline
+ - [x] **Phase 03.1: Onboarding Module** - Guided personal profile interview with reciprocal AI disclosure (2026-03-05)
+-- [ ] **Phase 4: Heartbeat Agent** - Autonomous overnight work loop with guardrails
+-- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint
++- [ ] **Phase 4: Full Platform Activation** - Activate ALL Promaia modules + MuninnDB cognitive memory
++  - [ ] 4.1: MuninnDB Install + Seed (cognitive memory sidecar)
++  - [ ] 4.2: Google Calendar Setup (schedule awareness)
++  - [ ] 4.3: Notion Dashboard Setup (visibility layer)
++  - [ ] 4.4: Agent Scheduler Activation (the heartbeat)
++  - [ ] 4.5: Full Email Pipeline (mail/ module + gmail_read.py)
++  - [ ] 4.6: Web/Chat Interface (iPhone access)
++  - [ ] 4.7: Information Funneling (intelligence briefs)
++  - [ ] 4.8: Webflow CMS (when needed)
++- [ ] **Phase 5: iPhone Access** - Mobile brain access via cloud endpoint (merged into 4.6)
+ 
+ ## Phase Details
+ 
+@@ -66,15 +74,7 @@ Plans:
+ 
+ **Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
+ **Depends on:** Phase 2
+-**Requirements:** [ONBOARD-01, ONBOARD-02, ONBOARD-03, ONBOARD-04, ONBOARD-05, ONBOARD-06, ONBOARD-07, ONBOARD-08, ONBOARD-09, ONBOARD-10]
+-**Success Criteria** (what must be TRUE):
+-  1. Onboarding session can be started, paused, and resumed across sessions
+-  2. Profile coverage report shows per-category gap analysis
+-  3. PC scan channel automatically extracts profile data from local files and git history
+-  4. Gmail read channel extracts contacts and communication patterns (when OAuth configured)
+-  5. Interview question bank covers all profile categories with OARS-informed questions
+-  6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
+-  7. Progressive profiling continues after initial interview via observation
++**Requirements:** [ONBOARD-01 through ONBOARD-10]
+ **Plans:** 3/3 plans complete
+ 
+ Plans:
+@@ -82,28 +82,50 @@ Plans:
+ - [x] 03.1-02-PLAN.md -- PC scan and Gmail read channel modules + MCP tools (2026-03-05)
+ - [x] 03.1-03-PLAN.md -- Interview question bank + CLAUDE.md onboarding instructions + human-verified (2026-03-05)
+ 
+-### Phase 4: Heartbeat Agent
+-**Goal:** Autonomous overnight agent that scans all projects, deep-works on the most stalled, and reports in morning briefing
++### Phase 4: Full Platform Activation
++
++**Goal:** Activate ALL major Promaia modules for Zack's use case, integrate MuninnDB cognitive memory, establish the complete autonomous AI assistant stack.
+ **Depends on:** Phase 2
+-**Requirements:** [BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05]
+-**Success Criteria** (what must be TRUE):
+-  1. Windows Task Scheduler runs heartbeat on configurable interval
+-  2. Heartbeat scans all projects and picks most stalled for deep work
+-  3. Active user check: scan-only mode if user active within 15 min
+-  4. Safety guardrails enforced: branch-only commits, no external comms, max 2 commits, budget cap, 30-min runtime
+-  5. Morning summary available in next session briefing
+-  6. All activity logged to brain.events with source="heartbeat"
+-**Plans:** TBD
++**Full plan:** `.planning/phases/04-full-platform-activation/ACTIVATION-PLAN.md`
+ 
+-### Phase 5: iPhone Access
+-**Goal:** Brain accessible from iPhone so mobile captures flow into the shared brain and briefings work on any device
++**Sub-phases:**
++
++#### 4.1: MuninnDB Cognitive Memory
++**Goal:** Integrate MuninnDB as cognitive memory sidecar with dual-write capture, parallel search retrieval, and dedicated ACTIVATE tool for associative recall
+ **Depends on:** Phase 2
+-**Requirements:** [ACCESS-01]
++**Requirements:** [MUNINN-01, MUNINN-02, MUNINN-03, MUNINN-04, MUNINN-05, MUNINN-06]
+ **Success Criteria** (what must be TRUE):
+-  1. Brain MCP endpoint accessible from iPhone via cloud
+-  2. Mobile capture stores thoughts in brain.memories
+-  3. PC session briefing picks up mobile captures automatically
+-**Plans:** TBD
++  1. MuninnDB REST client wrapper exists (promaia/brain/muninn.py)
++  2. Capture dual-writes to both Postgres and MuninnDB (MuninnDB best-effort)
++  3. Search returns labeled results from both pgvector and MuninnDB ACTIVATE
++  4. Dedicated activate MCP tool provides cognitive retrieval with score components
++  5. All existing brain.memories seeded into MuninnDB zbrain-vault
++  6. MuninnDB failures never block Postgres operations (graceful degradation)
++**Plans:** 1 plan
++
++Plans:
++- [ ] 4.1-01-PLAN.md -- MuninnDB REST client, dual-write capture, parallel search, activate tool, seed memories, end-to-end verification
++
++#### 4.2: Google Calendar
++Enable Calendar API, OAuth scope, wire to agents. Brain knows the schedule.
++
++#### 4.3: Notion Dashboard
++Set up Notion as visibility layer. Agent output pages, brain dashboard, profile view. Notion displays, MuninnDB thinks.
++
++#### 4.4: Agent Scheduler
++Activate the heartbeat. Morning Briefing, Email Triage, Evening Digest agents. Autonomous operation via scheduler daemon.
++
++#### 4.5: Full Email Pipeline
++Wire gmail_read.py into existing mail/ module (classifier, intent detector, response generator, draft manager). All 4 Gmail layers operational.
++
++#### 4.6: Web/Chat Interface (iPhone Access)
++Deploy FastAPI chat server to cloud. Brain accessible from phone. Voice capture while driving.
++
++#### 4.7: Information Funneling
++Curate information sources, filter by brain profile, form into regular intelligence briefs. Not newsletters — intelligence delivery.
++
++#### 4.8: Webflow CMS
++Activate when needed for Heatpup or other web publishing.
+ 
+ ## Progress
+ 
+@@ -113,9 +135,17 @@ Plans:
+ | 2. Brain Schema and MCP Tools | 3/3 | Complete    | 2026-03-05 |
+ | 3. Gemini Routing | 0/0 | Not started | - |
+ | 3.1 Onboarding Module | 3/3 | Complete | 2026-03-05 |
+-| 4. Heartbeat Agent | 0/0 | Not started | - |
+-| 5. iPhone Access | 0/0 | Not started | - |
++| 4. Full Platform Activation | 0/8 | In Progress | - |
++| 4.1 MuninnDB | 0/1 | Planned | - |
++| 4.2 Google Calendar | - | Ready | - |
++| 4.3 Notion Dashboard | - | Ready | - |
++| 4.4 Agent Scheduler | - | Depends on 4.2+4.3 | - |
++| 4.5 Email Pipeline | - | Ready | - |
++| 4.6 Web/Chat (iPhone) | - | Ready | - |
++| 4.7 Info Funneling | - | Depends on 4.4 | - |
++| 4.8 Webflow CMS | - | When needed | - |
+ 
+ ---
+ *Created: 2026-03-04 from design docs*
+-*Design docs: docs/plans/2026-03-04-zbrain-promaia-merge-design.md, docs/plans/2026-03-04-zbrain-workflow-design.md*
++*Updated: 2026-03-05 — Phase 4 added after full module audit*
++*Updated: 2026-03-05 — Phase 4.1 MuninnDB planned (1 plan)*
+diff --git a/.planning/phases/04-full-platform-activation/4.1-01-PLAN.md b/.planning/phases/04-full-platform-activation/4.1-01-PLAN.md
+new file mode 100644
+index 0000000..79fc634
+--- /dev/null
++++ b/.planning/phases/04-full-platform-activation/4.1-01-PLAN.md
+@@ -0,0 +1,440 @@
++---
++phase: 04-full-platform-activation
++plan: "4.1-01"
++type: execute
++wave: 1
++depends_on: []
++files_modified:
++  - promaia/brain/muninn.py
++  - promaia/brain/mcp_server.py
++autonomous: false
++requirements: [MUNINN-01, MUNINN-02, MUNINN-03, MUNINN-04, MUNINN-05, MUNINN-06]
++
++must_haves:
++  truths:
++    - "capture MCP tool writes to both Postgres and MuninnDB on every call"
++    - "MuninnDB failure during capture does not block Postgres write or return an error"
++    - "search MCP tool returns results from both pgvector and MuninnDB ACTIVATE, labeled by source"
++    - "activate MCP tool returns cognitive retrieval results with scores and score components"
++    - "All 18 existing brain.memories are seeded into MuninnDB zbrain-vault"
++    - "MuninnDB Web UI at localhost:8476 shows engrams with semantic similarity > 0"
++  artifacts:
++    - path: "promaia/brain/muninn.py"
++      provides: "Async httpx REST client for MuninnDB with health, write, write_batch, activate methods"
++      min_lines: 80
++      exports: ["MuninnClient", "get_muninn"]
++    - path: "promaia/brain/mcp_server.py"
++      provides: "13-tool brain MCP server with dual-write capture, parallel search, and activate tool"
++      contains: "name=\"activate\""
++  key_links:
++    - from: "promaia/brain/mcp_server.py"
++      to: "promaia/brain/muninn.py"
++      via: "import get_muninn and call in capture/search/activate handlers"
++      pattern: "from promaia\\.brain\\.muninn import"
++    - from: "promaia/brain/muninn.py"
++      to: "http://localhost:8475/api/engrams"
++      via: "httpx.AsyncClient POST for write operations"
++      pattern: "/api/engrams"
++    - from: "promaia/brain/muninn.py"
++      to: "http://localhost:8475/api/activate"
++      via: "httpx.AsyncClient POST for cognitive retrieval"
++      pattern: "/api/activate"
++    - from: "promaia/brain/mcp_server.py _handle_capture"
++      to: "promaia/brain/muninn.py MuninnClient.write"
++      via: "best-effort dual-write after Postgres insert"
++      pattern: "await muninn\\.write"
++    - from: "promaia/brain/mcp_server.py _handle_search"
++      to: "promaia/brain/muninn.py MuninnClient.activate"
++      via: "parallel retrieval alongside pgvector search"
++      pattern: "await.*muninn.*activate"
++
++user_setup:
++  - service: MuninnDB
++    why: "Cognitive memory database must be running with Gemini embeddings enabled"
++    env_vars:
++      - name: MUNINN_GOOGLE_KEY
++        source: "Same value as GOOGLE_API_KEY from .env file — set as Windows user environment variable for persistence across MuninnDB restarts"
++    dashboard_config:
++      - task: "Ensure MuninnDB is running"
++        location: "CLI: muninn start (or verify pid)"
++---
++
++<objective>
++Integrate MuninnDB cognitive memory as a sidecar alongside Postgres pgvector. Create the REST client wrapper, modify the brain MCP server for dual-write capture, parallel search, and add a dedicated ACTIVATE cognitive retrieval tool. Seed existing memories and verify the full integration.
++
++Purpose: MuninnDB adds Ebbinghaus decay, Hebbian learning, and associative retrieval that pgvector cannot provide. Running both systems in parallel during a 1-2 week trial allows evaluating cognitive retrieval quality against established vector search without risking the existing system.
++
++Output: `promaia/brain/muninn.py` (new REST client), modified `promaia/brain/mcp_server.py` (13 tools), MuninnDB seeded with 18 existing memories, all verified end-to-end.
++</objective>
++
++<execution_context>
++@C:/Users/Zachary Turner/.claude/get-shit-done/workflows/execute-plan.md
++@C:/Users/Zachary Turner/.claude/get-shit-done/templates/summary.md
++</execution_context>
++
++<context>
++@.planning/ROADMAP.md
++@.planning/STATE.md
++@.planning/phases/04-full-platform-activation/4.1-CONTEXT.md
++@.planning/phases/04-full-platform-activation/4.1-RESEARCH.md
++@promaia/brain/mcp_server.py
++</context>
++
++<tasks>
++
++<task type="auto">
++  <name>Task 1: Create MuninnDB REST client wrapper</name>
++  <files>promaia/brain/muninn.py</files>
++  <action>
++Create `promaia/brain/muninn.py` — an async httpx REST client wrapping MuninnDB's REST API (port 8475). Do NOT use the muninndb Python SDK (broken on Python 3.14 — confirmed in research). httpx is already a project dependency.
++
++**Class: `MuninnClient`**
++
++Constructor:
++- `base_url: str = "http://localhost:8475"` (configurable, default MuninnDB REST port)
++- `vault: str = "zbrain-vault"` (single vault per locked decision)
++- `timeout: float = 5.0` (aggressive timeout — MuninnDB is local, should be fast)
++- Create `httpx.AsyncClient` with base_url, timeout, no auth headers (vault is `--public`)
++
++Methods:
++
++1. `async def health() -> bool` — GET `/api/health`, return True on 200, False on any exception. Used for startup checks and graceful degradation.
++
++2. `async def write(concept: str, content: str, tags: list[str] | None = None, confidence: float = 0.9) -> str | None` — POST `/api/engrams` with `{"vault": self._vault, "concept": concept, "content": content, "tags": tags or [], "confidence": confidence}`. Return the ULID `id` string from response on success, None on failure. Log warning on failure but do NOT raise.
++
++3. `async def write_batch(engrams: list[dict]) -> list[dict]` — POST `/api/engrams/batch` with `{"vault": self._vault, "engrams": engrams}`. Each engram dict has keys: concept, content, tags, confidence. Return list of `{"index": N, "id": "ULID", "status": "ok"}` results. Raise on failure (batch is used for seeding, not in hot path).
++
++4. `async def activate(context: list[str], max_results: int = 10, threshold: float = 0.1) -> dict` — POST `/api/activate` with `{"vault": self._vault, "context": context, "max_results": max_results, "threshold": threshold}`. Return full response dict (contains `query_id`, `total_found`, `activations`, `latency_ms`, `brief`). Raise on failure.
++
++5. `async def stats() -> dict` — GET `/api/stats?vault={self._vault}`. Return response dict. Useful for verifying embedder config (check `index_size > 0`).
++
++6. `async def close()` — Call `self._client.aclose()`.
++
++**Module-level lazy singleton: `get_muninn()`**
++
++Match the existing `get_db()` / `get_vector_mgr()` pattern in mcp_server.py:
++```python
++_muninn: MuninnClient | None = None
++_muninn_checked = False
++
++async def get_muninn() -> MuninnClient | None:
++    """Return MuninnDB client singleton, or None if unavailable."""
++    global _muninn, _muninn_checked
++    if not _muninn_checked:
++        _muninn_checked = True
++        client = MuninnClient()
++        if await client.health():
++            _muninn = client
++            logger.info("MuninnDB connected (zbrain-vault)")
++        else:
++            logger.warning("MuninnDB unreachable at localhost:8475 — cognitive memory disabled")
++            await client.close()
++    return _muninn
++```
++
++Note: `get_muninn()` is async (unlike `get_db()`) because the health check is async. This is fine since all callers are async handlers. The `_muninn_checked` flag prevents repeated health checks on every call — check once, cache the result.
++
++Add standard module imports: `httpx`, `logging`, `typing`. Add module docstring explaining this is the MuninnDB REST client and why the SDK is not used.
++
++Do NOT generate embeddings client-side. MuninnDB handles embedding generation server-side via `MUNINN_GOOGLE_KEY`. The client only sends text.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "from promaia.brain.muninn import MuninnClient, get_muninn; c = MuninnClient(); print(f'MuninnClient created, vault={c._vault}, base_url OK'); print('Module imports clean')"</automated>
++    <manual>Verify muninn.py has health, write, write_batch, activate, stats, close methods and get_muninn singleton</manual>
++  </verify>
++  <done>promaia/brain/muninn.py exists with MuninnClient class (6 methods) and get_muninn() async singleton. Module imports without errors. No dependency on muninndb SDK.</done>
++</task>
++
++<task type="auto">
++  <name>Task 2: Modify MCP server — dual-write capture, parallel search, activate tool</name>
++  <files>promaia/brain/mcp_server.py</files>
++  <action>
++Modify the existing brain MCP server (promaia/brain/mcp_server.py, currently 1435 lines, 12 tools) to integrate MuninnDB. Three changes: dual-write in capture, parallel retrieval in search, and new activate tool.
++
++**0. Import and singleton**
++
++At the top of mcp_server.py (near line 56, after other brain imports), add:
++```python
++from promaia.brain.muninn import get_muninn
++```
++
++Also add `import asyncio` if not already present (needed for parallel search).
++
++**1. Modify `_handle_capture` (currently lines 566-639)**
++
++After the existing "Log capture event" block (around line 635), add a MuninnDB dual-write block BEFORE the return statement. This goes AFTER all Postgres operations are complete:
++
++```python
++    # MuninnDB dual-write (best-effort — never blocks Postgres capture)
++    try:
++        muninn = await get_muninn()
++        if muninn:
++            tags = [domain_name] if domain_name else []
++            await muninn.write(
++                concept=content[:100],
++                content=content,
++                tags=tags,
++            )
++    except Exception as e:
++        logger.warning(f"MuninnDB write failed (non-fatal): {e}")
++```
++
++The key constraint: MuninnDB failure MUST NOT change the return value. If Postgres succeeds, the user sees "Captured." regardless of MuninnDB status.
++
++**2. Modify `_handle_search` (currently lines 642-688)**
++
++Restructure to run pgvector search and MuninnDB ACTIVATE in parallel. The existing pgvector search logic stays intact but needs to be callable as an awaitable.
++
++Replace the current `_handle_search` implementation with:
++
++a. Keep all existing pgvector search logic but extract the result formatting. The pgvector search runs exactly as before (generate embedding, cosine distance query, format rows).
++
++b. After getting pgvector results, attempt MuninnDB ACTIVATE (best-effort):
++```python
++    # MuninnDB ACTIVATE (best-effort, parallel trial)
++    muninn_results = []
++    try:
++        muninn = await get_muninn()
++        if muninn:
++            response = await muninn.activate(
++                context=[query],
++                max_results=limit,
++                threshold=0.1,
++            )
++            muninn_results = response.get("activations", [])
++    except Exception as e:
++        logger.warning(f"MuninnDB activate failed (non-fatal): {e}")
++```
++
++c. Format output with source labels. pgvector results keep their current format but add `[pgvector]` label. MuninnDB results appear in a separate section with `[muninn]` label:
++```
++# Search Results for: {query}
++
++## pgvector Results
++**1.** [pgvector] [domain] (similarity: 0.85, 2h ago)
++content preview...
++
++## MuninnDB ACTIVATE Results
++**1.** [muninn] (score: 0.69, components: semantic=0.45, hebbian=0.12, decay=0.99)
++content preview...
++```
++
++For MuninnDB results, show score AND key score_components (semantic_similarity, hebbian_boost, decay_factor) so the trial comparison is informative.
++
++If only one source returns results, show only that section. If neither returns results, show "No results found."
++
++**3. Add `activate` tool (tool #13)**
++
++a. In `list_tools()` (after the gmail_scan Tool definition, around line 409), add:
++```python
++        Tool(
++            name="activate",
++            description=(
++                "MuninnDB cognitive retrieval using the ACTIVATE pipeline. "
++                "Uses context-based associative recall with Hebbian learning, "
++                "temporal decay, and graph traversal — different from vector search. "
++                "Returns memories ranked by cognitive relevance, not just similarity. "
++                "Use this when you want associative, context-driven recall rather than "
++                "keyword or semantic search."
++            ),
++            inputSchema={
++                "type": "object",
++                "properties": {
++                    "context": {
++                        "type": "string",
++                        "description": "Natural language context for cognitive retrieval. Describe what you're thinking about."
++                    },
++                    "max_results": {
++                        "type": "integer",
++                        "description": "Maximum results (default 10).",
++                        "default": 10
++                    },
++                    "threshold": {
++                        "type": "number",
++                        "description": "Minimum activation score 0.0-1.0 (default 0.1, lower = more results).",
++                        "default": 0.1
++                    }
++                },
++                "required": ["context"]
++            }
++        ),
++```
++
++b. In `call_tool()` dispatcher (around line 445), add before the `else` clause:
++```python
++        elif name == "activate":
++            return await _handle_activate(arguments)
++```
++
++c. Add `_handle_activate` handler (place it after `_handle_search`, around line 690):
++
++```python
++async def _handle_activate(args: dict) -> list[TextContent]:
++    """MuninnDB ACTIVATE cognitive retrieval."""
++    context_text = args.get("context", "").strip()
++    if not context_text:
++        return [TextContent(type="text", text="Error: context is required.")]
++
++    max_results = int(args.get("max_results", 10))
++    threshold = float(args.get("threshold", 0.1))
++
++    muninn = await get_muninn()
++    if not muninn:
++        return [TextContent(type="text", text="MuninnDB is not available. Use 'search' for pgvector-based retrieval.")]
++
++    try:
++        response = await muninn.activate(
++            context=[context_text],
++            max_results=max_results,
++            threshold=threshold,
++        )
++
++        activations = response.get("activations", [])
++        latency = response.get("latency_ms", 0)
++        total = response.get("total_found", 0)
++
++        if not activations:
++            return [TextContent(type="text", text=f"No activations above threshold {threshold}. Try lowering the threshold.")]
++
++        lines = [f"# ACTIVATE Results ({total} found, {latency:.1f}ms)\n"]
++        for i, a in enumerate(activations, 1):
++            score = a.get("score", 0)
++            concept = a.get("concept", "")
++            content = a.get("content", "")[:300]
++            sc = a.get("score_components", {})
++            dormant = " [dormant]" if a.get("dormant") else ""
++
++            lines.append(f"**{i}.** (score: {score:.3f}){dormant}")
++            lines.append(f"   Concept: {concept}")
++            lines.append(f"   {content}")
++            lines.append(f"   Components: semantic={sc.get('semantic_similarity', 0):.2f}, "
++                         f"text={sc.get('full_text_relevance', 0):.2f}, "
++                         f"hebbian={sc.get('hebbian_boost', 0):.2f}, "
++                         f"decay={sc.get('decay_factor', 0):.3f}")
++            lines.append("")
++
++        # Include brief if available
++        brief = response.get("brief", [])
++        if brief:
++            lines.append("## Brief")
++            for b in brief:
++                lines.append(f"- {b.get('text', '')}")
++
++        return [TextContent(type="text", text="\n".join(lines))]
++
++    except Exception as e:
++        logger.error(f"activate failed: {e}", exc_info=True)
++        return [TextContent(type="text", text=f"ACTIVATE error: {e}")]
++```
++
++**4. Update docstrings and counts**
++
++- Module docstring (line 1-25): Update "12 tools" to "13 tools", add "activate" to the tool list with description "activate — MuninnDB cognitive retrieval via ACTIVATE pipeline"
++- `list_tools()` docstring: Update "12 brain tools" to "13 brain tools"
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "import asyncio; from promaia.brain.mcp_server import list_tools; tools = asyncio.run(list_tools()); names = [t.name for t in tools]; assert 'activate' in names, f'activate not found in {names}'; assert len(tools) == 13, f'Expected 13 tools, got {len(tools)}'; print(f'OK: {len(tools)} tools registered: {names}')"</automated>
++    <manual>Review that _handle_capture has MuninnDB dual-write block after Postgres operations, _handle_search has parallel retrieval with source labels, _handle_activate formats score components</manual>
++  </verify>
++  <done>Brain MCP server has 13 tools. `capture` dual-writes to MuninnDB (best-effort). `search` returns labeled results from both pgvector and MuninnDB. `activate` tool provides dedicated cognitive retrieval with score component breakdown. MuninnDB failures never affect Postgres operations.</done>
++</task>
++
++<task type="checkpoint:human-verify" gate="blocking">
++  <name>Task 3: Configure MuninnDB, seed memories, and verify end-to-end integration</name>
++  <files>promaia/brain/muninn.py, promaia/brain/mcp_server.py</files>
++  <action>
++Before presenting verification to the user, the executor must complete these automated setup steps:
++
++**Step 1: Configure MuninnDB embedder**
++1. Read GOOGLE_API_KEY from .env file
++2. Set MUNINN_GOOGLE_KEY environment variable to the same value
++3. Stop and restart MuninnDB so it picks up the new env var: run `muninn stop` then `set MUNINN_GOOGLE_KEY={key} && muninn start` in a shell where the env var is set
++4. Verify vault exists: run `muninn vault list` — should show zbrain-vault. If missing, run `muninn vault create zbrain-vault --public`
++
++**Step 2: Seed existing memories into MuninnDB**
++Run a Python script that reads all brain.memories from Postgres and batch-writes them to MuninnDB:
++```python
++import asyncio
++from promaia.storage.postgres_db import get_postgres_db
++from promaia.brain.muninn import MuninnClient
++
++async def seed():
++    db = get_postgres_db()
++    rows = db.fetch_all("SELECT id, content, domain, tags FROM brain.memories ORDER BY id")
++    print(f"Found {len(rows)} memories to seed")
++
++    client = MuninnClient()
++    healthy = await client.health()
++    print(f"MuninnDB health: {healthy}")
++    if not healthy:
++        print("ERROR: MuninnDB not reachable. Is it running?")
++        return
++
++    engrams = []
++    for row in rows:
++        content = row["content"]
++        tags = []
++        if row.get("domain"):
++            tags.append(row["domain"])
++        if row.get("tags"):
++            tags.extend(row["tags"])
++        engrams.append({
++            "concept": content[:100],
++            "content": content,
++            "tags": tags,
++            "confidence": 0.9,
++        })
++
++    results = await client.write_batch(engrams)
++    ok_count = sum(1 for r in results if r.get("status") == "ok")
++    print(f"Seeded {ok_count}/{len(engrams)} engrams")
++    await client.close()
++
++asyncio.run(seed())
++```
++
++**Step 3: Re-embed and verify**
++1. Run `muninn vault reembed zbrain-vault` to generate embeddings for all seeded engrams
++2. Run `curl http://localhost:8475/api/stats?vault=zbrain-vault` and verify `index_size > 0`
++
++Then present the human-verify checkpoint to the user.
++  </action>
++  <verify>
++    <automated>cd "C:/Users/Zachary Turner/dev/promaia" && python -c "import asyncio; from promaia.brain.muninn import MuninnClient; c = MuninnClient(); print('Health:', asyncio.run(c.health())); stats = asyncio.run(c.stats()); print(f'Engrams: {stats.get(\"total_engrams\", \"?\")}, Index: {stats.get(\"index_size\", \"?\")}')"</automated>
++    <manual>
++1. Open http://localhost:8476 in browser — MuninnDB Web UI should show engrams in zbrain-vault
++2. Test capture dual-write: call `capture` with test content, verify it appears in both Postgres (SELECT) and MuninnDB (curl /api/engrams)
++3. Test search parallel retrieval: call `search` — output should have "## pgvector Results" AND "## MuninnDB ACTIVATE Results" sections with source labels
++4. Test activate tool: call `activate` with context — should return results with score components where semantic_similarity > 0
++5. Graceful degradation: stop MuninnDB, verify capture still returns "Captured.", search returns pgvector-only results, activate returns "MuninnDB is not available". Restart MuninnDB after.
++    </manual>
++  </verify>
++  <done>MuninnDB zbrain-vault has 18+ engrams with embeddings (index_size > 0). Capture dual-writes. Search shows both sources. Activate returns cognitive results. Graceful degradation confirmed.</done>
++</task>
++
++</tasks>
++
++<verification>
++- promaia/brain/muninn.py exists with MuninnClient class and get_muninn() singleton
++- Brain MCP server registers 13 tools (12 existing + activate)
++- capture handler has MuninnDB dual-write block (best-effort, after Postgres)
++- search handler returns labeled results from both pgvector and MuninnDB
++- activate handler formats ACTIVATE results with score components
++- MuninnDB has 18+ engrams seeded from brain.memories
++- MuninnDB embedder is configured (semantic_similarity > 0 in ACTIVATE responses)
++- Graceful degradation: MuninnDB down does not affect capture or search
++</verification>
++
++<success_criteria>
++1. `capture` tool writes to both Postgres and MuninnDB — MuninnDB failure is non-fatal
++2. `search` tool returns results from both pgvector and MuninnDB ACTIVATE, clearly labeled by source with scores
++3. `activate` tool (tool #13) provides dedicated MuninnDB cognitive retrieval with score component breakdown
++4. All 18 existing brain.memories are present as engrams in MuninnDB zbrain-vault
++5. MuninnDB semantic_similarity > 0 in ACTIVATE responses (embedder configured)
++6. Web UI at localhost:8476 shows engrams
++7. Stopping MuninnDB does not break capture or search (graceful degradation)
++</success_criteria>
++
++<output>
++After completion, create `.planning/phases/04-full-platform-activation/4.1-01-SUMMARY.md`
++</output>
+-- 
+2.51.0.windows.1
+

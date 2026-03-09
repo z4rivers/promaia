@@ -1,0 +1,238 @@
+From 5917c3f6d70d987ee6f2f1919f0c74090faa7f98 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 05:55:11 -0800
+Subject: [PATCH 44/68] docs(03.1-01): complete onboarding state infrastructure
+ plan
+
+- 03.1-01-SUMMARY.md with execution metrics and decisions
+- STATE.md updated: Phase 03.1 in progress, plan 1 of 3 complete
+- ROADMAP.md updated with plan progress
+- REQUIREMENTS.md: ONBOARD-01, ONBOARD-02, ONBOARD-03 marked complete
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/REQUIREMENTS.md                     |   6 +-
+ .planning/ROADMAP.md                          |   2 +-
+ .planning/STATE.md                            |  36 ++++--
+ .../03.1-onboarding-module/03.1-01-SUMMARY.md | 113 ++++++++++++++++++
+ 4 files changed, 146 insertions(+), 11 deletions(-)
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md
+
+diff --git a/.planning/REQUIREMENTS.md b/.planning/REQUIREMENTS.md
+index a791081..8d8e8b7 100644
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@ -24,9 +24,9 @@
+ 
+ ### Onboarding (INSERTED — Phase 03.1)
+ 
+-- [ ] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
+-- [ ] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
+-- [ ] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
++- [x] **ONBOARD-01**: Onboarding session state persists across sessions (start, pause, resume, complete)
++- [x] **ONBOARD-02**: Profile coverage report shows per-category gap analysis against expected schema
++- [x] **ONBOARD-03**: Onboard MCP tool manages onboarding flow (start/status/channel_update/complete)
+ - [ ] **ONBOARD-04**: PC scan channel extracts profile data from local git repos, file structure, installed apps
+ - [ ] **ONBOARD-05**: Gmail read channel extracts contacts, communication patterns, topics from inbox
+ - [ ] **ONBOARD-06**: Channel tools (pc_scan, gmail_scan) registered as MCP tools in brain server
+diff --git a/.planning/ROADMAP.md b/.planning/ROADMAP.md
+index 89f54f2..edeefe3 100644
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@ -75,7 +75,7 @@ Plans:
+   5. Interview question bank covers all profile categories with OARS-informed questions
+   6. Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly
+   7. Progressive profiling continues after initial interview via observation
+-**Plans:** 3 plans
++**Plans:** 1/3 plans executed
+ 
+ Plans:
+ - [ ] 03.1-01-PLAN.md -- Onboarding state schema + engine + onboard MCP tool
+diff --git a/.planning/STATE.md b/.planning/STATE.md
+index 524d677..8f40f5d 100644
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@ -2,16 +2,17 @@
+ 
+ ## Current Position
+ 
+-Phase: Phase 3 — Gemini Routing (not started)
+-Plan: N/A — Phase 2 fully complete, awaiting Phase 3 plan
+-Status: Phase 2 COMPLETE — all 3 plans delivered and verified (2026-03-05)
+-Last activity: 2026-03-05 — 02-03 SUMMARY.md finalized, user approved MCP verification checkpoint
++Phase: Phase 03.1 — Onboarding Module
++Plan: 1 of 3 complete
++Status: 03.1-01 COMPLETE — onboarding state infrastructure deployed (2026-03-05)
++Last activity: 2026-03-05 — 03.1-01 SUMMARY.md finalized, schema deployed to Supabase
+ 
+ ## Next Session: What to Do
+ 
+-1. Run `/gsd:plan-phase` for Phase 3: Gemini Routing (ai/router.py, model routing by task type, brain ingestion from Gemini research)
+-2. Phase 4 is also unblocked: heartbeat autonomy (Windows Task Scheduler, AgentExecutor, active-user check, guardrails)
+-3. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
++1. Run `/gsd:execute-phase` for Phase 03.1 Plan 02: Interview conversational flow
++2. Then Plan 03: Channel orchestration
++3. After 03.1 complete: resume Phase 3 (Gemini Routing) or Phase 4 (heartbeat autonomy)
++4. Export patches before daughter re-initializes repo: `git format-patch feature/agent-scheduler..zbrain -o zbrain-patches/`
+ 
+ ## Phase 1 Completion Summary
+ 
+@@ -56,6 +57,12 @@ Last activity: 2026-03-05 — 02-03 SUMMARY.md finalized, user approved MCP veri
+ See: .planning/PROJECT.md
+ **Core value:** Claude has persistent, cross-session memory across all of Zack's projects — eliminating the amnesia problem.
+ 
++## Accumulated Context
++
++### Roadmap Evolution
++
++- Phase 03.1 inserted after Phase 3: Onboarding Module (URGENT)
++
+ ## Blockers
+ 
+ None.
+@@ -86,8 +93,23 @@ None.
+ - **seed.py fetch-after-upsert:** INSERT ON CONFLICT DO NOTHING, then SELECT for domain_id — cleaner than ON CONFLICT DO UPDATE RETURNING
+ - **Context existence check:** brain.contexts uses explicit SELECT before INSERT (no unique constraint on domain_id to leverage ON CONFLICT)
+ 
++## Phase 03.1 Progress (2026-03-05)
++
++| Plan | What it did |
++|------|------------|
++| 03.1-01 | Onboarding state engine: 2 new tables (onboarding_sessions, onboarding_progress), onboarding.py (5 functions), onboard MCP tool (10th tool), deployed to Supabase |
++
++## Key Execution Decisions (Phase 03.1, 2026-03-05)
++
++- **EXPECTED_FIELDS constant:** 10 categories, 48 fields total for profile gap analysis
++- **Session reuse:** start_onboarding returns existing active session instead of creating duplicates
++- **Paused auto-reactivate:** Paused sessions set back to 'active' on start
++- **Single MCP tool pattern:** One 'onboard' tool with action parameter, not 4 separate tools
++- **No db_init.py changes:** apply_brain_schema() reads full schema.sql dynamically, new DDL picked up automatically
++
+ ## Git State
+ 
+ - Branch: `zbrain` (off `feature/agent-scheduler`)
+ - Phase 1 commits: cbad997 through e5fd713 (10 commits)
+ - Phase 2 commits: b0031df (02-01 schema), a2d1c65 (02-01 engine), 15eb7c5 (02-02 extraction), d3517b1 (02-02 mcp_server), 0fae709 (02-03 CLAUDE.md+.mcp.json+seed)
++- Phase 03.1 commits: e329a33 (03.1-01 schema+engine), 456adfe (03.1-01 mcp_server)
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md b/.planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md
+new file mode 100644
+index 0000000..3e59904
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md
+@@ -0,0 +1,113 @@
++---
++phase: 03.1-onboarding-module
++plan: 01
++subsystem: database, onboarding
++tags: [postgres, mcp, onboarding, profile-coverage, state-engine]
++
++# Dependency graph
++requires:
++  - phase: 02-brain-schema
++    provides: "brain.profile table, brain MCP server (9 tools), engine.py patterns"
++provides:
++  - "brain.onboarding_sessions table for session lifecycle tracking"
++  - "brain.onboarding_progress table for per-channel progress"
++  - "onboarding.py state engine (5 functions + EXPECTED_FIELDS)"
++  - "onboard MCP tool (start/status/channel_update/complete)"
++affects: [03.1-02, 03.1-03, onboarding-interview, onboarding-channels]
++
++# Tech tracking
++tech-stack:
++  added: []
++  patterns: [onboarding-state-engine, channel-progress-tracking, profile-gap-analysis]
++
++key-files:
++  created:
++    - promaia/brain/onboarding.py
++  modified:
++    - promaia/brain/schema.sql
++    - promaia/brain/mcp_server.py
++
++key-decisions:
++  - "EXPECTED_FIELDS constant in onboarding.py defines 10 categories with 48 total expected profile fields for gap analysis"
++  - "Existing active session is reused (not duplicated) when start_onboarding is called again"
++  - "Paused sessions are automatically reactivated on start"
++  - "No db_init.py changes needed -- apply_brain_schema() already reads full schema.sql dynamically"
++
++patterns-established:
++  - "Onboarding engine pattern: same optional db parameter as engine.py for testability"
++  - "MCP tool dispatch: single 'onboard' tool with action parameter, not separate tools per action"
++  - "Profile coverage gap analysis: EXPECTED_FIELDS dict compared against brain.profile rows"
++
++requirements-completed: [ONBOARD-01, ONBOARD-02, ONBOARD-03]
++
++# Metrics
++duration: 4min
++completed: 2026-03-05
++---
++
++# Phase 03.1 Plan 01: Onboarding State Infrastructure Summary
++
++**Onboarding state engine with session/channel tracking tables, profile gap analysis, and MCP tool for managing multi-session onboarding flow**
++
++## Performance
++
++- **Duration:** 4 min
++- **Started:** 2026-03-05T13:48:27Z
++- **Completed:** 2026-03-05T13:53:07Z
++- **Tasks:** 3
++- **Files modified:** 3
++
++## Accomplishments
++- Two new Supabase tables: brain.onboarding_sessions (lifecycle) and brain.onboarding_progress (per-channel)
++- onboarding.py engine with 5 functions + EXPECTED_FIELDS constant covering 10 profile categories (48 fields)
++- `onboard` MCP tool (10th tool in brain server) dispatching start/status/channel_update/complete
++- End-to-end verified: session creation, status retrieval with profile coverage gaps, all 10 brain tables in Supabase
++
++## Task Commits
++
++Each task was committed atomically:
++
++1. **Task 1: Onboarding schema tables + state engine module** - `e329a33` (feat)
++2. **Task 2: Add onboard MCP tool to brain server** - `456adfe` (feat)
++3. **Task 3: Deploy onboarding schema to Supabase** - no commit (deploy-only, schema already in Task 1)
++
++## Files Created/Modified
++- `promaia/brain/schema.sql` - Added brain.onboarding_sessions and brain.onboarding_progress table definitions with indexes
++- `promaia/brain/onboarding.py` - New state engine: start_onboarding, get_onboarding_status, mark_channel_progress, get_profile_coverage, complete_onboarding
++- `promaia/brain/mcp_server.py` - Added 10th MCP tool "onboard" with _handle_onboard handler, updated docstrings from 9 to 10 tools
++
++## Decisions Made
++- EXPECTED_FIELDS defines 10 categories with 48 expected profile fields -- derived from onboarding research schema
++- Existing active/paused session reused (not duplicated) when start_onboarding called again; paused sessions auto-reactivate
++- Single MCP tool "onboard" with action parameter rather than separate tools (cleaner API, same pattern as "actions" tool)
++- No db_init.py modifications needed -- apply_brain_schema() reads the full schema.sql dynamically, so adding DDL to schema.sql is sufficient
++
++## Deviations from Plan
++
++None - plan executed exactly as written.
++
++## Issues Encountered
++
++None.
++
++## User Setup Required
++
++None - no external service configuration required.
++
++## Next Phase Readiness
++- Onboarding state infrastructure complete and deployed
++- Ready for 03.1-02: Interview conversational flow and channel orchestration
++- Profile coverage API shows clear gaps (most categories at 0%) ready to be filled by onboarding channels
++
++## Self-Check: PASSED
++
++- FOUND: promaia/brain/onboarding.py
++- FOUND: promaia/brain/schema.sql
++- FOUND: promaia/brain/mcp_server.py
++- FOUND: .planning/phases/03.1-onboarding-module/03.1-01-SUMMARY.md
++- FOUND: e329a33 (Task 1 commit)
++- FOUND: 456adfe (Task 2 commit)
++
++---
++*Phase: 03.1-onboarding-module*
++*Completed: 2026-03-05*
+-- 
+2.51.0.windows.1
+

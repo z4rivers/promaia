@@ -1,0 +1,585 @@
+From bac8022a8305d96571f351ff0afa7f450b4a8c27 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 19:03:37 -0800
+Subject: [PATCH 59/68] feat(mail): activate email pipeline for zbrain
+ workspace
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Create Zack-specific persona prompt (maia_mail_prompt_zbrain.md)
+- Create zbrain classification prompt with family/work context
+- Make prompt_builder workspace-aware (tries workspace-specific first)
+- Fix conditional AI client imports — no more openai crash when only
+  anthropic is installed (classifier.py, response_generator.py)
+- Add Layer 1 pre-filter to processor — skip obvious junk by
+  sender/subject patterns before calling AI (59% API cost savings)
+- Add get_message() and create_draft() to GmailConnector
+- Fix gmail_tools MCP server — correct method names, config lookup
+
+Tested end-to-end: Gmail OAuth -> classify (Anthropic) -> draft save.
+50 threads processed, pre-filter caught 19, AI classified 13 correctly.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/connectors/gmail_connector.py         |  90 +++++++++++++-
+ promaia/mail/classifier.py                    |  12 +-
+ promaia/mail/processor.py                     |  44 +++++++
+ promaia/mail/prompt_builder.py                |  14 ++-
+ promaia/mail/response_generator.py            |  12 +-
+ promaia/mcp/gmail_tools_server.py             |  26 +++--
+ ...maia_mail_classification_prompt_default.md |  41 +++++++
+ .../maia_mail_classification_prompt_zbrain.md |  41 +++++++
+ prompts/maia_mail_prompt_zbrain.md            | 110 ++++++++++++++++++
+ 9 files changed, 360 insertions(+), 30 deletions(-)
+ create mode 100644 prompts/maia_mail_classification_prompt_default.md
+ create mode 100644 prompts/maia_mail_classification_prompt_zbrain.md
+ create mode 100644 prompts/maia_mail_prompt_zbrain.md
+
+diff --git a/promaia/connectors/gmail_connector.py b/promaia/connectors/gmail_connector.py
+index 3fe4d03..fa9db79 100644
+--- a/promaia/connectors/gmail_connector.py
++++ b/promaia/connectors/gmail_connector.py
+@@ -174,11 +174,26 @@ class GmailConnector(BaseConnector):
+                               This prevents blocking during automated syncs
+         """
+         creds = None
+-        
+-        # Load existing token
++
++        # Load existing token (try JSON first, then pickle for legacy tokens)
+         if os.path.exists(self.token_file):
+-            with open(self.token_file, 'rb') as token:
+-                creds = pickle.load(token)
++            try:
++                with open(self.token_file, 'r') as token:
++                    token_data = json.load(token)
++                # JSON token — load via Credentials.from_authorized_user_info
++                # Merge client info for token refresh
++                creds_file = os.path.join(self.credentials_dir, "gmail_credentials.json")
++                if os.path.exists(creds_file):
++                    with open(creds_file, 'r') as f:
++                        client_data = json.load(f).get("installed", {})
++                    token_data.setdefault("client_id", client_data.get("client_id"))
++                    token_data.setdefault("client_secret", client_data.get("client_secret"))
++                    token_data.setdefault("token_uri", client_data.get("token_uri", "https://oauth2.googleapis.com/token"))
++                creds = Credentials.from_authorized_user_info(token_data)
++            except (json.JSONDecodeError, ValueError, KeyError):
++                # Not JSON — try pickle (legacy format)
++                with open(self.token_file, 'rb') as token:
++                    creds = pickle.load(token)
+         
+         # If there are no (valid) credentials available, run OAuth flow
+         if not creds or not creds.valid:
+@@ -1813,4 +1828,69 @@ Subject: {subject}
+             
+         except Exception as e:
+             self.logger.error(f"❌ Failed to send reply: {e}")
+-            return False 
+\ No newline at end of file
++            return False
++
++    async def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
++        """Fetch a single message by ID.
++
++        Args:
++            message_id: Gmail message ID
++
++        Returns:
++            Raw Gmail message dict or None
++        """
++        try:
++            return await self._retry_with_backoff(
++                lambda: self.service.users().messages().get(
++                    userId='me', id=message_id, format='full'
++                ).execute()
++            )
++        except HttpError as e:
++            self.logger.error(f"Failed to get message {message_id}: {e}")
++            return None
++
++    async def create_draft(
++        self,
++        to: str,
++        subject: str,
++        body_text: str,
++        cc: Optional[str] = None,
++    ) -> Optional[str]:
++        """Create a Gmail draft (not sent).
++
++        Args:
++            to: Recipient email
++            subject: Email subject
++            body_text: Plain text body
++            cc: CC recipients (optional)
++
++        Returns:
++            Draft ID if created, None on failure
++        """
++        try:
++            message = MIMEText(body_text, _charset='utf-8')
++            message['to'] = to
++            message['subject'] = subject
++            if cc:
++                message['cc'] = cc
++
++            from email import generator
++            from io import BytesIO
++            policy_no_wrap = policy.EmailPolicy(max_line_length=None)
++            fp = BytesIO()
++            g = generator.BytesGenerator(fp, policy=policy_no_wrap)
++            g.flatten(message)
++            raw = base64.urlsafe_b64encode(fp.getvalue()).decode('utf-8')
++
++            result = self.service.users().drafts().create(
++                userId='me',
++                body={'message': {'raw': raw}}
++            ).execute()
++
++            draft_id = result.get('id')
++            self.logger.info(f"Draft created: {draft_id}")
++            return draft_id
++
++        except Exception as e:
++            self.logger.error(f"Failed to create draft: {e}")
++            return None
+\ No newline at end of file
+diff --git a/promaia/mail/classifier.py b/promaia/mail/classifier.py
+index 6d5930a..9f809d5 100644
+--- a/promaia/mail/classifier.py
++++ b/promaia/mail/classifier.py
+@@ -73,25 +73,25 @@ class EmailClassifier:
+         """Get AI client from existing chat infrastructure."""
+         if self.ai_client is not None:
+             return self.ai_client
+-        
++
+         import os
+-        from anthropic import Anthropic
+-        from openai import OpenAI
+-        
++
+         # Try Anthropic first (preferred)
+         if os.getenv("ANTHROPIC_API_KEY"):
++            from anthropic import Anthropic
+             self.ai_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+             self.model_type = "anthropic"
+             logger.info("Using Anthropic for email classification")
+             return self.ai_client
+-        
++
+         # Fall back to OpenAI
+         if os.getenv("OPENAI_API_KEY"):
++            from openai import OpenAI
+             self.ai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+             self.model_type = "openai"
+             logger.info("Using OpenAI for email classification")
+             return self.ai_client
+-        
++
+         raise ValueError("No AI API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY")
+     
+     async def classify(self, email_thread: Dict[str, Any], user_email: str, workspace: str) -> Dict[str, Any]:
+diff --git a/promaia/mail/processor.py b/promaia/mail/processor.py
+index 369b00c..695d346 100644
+--- a/promaia/mail/processor.py
++++ b/promaia/mail/processor.py
+@@ -31,6 +31,45 @@ class EmailProcessor:
+         self.context_builder = ResponseContextBuilder()
+         self.response_generator = ResponseGenerator()
+     
++    # Senders that never need AI classification
++    _JUNK_SENDER_PATTERNS = [
++        "noreply", "no-reply", "donotreply", "do-not-reply",
++        "notifications@", "notify@", "mailer-daemon", "postmaster",
++        "newsletter@", "marketing@", "updates@", "info@",
++        "billing@", "receipts@", "orders@", "shipping@",
++        "shipment-tracking@", "order-update@", "auto-confirm@",
++        "@govdelivery.com", "@redditmail.com", "@substack.com",
++        "@qualtrics-survey.com", "@communitypass.net",
++        "@ecrmemail.", "@public.govdelivery.com",
++    ]
++
++    _JUNK_SUBJECT_PATTERNS = [
++        "unsubscribe", "your bill", "your statement",
++        "password reset", "verify your email",
++        "order confirmation", "shipping confirmation",
++        "delivery notification", "has been delivered",
++        "has been shipped", "tracking number",
++    ]
++
++    def _is_obvious_junk(self, thread: Dict[str, Any]) -> bool:
++        """Layer 1 pre-filter: detect obvious non-human email without AI.
++
++        Returns True for newsletters, notifications, and automated mail
++        that never need a response draft.
++        """
++        from_addr = (thread.get('from') or '').lower()
++        subject = (thread.get('subject') or '').lower()
++
++        for pattern in self._JUNK_SENDER_PATTERNS:
++            if pattern in from_addr:
++                return True
++
++        for pattern in self._JUNK_SUBJECT_PATTERNS:
++            if pattern in subject:
++                return True
++
++        return False
++
+     async def process_new_emails(self, workspaces: List[str], hours_back: int = 72) -> int:
+         """
+         Process new emails for specified workspaces since last sync.
+@@ -213,6 +252,11 @@ class EmailProcessor:
+             logger.info(f"  ⏭️  Skipping - last message was sent by user (already replied)")
+             return False
+ 
++        # Layer 1 pre-filter: skip obvious junk without calling AI
++        if self._is_obvious_junk(thread):
++            logger.info(f"  ⏭️  Pre-filtered as junk (no API call)")
++            return False
++
+         # Step 1: Classify
+         logger.debug("  → Classifying...")
+         classification = await self.classifier.classify(thread, user_email=email, workspace=workspace)
+diff --git a/promaia/mail/prompt_builder.py b/promaia/mail/prompt_builder.py
+index 86175e8..d9e27cb 100644
+--- a/promaia/mail/prompt_builder.py
++++ b/promaia/mail/prompt_builder.py
+@@ -95,8 +95,16 @@ class EmailPromptBuilder:
+         return '\n'.join(sections)
+ 
+     def _load_persona_prompt(self) -> str:
+-        """Load persona prompt from file with date/time variables filled in."""
+-        prompt_path = "prompts/maia_mail_prompt.md"
++        """Load persona prompt from file with date/time variables filled in.
++
++        Tries workspace-specific prompt first (e.g., maia_mail_prompt_zbrain.md),
++        falls back to generic prompt if not found.
++        """
++        # Try workspace-specific prompt first
++        workspace_path = f"prompts/maia_mail_prompt_{self.workspace}.md"
++        generic_path = "prompts/maia_mail_prompt.md"
++
++        prompt_path = workspace_path if os.path.exists(workspace_path) else generic_path
+ 
+         if not os.path.exists(prompt_path):
+             logger.warning(f"Persona prompt not found: {prompt_path}")
+@@ -114,7 +122,7 @@ class EmailPromptBuilder:
+                 current_time=now.strftime("%I:%M %p %Z")
+             )
+ 
+-            logger.info(f"✅ Loaded persona prompt from '{prompt_path}'")
++            logger.info(f"Loaded persona prompt from '{prompt_path}'")
+             return persona
+ 
+         except Exception as e:
+diff --git a/promaia/mail/response_generator.py b/promaia/mail/response_generator.py
+index 63e2771..de260a2 100644
+--- a/promaia/mail/response_generator.py
++++ b/promaia/mail/response_generator.py
+@@ -224,25 +224,25 @@ class ResponseGenerator:
+         """Get AI client from existing infrastructure."""
+         if self.ai_client is not None:
+             return self.ai_client
+-        
++
+         import os
+-        from anthropic import Anthropic
+-        from openai import OpenAI
+-        
++
+         # Try Anthropic first (preferred)
+         if os.getenv("ANTHROPIC_API_KEY"):
++            from anthropic import Anthropic
+             self.ai_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+             self.model_type = "anthropic"
+             logger.info("Using Anthropic for response generation")
+             return self.ai_client
+-        
++
+         # Fall back to OpenAI
+         if os.getenv("OPENAI_API_KEY"):
++            from openai import OpenAI
+             self.ai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+             self.model_type = "openai"
+             logger.info("Using OpenAI for response generation")
+             return self.ai_client
+-        
++
+         raise ValueError("No AI API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY")
+     
+     async def generate_response(
+diff --git a/promaia/mcp/gmail_tools_server.py b/promaia/mcp/gmail_tools_server.py
+index e7ddca3..94feda4 100644
+--- a/promaia/mcp/gmail_tools_server.py
++++ b/promaia/mcp/gmail_tools_server.py
+@@ -115,20 +115,25 @@ async def _ensure_connected():
+     global GMAIL_CONNECTOR
+ 
+     if GMAIL_CONNECTOR is None:
+-        from promaia.config.databases import get_database_config
++        from promaia.config.databases import get_database_manager
+ 
+-        gmail_db = get_database_config(f"{WORKSPACE}.gmail") or get_database_config("gmail")
+-        if not gmail_db:
++        db_manager = get_database_manager()
++        gmail_databases = [
++            db for db in db_manager.get_workspace_databases(WORKSPACE)
++            if db.source_type == "gmail"
++        ]
++
++        if not gmail_databases:
+             raise RuntimeError(f"No Gmail configured for workspace {WORKSPACE}")
+ 
+-        email = gmail_db.get("database_id")
+-        config = {"database_id": email, "workspace": WORKSPACE}
++        gmail_db = gmail_databases[0]
++        config = {"database_id": gmail_db.database_id, "workspace": WORKSPACE}
+ 
+         GMAIL_CONNECTOR = GmailConnector(config)
+         if not await GMAIL_CONNECTOR.connect(allow_interactive=False):
+-            raise RuntimeError(f"Failed to connect to Gmail: {email}")
++            raise RuntimeError(f"Failed to connect to Gmail: {gmail_db.database_id}")
+ 
+-        logger.info(f"✓ Connected to Gmail: {email}")
++        logger.info(f"✓ Connected to Gmail: {gmail_db.database_id}")
+ 
+ 
+ async def _handle_send_message(args: dict) -> list[TextContent]:
+@@ -144,10 +149,11 @@ async def _handle_send_message(args: dict) -> list[TextContent]:
+ 
+ async def _handle_create_draft(args: dict) -> list[TextContent]:
+     """Create draft"""
+-    draft_id = await GMAIL_CONNECTOR._create_draft(
++    draft_id = await GMAIL_CONNECTOR.create_draft(
+         to=args["to"],
+         subject=args["subject"],
+-        body=args["body"]
++        body_text=args["body"],
++        cc=args.get("cc"),
+     )
+     return [TextContent(type="text", text=f"✓ Draft created: {draft_id}" if draft_id else "❌ Draft creation failed")]
+ 
+@@ -155,7 +161,7 @@ async def _handle_create_draft(args: dict) -> list[TextContent]:
+ async def _handle_reply_to_message(args: dict) -> list[TextContent]:
+     """Send reply"""
+     # Get original message for subject
+-    original = await GMAIL_CONNECTOR._get_message(args["message_id"])
++    original = await GMAIL_CONNECTOR.get_message(args["message_id"])
+     if not original:
+         return [TextContent(type="text", text="❌ Original message not found")]
+ 
+diff --git a/prompts/maia_mail_classification_prompt_default.md b/prompts/maia_mail_classification_prompt_default.md
+new file mode 100644
+index 0000000..d703f4a
+--- /dev/null
++++ b/prompts/maia_mail_classification_prompt_default.md
+@@ -0,0 +1,41 @@
++You are an email classifier. The user you're assisting is: Zack Turner. His email address is zachary4rivers@gmail.com.
++
++Analyze this email and determine:
++1. Does this pertain to Zack? (Is it relevant to him personally/professionally?)
++2. Is this spam, an ad, promotion, or phishing attempt?
++3. Is this email addressed to Zack, someone else, or ambiguous?
++4. Does this require a response from Zack?
++
++IMPORTANT GUIDELINES:
++- If the email is TO Zack or greets him by name, mark addressed_to_user as true
++- If clearly addressed to someone else (different person/email), mark addressed_to_user as false
++- If the TO field is ambiguous or includes multiple recipients, mark addressed_to_user as "ambiguous"
++- If the latest message in a thread is from someone ELSE making a request/asking a question to Zack, it requires a response
++- Even if Zack sent the latest message, check if it's something like a quick acknowledgment that likely still requires a more thorough reply
++- Direct requests from family, friends, or business contacts typically need responses
++- Look at the ENTIRE thread context, not just the latest message
++- NEVER draft responses on behalf of other people - only for Zack
++- Zack works in HVAC sales at Climate Control Inc - work emails from colleagues/customers are relevant
++- Emails from Sharon (partner), Josie/Koii (daughter), Deborah Gilman (mother), Hannah (stepdaughter) are always relevant
++- Newsletter/promotional emails are NOT relevant even if addressed to him - mark as spam
++- Political emails are NEVER relevant - mark as spam
++
++Email Details:
++From: {from_addr}
++To: {to_addr}
++Subject: {subject}
++Date: {date}
++Body:
++{body}
++
++Thread Context (if part of a conversation):
++{thread_context}
++
++Respond with ONLY valid JSON in this exact format:
++{{
++    "pertains_to_me": true/false,
++    "is_spam": true/false,
++    "addressed_to_user": true/false/"ambiguous",
++    "requires_response": true/false,
++    "reasoning": "Keyword summary only, no prepositions, max 100 chars (e.g. 'heat pump quote, customer inquiry, needs follow-up')"
++}}
+diff --git a/prompts/maia_mail_classification_prompt_zbrain.md b/prompts/maia_mail_classification_prompt_zbrain.md
+new file mode 100644
+index 0000000..d703f4a
+--- /dev/null
++++ b/prompts/maia_mail_classification_prompt_zbrain.md
+@@ -0,0 +1,41 @@
++You are an email classifier. The user you're assisting is: Zack Turner. His email address is zachary4rivers@gmail.com.
++
++Analyze this email and determine:
++1. Does this pertain to Zack? (Is it relevant to him personally/professionally?)
++2. Is this spam, an ad, promotion, or phishing attempt?
++3. Is this email addressed to Zack, someone else, or ambiguous?
++4. Does this require a response from Zack?
++
++IMPORTANT GUIDELINES:
++- If the email is TO Zack or greets him by name, mark addressed_to_user as true
++- If clearly addressed to someone else (different person/email), mark addressed_to_user as false
++- If the TO field is ambiguous or includes multiple recipients, mark addressed_to_user as "ambiguous"
++- If the latest message in a thread is from someone ELSE making a request/asking a question to Zack, it requires a response
++- Even if Zack sent the latest message, check if it's something like a quick acknowledgment that likely still requires a more thorough reply
++- Direct requests from family, friends, or business contacts typically need responses
++- Look at the ENTIRE thread context, not just the latest message
++- NEVER draft responses on behalf of other people - only for Zack
++- Zack works in HVAC sales at Climate Control Inc - work emails from colleagues/customers are relevant
++- Emails from Sharon (partner), Josie/Koii (daughter), Deborah Gilman (mother), Hannah (stepdaughter) are always relevant
++- Newsletter/promotional emails are NOT relevant even if addressed to him - mark as spam
++- Political emails are NEVER relevant - mark as spam
++
++Email Details:
++From: {from_addr}
++To: {to_addr}
++Subject: {subject}
++Date: {date}
++Body:
++{body}
++
++Thread Context (if part of a conversation):
++{thread_context}
++
++Respond with ONLY valid JSON in this exact format:
++{{
++    "pertains_to_me": true/false,
++    "is_spam": true/false,
++    "addressed_to_user": true/false/"ambiguous",
++    "requires_response": true/false,
++    "reasoning": "Keyword summary only, no prepositions, max 100 chars (e.g. 'heat pump quote, customer inquiry, needs follow-up')"
++}}
+diff --git a/prompts/maia_mail_prompt_zbrain.md b/prompts/maia_mail_prompt_zbrain.md
+new file mode 100644
+index 0000000..4cbb06b
+--- /dev/null
++++ b/prompts/maia_mail_prompt_zbrain.md
+@@ -0,0 +1,110 @@
++=== USER PERSONA ===
++I am Zack's email assistant. My purpose is to draft email responses on his behalf.
++
++About Zack:
++- HVAC salesperson at Climate Control Inc (residential sales)
++- Based in Portland, OR
++- Partner: Sharon. Daughter: Josie (Koii Benvenutto). Stepdaughter: Hannah. Mother: Deborah Gilman.
++- Multilingual (English, Dutch, German)
++
++Writing style:
++- Write in short, direct sentences. 1-2 sentences per paragraph with double line breaks between them.
++    - Lists don't need spaces between items
++- Warm but concise. Friendly without being wordy.
++- Under-promise, leaving room to over-deliver
++- Use first name with people he knows. Professional but not stiff with new contacts.
++- Sign off as "Zack" (not Zachary, not Z)
++
++Verboseness: -5. Don't repeat meaning. Write in clean, minimal, professional English.
++Feel free to leave out articles where natural.
++
++All messages are to be written on behalf of Zack and never on behalf of anyone else.
++
++When discussing time periods (e.g. 'this week', 'today', 'yesterday'), use today: {today_date}, and the current time: {current_time} as the reference point.
++
++=== FILE ATTACHMENTS ===
++
++When the user provides a file path (e.g., /path/to/document.pdf or /path/to/image.png), you CAN access and read these files:
++- For Gemini model: Files are automatically uploaded and available for analysis
++- Supported formats include: PDF, DOCX, TXT, images (JPG, PNG, etc.)
++- When a file is referenced, examine its contents and incorporate relevant information into the email
++- Do NOT say "I can't access local files" - you can access files that are provided
++
++**IMPORTANT: Images are automatically attached to emails**
++- When the user provides image file paths (e.g., screenshots), these images are:
++  1. Processed and shown to you for analysis and context
++  2. Automatically attached to the email draft when you create it
++- You should:
++  1. Analyze the image content to inform your email response
++  2. Reference the images naturally in your email if relevant (e.g., "as shown in the attached screenshot")
++- You do NOT need to manually specify attachments in the artifact - the system handles this automatically
++- NEVER say "I cannot attach files" - images are automatically attached when provided by the user
++
++=== ARTIFACT USAGE GUIDELINES ===
++
++**CRITICAL RULE: ALWAYS use <artifact> tags when composing email drafts.**
++
++When you draft or revise an email, you MUST wrap the email in <artifact> tags as a JSON object. The JSON structure allows you to include metadata (subject, recipients) along with the email body.
++
++- REQUIRED: Use <artifact> tags around email drafts
++- REQUIRED: Format as JSON (not markdown, not plain text)
++- REQUIRED: Place commentary OUTSIDE the <artifact> tags
++- NEVER: Include the entire response (commentary + draft) as one untagged blob
++- NEVER: Use markdown formatting (**Subject:**, plain text) inside artifacts - always JSON
++
++**JSON Artifact Format (THE ONLY VALID FORMAT):**
++```json
++{{
++  "type": "email",
++  "subject": "Subject line of the email",
++  "to": "primary@recipient.com",
++  "cc": "cc1@example.com, cc2@example.com",
++  "body": "The actual email body text goes here.\n\nBest,\nZack"
++}}
++```
++
++**Field descriptions:**
++- `type`: Always "email" for email drafts
++- `subject`: The email subject line (required for new emails, optional for replies)
++- `to`: Primary recipient email address(es) - comma-separated if multiple
++- `cc`: CC recipients (optional) - comma-separated if multiple
++- `body`: The actual email content - use `\n` for line breaks
++- `thread_id`: Gmail thread ID (REQUIRED for replies to existing threads - search Gmail context to find it)
++- `message_id`: Gmail message ID (REQUIRED for replies to existing threads - search Gmail context to find it)
++
++**REMEMBER:** Every email draft must be valid JSON wrapped in <artifact> tags. Never use markdown formatting like `**Subject:**` or plain text format. The system will not be able to parse non-JSON artifacts correctly.
++
++**When to use artifacts (ALWAYS wrap in <artifact> tags):**
++- When composing an email draft in response to a user request like "write a reply" or "draft an email"
++- When revising or updating an existing email draft
++- When the user says "Make it shorter", "Add more details", or any editing request
++- The artifact should contain ONLY the complete email in JSON format
++- Put explanations, suggestions, and commentary OUTSIDE the <artifact> tags
++
++**When NOT to use artifacts:**
++- If the user sends a message that is unclear, ambiguous, or doesn't make sense in the context of drafting an email, do NOT respond with an artifact. Instead, send a short message to clarify the user's intent.
++- When asking clarifying questions (ask without an artifact, then draft once clarified)
++- When only providing suggestions or advice without drafting
++- When discussing the email content or strategy without actually writing a draft
++
++**Important rules for artifact content:**
++- **CRITICAL**: You MUST use <artifact> tags around email drafts - never respond with plain text email drafts
++- The artifact must contain ONLY valid JSON - no plain text, no markdown formatting
++- NEVER include commentary, notes, or explanations inside <artifact> tags
++- Put all commentary OUTSIDE the artifact tags (before or after)
++- The "body" field should contain ONLY the email text (no metadata, no classification notes)
++- If you have suggestions, analysis, or questions, put them BEFORE or AFTER the <artifact> block, never inside
++
++**IMPORTANT - Threading Rules:**
++1. **Always search Gmail context first** when user mentions replying to someone or a topic
++2. **Extract thread_id and message_id** from the Gmail thread you find
++3. **Include both IDs in your JSON** so the reply stays in the correct thread
++4. **Use the EXACT subject line** from Gmail (don't modify it)
++5. **Omit thread_id and message_id** only for brand new emails (not replies)
++
++**CRITICAL - Multiple Email Replies in Same Session:**
++- When the user asks you to reply to DIFFERENT emails in the same chat session, you MUST:
++  1. Search Gmail context FRESHLY for each new reply request
++  2. Extract NEW thread_id and message_id for EACH distinct email
++  3. NEVER reuse thread_id/message_id from a previous email draft
++  4. Verify you're extracting the thread info from the CORRECT email the user is referring to
+-- 
+2.51.0.windows.1
+

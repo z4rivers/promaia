@@ -1,0 +1,152 @@
+From f77b8d8df6d62df61fe8db798cec6a03e0d6053b Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 08:07:13 -0800
+Subject: [PATCH 52/68] docs(phase-03.1): complete phase execution and
+ verification
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .../03.1-VERIFICATION.md                      | 131 ++++++++++++++++++
+ 1 file changed, 131 insertions(+)
+ create mode 100644 .planning/phases/03.1-onboarding-module/03.1-VERIFICATION.md
+
+diff --git a/.planning/phases/03.1-onboarding-module/03.1-VERIFICATION.md b/.planning/phases/03.1-onboarding-module/03.1-VERIFICATION.md
+new file mode 100644
+index 0000000..c732889
+--- /dev/null
++++ b/.planning/phases/03.1-onboarding-module/03.1-VERIFICATION.md
+@@ -0,0 +1,131 @@
++---
++phase: 03.1-onboarding-module
++verified: 2026-03-05T16:00:00Z
++status: gaps_found
++score: 6/7 must-haves verified
++gaps:
++  - truth: "Interview orchestration tracks answered questions via brain.events correctly"
++    status: partial
++    reason: "interview.py mark_question_answered() uses wrong column names (event_type, detail) instead of (type, payload) for brain.events table -- will cause SQL error at runtime"
++    artifacts:
++      - path: "promaia/brain/channels/interview.py"
++        issue: "Line 272: INSERT INTO brain.events (event_type, detail) -- columns should be (type, payload) per schema.sql"
++    missing:
++      - "Fix SQL in mark_question_answered() to use correct column names: type instead of event_type, payload instead of detail"
++---
++
++# Phase 03.1: Onboarding Module Verification Report
++
++**Phase Goal:** Guided "getting to know you" interview with reciprocal AI disclosure, progressive profiling, and multi-channel onboarding (interview, PC scan, Gmail, photos)
++**Verified:** 2026-03-05T16:00:00Z
++**Status:** gaps_found
++**Re-verification:** No -- initial verification
++
++## Goal Achievement
++
++### Observable Truths (from ROADMAP Success Criteria)
++
++| # | Truth | Status | Evidence |
++|---|-------|--------|----------|
++| 1 | Onboarding session can be started, paused, and resumed across sessions | VERIFIED | `onboarding.py` has `start_onboarding()` that reuses active/paused sessions, reactivates paused ones. Schema has `brain.onboarding_sessions` with status CHECK constraint. |
++| 2 | Profile coverage report shows per-category gap analysis | VERIFIED | `get_profile_coverage()` queries brain.profile and compares against `EXPECTED_FIELDS` (10 categories, 48 fields). MCP `onboard` status action renders coverage table with fill percentages and suggested next. |
++| 3 | PC scan channel automatically extracts profile data from local files and git history | VERIFIED | `pc_scan.py` (493 lines) scans git repos (chronotype, sprint patterns, active projects), file structure (tech stack, devices), and Windows apps (registry query). All results upserted to brain.profile with confidence=0.6. |
++| 4 | Gmail read channel extracts contacts and communication patterns (when OAuth configured) | VERIFIED | `gmail_read.py` (537 lines) fetches threads via GmailConnector, extracts contacts (top 10 by frequency), communication patterns (thread depth, formality), topics (keyword clustering), and activity timing. Graceful error when OAuth not configured. Privacy-safe: metadata only, never raw email body. |
++| 5 | Interview question bank covers all profile categories with OARS-informed questions | VERIFIED | `question_bank.py` has 18 questions across 9 categories. 8/9 categories have 2+ questions (relationships has 1 -- acceptable per plan: "at least 8 categories with 2+"). Questions use OARS techniques (open, narrative, scaling, values_elicitation). 9/18 questions include ai_disclosure for reciprocal sharing. Phase ordering: 4 warm_up, 7 current_state, 6 gap_identification, 1 commitment. |
++| 6 | Claude follows onboarding instructions: one question at a time, reciprocal disclosure, ADHD-friendly | VERIFIED | CLAUDE.md contains "## Onboarding Interview" section with 6 subsections: Starting, Conducting the Interview, Reciprocal Disclosure, Progressive Profiling, Channel Orchestration, Design Principles. References mcp__brain__onboard, mcp__brain__pc_scan, mcp__brain__gmail_scan. Human verification confirmed working per 03.1-03-SUMMARY.md user feedback. |
++| 7 | Progressive profiling continues after initial interview via observation | VERIFIED | CLAUDE.md "Progressive Profiling (Post-Interview)" section instructs: infer from conversation patterns, use source="inferred" and confidence=0.5, tie contextual questions to moments, ONE per session max, show value. |
++
++**Score:** 6/7 truths fully verified (1 has a bug in supporting artifact)
++
++Note: Truth 6 has a sub-component issue -- `interview.py:mark_question_answered()` will fail at runtime due to wrong column names in its SQL insert to brain.events. This does not block the onboarding interview from functioning (Claude uses CLAUDE.md instructions and update_profile MCP tool directly), but event tracking for interview questions will fail silently.
++
++### Required Artifacts
++
++| Artifact | Expected | Status | Details |
++|----------|----------|--------|---------|
++| `promaia/brain/schema.sql` | brain.onboarding_sessions and brain.onboarding_progress tables | VERIFIED | Both CREATE TABLE statements present with correct columns, constraints, indexes |
++| `promaia/brain/onboarding.py` | State engine with 5 functions + EXPECTED_FIELDS | VERIFIED (370 lines) | All 5 functions implemented: start_onboarding, get_onboarding_status, mark_channel_progress, get_profile_coverage, complete_onboarding. EXPECTED_FIELDS has 10 categories, 48 fields. |
++| `promaia/brain/mcp_server.py` | onboard, pc_scan, gmail_scan MCP tools | VERIFIED | 12 tools registered. Tool definitions at lines 315 (onboard), 353 (pc_scan), 367 (gmail_scan). Handlers at lines 1070, 1185, 1230. Docstrings updated to "12 tools". |
++| `promaia/brain/channels/__init__.py` | Channel package init | VERIFIED | Present with module docstring describing available channels |
++| `promaia/brain/channels/pc_scan.py` | PC digital fingerprint scanner | VERIFIED (493 lines) | run_pc_scan() with 3 sections: git analysis, file structure, installed apps. Exports: run_pc_scan. |
++| `promaia/brain/channels/gmail_read.py` | Gmail inbox reader | VERIFIED (537 lines) | run_gmail_scan() with graceful OAuth error handling. Exports: run_gmail_scan. |
++| `promaia/brain/channels/question_bank.py` | Categorized question templates | VERIFIED (264 lines) | QUESTION_BANK with 18 questions across 9 categories. Exports: QUESTION_BANK, get_questions_for_category, get_questions_for_phase. |
++| `promaia/brain/channels/interview.py` | Interview orchestration | PARTIAL (305 lines) | get_interview_state and get_next_question work correctly. mark_question_answered has wrong SQL column names (event_type/detail instead of type/payload). |
++| `CLAUDE.md` | Onboarding behavior instructions | VERIFIED | Contains "## Onboarding Interview" with all 6 subsections. References all 3 MCP tools. |
++
++### Key Link Verification
++
++| From | To | Via | Status | Details |
++|------|----|-----|--------|---------|
++| mcp_server.py | onboarding.py | `from promaia.brain.onboarding import` (line 57) | WIRED | Imports start_onboarding, get_onboarding_status, mark_channel_progress, complete_onboarding. _handle_onboard dispatches all 4 actions. |
++| onboarding.py | brain.onboarding_sessions | SQL queries | WIRED | 7 references to brain.onboarding_sessions with SELECT, INSERT, UPDATE operations |
++| mcp_server.py | pc_scan.py | `from promaia.brain.channels.pc_scan import run_pc_scan` (line 1190) | WIRED | _handle_pc_scan calls run_pc_scan(db=get_db()) and formats results |
++| mcp_server.py | gmail_read.py | `from promaia.brain.channels.gmail_read import run_gmail_scan` (line 1237) | WIRED | _handle_gmail_scan calls run_gmail_scan with parameters, handles error dict |
++| pc_scan.py | brain.profile | Direct SQL upsert via _upsert_profile() | WIRED | INSERT INTO brain.profile with ON CONFLICT upsert pattern |
++| gmail_read.py | GmailConnector | `from promaia.connectors.gmail_connector import GmailConnector` (line 72) | WIRED | Instantiates connector, calls connect(), accesses .service for thread fetching |
++| CLAUDE.md | mcp_server.py | References mcp__brain__onboard, mcp__brain__pc_scan, mcp__brain__gmail_scan | WIRED | All 3 MCP tool names referenced with usage instructions |
++| interview.py | question_bank.py | `from promaia.brain.channels.question_bank import` (line 23) | WIRED | Imports PHASE_ORDER, QUESTION_BANK, get_questions_for_category |
++| interview.py | brain.profile | SQL query `SELECT category, field FROM brain.profile` | WIRED | _get_populated_fields() queries brain.profile for coverage gap analysis |
++| interview.py | brain.events | `INSERT INTO brain.events (event_type, detail)` | NOT_WIRED (BUG) | Wrong column names: should be (type, payload) per schema.sql line 111-118 |
++
++### Requirements Coverage
++
++| Requirement | Source Plan | Description | Status | Evidence |
++|-------------|------------|-------------|--------|----------|
++| ONBOARD-01 | 03.1-01 | Onboarding session state persists across sessions | SATISFIED | start_onboarding() reuses active/paused sessions; paused auto-reactivates |
++| ONBOARD-02 | 03.1-01 | Profile coverage report shows per-category gap analysis | SATISFIED | get_profile_coverage() compares brain.profile against EXPECTED_FIELDS |
++| ONBOARD-03 | 03.1-01 | Onboard MCP tool manages onboarding flow | SATISFIED | "onboard" tool dispatches start/status/channel_update/complete |
++| ONBOARD-04 | 03.1-02 | PC scan extracts profile data from git repos, files, apps | SATISFIED | pc_scan.py: _scan_git_repos, _scan_file_structure, _scan_installed_apps |
++| ONBOARD-05 | 03.1-02 | Gmail read extracts contacts, patterns, topics from inbox | SATISFIED | gmail_read.py: _extract_contacts, _extract_communication_patterns, _extract_topics, _extract_activity_patterns |
++| ONBOARD-06 | 03.1-02 | Channel tools registered as MCP tools in brain server | SATISFIED | pc_scan and gmail_scan registered at lines 353 and 367 |
++| ONBOARD-07 | 03.1-03 | Interview question bank covers all profile categories | SATISFIED | 18 questions across 9 categories with OARS techniques |
++| ONBOARD-08 | 03.1-03 | Interview orchestration selects next question based on coverage gaps | SATISFIED | get_next_question() respects phase ordering, picks lowest-fill category |
++| ONBOARD-09 | 03.1-03 | CLAUDE.md contains onboarding instructions | SATISFIED | 6 subsections covering all onboarding behaviors |
++| ONBOARD-10 | 03.1-03 | Onboarding follows design principles (short bursts, resumable, no shame) | SATISFIED | Design Principles section + ADHD-friendly patterns throughout CLAUDE.md |
++
++No orphaned requirements found -- all 10 ONBOARD requirements appear in plan frontmatter and are mapped in the traceability table.
++
++### Anti-Patterns Found
++
++| File | Line | Pattern | Severity | Impact |
++|------|------|---------|----------|--------|
++| promaia/brain/channels/interview.py | 272 | Wrong SQL column names (event_type, detail vs type, payload) | Warning | mark_question_answered will fail silently at runtime; does not block core interview flow |
++| promaia/brain/channels/question_bank.py | 29 | Comment mentions "placeholder" | Info | In a comment about follow_up template syntax -- not a stub indicator |
++
++### Human Verification Required
++
++### 1. Onboarding Interview Flow
++**Test:** Start a new Claude Code session, say "Let's do the onboarding interview" and complete 3-4 questions
++**Expected:** Claude asks one question at a time, shares about itself reciprocally, saves answers to brain.profile, offers a break after 3-4 questions
++**Why human:** Conversational quality, tone, and natural flow cannot be verified programmatically
++
++### 2. PC Scan End-to-End
++**Test:** Say "Run a PC scan" in Claude Code session
++**Expected:** Claude calls mcp__brain__pc_scan, shows repos scanned, apps found, fields updated with insights
++**Why human:** Need to verify scan produces reasonable results on this specific machine
++
++### 3. Gmail Scan Graceful Failure
++**Test:** Say "Scan my Gmail" before OAuth is configured
++**Expected:** Claude explains OAuth setup is needed, provides the setup command, does not crash
++**Why human:** Error message clarity and helpfulness
++
++Note: Human verification was already performed and approved per 03.1-03-SUMMARY.md (Task 3 checkpoint approved with positive feedback).
++
++### Gaps Summary
++
++One gap found: `interview.py:mark_question_answered()` uses incorrect SQL column names when inserting into `brain.events`. The function references `event_type` and `detail` columns, but the actual schema defines `type` and `payload`. This will cause the INSERT to fail silently (exception is caught and logged).
++
++**Impact assessment:** LOW-MEDIUM. The core onboarding interview works because:
++1. Claude conducts interviews using CLAUDE.md behavioral instructions
++2. Profile updates go through the `update_profile` MCP tool (which works correctly)
++3. The `mark_question_answered` function is a convenience tracker, not on the critical path
++4. Event logging for interview questions will fail, but session state tracking (onboarding_sessions/progress) is unaffected
++
++**Root cause:** Column naming mismatch -- the code was likely written against a different schema version or naming convention.
++
++**Fix required:** Change line 272 of interview.py from `INSERT INTO brain.events (event_type, detail)` to `INSERT INTO brain.events (type, payload)` and adjust the values accordingly.
++
++---
++
++_Verified: 2026-03-05T16:00:00Z_
++_Verifier: Claude (gsd-verifier)_
+-- 
+2.51.0.windows.1
+

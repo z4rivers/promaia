@@ -1,0 +1,2143 @@
+From be6633de22a0d604a735297afd4683007c401aba Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Thu, 5 Mar 2026 21:56:35 -0800
+Subject: [PATCH 67/68] feat(web+gmail): dashboard with 6 Japanese design
+ skins, MCP router fix, Gmail pipeline
+
+Dashboard: Jinja2 templates + 6 CSS skins (Stone Garden, Ink Wash, Evening
+Garden, Data Temple, Superflat, Neo-Tokyo) with skin switcher, served via
+FastAPI at / and /dashboard. MCP router: fixed import, registered at /api/mcp.
+Gmail: ingest pipeline (API -> gmail_content table) + gmail_query MCP tool
+(brain server tool #15). Fixed models.py/models/ package conflict.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ promaia/brain/gmail_ingest.py               | 342 ++++++++++++++++++
+ promaia/brain/mcp_server.py                 | 108 +++++-
+ promaia/web/main.py                         |  11 +
+ promaia/web/models/__init__.py              |  10 +
+ promaia/web/{models.py => models/chat.py}   |  19 +-
+ promaia/web/routers/dashboard.py            | 100 ++++++
+ promaia/web/routers/mcp.py                  |   6 +-
+ promaia/web/static/skins/data-temple.css    | 182 ++++++++++
+ promaia/web/static/skins/evening-garden.css |  97 +++++
+ promaia/web/static/skins/ink-wash.css       |  91 +++++
+ promaia/web/static/skins/neo-tokyo.css      | 186 ++++++++++
+ promaia/web/static/skins/stone-garden.css   |  70 ++++
+ promaia/web/static/skins/superflat.css      | 184 ++++++++++
+ promaia/web/templates/base.html             | 133 +++++++
+ promaia/web/templates/dashboard.html        | 378 ++++++++++++++++++++
+ 15 files changed, 1903 insertions(+), 14 deletions(-)
+ create mode 100644 promaia/brain/gmail_ingest.py
+ create mode 100644 promaia/web/models/__init__.py
+ rename promaia/web/{models.py => models/chat.py} (78%)
+ create mode 100644 promaia/web/routers/dashboard.py
+ create mode 100644 promaia/web/static/skins/data-temple.css
+ create mode 100644 promaia/web/static/skins/evening-garden.css
+ create mode 100644 promaia/web/static/skins/ink-wash.css
+ create mode 100644 promaia/web/static/skins/neo-tokyo.css
+ create mode 100644 promaia/web/static/skins/stone-garden.css
+ create mode 100644 promaia/web/static/skins/superflat.css
+ create mode 100644 promaia/web/templates/base.html
+ create mode 100644 promaia/web/templates/dashboard.html
+
+diff --git a/promaia/brain/gmail_ingest.py b/promaia/brain/gmail_ingest.py
+new file mode 100644
+index 0000000..d73fc01
+--- /dev/null
++++ b/promaia/brain/gmail_ingest.py
+@@ -0,0 +1,342 @@
++"""
++Gmail ingest pipeline -- sync Gmail messages into the gmail_content table.
++
++Uses the same account discovery as gmail_read.py but stores full message
++content for later querying via the gmail_query MCP tool.
++
++Supports incremental sync: only fetches messages newer than the last sync.
++
++Usage via MCP (brain server):
++    Called internally or scheduled. Not exposed as a direct MCP tool yet.
++
++Usage via CLI:
++    python -m promaia.brain.gmail_ingest [--account zachary4rivers] [--days-back 30]
++"""
++import hashlib
++import json
++import logging
++from datetime import datetime, timedelta, timezone
++from typing import Any, Dict, List, Optional
++
++from promaia.brain.channels.gmail_read import (
++    _CREDS_DIR,
++    _get_gmail_service,
++    discover_accounts,
++)
++from promaia.storage.postgres_db import get_postgres_db
++
++logger = logging.getLogger(__name__)
++
++
++def run_gmail_ingest(
++    account: Optional[str] = None,
++    days_back: int = 7,
++    max_emails: int = 200,
++    workspace: str = "zbrain",
++) -> Dict[str, Any]:
++    """Sync Gmail messages into the gmail_content table.
++
++    Args:
++        account: Account label filter (e.g. "zachary4rivers"). None = all.
++        days_back: How far back to look for messages.
++        max_emails: Max messages per account per run.
++        workspace: Workspace label for stored records.
++
++    Returns:
++        Summary dict with counts.
++    """
++    accounts = discover_accounts()
++    if not accounts:
++        return {"error": "No Gmail tokens found in credentials/default/."}
++
++    if account:
++        matched = {k: v for k, v in accounts.items() if account.lower() in k.lower()}
++        if not matched:
++            return {"error": f"No account matching '{account}'. Available: {list(accounts.keys())}"}
++        accounts = matched
++
++    db = get_postgres_db()
++    results = {"accounts": {}, "total_synced": 0, "total_skipped": 0}
++
++    for label, token_path in accounts.items():
++        try:
++            service = _get_gmail_service(token_path)
++            email = service.users().getProfile(userId="me").execute()["emailAddress"]
++
++            # Check last sync time for incremental
++            last_sync = _get_last_sync(db, email)
++            effective_days = days_back
++            if last_sync:
++                delta = datetime.now(timezone.utc) - last_sync
++                effective_days = min(days_back, max(1, int(delta.days) + 1))
++
++            acct_result = _ingest_account(
++                service=service,
++                email=email,
++                days_back=effective_days,
++                max_emails=max_emails,
++                workspace=workspace,
++                db=db,
++            )
++            results["accounts"][email] = acct_result
++            results["total_synced"] += acct_result.get("inserted", 0)
++            results["total_skipped"] += acct_result.get("skipped", 0)
++
++        except Exception as e:
++            logger.error(f"Ingest failed for {label}: {e}", exc_info=True)
++            results["accounts"][label] = {"error": str(e)}
++
++    return results
++
++
++def _get_last_sync(db, email: str) -> Optional[datetime]:
++    """Get the most recent synced_time for an account."""
++    row = db.fetch_one(
++        "SELECT MAX(synced_time) as last_sync FROM gmail_content WHERE sender_email = %s OR recipient_emails::text ILIKE %s",
++        (email, f"%{email}%"),
++    )
++    if row and row.get("last_sync"):
++        try:
++            return datetime.fromisoformat(row["last_sync"])
++        except (ValueError, TypeError):
++            pass
++    return None
++
++
++def _ingest_account(
++    service, email: str, days_back: int, max_emails: int,
++    workspace: str, db,
++) -> Dict[str, Any]:
++    """Ingest messages from a single Gmail account."""
++    result = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
++
++    after_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y/%m/%d")
++    query = f"after:{after_date}"
++
++    messages = []
++    page_token = None
++
++    # Fetch message IDs
++    while len(messages) < max_emails:
++        kwargs = {
++            "userId": "me",
++            "q": query,
++            "maxResults": min(100, max_emails - len(messages)),
++        }
++        if page_token:
++            kwargs["pageToken"] = page_token
++
++        try:
++            response = service.users().messages().list(**kwargs).execute()
++        except Exception as e:
++            logger.error(f"Message list failed: {e}")
++            break
++
++        msg_list = response.get("messages", [])
++        if not msg_list:
++            break
++
++        messages.extend(msg_list)
++        page_token = response.get("nextPageToken")
++        if not page_token:
++            break
++
++    result["fetched"] = len(messages)
++    now_iso = datetime.now(timezone.utc).isoformat()
++
++    for msg_stub in messages:
++        msg_id = msg_stub["id"]
++        try:
++            # Check if we already have this message
++            existing = db.fetch_one(
++                "SELECT id FROM gmail_content WHERE message_id = %s",
++                (msg_id,),
++            )
++            if existing:
++                result["skipped"] += 1
++                continue
++
++            # Fetch full message
++            msg = service.users().messages().get(
++                userId="me", id=msg_id, format="full",
++            ).execute()
++
++            row = _parse_full_message(msg, email, workspace, now_iso)
++            _insert_message(db, row)
++            result["inserted"] += 1
++
++        except Exception as e:
++            logger.warning(f"Failed to ingest message {msg_id}: {e}")
++            result["errors"] += 1
++
++    return result
++
++
++def _parse_full_message(
++    msg: dict, user_email: str, workspace: str, synced_time: str,
++) -> Dict[str, Any]:
++    """Parse a full Gmail message into a gmail_content row."""
++    headers = {}
++    for h in msg.get("payload", {}).get("headers", []):
++        headers[h["name"].lower()] = h["value"]
++
++    # Extract sender
++    from_str = headers.get("from", "")
++    sender_email, sender_name = _parse_address(from_str)
++
++    # Extract recipients
++    to_list = _parse_address_list(headers.get("to", ""))
++    cc_list = _parse_address_list(headers.get("cc", ""))
++
++    # Extract body
++    body = _extract_body(msg.get("payload", {}))
++    snippet = msg.get("snippet", "")[:500]
++
++    # Labels
++    labels = msg.get("labelIds", [])
++
++    # Attachments
++    attachments = _extract_attachment_info(msg.get("payload", {}))
++
++    # Thread info
++    thread_id = msg.get("threadId", "")
++
++    # Date
++    email_date = headers.get("date", "")
++
++    # Checksum for dedup
++    content_for_hash = f"{msg.get('id', '')}{headers.get('subject', '')}{email_date}"
++    checksum = hashlib.md5(content_for_hash.encode()).hexdigest()
++
++    return {
++        "page_id": f"gmail_{msg['id']}",
++        "workspace": workspace,
++        "database_id": user_email,
++        "file_path": f"gmail/{user_email}/{msg['id']}",
++        "subject": headers.get("subject", ""),
++        "sender_email": sender_email,
++        "sender_name": sender_name,
++        "recipient_emails": json.dumps(to_list),
++        "cc_recipients": json.dumps(cc_list),
++        "gmail_labels": json.dumps(labels),
++        "thread_id": thread_id,
++        "message_id": msg["id"],
++        "has_attachments": len(attachments) > 0,
++        "is_unread": "UNREAD" in labels,
++        "body_snippet": snippet,
++        "message_content": body[:10000] if body else None,
++        "attachments": json.dumps(attachments) if attachments else None,
++        "thread_position": 0,
++        "is_latest_in_thread": True,
++        "email_date": email_date,
++        "created_time": email_date,
++        "last_edited_time": email_date,
++        "synced_time": synced_time,
++        "file_size": len(body) if body else 0,
++        "checksum": checksum,
++    }
++
++
++def _parse_address(addr_str: str):
++    """Extract (email, name) from 'Name <email>' format."""
++    import re
++    addr_str = addr_str.strip()
++    match = re.match(r'^"?([^"<]*)"?\s*<([^>]+)>', addr_str)
++    if match:
++        return match.group(2).strip().lower(), match.group(1).strip()
++    return addr_str.lower(), ""
++
++
++def _parse_address_list(addr_str: str) -> list:
++    """Parse a comma-separated list of addresses."""
++    if not addr_str:
++        return []
++    result = []
++    for addr in addr_str.split(","):
++        email, name = _parse_address(addr.strip())
++        if email:
++            result.append({"email": email, "name": name})
++    return result
++
++
++def _extract_body(payload: dict) -> str:
++    """Extract text body from a Gmail message payload."""
++    import base64
++
++    # Simple text/plain part
++    if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
++        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
++
++    # Multipart: recurse into parts
++    parts = payload.get("parts", [])
++    for part in parts:
++        if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
++            return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
++
++    # Fallback: try text/html
++    for part in parts:
++        if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
++            html = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
++            # Strip HTML tags for storage
++            import re
++            return re.sub(r"<[^>]+>", "", html)[:10000]
++
++    # Nested multipart
++    for part in parts:
++        if part.get("parts"):
++            body = _extract_body(part)
++            if body:
++                return body
++
++    return ""
++
++
++def _extract_attachment_info(payload: dict) -> list:
++    """Extract attachment metadata (not content) from payload."""
++    attachments = []
++    for part in payload.get("parts", []):
++        if part.get("filename"):
++            attachments.append({
++                "filename": part["filename"],
++                "mimeType": part.get("mimeType", ""),
++                "size": part.get("body", {}).get("size", 0),
++            })
++        if part.get("parts"):
++            attachments.extend(_extract_attachment_info(part))
++    return attachments
++
++
++def _insert_message(db, row: dict):
++    """Insert a parsed message into gmail_content."""
++    columns = list(row.keys())
++    placeholders = ", ".join(["%s"] * len(columns))
++    col_names = ", ".join(columns)
++
++    db.execute(
++        f"INSERT INTO gmail_content ({col_names}) VALUES ({placeholders}) ON CONFLICT (message_id) DO NOTHING",
++        tuple(row.values()),
++    )
++
++
++# ---------------------------------------------------------------------------
++# CLI entry point
++# ---------------------------------------------------------------------------
++
++if __name__ == "__main__":
++    import argparse
++    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
++
++    parser = argparse.ArgumentParser(description="Gmail ingest pipeline")
++    parser.add_argument("--account", help="Account label filter")
++    parser.add_argument("--days-back", type=int, default=7)
++    parser.add_argument("--max-emails", type=int, default=200)
++    parser.add_argument("--workspace", default="zbrain")
++    args = parser.parse_args()
++
++    result = run_gmail_ingest(
++        account=args.account,
++        days_back=args.days_back,
++        max_emails=args.max_emails,
++        workspace=args.workspace,
++    )
++    print(json.dumps(result, indent=2, default=str))
+diff --git a/promaia/brain/mcp_server.py b/promaia/brain/mcp_server.py
+index 57dcfe5..397afdb 100644
+--- a/promaia/brain/mcp_server.py
++++ b/promaia/brain/mcp_server.py
+@@ -1,5 +1,5 @@
+ """
+-Brain MCP Server — 14 tools for zBrain.
++Brain MCP Server — 15 tools for zBrain.
+ 
+ Exposes Claude's persistent memory system as MCP tools over stdio.
+ Claude calls these tools to get briefings, capture thoughts, search memories,
+@@ -20,6 +20,7 @@ Tools:
+     onboard         — manage the onboarding flow (start/status/channel_update/complete)
+     pc_scan         — scan local git repos, files, and apps for profile data
+     gmail_scan      — scan Gmail inbox for contacts, patterns, and topics
++    gmail_query     — search stored Gmail content by sender, subject, or full-text
+     activate        — MuninnDB cognitive retrieval via ACTIVATE pipeline
+     timeline        — reference timeline of life events (add/list/query)
+ 
+@@ -418,6 +419,39 @@ async def list_tools() -> list[Tool]:
+                 "required": []
+             }
+         ),
++        Tool(
++            name="gmail_query",
++            description=(
++                "Search stored Gmail content in the database. "
++                "Query by sender, subject keywords, date range, or full-text search. "
++                "Returns matching emails with subject, sender, date, and snippet. "
++                "Use this to find specific emails or review communication history."
++            ),
++            inputSchema={
++                "type": "object",
++                "properties": {
++                    "query": {
++                        "type": "string",
++                        "description": "Full-text search across subject and message content.",
++                    },
++                    "sender": {
++                        "type": "string",
++                        "description": "Filter by sender email (partial match).",
++                    },
++                    "days_back": {
++                        "type": "integer",
++                        "description": "Only search emails from the last N days.",
++                        "default": 30
++                    },
++                    "limit": {
++                        "type": "integer",
++                        "description": "Maximum results to return (default 20).",
++                        "default": 20
++                    },
++                },
++                "required": []
++            }
++        ),
+         Tool(
+             name="activate",
+             description=(
+@@ -549,6 +583,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+             return await _handle_pc_scan(arguments)
+         elif name == "gmail_scan":
+             return await _handle_gmail_scan(arguments)
++        elif name == "gmail_query":
++            return await _handle_gmail_query(arguments)
+         elif name == "activate":
+             return await _handle_activate(arguments)
+         elif name == "timeline":
+@@ -1724,6 +1760,76 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
+     return [TextContent(type="text", text="\n".join(lines))]
+ 
+ 
++async def _handle_gmail_query(args: dict) -> list[TextContent]:
++    """Query stored Gmail content from the gmail_content table."""
++    db = get_db()
++    query_text = args.get("query", "")
++    sender = args.get("sender", "")
++    days_back = args.get("days_back", 30)
++    limit = min(args.get("limit", 20), 50)
++
++    conditions = []
++    params = []
++
++    if query_text:
++        conditions.append(
++            "(subject ILIKE %s OR message_content ILIKE %s OR body_snippet ILIKE %s)"
++        )
++        like = f"%{query_text}%"
++        params.extend([like, like, like])
++
++    if sender:
++        conditions.append("sender_email ILIKE %s")
++        params.append(f"%{sender}%")
++
++    if days_back:
++        conditions.append(
++            "email_date >= (NOW() - INTERVAL '%s days')::text"
++        )
++        params.append(days_back)
++
++    where = " AND ".join(conditions) if conditions else "TRUE"
++    sql = f"""
++        SELECT subject, sender_email, sender_name, email_date,
++               body_snippet, thread_id, is_unread, gmail_labels
++        FROM gmail_content
++        WHERE {where}
++        ORDER BY email_date DESC
++        LIMIT %s
++    """
++    params.append(limit)
++
++    try:
++        rows = db.fetch_all(sql, tuple(params))
++    except Exception as e:
++        return [TextContent(type="text", text=f"Gmail query error: {e}")]
++
++    if not rows:
++        parts = []
++        if query_text:
++            parts.append(f"matching '{query_text}'")
++        if sender:
++            parts.append(f"from '{sender}'")
++        return [TextContent(
++            type="text",
++            text=f"No emails found {' '.join(parts)} in the last {days_back} days."
++        )]
++
++    lines = [f"**Gmail Query Results** ({len(rows)} emails)\n"]
++    for r in rows:
++        date = r.get("email_date", "")[:10] if r.get("email_date") else "?"
++        sender_display = r.get("sender_name") or r.get("sender_email", "?")
++        unread = " [unread]" if r.get("is_unread") else ""
++        snippet = (r.get("body_snippet") or "")[:120]
++        lines.append(f"- **{r.get('subject', '(no subject)')}**{unread}")
++        lines.append(f"  From: {sender_display} | {date}")
++        if snippet:
++            lines.append(f"  > {snippet}")
++        lines.append("")
++
++    return [TextContent(type="text", text="\n".join(lines))]
++
++
+ # ---------------------------------------------------------------------------
+ # Helpers
+ # ---------------------------------------------------------------------------
+diff --git a/promaia/web/main.py b/promaia/web/main.py
+index 046e3bd..fcd98a2 100644
+--- a/promaia/web/main.py
++++ b/promaia/web/main.py
+@@ -8,7 +8,10 @@ load_dotenv(dotenv_path=dotenv_path)
+ 
+ from fastapi import FastAPI
+ from fastapi.middleware.cors import CORSMiddleware
++from fastapi.staticfiles import StaticFiles
+ from promaia.web.routers import chat as chat_router
++from promaia.web.routers import mcp as mcp_router
++from promaia.web.routers import dashboard as dashboard_router
+ import uvicorn
+ 
+ app = FastAPI(
+@@ -46,8 +49,16 @@ app.add_middleware(
+     allow_headers=["*"],  # Allows all headers
+ )
+ 
++# Static files
++_web_dir = os.path.dirname(os.path.abspath(__file__))
++_static_dir = os.path.join(_web_dir, "static")
++if os.path.isdir(_static_dir):
++    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
++
+ # Include routers
+ app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
++app.include_router(mcp_router.router, prefix="/api", tags=["MCP"])
++app.include_router(dashboard_router.router, tags=["Dashboard"])
+ 
+ @app.get("/api/health", tags=["Health"])
+ async def health_check():
+diff --git a/promaia/web/models/__init__.py b/promaia/web/models/__init__.py
+new file mode 100644
+index 0000000..8f5d8dd
+--- /dev/null
++++ b/promaia/web/models/__init__.py
+@@ -0,0 +1,10 @@
++"""Web models package — re-exports chat models for backward compatibility."""
++from promaia.web.models.chat import (
++    ImageData,
++    MessageContent,
++    ChatMessage,
++    ChatMessageInput,
++    TokenUsage,
++    ChatMessageOutput,
++    InitialMessageOutput,
++)
+diff --git a/promaia/web/models.py b/promaia/web/models/chat.py
+similarity index 78%
+rename from promaia/web/models.py
+rename to promaia/web/models/chat.py
+index 00417a5..ddec494 100644
+--- a/promaia/web/models.py
++++ b/promaia/web/models/chat.py
+@@ -20,7 +20,7 @@ class ChatMessage(BaseModel):
+     role: str  # 'user' or 'assistant'
+     content: Union[str, MessageContent]  # Backward compatible - can be string or MessageContent
+     timestamp: Optional[str] = None
+-    
++
+     def get_text_content(self) -> str:
+         """Get the text content regardless of content type."""
+         if isinstance(self.content, str):
+@@ -28,13 +28,13 @@ class ChatMessage(BaseModel):
+         elif isinstance(self.content, MessageContent):
+             return self.content.text or ""
+         return ""
+-    
++
+     def get_images(self) -> List[ImageData]:
+         """Get the image attachments."""
+         if isinstance(self.content, MessageContent) and self.content.images:
+             return self.content.images
+         return []
+-    
++
+     def has_images(self) -> bool:
+         """Check if this message has image attachments."""
+         return len(self.get_images()) > 0
+@@ -44,23 +44,22 @@ class ChatMessageInput(BaseModel):
+     images: Optional[List[ImageData]] = None  # Direct image attachments for input
+     conversation_id: Optional[str] = None
+     history: Optional[List[ChatMessage]] = None
+-    preferred_model: Optional[str] = None  # Specific model ID like 'claude-opus-4-5', 'gemini-3-pro-preview', etc. Falls back to provider type for backwards compatibility.
++    preferred_model: Optional[str] = None
+ 
+ class TokenUsage(BaseModel):
+     prompt_tokens: int
+     response_tokens: int
+     total_tokens: int
+-    cost: Optional[float] = None  # Total cost in USD
+-    model: Optional[str] = None  # Model name for cost calculation context
++    cost: Optional[float] = None
++    model: Optional[str] = None
+ 
+ class ChatMessageOutput(BaseModel):
+     reply: str
+     conversation_id: str
+-    model_used: Optional[str] = None  # Which model actually responded
+-    token_usage: Optional[TokenUsage] = None  # Token count information
+-    # We could add other fields like debug_info, etc. 
++    model_used: Optional[str] = None
++    token_usage: Optional[TokenUsage] = None
+ 
+ class InitialMessageOutput(BaseModel):
+     message: str
+     conversation_id: str
+-    model_used: Optional[str] = None 
+\ No newline at end of file
++    model_used: Optional[str] = None
+diff --git a/promaia/web/routers/dashboard.py b/promaia/web/routers/dashboard.py
+new file mode 100644
+index 0000000..3adf54e
+--- /dev/null
++++ b/promaia/web/routers/dashboard.py
+@@ -0,0 +1,100 @@
++"""
++Dashboard router — serves the Promaia web dashboard.
++
++Wire into main.py:
++    from fastapi.staticfiles import StaticFiles
++    from promaia.web.routers import dashboard as dashboard_router
++    app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
++    app.include_router(dashboard_router.router)
++"""
++
++from fastapi import APIRouter, Request
++from fastapi.responses import HTMLResponse
++from fastapi.templating import Jinja2Templates
++from datetime import datetime
++import os
++
++router = APIRouter(tags=["dashboard"])
++
++# Templates directory relative to this file
++templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
++templates = Jinja2Templates(directory=templates_dir)
++
++VALID_SKINS = [
++    "stone-garden",
++    "ink-wash",
++    "evening-garden",
++    "data-temple",
++    "superflat",
++    "neo-tokyo",
++]
++DEFAULT_SKIN = "stone-garden"
++
++
++def _format_day(dt: datetime) -> str:
++    """Format date as 'Wednesday, March 5' — handles Windows vs Unix strftime."""
++    try:
++        return dt.strftime("%A, %B %-d")
++    except ValueError:
++        # Windows uses %#d instead of %-d
++        return dt.strftime("%A, %B %#d")
++
++
++@router.get("/", response_class=HTMLResponse)
++@router.get("/dashboard", response_class=HTMLResponse)
++async def dashboard(request: Request, skin: str = None):
++    """Render the main dashboard."""
++    # Resolve skin
++    if skin not in VALID_SKINS:
++        skin = DEFAULT_SKIN
++
++    # Time-aware greeting
++    hour = datetime.now().hour
++    if hour < 12:
++        greeting = "Good morning"
++    elif hour < 17:
++        greeting = "Good afternoon"
++    else:
++        greeting = "Good evening"
++
++    # Date
++    now = datetime.now()
++    date_str = _format_day(now)
++
++    # TODO: Wire to real brain data via brain.recall / brain.actions
++    context = {
++        "request": request,
++        "skin": skin,
++        "valid_skins": VALID_SKINS,
++        "greeting": greeting,
++        "date_str": date_str,
++        "user_name": "Zack",
++        "brain_status": {"memories": 14, "actions": 3, "contexts": 2},
++        "actions": [
++            {"text": "Review dashboard skins", "domain": "promaia", "status": "active"},
++            {"text": "Set up Gmail ingest", "domain": "promaia", "status": "pending"},
++        ],
++        "projects": [
++            {"name": "Promaia Brain", "status": "active", "detail": "Dashboard build in progress"},
++            {"name": "Heatpup", "status": "resting", "detail": "Last touched 2 weeks ago"},
++        ],
++        "recent_memories": [
++            {
++                "content": "Dashboard is the primary display layer, not Notion",
++                "domain": "promaia",
++                "created_at": "today",
++            },
++            {
++                "content": "6-skin design system approved: 3 traditional + 3 young",
++                "domain": "promaia",
++                "created_at": "today",
++            },
++            {
++                "content": "MCP router needs 3 fixes to wire in",
++                "domain": "promaia",
++                "created_at": "yesterday",
++            },
++        ],
++    }
++
++    return templates.TemplateResponse("dashboard.html", context)
+diff --git a/promaia/web/routers/mcp.py b/promaia/web/routers/mcp.py
+index a68b2f3..2c8e552 100644
+--- a/promaia/web/routers/mcp.py
++++ b/promaia/web/routers/mcp.py
+@@ -35,10 +35,10 @@ async def list_mcp_servers():
+         
+         # Import here to avoid circular imports
+         from ...mcp.client import McpClient
+-        from ...config.mcp_servers import get_mcp_server_configs
+-        
++        from ...config.mcp_servers import get_mcp_manager
++
+         # Get configured servers
+-        server_configs = get_mcp_server_configs()
++        server_configs = list(get_mcp_manager().get_enabled_servers().values())
+         
+         # Create MCP client if we don't have one
+         client = McpClient()
+diff --git a/promaia/web/static/skins/data-temple.css b/promaia/web/static/skins/data-temple.css
+new file mode 100644
+index 0000000..4b622bd
+--- /dev/null
++++ b/promaia/web/static/skins/data-temple.css
+@@ -0,0 +1,182 @@
++/*
++ * Data Temple — Ryoji Ikeda
++ * Data as art. Barcode rhythm, electronic pulse.
++ * Pure black, matrix green, scan blue, signal red.
++ * Everything in monospace. The terminal is the temple.
++ */
++
++:root {
++    /* Fonts — all monospace */
++    --font-display: 'JetBrains Mono', monospace;
++    --font-heading: 'JetBrains Mono', monospace;
++    --font-body: 'JetBrains Mono', monospace;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #000000;
++    --bg-secondary: #0A0A0A;
++    --bg-card: #0F0F0F;
++    --bg-card-hover: #161616;
++    --text-primary: #E0E0E0;
++    --text-secondary: #888888;
++    --text-muted: #555555;
++    --accent-primary: #00FF41;
++    --accent-success: #00FF41;
++    --accent-warning: #FF0040;
++    --accent-info: #0088FF;
++    --border-subtle: #1A1A1A;
++    --border-visible: #2A2A2A;
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius — sharp, geometric */
++    --radius-sm: 2px;
++    --radius-md: 4px;
++    --radius-lg: 6px;
++
++    /* Transitions — snappy */
++    --transition-fast: 100ms linear;
++    --transition-normal: 200ms linear;
++}
++
++/* Scan-line overlay */
++body::after {
++    content: '';
++    position: fixed;
++    top: 0;
++    left: 0;
++    width: 100%;
++    height: 100%;
++    pointer-events: none;
++    z-index: 999;
++    background: repeating-linear-gradient(
++        0deg,
++        transparent,
++        transparent 2px,
++        rgba(0, 255, 65, 0.015) 2px,
++        rgba(0, 255, 65, 0.015) 4px
++    );
++}
++
++/* Cards: data panels */
++.card {
++    box-shadow: none;
++    border-color: #1A1A1A;
++}
++
++.card:hover {
++    border-color: #00FF41;
++    box-shadow: 0 0 12px rgba(0, 255, 65, 0.06);
++    transform: translateY(0);
++}
++
++.card--accent {
++    border-left-color: #00FF41;
++}
++
++/* Greeting: terminal prompt feel */
++.greeting {
++    font-weight: 400;
++    font-size: clamp(1.4rem, 3vw, 2rem);
++    color: #00FF41;
++}
++
++.header-date {
++    color: #555555;
++}
++
++/* Brain status: bright data readout */
++.brain-status .metric {
++    color: #00FF41;
++    font-weight: 400;
++}
++
++.brain-status__sep {
++    color: #333333;
++}
++
++/* Section headers: terminal-style */
++.section-header {
++    color: #0088FF;
++    letter-spacing: 0.15em;
++}
++
++/* Quote blocks: data stream */
++.quote-block {
++    border-left-color: #0088FF;
++    background: #0A0A0A;
++}
++
++.quote-block:hover {
++    border-left-color: #00FF41;
++    background: #111111;
++}
++
++.quote-content {
++    color: #C0C0C0;
++}
++
++/* Action indicators: pure signal */
++.action-indicator--active {
++    background: #00FF41;
++    box-shadow: 0 0 6px rgba(0, 255, 65, 0.4);
++}
++
++.action-indicator--pending {
++    background: #FF0040;
++    box-shadow: 0 0 6px rgba(255, 0, 64, 0.3);
++}
++
++/* Project status badges */
++.project-status--active {
++    background: rgba(0, 255, 65, 0.1);
++    color: #00FF41;
++}
++
++.project-status--resting {
++    background: rgba(85, 85, 85, 0.2);
++    color: #666666;
++}
++
++/* Footer */
++.footer-zone {
++    border-top-color: #1A1A1A;
++}
++
++.footer-prompt {
++    color: #444444;
++    font-style: normal;
++}
++
++/* Skin switcher: dark chrome */
++.skin-switcher {
++    background: #0A0A0A;
++    border-color: #1A1A1A;
++    border-radius: 4px;
++}
++
++.skin-switcher__pill {
++    border-radius: 2px;
++    color: #555555;
++}
++
++.skin-switcher__pill:hover {
++    color: #00FF41;
++    background: #161616;
++}
++
++.skin-switcher__pill--active {
++    background: #161616;
++    color: #00FF41;
++}
++
++/* Mode value: matrix green */
++.mode-value {
++    color: #00FF41;
++}
+diff --git a/promaia/web/static/skins/evening-garden.css b/promaia/web/static/skins/evening-garden.css
+new file mode 100644
+index 0000000..5110a62
+--- /dev/null
++++ b/promaia/web/static/skins/evening-garden.css
+@@ -0,0 +1,97 @@
++/*
++ * Evening Garden — Nendo / Oki Sato
++ * "!" moment. Playful minimalism, friendly warmth.
++ * Twilight warmth, wisteria accent, amber glow.
++ */
++
++:root {
++    /* Fonts */
++    --font-display: 'Space Grotesk', 'Inter', sans-serif;
++    --font-heading: 'Space Grotesk', 'Inter', sans-serif;
++    --font-body: 'Inter', sans-serif;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #F8F4F0;
++    --bg-secondary: #F0EBE5;
++    --bg-card: #FFFEFA;
++    --bg-card-hover: #FFFFFF;
++    --text-primary: #3A3A3A;
++    --text-secondary: #6B6560;
++    --text-muted: #9B9490;
++    --accent-primary: #8B81C3;
++    --accent-success: #7BA87B;
++    --accent-warning: #D5B88D;
++    --accent-info: #6B9EBB;
++    --border-subtle: #E8E2DA;
++    --border-visible: #D5CFC7;
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius — slightly more rounded for playfulness */
++    --radius-sm: 6px;
++    --radius-md: 10px;
++    --radius-lg: 16px;
++
++    /* Transitions */
++    --transition-fast: 150ms ease;
++    --transition-normal: 300ms ease;
++}
++
++/* Evening Garden: warm glow on hover */
++.card {
++    box-shadow: 0 1px 3px rgba(58, 58, 58, 0.04);
++}
++
++.card:hover {
++    box-shadow: 0 6px 20px rgba(139, 129, 195, 0.1);
++    border-color: #C8C0E0;
++}
++
++/* Wisteria quote accent */
++.quote-block {
++    border-left-color: #8B81C3;
++}
++
++.quote-block:hover {
++    border-left-color: #D5B88D;
++    box-shadow: 0 2px 12px rgba(213, 184, 141, 0.08);
++}
++
++/* Greeting: rounded, warm */
++.greeting {
++    font-weight: 700;
++    letter-spacing: -0.02em;
++}
++
++/* Brain status: wisteria tint */
++.brain-status .metric {
++    color: #8B81C3;
++}
++
++/* Warm amber accents on status */
++.project-status--active {
++    background: rgba(123, 168, 123, 0.12);
++    color: #5C8A5C;
++}
++
++/* Skin switcher */
++.skin-switcher {
++    background: #F0EBE5;
++    border-color: #E0DBD3;
++    border-radius: 20px;
++}
++
++.skin-switcher__pill {
++    border-radius: 14px;
++}
++
++.skin-switcher__pill--active {
++    background: #FFFEFA;
++}
+diff --git a/promaia/web/static/skins/ink-wash.css b/promaia/web/static/skins/ink-wash.css
+new file mode 100644
+index 0000000..d0c9d9d
+--- /dev/null
++++ b/promaia/web/static/skins/ink-wash.css
+@@ -0,0 +1,91 @@
++/*
++ * Ink Wash — Yanagi Sori
++ * Nameless design, functional beauty.
++ * Monochrome with blue-black ink tones. Ink on rice paper.
++ */
++
++:root {
++    /* Fonts */
++    --font-display: 'Noto Sans JP', 'Inter', sans-serif;
++    --font-heading: 'Noto Sans JP', 'Inter', sans-serif;
++    --font-body: 'Noto Sans JP', 'Inter', sans-serif;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #FAFAF8;
++    --bg-secondary: #F2F2EF;
++    --bg-card: #FFFFFF;
++    --bg-card-hover: #F7F7F4;
++    --text-primary: #1C1C1C;
++    --text-secondary: #4A4A4A;
++    --text-muted: #8A8A8A;
++    --accent-primary: #004C71;
++    --accent-success: #838B3A;
++    --accent-warning: #A68B3C;
++    --accent-info: #3A6B8B;
++    --border-subtle: #E8E8E4;
++    --border-visible: #D0D0CC;
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius */
++    --radius-sm: 4px;
++    --radius-md: 8px;
++    --radius-lg: 12px;
++
++    /* Transitions */
++    --transition-fast: 150ms ease;
++    --transition-normal: 300ms ease;
++}
++
++/* Ink wash: very flat, barely-there shadows */
++.card {
++    box-shadow: none;
++    border-color: #E8E8E4;
++}
++
++.card:hover {
++    box-shadow: 0 1px 4px rgba(28, 28, 28, 0.05);
++    transform: translateY(0);
++}
++
++/* Quote blocks: ink-style left border */
++.quote-block {
++    border-left-color: #004C71;
++    background: #F7F7F4;
++}
++
++.quote-block:hover {
++    border-left-color: #1C1C1C;
++}
++
++/* Greeting: ink-weight */
++.greeting {
++    font-weight: 600;
++    letter-spacing: -0.02em;
++}
++
++/* Status dots: muted to match the restrained palette */
++.action-indicator--active {
++    background: #838B3A;
++}
++
++.action-indicator--pending {
++    background: #A68B3C;
++}
++
++/* Skin switcher */
++.skin-switcher {
++    background: #F2F2EF;
++    border-color: #E4E4E0;
++}
++
++.skin-switcher__pill--active {
++    background: #FFFFFF;
++}
+diff --git a/promaia/web/static/skins/neo-tokyo.css b/promaia/web/static/skins/neo-tokyo.css
+new file mode 100644
+index 0000000..48d640f
+--- /dev/null
++++ b/promaia/web/static/skins/neo-tokyo.css
+@@ -0,0 +1,186 @@
++/*
++ * Neo-Tokyo — Akira / Ghost in the Shell
++ * Holographic panels, atmospheric depth, tension between traditional and cyber.
++ * Deep void bg, washi-warm text, Akira red, neon jade, HUD orange.
++ */
++
++:root {
++    /* Fonts */
++    --font-display: 'Space Grotesk', sans-serif;
++    --font-heading: 'Space Grotesk', sans-serif;
++    --font-body: 'Inter', sans-serif;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #0A0A0F;
++    --bg-secondary: #111118;
++    --bg-card: rgba(30, 30, 46, 0.85);
++    --bg-card-hover: rgba(38, 38, 58, 0.92);
++    --text-primary: #F5F0E8;
++    --text-secondary: #B0A898;
++    --text-muted: #706860;
++    --accent-primary: #DA1D1F;
++    --accent-success: #00D4AA;
++    --accent-warning: #FF6B35;
++    --accent-info: #6C5CE7;
++    --border-subtle: rgba(245, 240, 232, 0.06);
++    --border-visible: rgba(245, 240, 232, 0.12);
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius */
++    --radius-sm: 4px;
++    --radius-md: 8px;
++    --radius-lg: 12px;
++
++    /* Transitions */
++    --transition-fast: 150ms ease;
++    --transition-normal: 300ms ease;
++}
++
++/* Cards: glassmorphism panels */
++.card {
++    backdrop-filter: blur(12px);
++    -webkit-backdrop-filter: blur(12px);
++    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(245, 240, 232, 0.04);
++    border: 1px solid rgba(245, 240, 232, 0.06);
++}
++
++.card:hover {
++    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(218, 29, 31, 0.06);
++    border-color: rgba(218, 29, 31, 0.2);
++    transform: translateY(-2px);
++}
++
++.card--accent {
++    border-left: 3px solid #DA1D1F;
++}
++
++/* Greeting: dramatic, warm text on void */
++.greeting {
++    font-weight: 700;
++    letter-spacing: -0.02em;
++    color: #F5F0E8;
++    text-shadow: 0 0 40px rgba(218, 29, 31, 0.15);
++}
++
++.header-date {
++    color: #706860;
++}
++
++/* Brain status: jade metric glow */
++.brain-status .metric {
++    color: #00D4AA;
++    text-shadow: 0 0 10px rgba(0, 212, 170, 0.2);
++}
++
++.brain-status__sep {
++    color: rgba(245, 240, 232, 0.15);
++}
++
++/* Section headers: HUD style */
++.section-header {
++    color: #706860;
++    letter-spacing: 0.15em;
++}
++
++/* Quote blocks: holographic accent */
++.quote-block {
++    border-left-color: #6C5CE7;
++    background: rgba(30, 30, 46, 0.7);
++    backdrop-filter: blur(8px);
++    -webkit-backdrop-filter: blur(8px);
++}
++
++.quote-block:hover {
++    border-left-color: #00D4AA;
++    background: rgba(38, 38, 58, 0.8);
++    box-shadow: 0 0 16px rgba(0, 212, 170, 0.06);
++}
++
++/* Action indicators: neon glow */
++.action-indicator--active {
++    background: #00D4AA;
++    box-shadow: 0 0 8px rgba(0, 212, 170, 0.5);
++}
++
++.action-indicator--pending {
++    background: #FF6B35;
++    box-shadow: 0 0 8px rgba(255, 107, 53, 0.4);
++}
++
++/* Project status */
++.project-status--active {
++    background: rgba(0, 212, 170, 0.1);
++    color: #00D4AA;
++}
++
++.project-status--resting {
++    background: rgba(112, 104, 96, 0.15);
++    color: #706860;
++}
++
++/* Context cards: deeper panel */
++.context-card {
++    background: rgba(20, 20, 32, 0.9);
++}
++
++.mode-value {
++    color: #DA1D1F;
++    text-shadow: 0 0 12px rgba(218, 29, 31, 0.25);
++}
++
++/* Footer */
++.footer-zone {
++    border-top-color: rgba(245, 240, 232, 0.06);
++}
++
++.footer-prompt {
++    color: #706860;
++    font-style: normal;
++    letter-spacing: 0.02em;
++}
++
++/* Skin switcher: dark holographic panel */
++.skin-switcher {
++    background: rgba(17, 17, 24, 0.95);
++    border-color: rgba(245, 240, 232, 0.08);
++    backdrop-filter: blur(12px);
++    -webkit-backdrop-filter: blur(12px);
++}
++
++.skin-switcher__pill {
++    color: #706860;
++}
++
++.skin-switcher__pill:hover {
++    color: #F5F0E8;
++    background: rgba(245, 240, 232, 0.05);
++}
++
++.skin-switcher__pill--active {
++    background: rgba(218, 29, 31, 0.15);
++    color: #DA1D1F;
++    box-shadow: 0 0 8px rgba(218, 29, 31, 0.1);
++}
++
++/* Subtle atmospheric gradient */
++body::before {
++    content: '';
++    position: fixed;
++    top: 0;
++    left: 0;
++    width: 100%;
++    height: 100%;
++    pointer-events: none;
++    z-index: -1;
++    background:
++        radial-gradient(ellipse at 20% 0%, rgba(108, 92, 231, 0.05) 0%, transparent 50%),
++        radial-gradient(ellipse at 80% 100%, rgba(218, 29, 31, 0.04) 0%, transparent 50%);
++}
+diff --git a/promaia/web/static/skins/stone-garden.css b/promaia/web/static/skins/stone-garden.css
+new file mode 100644
+index 0000000..b121ee2
+--- /dev/null
++++ b/promaia/web/static/skins/stone-garden.css
+@@ -0,0 +1,70 @@
++/*
++ * Stone Garden — Muji / Kenya Hara
++ * Empty vessel. Calm, receptive. Nothing unnecessary.
++ * Warm off-whites, muted grays, soft indigo accent.
++ */
++
++:root {
++    /* Fonts */
++    --font-display: 'Inter', sans-serif;
++    --font-heading: 'Inter', sans-serif;
++    --font-body: 'Inter', sans-serif;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #F4F0E8;
++    --bg-secondary: #EDE8DE;
++    --bg-card: #FAFAF6;
++    --bg-card-hover: #FFFFFF;
++    --text-primary: #2C2C2C;
++    --text-secondary: #5A574F;
++    --text-muted: #8F837A;
++    --accent-primary: #487CA5;
++    --accent-success: #6B8F6B;
++    --accent-warning: #B8945A;
++    --accent-info: #7A9BB5;
++    --border-subtle: #E2DDD3;
++    --border-visible: #CFC9BD;
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius */
++    --radius-sm: 4px;
++    --radius-md: 8px;
++    --radius-lg: 12px;
++
++    /* Transitions */
++    --transition-fast: 150ms ease;
++    --transition-normal: 300ms ease;
++}
++
++/* Stone Garden: cards use minimal shadow, never flashy */
++.card {
++    box-shadow: 0 1px 2px rgba(44, 44, 44, 0.04);
++}
++
++.card:hover {
++    box-shadow: 0 2px 8px rgba(44, 44, 44, 0.07);
++}
++
++/* Greeting: understated */
++.greeting {
++    font-weight: 500;
++    letter-spacing: -0.01em;
++}
++
++/* Skin switcher blends into the warm background */
++.skin-switcher {
++    background: #EDE8DE;
++    border-color: #DDD8CE;
++}
++
++.skin-switcher__pill--active {
++    background: #FAFAF6;
++}
+diff --git a/promaia/web/static/skins/superflat.css b/promaia/web/static/skins/superflat.css
+new file mode 100644
+index 0000000..c188a5d
+--- /dev/null
++++ b/promaia/web/static/skins/superflat.css
+@@ -0,0 +1,184 @@
++/*
++ * Superflat — Murakami / Persona 5
++ * Bold outlines, zero shadows, pop energy, confident color.
++ * Flat white bg, deep navy cards, Murakami pink, neon yellow, electric violet.
++ */
++
++:root {
++    /* Fonts */
++    --font-display: 'Space Grotesk', sans-serif;
++    --font-heading: 'Space Grotesk', sans-serif;
++    --font-body: 'Inter', sans-serif;
++    --font-mono: 'JetBrains Mono', monospace;
++
++    /* Colors */
++    --bg-primary: #FFFFFF;
++    --bg-secondary: #F5F5F5;
++    --bg-card: #1A1A2E;
++    --bg-card-hover: #22223A;
++    --text-primary: #1A1A2E;
++    --text-secondary: #4A4A5A;
++    --text-muted: #8888A0;
++    --accent-primary: #FF3366;
++    --accent-success: #00CC88;
++    --accent-warning: #FFE700;
++    --accent-info: #8B00FF;
++    --border-subtle: #E0E0E8;
++    --border-visible: #1A1A2E;
++
++    /* Spacing */
++    --space-xs: 4px;
++    --space-sm: 8px;
++    --space-md: 16px;
++    --space-lg: 24px;
++    --space-xl: 32px;
++    --space-2xl: 48px;
++
++    /* Radius — crisp but not sharp */
++    --radius-sm: 4px;
++    --radius-md: 8px;
++    --radius-lg: 12px;
++
++    /* Transitions */
++    --transition-fast: 120ms ease;
++    --transition-normal: 250ms ease;
++}
++
++/* Superflat signature: bold borders replace shadows */
++.card {
++    box-shadow: none;
++    border: 2px solid #1A1A2E;
++    background: #FFFFFF;
++    color: #1A1A2E;
++}
++
++.card:hover {
++    box-shadow: none;
++    background: #F8F8FF;
++    transform: translateY(-2px);
++    border-color: #FF3366;
++}
++
++.card--accent {
++    border-left: 4px solid #FF3366;
++}
++
++/* Greeting: big, bold, pop */
++.greeting {
++    font-weight: 700;
++    letter-spacing: -0.03em;
++    color: #1A1A2E;
++}
++
++/* Brain status: pink metric pop */
++.brain-status .metric {
++    color: #FF3366;
++    font-weight: 700;
++}
++
++.brain-status__sep {
++    color: #CCCCDD;
++}
++
++/* Section headers: uppercase bold */
++.section-header {
++    font-family: 'Space Grotesk', sans-serif;
++    font-weight: 700;
++    font-size: 0.8rem;
++    letter-spacing: 0.12em;
++    color: #8B00FF;
++}
++
++/* Quote blocks: pop accent border */
++.quote-block {
++    border: 2px solid #E0E0E8;
++    border-left: 4px solid #FF3366;
++    border-radius: var(--radius-md);
++    background: #FFFFFF;
++}
++
++.quote-block:hover {
++    border-color: #8B00FF;
++    border-left-color: #8B00FF;
++    background: #FAF5FF;
++}
++
++/* Action indicators: bold pop */
++.action-indicator--active {
++    background: #00CC88;
++}
++
++.action-indicator--pending {
++    background: #FFE700;
++    border: 1px solid #CCBB00;
++}
++
++/* Project status */
++.project-status--active {
++    background: rgba(0, 204, 136, 0.12);
++    color: #00AA70;
++    border: 1px solid rgba(0, 204, 136, 0.3);
++}
++
++.project-status--resting {
++    background: rgba(136, 136, 160, 0.1);
++    color: #8888A0;
++    border: 1px solid rgba(136, 136, 160, 0.2);
++}
++
++/* Context cards: inverted on navy */
++.context-card {
++    background: #1A1A2E;
++    color: #FFFFFF;
++    border-color: #1A1A2E;
++}
++
++.context-card:hover {
++    background: #22223A;
++    border-color: #FF3366;
++}
++
++.context-card .mode-label {
++    color: #8888BB;
++}
++
++.context-card .mode-value {
++    color: #FF3366;
++}
++
++.context-card .calendar-placeholder {
++    color: #6666AA;
++}
++
++/* Footer */
++.footer-zone {
++    border-top: 2px solid #1A1A2E;
++}
++
++.footer-prompt {
++    color: #8B00FF;
++    font-style: normal;
++    font-weight: 500;
++}
++
++/* Skin switcher: clean white + borders */
++.skin-switcher {
++    background: #FFFFFF;
++    border: 2px solid #1A1A2E;
++    border-radius: var(--radius-lg);
++}
++
++.skin-switcher__pill {
++    color: #8888A0;
++    font-weight: 500;
++}
++
++.skin-switcher__pill:hover {
++    color: #FF3366;
++    background: transparent;
++}
++
++.skin-switcher__pill--active {
++    background: #1A1A2E;
++    color: #FFFFFF;
++}
+diff --git a/promaia/web/templates/base.html b/promaia/web/templates/base.html
+new file mode 100644
+index 0000000..1ccdb64
+--- /dev/null
++++ b/promaia/web/templates/base.html
+@@ -0,0 +1,133 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>{% block title %}Promaia{% endblock %}</title>
++
++    <!-- Google Fonts -->
++    <link rel="preconnect" href="https://fonts.googleapis.com">
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
++    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Noto+Sans+JP:wght@400&family=Shippori+Mincho:wght@700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
++
++    <!-- Active Skin -->
++    <link rel="stylesheet" href="/static/skins/{{ skin }}.css">
++
++    <!-- Base Reset & Layout -->
++    <style>
++        *, *::before, *::after {
++            box-sizing: border-box;
++            margin: 0;
++            padding: 0;
++        }
++
++        body {
++            font-family: var(--font-body);
++            background: var(--bg-primary);
++            color: var(--text-primary);
++            line-height: 1.6;
++            min-height: 100vh;
++            transition: background var(--transition-normal), color var(--transition-normal);
++        }
++
++        a {
++            color: inherit;
++            text-decoration: none;
++        }
++
++        ul, ol {
++            list-style: none;
++        }
++
++        .page-shell {
++            max-width: 1120px;
++            margin: 0 auto;
++            padding: var(--space-lg) var(--space-md);
++        }
++
++        @media (min-width: 768px) {
++            .page-shell {
++                padding: var(--space-2xl) var(--space-xl);
++            }
++        }
++
++        /* Skin Switcher */
++        .skin-switcher {
++            position: fixed;
++            top: var(--space-md);
++            right: var(--space-md);
++            display: flex;
++            gap: 2px;
++            background: var(--bg-secondary);
++            border: 1px solid var(--border-subtle);
++            border-radius: var(--radius-lg);
++            padding: 3px;
++            z-index: 100;
++            font-family: var(--font-body);
++            font-size: 11px;
++            letter-spacing: 0.02em;
++        }
++
++        .skin-switcher__pill {
++            padding: 4px 10px;
++            border-radius: var(--radius-md);
++            color: var(--text-muted);
++            transition: all var(--transition-fast);
++            white-space: nowrap;
++            cursor: pointer;
++        }
++
++        .skin-switcher__pill:hover {
++            color: var(--text-primary);
++            background: var(--bg-card-hover);
++        }
++
++        .skin-switcher__pill--active {
++            background: var(--bg-card);
++            color: var(--text-primary);
++            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
++        }
++
++        /* Collapse switcher on narrow screens */
++        @media (max-width: 900px) {
++            .skin-switcher {
++                top: auto;
++                bottom: var(--space-md);
++                right: var(--space-md);
++                font-size: 10px;
++            }
++            .skin-switcher__label {
++                display: none;
++            }
++        }
++    </style>
++
++    {% block head %}{% endblock %}
++</head>
++<body>
++    <!-- Skin Switcher -->
++    <nav class="skin-switcher" aria-label="Theme selector">
++        {% set skin_labels = {
++            "stone-garden": "Stone Garden",
++            "ink-wash": "Ink Wash",
++            "evening-garden": "Evening Garden",
++            "data-temple": "Data Temple",
++            "superflat": "Superflat",
++            "neo-tokyo": "Neo-Tokyo"
++        } %}
++        {% for s in valid_skins %}
++        <a href="?skin={{ s }}"
++           class="skin-switcher__pill {% if s == skin %}skin-switcher__pill--active{% endif %}"
++           title="{{ skin_labels[s] }}">
++            {{ skin_labels[s] }}
++        </a>
++        {% endfor %}
++    </nav>
++
++    <div class="page-shell">
++        {% block content %}{% endblock %}
++    </div>
++
++    {% block scripts %}{% endblock %}
++</body>
++</html>
+diff --git a/promaia/web/templates/dashboard.html b/promaia/web/templates/dashboard.html
+new file mode 100644
+index 0000000..99e60fa
+--- /dev/null
++++ b/promaia/web/templates/dashboard.html
+@@ -0,0 +1,378 @@
++{% extends "base.html" %}
++
++{% block title %}Promaia — Dashboard{% endblock %}
++
++{% block head %}
++<style>
++    /* Dashboard Layout */
++    .dashboard {
++        padding-top: var(--space-lg);
++    }
++
++    /* Header Zone */
++    .header-zone {
++        margin-bottom: var(--space-2xl);
++    }
++
++    .greeting {
++        font-family: var(--font-display);
++        font-size: clamp(1.75rem, 4vw, 2.5rem);
++        font-weight: 600;
++        line-height: 1.2;
++        letter-spacing: -0.02em;
++        color: var(--text-primary);
++    }
++
++    .header-date {
++        font-family: var(--font-body);
++        font-size: 0.95rem;
++        color: var(--text-secondary);
++        margin-top: var(--space-xs);
++    }
++
++    .brain-status {
++        display: flex;
++        gap: var(--space-md);
++        align-items: center;
++        margin-top: var(--space-md);
++        font-family: var(--font-mono);
++        font-size: 0.8rem;
++        color: var(--text-muted);
++        letter-spacing: 0.03em;
++    }
++
++    .brain-status .metric {
++        font-family: var(--font-display);
++        font-size: 1.1rem;
++        font-weight: 600;
++        color: var(--accent-primary);
++    }
++
++    .brain-status__sep {
++        color: var(--border-visible);
++        user-select: none;
++    }
++
++    /* Primary Zone: CSS Grid 2-column */
++    .primary-zone {
++        display: grid;
++        grid-template-columns: 1fr;
++        gap: var(--space-xl);
++        margin-bottom: var(--space-2xl);
++    }
++
++    @media (min-width: 768px) {
++        .primary-zone {
++            grid-template-columns: 2fr 1fr;
++        }
++    }
++
++    /* Section Headers */
++    .section-header {
++        font-family: var(--font-heading);
++        font-size: 0.75rem;
++        font-weight: 600;
++        text-transform: uppercase;
++        letter-spacing: 0.1em;
++        color: var(--text-muted);
++        margin-bottom: var(--space-md);
++    }
++
++    /* Cards */
++    .card {
++        background: var(--bg-card);
++        border: 1px solid var(--border-subtle);
++        border-radius: var(--radius-md);
++        padding: var(--space-md) var(--space-lg);
++        transition: all var(--transition-fast);
++    }
++
++    .card:hover {
++        background: var(--bg-card-hover);
++        border-color: var(--border-visible);
++        transform: translateY(-1px);
++        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
++    }
++
++    .card--accent {
++        border-left: 3px solid var(--accent-primary);
++    }
++
++    .card + .card {
++        margin-top: var(--space-sm);
++    }
++
++    /* Action Items */
++    .action-item {
++        display: flex;
++        align-items: flex-start;
++        gap: var(--space-sm);
++    }
++
++    .action-indicator {
++        width: 8px;
++        height: 8px;
++        border-radius: 50%;
++        margin-top: 7px;
++        flex-shrink: 0;
++    }
++
++    .action-indicator--active {
++        background: var(--accent-success);
++    }
++
++    .action-indicator--pending {
++        background: var(--accent-warning);
++    }
++
++    .action-text {
++        font-size: 0.95rem;
++        color: var(--text-primary);
++    }
++
++    .action-domain {
++        font-family: var(--font-mono);
++        font-size: 0.7rem;
++        color: var(--text-muted);
++        margin-top: 2px;
++    }
++
++    /* Project Cards */
++    .project-name {
++        font-family: var(--font-heading);
++        font-weight: 600;
++        font-size: 0.95rem;
++        color: var(--text-primary);
++    }
++
++    .project-detail {
++        font-size: 0.85rem;
++        color: var(--text-secondary);
++        margin-top: 2px;
++    }
++
++    .project-status {
++        display: inline-block;
++        font-family: var(--font-mono);
++        font-size: 0.65rem;
++        text-transform: uppercase;
++        letter-spacing: 0.08em;
++        padding: 2px 8px;
++        border-radius: var(--radius-sm);
++        margin-top: var(--space-xs);
++    }
++
++    .project-status--active {
++        background: color-mix(in srgb, var(--accent-success) 15%, transparent);
++        color: var(--accent-success);
++    }
++
++    .project-status--resting {
++        background: color-mix(in srgb, var(--text-muted) 12%, transparent);
++        color: var(--text-muted);
++    }
++
++    /* Context Column */
++    .context-card {
++        text-align: center;
++        padding: var(--space-lg);
++    }
++
++    .mode-label {
++        font-family: var(--font-mono);
++        font-size: 0.7rem;
++        text-transform: uppercase;
++        letter-spacing: 0.1em;
++        color: var(--text-muted);
++        margin-bottom: var(--space-xs);
++    }
++
++    .mode-value {
++        font-family: var(--font-display);
++        font-size: 1.25rem;
++        font-weight: 600;
++        color: var(--accent-primary);
++    }
++
++    .calendar-placeholder {
++        font-size: 0.85rem;
++        color: var(--text-muted);
++        font-style: italic;
++        padding: var(--space-md);
++        text-align: center;
++    }
++
++    /* Secondary Zone */
++    .secondary-zone {
++        margin-bottom: var(--space-2xl);
++    }
++
++    .quote-block {
++        border-left: 3px solid var(--accent-primary);
++        padding: var(--space-md) var(--space-lg);
++        background: var(--bg-card);
++        border-radius: 0 var(--radius-md) var(--radius-md) 0;
++        transition: all var(--transition-fast);
++    }
++
++    .quote-block:hover {
++        background: var(--bg-card-hover);
++        border-left-color: var(--accent-info);
++    }
++
++    .quote-block + .quote-block {
++        margin-top: var(--space-sm);
++    }
++
++    .quote-content {
++        font-size: 0.9rem;
++        color: var(--text-primary);
++        line-height: 1.5;
++    }
++
++    .quote-meta {
++        display: flex;
++        gap: var(--space-md);
++        margin-top: var(--space-xs);
++        font-family: var(--font-mono);
++        font-size: 0.7rem;
++        color: var(--text-muted);
++    }
++
++    /* Footer */
++    .footer-zone {
++        padding-top: var(--space-xl);
++        border-top: 1px solid var(--border-subtle);
++        display: flex;
++        justify-content: space-between;
++        align-items: center;
++        flex-wrap: wrap;
++        gap: var(--space-md);
++    }
++
++    .status-text {
++        font-family: var(--font-mono);
++        font-size: 0.75rem;
++        color: var(--text-muted);
++        letter-spacing: 0.02em;
++    }
++
++    .footer-prompt {
++        font-size: 0.85rem;
++        color: var(--text-secondary);
++        font-style: italic;
++    }
++
++    /* Ma: breathing space utility */
++    .ma {
++        margin-bottom: var(--space-xl);
++    }
++
++    .ma-sm {
++        margin-bottom: var(--space-md);
++    }
++</style>
++{% endblock %}
++
++{% block content %}
++<main class="dashboard">
++
++    <!-- Header Zone -->
++    <header class="header-zone">
++        <h1 class="greeting">{{ greeting }}, {{ user_name }}</h1>
++        <p class="header-date">{{ date_str }}</p>
++        <div class="brain-status">
++            <span><span class="metric">{{ brain_status.memories }}</span> memories</span>
++            <span class="brain-status__sep">&middot;</span>
++            <span><span class="metric">{{ brain_status.actions }}</span> actions</span>
++            <span class="brain-status__sep">&middot;</span>
++            <span><span class="metric">{{ brain_status.contexts }}</span> contexts</span>
++        </div>
++    </header>
++
++    <!-- Primary Zone: 2-column grid -->
++    <section class="primary-zone">
++
++        <!-- Left Column: Today -->
++        <div class="column-today">
++            <h2 class="section-header">Today</h2>
++
++            <div class="ma-sm">
++                {% for action in actions %}
++                <div class="card card--accent">
++                    <div class="action-item">
++                        <span class="action-indicator action-indicator--{{ action.status }}"></span>
++                        <div>
++                            <div class="action-text">{{ action.text }}</div>
++                            <div class="action-domain">{{ action.domain }}</div>
++                        </div>
++                    </div>
++                </div>
++                {% endfor %}
++                {% if not actions %}
++                <div class="card">
++                    <p class="status-text">No active actions. A clear mind.</p>
++                </div>
++                {% endif %}
++            </div>
++
++            <h2 class="section-header" style="margin-top: var(--space-xl);">Projects</h2>
++            {% for project in projects %}
++            <div class="card">
++                <div class="project-name">{{ project.name }}</div>
++                <div class="project-detail">{{ project.detail }}</div>
++                <span class="project-status project-status--{{ project.status }}">{{ project.status }}</span>
++            </div>
++            {% endfor %}
++        </div>
++
++        <!-- Right Column: Context -->
++        <div class="column-context">
++            <h2 class="section-header">Context</h2>
++
++            <div class="card context-card ma-sm">
++                <div class="mode-label">Current Mode</div>
++                <div class="mode-value">Building</div>
++            </div>
++
++            <div class="card context-card">
++                <div class="mode-label">Energy</div>
++                <div class="mode-value">Focused</div>
++            </div>
++
++            <h2 class="section-header" style="margin-top: var(--space-xl);">Upcoming</h2>
++            <div class="card">
++                <p class="calendar-placeholder">Calendar not connected</p>
++            </div>
++        </div>
++
++    </section>
++
++    <!-- Secondary Zone: Recent Brain Activity -->
++    <section class="secondary-zone">
++        <h2 class="section-header">Recent Brain Activity</h2>
++
++        {% for memory in recent_memories %}
++        <div class="quote-block">
++            <div class="quote-content">{{ memory.content }}</div>
++            <div class="quote-meta">
++                <span>{{ memory.domain }}</span>
++                <span>{{ memory.created_at }}</span>
++            </div>
++        </div>
++        {% endfor %}
++        {% if not recent_memories %}
++        <div class="quote-block">
++            <p class="status-text">No recent captures yet.</p>
++        </div>
++        {% endif %}
++    </section>
++
++    <!-- Footer Zone -->
++    <footer class="footer-zone">
++        <span class="status-text">Last sync: moments ago</span>
++        <span class="footer-prompt">What is essential is invisible to the eye.</span>
++    </footer>
++
++</main>
++{% endblock %}
+-- 
+2.51.0.windows.1
+

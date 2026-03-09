@@ -1,0 +1,1711 @@
+From bdaead18935e57c1bf629ef61ca3006ab6512352 Mon Sep 17 00:00:00 2001
+From: z4rivers <zachary4rivers@gmail.com>
+Date: Wed, 4 Mar 2026 06:41:24 -0800
+Subject: [PATCH 03/68] =?UTF-8?q?docs:=20complete=20zBrain=20v1.0=20resear?=
+ =?UTF-8?q?ch=20=E2=80=94=20stack,=20features,=20architecture,=20pitfalls?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ .planning/research/ARCHITECTURE.md | 554 +++++++++++++++++++++++++++++
+ .planning/research/FEATURES.md     | 211 +++++++++++
+ .planning/research/PITFALLS.md     | 418 ++++++++++++++++++++++
+ .planning/research/STACK.md        | 253 +++++++++++++
+ .planning/research/SUMMARY.md      | 219 ++++++++++++
+ 5 files changed, 1655 insertions(+)
+ create mode 100644 .planning/research/ARCHITECTURE.md
+ create mode 100644 .planning/research/FEATURES.md
+ create mode 100644 .planning/research/PITFALLS.md
+ create mode 100644 .planning/research/STACK.md
+ create mode 100644 .planning/research/SUMMARY.md
+
+diff --git a/.planning/research/ARCHITECTURE.md b/.planning/research/ARCHITECTURE.md
+new file mode 100644
+index 0000000..09dd044
+--- /dev/null
++++ b/.planning/research/ARCHITECTURE.md
+@@ -0,0 +1,554 @@
++# Architecture Research
++
++**Domain:** zBrain — proactive AI memory layer on top of Promaia
++**Researched:** 2026-03-04
++**Confidence:** HIGH (based on direct code inspection of existing codebase)
++
++## Existing System Overview
++
++Before mapping integration points, this is what Promaia already has on the `zbrain` branch:
++
++```
++┌─────────────────────────────────────────────────────────────────────────┐
++│                           CLI Layer (promaia/cli.py)                     │
++│  maia sync | maia chat | maia workspace | maia agent | maia schedule    │
++├─────────────────────────────────────────────────────────────────────────┤
++│                      Agent Orchestration Layer                           │
++│  ┌──────────────────┐  ┌───────────────────┐  ┌─────────────────────┐  │
++│  │ agents/scheduler │  │ agent/agent_manager│  │ agent/intent_       │  │
++│  │  (interval loop) │  │  (Claude SDK      │  │  classifier.py      │  │
++│  │                  │  │   subprocesses)   │  │                     │  │
++│  └──────────────────┘  └───────────────────┘  └─────────────────────┘  │
++├─────────────────────────────────────────────────────────────────────────┤
++│                         AI Layer                                         │
++│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────────────┐ │
++│  │ ai/models.py    │  │ ai/nl_orchestrator│  │ ai/prompts.py          │ │
++│  │ (model registry)│  │ (NL→SQL/vector)  │  │ (context formatting)   │ │
++│  │ Claude primary  │  │ PromaiLLMAdapter  │  │                        │ │
++│  │ Gemini fallback │  │                  │  │                        │ │
++│  └─────────────────┘  └──────────────────┘  └────────────────────────┘ │
++├─────────────────────────────────────────────────────────────────────────┤
++│                     Connector Layer                                      │
++│  ┌────────────────┐  ┌─────────────────┐  ┌────────────────────────┐   │
++│  │ connectors/    │  │ connectors/      │  │ connectors/            │   │
++│  │ notion_        │  │ gmail_connector  │  │ discord_connector      │   │
++│  │ connector      │  │                  │  │                        │   │
++│  └───────┬────────┘  └────────┬─────────┘  └──────────┬─────────── ┘   │
++├──────────┴─────────────────────┴─────────────────────────┴──────────────┤
++│                     Storage Layer                                        │
++│  ┌──────────────────────┐  ┌─────────────────┐  ┌──────────────────┐   │
++│  │ storage/hybrid_      │  │ storage/vector_ │  │ storage/supabase_│   │
++│  │ storage.py (SQLite)  │  │ db.py (ChromaDB)│  │ query.py (cloud) │   │
++│  │ HybridContentRegistry│  │ VectorDBManager │  │                  │   │
++│  └──────────────────────┘  └─────────────────┘  └──────────────────┘   │
++│  ┌──────────────────────────────────────────────────────────────────┐   │
++│  │ storage/unified_query.py (HybridQueryInterface — SQL view)       │   │
++│  └──────────────────────────────────────────────────────────────────┘   │
++│  ┌─────────────────────────────────────────────────────────────────┐    │
++│  │  [postgres-sql-changeover branch] storage/postgres_db.py        │    │
++│  │  PostgresDB singleton + schema.sql (586 lines, no pgvector yet) │    │
++│  └─────────────────────────────────────────────────────────────────┘    │
++└─────────────────────────────────────────────────────────────────────────┘
++```
++
++## Target Architecture (zBrain v1.0)
++
++```
++┌─────────────────────────────────────────────────────────────────────────┐
++│                     CLI Layer (extended)                                 │
++│  maia sync | maia chat | maia workspace | maia agent | maia heartbeat   │
++│                                          [NEW] maia brain               │
++├─────────────────────────────────────────────────────────────────────────┤
++│                  Brain Layer [NEW MODULE: brain/]                        │
++│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  ┌───────────┐  │
++│  │ brain/       │  │ brain/       │  │ brain/        │  │ brain/    │  │
++│  │ briefing.py  │  │ actions.py   │  │ directives.py │  │ stale.py  │  │
++│  │ (startup     │  │ (extract &   │  │ (per-project  │  │ (project  │  │
++│  │  briefing)   │  │  store)      │  │  directives)  │  │ alerts)   │  │
++│  └──────────────┘  └──────────────┘  └───────────────┘  └───────────┘  │
++├─────────────────────────────────────────────────────────────────────────┤
++│                     AI Layer (modified)                                  │
++│  ┌─────────────────────────────────────────────────────────────────┐    │
++│  │ ai/router.py [NEW] — task-based model selection                  │    │
++│  │  "briefing" → Gemini Flash   "complex" → Claude Sonnet           │    │
++│  │  "embedding" → text-embed-004  "bulk" → Gemini Flash             │    │
++│  └─────────────────────────────────────────────────────────────────┘    │
++│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────────────┐  │
++│  │ ai/models.py    │  │ ai/nl_orchestrator│  │ ai/prompts.py         │  │
++│  │ [MODIFIED:      │  │ (unchanged)       │  │ [EXTENDED: brain      │  │
++│  │  add Google     │  │                   │  │  prompt templates]    │  │
++│  │  embed client]  │  │                   │  │                       │  │
++│  └─────────────────┘  └───────────────────┘  └───────────────────────┘  │
++├─────────────────────────────────────────────────────────────────────────┤
++│                     Connector Layer (unchanged)                          │
++│  [same as above — connectors/ not modified by zBrain]                   │
++├─────────────────────────────────────────────────────────────────────────┤
++│                     Storage Layer (replaced + extended)                  │
++│  ┌──────────────────────────────────────────────────────────────────┐   │
++│  │  storage/postgres_db.py [MODIFIED: point to Supabase, not local] │   │
++│  │  PostgresDB singleton — connection string → Supabase cloud       │   │
++│  └──────────────────────────────────────────────────────────────────┘   │
++│  ┌──────────────────────────────────────────────────────────────────┐   │
++│  │  storage/vector_db.py [REPLACED: pgvector backend]               │   │
++│  │  VectorDBManager — drop ChromaDB, write to Supabase pgvector     │   │
++│  └──────────────────────────────────────────────────────────────────┘   │
++│  ┌──────────────────────────────────────────────────────────────────┐   │
++│  │  storage/brain_schema.sql [NEW] — brain.* schema                 │   │
++│  │  brain.memories | brain.domains | brain.actions | brain.reviews   │   │
++│  └──────────────────────────────────────────────────────────────────┘   │
++├─────────────────────────────────────────────────────────────────────────┤
++│                     Autonomous Layer [NEW: heartbeat/]                   │
++│  ┌──────────────────────────────────────────────────────────────────┐   │
++│  │  heartbeat/runner.py — Windows Task Scheduler entry point        │   │
++│  │  heartbeat/tasks.py — stale check, action review, brain ingest   │   │
++│  └──────────────────────────────────────────────────────────────────┘   │
++└─────────────────────────────────────────────────────────────────────────┘
++```
++
++## Integration Analysis: New vs Modified Components
++
++### Feature 1: pgvector Replacing ChromaDB
++
++**Status:** storage/vector_db.py exists and is fully ChromaDB-based. postgres-sql-changeover branch has PostgresDB singleton (psycopg2 + connection pooling) but NO vector extension or embedding columns in schema.sql (confirmed: grep found zero matches for "vector", "embed", "pgvector" in schema.sql).
++
++**What changes:**
++
++| Component | Action | Details |
++|-----------|--------|---------|
++| `storage/vector_db.py` | REPLACE internals | Keep `VectorDBManager` class interface, swap ChromaDB calls for pgvector SQL. Callers use same `.search()`, `.add_content()`, `.generate_embedding()` API. |
++| `storage/schema.sql` (from postgres branch) | EXTEND | Add `CREATE EXTENSION vector` and `embedding vector(768)` columns to content tables. 768 dims = Google text-embedding-004. |
++| `ai/models.py` | MODIFY | Add `get_google_embedding_client()` function. Change `_init_embedding_function()` in VectorDBManager to use `google.generativeai` instead of OpenAI. |
++| `storage/unified_query.py` | MINOR MODIFY | Replace ChromaDB filter syntax with pgvector SQL operator (`<=>` cosine distance). |
++| `storage/hybrid_storage.py` | UNCHANGED | SQLite wrapper stays until Postgres migration completes. |
++
++**Key interface to preserve** (callers expect this contract from `vector_db.py`):
++```python
++# These signatures must not change — they're called from:
++#   storage/unified_query.py, storage/content_search.py
++vector_db.search(query_text, filters, n_results, min_similarity) -> List[Dict]
++vector_db.add_content(page_id, content_text, metadata) -> bool
++vector_db.add_content_with_chunking(page_id, content_text, metadata, chunks) -> bool
++vector_db.check_exists(page_id) -> bool
++```
++
++**pgvector SQL pattern** (replaces ChromaDB calls):
++```python
++# In VectorDBManager.search():
++embedding = self.generate_embedding(query_text)
++rows = db.execute("""
++    SELECT page_id, metadata,
++           1 - (embedding <=> %s::vector) AS similarity
++    FROM public.content_embeddings
++    WHERE workspace = %s
++    ORDER BY embedding <=> %s::vector
++    LIMIT %s
++""", [embedding, workspace_filter, embedding, n_results])
++```
++
++---
++
++### Feature 2: Brain Schema — New `brain/` Module
++
++**Status:** No brain module exists in Promaia. The postgres branch schema has NO brain tables. This is entirely new work in the `brain.*` Postgres schema (separate from `public.*`).
++
++**Why `brain/` not `storage/`:**
++- Brain is a behavioral layer (reasoning, extraction, directives), not a raw storage layer.
++- `storage/` is connector output — what was synced from Notion/Gmail/Discord.
++- `brain/` is derived intelligence — what zBrain has learned, decided, and remembered.
++- Keeping them separate makes the daughter's cherry-pick clean: she can take storage changes without picking up brain logic.
++
++**New module structure:**
++```
++promaia/brain/
++├── __init__.py
++├── schema.sql          # brain.* schema DDL (CREATE SCHEMA brain; CREATE TABLE brain.memories ...)
++├── briefing.py         # generate_session_briefing(workspace) -> str
++├── actions.py          # extract_actions_from_conversation(messages) -> List[Action]
++│                       # store_action(action), get_pending_actions(workspace)
++├── directives.py       # get_directives(project) -> List[Directive]
++│                       # upsert_directive(project, text)
++└── stale.py            # get_stale_projects(days_threshold) -> List[Project]
++```
++
++**Brain schema tables** (new `brain.*` Postgres schema, separate from `public.*`):
++```sql
++-- brain.memories: cross-session persistent facts
++-- brain.actions: extracted next-steps from conversations
++-- brain.directives: standing per-project instructions
++-- brain.reviews: heartbeat audit log
++-- brain.domains: project/topic taxonomy for routing context
++```
++
++**Integration points:**
++- `brain/briefing.py` calls `storage/unified_query.py` to fetch recent content
++- `brain/briefing.py` calls `brain/actions.py` for pending actions
++- `brain/briefing.py` calls `brain/stale.py` for project alerts
++- `brain/briefing.py` calls `ai/router.py` (new) to invoke Gemini Flash for synthesis
++- `cli.py` startup hook: `maia chat` calls `briefing.generate_session_briefing()` before prompt
++
++---
++
++### Feature 3: Model Routing — New `ai/router.py`
++
++**Status:** `ai/models.py` is currently a model registry (static dicts + helper functions). `ai/nl_orchestrator.py` has its own `PromaiLLMAdapter` that manually tries API keys in order (Anthropic → OpenAI → Gemini). No routing logic exists in any shared location.
++
++**Why `ai/router.py` not modifying `ai/models.py`:**
++- `ai/models.py` is data — model ID strings and display names. Keep it pure data.
++- Routing is logic — decisions about WHICH model to use for WHICH task.
++- `nl_orchestrator.py`'s `PromaiLLMAdapter` is query-specific; don't generalize it.
++- A new `router.py` is a clean extension point and easier for the daughter to adopt or ignore.
++
++**New component:**
++```python
++# ai/router.py
++class TaskType(Enum):
++    BRIEFING = "briefing"       # Gemini Flash — daily summary, cheap
++    EMBEDDING = "embedding"     # Google text-embedding-004 — via google.generativeai
++    EXTRACTION = "extraction"   # Gemini Flash — action/directive extraction, high volume
++    REASONING = "reasoning"     # Claude Sonnet — complex multi-step analysis
++    CHAT = "chat"               # Claude Sonnet — interactive conversation
++    HEARTBEAT = "heartbeat"     # Gemini Flash — overnight autonomous work
++
++class ModelRouter:
++    def get_client(self, task: TaskType) -> LLMClient: ...
++    def route(self, task: TaskType, prompt: str, **kwargs) -> str: ...
++```
++
++**Integration points:**
++- `brain/briefing.py` uses `router.route(TaskType.BRIEFING, ...)`
++- `brain/actions.py` uses `router.route(TaskType.EXTRACTION, ...)`
++- `heartbeat/tasks.py` uses `router.route(TaskType.HEARTBEAT, ...)`
++- `ai/nl_orchestrator.py` unchanged — it has its own adapter, which is fine
++- `agents/executor.py` — optionally extended later to use router; not required for v1.0
++
++**Gemini as first-class client** — add to `ai/router.py`:
++```python
++import google.generativeai as genai
++
++class GeminiClient:
++    def __init__(self):
++        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
++        self.flash = genai.GenerativeModel("gemini-2.0-flash-exp")
++
++    def complete(self, prompt: str) -> str:
++        response = self.flash.generate_content(prompt)
++        return response.text
++
++    def embed(self, text: str) -> List[float]:
++        result = genai.embed_content(
++            model="models/text-embedding-004",
++            content=text,
++            task_type="retrieval_document"
++        )
++        return result["embedding"]  # 768 dims
++```
++
++---
++
++### Feature 4: Heartbeat Agent — New `heartbeat/` Module
++
++**Status:** `agents/scheduler.py` exists and runs agents on intervals via asyncio. `agents/executor.py` runs agents with Claude SDK. The heartbeat is a specialized scheduled agent that runs autonomously overnight — it IS the existing agent system, not separate from it.
++
++**Recommended approach:** New `heartbeat/` module that wraps the existing scheduler/executor pattern, plus a Windows Task Scheduler trigger script.
++
++**Why `heartbeat/` not reusing `agents/scheduler.py` directly:**
++- `agents/scheduler.py` is a continuous loop daemon (runs forever, Ctrl+C to stop).
++- Heartbeat is a single-run triggered job (Windows Task Scheduler fires it, it runs, it exits).
++- The trigger mechanism is different enough to warrant a thin wrapper.
++- `heartbeat/` can still import from `agents/executor.py` for the actual work.
++
++**New structure:**
++```
++promaia/heartbeat/
++├── __init__.py
++├── runner.py     # Entry point: python -m promaia.heartbeat — runs once and exits
++└── tasks.py      # Heartbeat-specific tasks: stale_check(), action_review(), brain_ingest()
++```
++
++**runner.py pattern:**
++```python
++# python -m promaia.heartbeat
++# Also: python -m promaia.heartbeat --dry-run
++async def main():
++    brain_context = briefing.get_brain_context()     # Load current state
++    tasks = tasks.get_pending_tasks(brain_context)    # What needs doing
++    for task in tasks:
++        await executor.run_task(task)                 # Reuse existing executor
++    await brain.store_review(results)                 # Log what happened
++```
++
++**Windows Task Scheduler integration:**
++```
++Action: python -m promaia.heartbeat
++Trigger: Daily 2:00 AM
++Condition: Run whether logged on or not
++Working Directory: C:\Users\Zachary Turner\dev\promaia
++```
++
++**Also add as CLI command** (for `maia heartbeat --run` manual trigger):
++```python
++# cli/heartbeat_commands.py
++# Plugs into existing cli.py pattern (like agent_commands.py, gmail_commands.py)
++```
++
++---
++
++## Recommended Project Structure (zbrain additions only)
++
++```
++promaia/
++├── brain/                      [NEW]
++│   ├── __init__.py
++│   ├── schema.sql              # brain.* DDL (separate from storage/schema.sql)
++│   ├── briefing.py             # Session briefing generator
++│   ├── actions.py              # Action extraction + storage
++│   ├── directives.py           # Per-project standing instructions
++│   └── stale.py                # Project staleness detection
++├── heartbeat/                  [NEW]
++│   ├── __init__.py             # python -m promaia.heartbeat entry point
++│   ├── runner.py               # Single-run orchestrator
++│   └── tasks.py                # Heartbeat task definitions
++├── ai/
++│   ├── models.py               [UNCHANGED — data only]
++│   ├── router.py               [NEW — task-based model selection]
++│   ├── nl_orchestrator.py      [UNCHANGED]
++│   └── prompts.py              [EXTENDED — add brain prompt templates]
++├── storage/
++│   ├── postgres_db.py          [MODIFIED — change host to Supabase URL]
++│   ├── schema.sql              [EXTENDED — add pgvector extension + embedding columns]
++│   ├── vector_db.py            [MODIFIED — replace ChromaDB with pgvector SQL]
++│   ├── unified_query.py        [MINOR MOD — update vector search filter syntax]
++│   ├── hybrid_storage.py       [UNCHANGED — SQLite, deprecated but not removed in v1.0]
++│   └── supabase_query.py       [UNCHANGED — existing Supabase client interface]
++└── cli/
++    ├── heartbeat_commands.py   [NEW — maia heartbeat commands]
++    └── brain_commands.py       [NEW — maia brain commands]
++```
++
++---
++
++## Recommended Build Order
++
++The four features have dependencies. Build in this order:
++
++### Phase 1: Storage Foundation (pgvector)
++**Rationale:** Everything else depends on the database layer. Brain, heartbeat, and embeddings all write to Postgres. Do this first so subsequent phases can test against real storage.
++
++**Steps:**
++1. Point `postgres_db.py` to Supabase (env var swap: `POSTGRES_HOST` → `DATABASE_URL`)
++2. Run existing `storage/db_init.py` against Supabase — verify all 586-line schema migrates clean
++3. Add `CREATE EXTENSION vector` and embedding columns to `storage/schema.sql`
++4. Create `storage/brain_schema.sql` with `brain.*` tables
++5. Modify `storage/vector_db.py` internals — keep class interface, replace ChromaDB calls
++6. Update embedding provider in `ai/models.py` or new `ai/router.py` to use Google embed-004
++7. Smoke test: `maia sync` followed by vector search — verify embeddings write to Supabase
++
++**Dependencies this unblocks:** Everything. No other phase can proceed without storage.
++
++---
++
++### Phase 2: Model Router
++**Rationale:** Brain features need Gemini Flash. Build the router before brain so brain can use it from day one rather than making direct API calls that later need refactoring.
++
++**Steps:**
++1. Create `ai/router.py` with `TaskType` enum and `ModelRouter` class
++2. Implement `GeminiClient` wrapper (Flash for generation, text-embedding-004)
++3. Implement `ClaudeClient` wrapper (Sonnet for reasoning/chat)
++4. Route table: map each `TaskType` to a client
++5. Add `GOOGLE_API_KEY` env var check to startup
++
++**Dependencies this unblocks:** Brain features (Phase 3) and Heartbeat (Phase 4).
++
++---
++
++### Phase 3: Brain Module
++**Rationale:** Brain is the core value proposition. Once storage and routing exist, build the brain. Heartbeat uses the brain, so brain must exist first.
++
++**Steps:**
++1. `brain/actions.py` — extract actions from text, write to `brain.actions` table
++2. `brain/directives.py` — read/write per-project directives to `brain.directives`
++3. `brain/stale.py` — query `public.unified_content` for project activity gaps
++4. `brain/briefing.py` — compose and return briefing string, hook into `maia chat` startup
++5. Extend `ai/prompts.py` with brain-specific templates (briefing format, action extraction prompt)
++6. Add `cli/brain_commands.py` — `maia brain status`, `maia brain briefing`
++
++**Dependencies this unblocks:** Heartbeat (Phase 4).
++
++---
++
++### Phase 4: Heartbeat Agent
++**Rationale:** Last because it depends on brain (for context), storage (for writes), and router (for cheap model calls). Once built, it runs autonomously.
++
++**Steps:**
++1. `heartbeat/tasks.py` — define stale project check, action review, brain ingest tasks
++2. `heartbeat/runner.py` — single-run entry point that iterates tasks and exits cleanly
++3. `cli/heartbeat_commands.py` — `maia heartbeat --run`, `maia heartbeat --status`, `maia heartbeat --dry-run`
++4. Windows Task Scheduler setup (documented, not scripted — user configures once)
++5. Test: `python -m promaia.heartbeat --dry-run` → verify it runs without writing
++
++---
++
++## Data Flow Changes
++
++### Before (current): Sync → Vector flow
++```
++maia sync
++    → connectors/notion_connector.py → fetch pages
++    → storage/hybrid_storage.py → write SQLite
++    → storage/vector_db.py → VectorDBManager
++        → OpenAI embeddings API (text-embedding-3-small)
++        → ChromaDB (local file chroma_db/)
++```
++
++### After (zBrain): Sync → Vector flow
++```
++maia sync
++    → connectors/notion_connector.py → fetch pages (UNCHANGED)
++    → storage/postgres_db.py → write Supabase public.* tables (REPLACES SQLite)
++    → storage/vector_db.py → VectorDBManager (SAME INTERFACE)
++        → ai/router.py → GeminiClient.embed()
++        → Google text-embedding-004 (768 dims)
++        → Supabase pgvector (public.content_embeddings)
++```
++
++### New: Chat startup → Brain briefing flow
++```
++maia chat
++    → brain/briefing.py → generate_session_briefing()
++        → storage/unified_query.py → recent content (last 48h)
++        → brain/actions.py → get_pending_actions()
++        → brain/stale.py → get_stale_projects()
++        → ai/router.py → Gemini Flash → synthesize briefing text
++    → print briefing to terminal
++    → enter normal chat loop (UNCHANGED)
++```
++
++### New: Conversation → Action extraction flow
++```
++maia chat (during/after session)
++    → brain/actions.py → extract_actions_from_conversation(messages)
++        → ai/router.py → Gemini Flash → structured extraction prompt
++        → parse JSON response → List[Action]
++        → store_action() → INSERT INTO brain.actions
++```
++
++### New: Heartbeat overnight flow
++```
++Windows Task Scheduler → 2:00 AM
++    → python -m promaia.heartbeat
++        → heartbeat/runner.py → main()
++            → brain/briefing.py → get_brain_context()
++            → heartbeat/tasks.py → stale_check()
++                → brain/stale.py → identify stale projects
++                → ai/router.py → Gemini Flash → draft nudge message
++                → brain.reviews → log result
++            → heartbeat/tasks.py → action_review()
++                → brain/actions.py → get_overdue_actions()
++                → ai/router.py → Gemini Flash → priority assessment
++            → exit(0)
++```
++
++---
++
++## Component Boundaries
++
++| Component | Responsibility | Communicates With | Does NOT Touch |
++|-----------|---------------|-------------------|----------------|
++| `brain/briefing.py` | Compose session context summary | `storage/unified_query`, `brain/actions`, `brain/stale`, `ai/router` | Connectors, ChromaDB, SQLite |
++| `brain/actions.py` | Extract and persist action items | `ai/router`, `storage/postgres_db` | Connector layer, chat session |
++| `brain/directives.py` | Read/write standing instructions | `storage/postgres_db` | AI layer, connectors |
++| `brain/stale.py` | Identify inactive projects | `storage/unified_query` | AI layer directly |
++| `ai/router.py` | Route tasks to correct model | `ai/models.py` (for model IDs) | Storage, brain, connectors |
++| `storage/vector_db.py` | Embed and search content vectors | `storage/postgres_db`, `ai/router` (embedding) | Brain tables, connectors |
++| `heartbeat/runner.py` | Single-run autonomous orchestration | `brain/*`, `ai/router`, `agents/executor` | CLI layer, chat session |
++| `storage/postgres_db.py` | Connection pool to Supabase | Environment vars | Business logic |
++
++---
++
++## Integration Points: What Callers Already Exist
++
++These are files that call into the modules being modified. They must not break.
++
++### Callers of `storage/vector_db.py`
++
++| File | Call | Impact of pgvector change |
++|------|------|--------------------------|
++| `storage/unified_query.py` | `vector_db.search()` | Minor: filter syntax changes (no impact on return type) |
++| `storage/content_search.py` | `vector_db.search()` | Same as above |
++| `storage/notion_sync.py` | `vector_db.add_content()`, `add_content_with_chunking()` | None if interface preserved |
++| `storage/unified_storage.py` | `vector_db.add_content()` | None if interface preserved |
++
++### Callers of `ai/models.py`
++
++| File | Call | Impact of adding router.py |
++|------|------|---------------------------|
++| `ai/nl_orchestrator.py` | `ANTHROPIC_MODELS`, `GOOGLE_MODELS` dicts | None — router.py adds, doesn't change models.py |
++| `agents/executor.py` | `get_current_anthropic_model()` | None |
++| Various chat files | `get_model_display_name()` | None |
++
++### Where `maia chat` startup hooks
++
++`promaia/cli.py` imports from `promaia/cli/` submodules. The brain briefing hook goes in `cli/chat_commands.py` or directly in `cli.py` before the chat loop begins. This is an additive change — no existing functionality removed.
++
++---
++
++## Anti-Patterns to Avoid
++
++### Anti-Pattern 1: Putting Brain Logic in Storage
++
++**What people do:** Add `get_briefing()` to `unified_query.py` or a new `BrainStorage` class in `storage/`.
++**Why it's wrong:** Storage layer should be dumb data retrieval. Brain is reasoning and synthesis. Mixing them makes the daughter's codebase harder to fork — she gets brain logic when she only wanted the storage migration.
++**Do this instead:** `brain/` module calls `storage/` for raw data, does reasoning itself.
++
++### Anti-Pattern 2: Modifying VectorDBManager's Public Interface
++
++**What people do:** Change method signatures in `vector_db.py` because pgvector needs different params.
++**Why it's wrong:** Four existing callers depend on `search(query_text, filters, n_results, min_similarity)`. Breaking this signature breaks sync and chat immediately.
++**Do this instead:** Keep the same public interface. Translate ChromaDB-style filters to pgvector SQL internally. Add new methods for brain-specific vector operations rather than changing existing ones.
++
++### Anti-Pattern 3: Using Claude for Cheap Brain Tasks
++
++**What people do:** Route all brain processing through Claude Sonnet because "it's better."
++**Why it's wrong:** Action extraction, briefing generation, and stale checks run frequently. At Claude API pricing this adds up fast. These tasks don't need Claude's reasoning depth.
++**Do this instead:** Use Gemini Flash (already paid for via Google AI Premium) for extraction and synthesis tasks. Reserve Claude for interactive chat and complex multi-step reasoning where the quality difference matters.
++
++### Anti-Pattern 4: Making Heartbeat a Daemon
++
++**What people do:** Build heartbeat as a long-running asyncio service like `agents/scheduler.py`.
++**Why it's wrong:** A daemon needs to stay running, handle failures, and restart. On Windows this requires a service wrapper or always-on process. Unnecessary complexity for a personal tool.
++**Do this instead:** Single-run script triggered by Windows Task Scheduler. It runs, does its work, writes results to `brain.reviews`, exits. Task Scheduler handles the scheduling. Simpler, more reliable on Windows 11.
++
++### Anti-Pattern 5: Migrating SQLite Before Postgres is Validated
++
++**What people do:** Delete `hybrid_storage.py` and `vector_db.py` (ChromaDB) as soon as postgres_db.py works.
++**Why it's wrong:** The postgres branch has never been tested against Supabase. Schema may need adjustments. ChromaDB data migration takes time. Deleting the working fallback too early risks breaking `maia chat` and `maia sync` during development.
++**Do this instead:** Keep SQLite + ChromaDB operational until pgvector path proves stable in production. Use an env var toggle (`STORAGE_BACKEND=postgres|sqlite`) during transition. Remove old path only after Supabase has been running reliably for at least one week of normal use.
++
++---
++
++## Scaling Considerations
++
++This is a single-user personal tool. Scaling is not the concern. The concerns are:
++
++| Concern | Mitigation |
++|---------|------------|
++| Supabase free tier limits (500MB DB, 2GB bandwidth) | Already on Pro ($27.49/mo). 8GB DB, unlimited API calls. Fine. |
++| pgvector query performance at thousands of embeddings | Add HNSW index on embedding column. Supabase supports this. |
++| Heartbeat job running over its window | Add per-task timeout (30s default). Exit cleanly after total budget. |
++| Brain tables growing unbounded | Add `created_at` + periodic archive job. Not day-1 concern. |
++| Google embedding API rate limits | text-embedding-004 allows 1500 RPM on free, more on paid. Fine for personal use. |
++
++---
++
++## Sources
++
++- Direct code inspection: `promaia/storage/vector_db.py`, `promaia/ai/models.py`, `promaia/storage/hybrid_storage.py`, `promaia/agent/agent_manager.py`, `promaia/agents/scheduler.py`, `promaia/agents/executor.py`, `promaia/mcp/client.py`, `promaia/connectors/base.py`
++- postgres-sql-changeover branch: `promaia/storage/postgres_db.py`, `promaia/storage/schema.sql` (586 lines inspected, confirmed no pgvector or brain tables)
++- PROJECT.md milestone context (zbrain constraints, features, decisions)
++- Supabase pgvector documentation (HIGH confidence — standard extension, well-documented)
++- Google generativeai Python SDK — `genai.embed_content()` with `text-embedding-004` (HIGH confidence)
++
++---
++*Architecture research for: zBrain v1.0 integration into Promaia*
++*Researched: 2026-03-04*
++*Confidence: HIGH — based on direct code inspection of 400+ lines across 10 source files*
+diff --git a/.planning/research/FEATURES.md b/.planning/research/FEATURES.md
+new file mode 100644
+index 0000000..eaa99df
+--- /dev/null
++++ b/.planning/research/FEATURES.md
+@@ -0,0 +1,211 @@
++# Feature Research
++
++**Domain:** Personal AI Brain / Proactive Agent System
++**Researched:** 2026-03-04
++**Confidence:** MEDIUM-HIGH (core patterns well-documented; specific Promaia integration points inferred from codebase context)
++
++---
++
++## Feature Landscape
++
++### Table Stakes (Users Expect These)
++
++These are the baseline behaviors that make the system feel like an AI brain rather than just a chatbot with memory. Missing any of these produces the "amnesia problem" zBrain explicitly exists to solve.
++
++| Feature | Why Expected | Complexity | Notes |
++|---------|--------------|------------|-------|
++| Persistent cross-session memory | Core value prop — without this the system is just another chatbot | MEDIUM | Brain schema in Supabase. Memories, domains, contexts tables. Depends on Postgres migration completing first. |
++| Session startup briefing | Users expect an "AI assistant" to orient them, not require them to re-explain everything | MEDIUM | On `maia chat` start: query brain for open actions, recent domains, stale projects. Format as brief summary. Time-boxed to <5 seconds. |
++| Action extraction from conversations | Users assume the AI will notice when they say "I need to do X" and remember it | MEDIUM | Post-conversation pass (async, not blocking). LLM prompt over transcript to extract commitments. Store to `brain.actions`. |
++| Cloud access from any device | Any "personal brain" tool must work from phone — desktop-only feels broken | MEDIUM | Supabase REST API. No bespoke mobile app needed for v1 — claude.ai on iPhone hits brain via MCP or REST. |
++| Stale project / dormant alert | Users expect the brain to proactively notice what's been neglected | LOW-MEDIUM | Simple: query `brain.domains` for last-touched timestamp > threshold. Alert on startup briefing or heartbeat. |
++| Standing directives per project | Users want to tell the AI once "always do X for project Y" and not repeat it | LOW | Static config per domain/project. Read at session start. Injected into system prompt for relevant context. |
++
++### Differentiators (Competitive Advantage)
++
++These are what make zBrain meaningfully different from generic AI memory tools like MemSync, AI Context Flow, or a plain Postgres + Claude setup.
++
++| Feature | Value Proposition | Complexity | Notes |
++|---------|-------------------|------------|-------|
++| Heartbeat agent (autonomous overnight work) | The brain actively works between sessions — most AI tools are purely reactive | HIGH | Windows Task Scheduler + Python script. Scan → pick work → execute → report. HEARTBEAT.md checklist pattern (OpenClaw-inspired). Needs active-hours guard to avoid 3 AM noise. |
++| Intelligent model routing (task-based, not fallback) | Right model for each task — Gemini Flash for cheap/fast, Claude for nuance/reasoning | MEDIUM | Router reads task_type tag. Gemini 2.5 Flash: embeddings, classification, summarization. Claude Sonnet: reasoning, directives, session briefing. Not a fallback chain — deterministic by task. |
++| Brain ingestion pipeline (YouTube, web, docs) | Zack captures via voice and video — the brain must absorb these formats | MEDIUM-HIGH | YouTube: `youtube-transcript-api` → chunk → embed → store. Web: fetch + extract → chunk → embed. Docs: parse → chunk → embed. Google `text-embedding-004` for all. |
++| Gemini as first-class specialist (not fallback) | Covers all cheap tasks under existing Google AI Premium — no new API costs | LOW-MEDIUM | Model adapter already exists in Promaia. Add `task_type` routing table mapping task categories to model IDs. Remove OpenAI dependency for cheap tasks. |
++| Domain-aware context injection | Briefings and heartbeat results are scoped per project domain, not a global blob | MEDIUM | `brain.domains` table. Each domain has directives, last activity, open actions. Context serializer pulls domain-specific slice. |
++| Overnight work reporting | Heartbeat produces a written report Zack reads on iPhone next morning | LOW | Heartbeat loop writes `brain.reports` record. Session briefing includes "overnight summary" section if report exists from last N hours. |
++
++### Anti-Features (Commonly Requested, Often Problematic)
++
++| Feature | Why Requested | Why Problematic | Alternative |
++|---------|---------------|-----------------|-------------|
++| Real-time conversation monitoring | Seems powerful — AI watches everything you type | Requires always-on process, privacy surface, API cost per keystroke. No clear trigger for "when is a session over?" | Post-session extraction: user runs `maia reflect` or heartbeat scans recent chat exports. Async is fine. |
++| Automatic memory deletion / forgetting | Feels important for privacy, sounds smart | Creates unreliable behavior. Users forget what they told it, then wonder why it "forgot" something important. | Manual archive: `maia forget [domain]`. Keep raw data, just lower relevance weight in retrieval. |
++| Kanban / task board UI | Natural request once actions are being captured | Build the brain first. A UI before the data model is stable means rework. Daughter's Promaia already has desktop UI work in progress. | v1: actions live in DB, surface in briefing. v1.1: Kanban on top of stable schema. |
++| Continuous background sync + embedding | "Keep everything up to date" feels right | Embeddings cost tokens. Running continuously burns Google AI quota and adds latency to system. Most content doesn't change. | Scheduled sync: `maia sync` on demand or via heartbeat once daily. On-change triggers only for high-priority domains. |
++| Cross-user / shared brain | Collaboration feels like a natural extension | zBrain is a personal system. Shared memory = shared context = confusion about whose actions are whose. Promaia's multi-workspace handles teams separately. | Keep brain schema user-scoped. Multi-user is Promaia's problem, not zBrain's. |
++| Email triage built into heartbeat | Zack doesn't use task managers — Gmail integration seems obvious | Needs brain foundation first. Adding Gmail to heartbeat v1 creates a complex first milestone. Email triage is a separate behavioral domain. | v1.1 feature. Brain schema must be stable before adding new ingestion sources to heartbeat. |
++
++---
++
++## Feature Dependencies
++
++```
++[Postgres + pgvector migration]
++    └──required by──> [Brain schema creation]
++                          └──required by──> [Session briefing]
++                          └──required by──> [Action extraction]
++                          └──required by──> [Standing directives]
++                          └──required by──> [Stale project alerts]
++                          └──required by──> [Heartbeat agent]
++                          └──required by──> [Brain ingestion pipeline]
++
++[Brain schema creation]
++    └──required by──> [Intelligent model routing table]
++                          └──enhances──> [Heartbeat agent]
++                          └──enhances──> [Brain ingestion pipeline]
++
++[Session briefing]
++    └──required by (validates)──> [Overnight work reporting]
++
++[Gemini model routing]
++    └──required by──> [Brain ingestion pipeline (embeddings via text-embedding-004)]
++
++[Promaia: Agent orchestration architecture] (already built)
++    └──reused by──> [Heartbeat agent]
++    └──reused by──> [Action extraction]
++
++[Promaia: Multi-model LLM adapter] (already built)
++    └──extended by──> [Intelligent model routing]
++
++[Promaia: Scheduled agent system] (partially built)
++    └──extended by──> [Heartbeat agent]
++```
++
++### Dependency Notes
++
++- **Postgres migration is the critical path blocker:** Every single new feature depends on the brain schema, which depends on Supabase being the target. Daughter's `postgres-sql-changeover` branch is 70% done — completing this unlocks everything else.
++- **Session briefing validates the schema before heartbeat:** Build and use session briefing first. It exercises the same queries heartbeat will use (open actions, stale domains, directives) but in a synchronous, inspectable way. Heartbeat adds autonomous execution on top of validated reads.
++- **Model routing is infrastructure, not a user feature:** It should be built alongside or just before brain ingestion, since ingestion has the most varied task types (embedding, summarization, classification). Routing can be a simple lookup table — don't over-engineer a classifier.
++- **Brain ingestion is independent of heartbeat timing:** Ingestion can be triggered manually (`maia ingest youtube [url]`) before the heartbeat loop is automated. This lets Zack build up memory content without waiting for full automation.
++
++---
++
++## MVP Definition
++
++### Launch With (v1.0 — zBrain Foundation)
++
++The goal is to eliminate the amnesia problem and have the brain actively working overnight. Every item below is blocking that.
++
++- [ ] **Postgres + pgvector on Supabase** — all other features are blocked without this. Complete daughter's migration branch, retarget to Supabase `brain` schema.
++- [ ] **Brain schema** — `memories`, `domains`, `contexts`, `actions`, `reviews`, `reports` tables. Schema is the data contract everything else reads/writes.
++- [ ] **Session startup briefing** — fires automatically on `maia chat`. Shows: open actions, stale domains, overnight report if present, active directives. Under 5 seconds.
++- [ ] **Action extraction** — post-session async pass. LLM reads transcript, extracts commitments, writes to `brain.actions`. Manual trigger: `maia reflect`.
++- [ ] **Standing directives** — per-domain config. Injected into system prompt context when that domain is active. Edit via `maia directive set [domain] "always..."`.
++- [ ] **Stale project alerts** — query last-activity timestamp. Surface in session briefing. Threshold configurable (default 7 days).
++- [ ] **Gemini model routing** — task-type routing table. Gemini 2.5 Flash for embeddings/summarization/classification. Claude Sonnet for reasoning/briefing/directives. Deterministic, not fallback.
++- [ ] **Brain ingestion: YouTube** — `maia ingest youtube [url]`. Transcript → chunk → embed → store with source metadata.
++- [ ] **Brain ingestion: web** — `maia ingest web [url]`. Fetch → extract text → chunk → embed → store.
++- [ ] **Heartbeat agent** — Windows Task Scheduler + Python script. Scan open actions → pick one task → execute → write report. Runs 2 AM–6 AM window only. HEARTBEAT.md checklist for directives.
++- [ ] **iPhone access** — Supabase cloud means the brain is already accessible. Verify claude.ai + MCP or REST endpoint works from iPhone for day-1.
++
++### Add After Validation (v1.1)
++
++Add these once v1.0 is stable and the schema has proven reliable.
++
++- [ ] **Google Calendar integration** — already flagged as v1.1 priority in PROJECT.md. Briefing includes today's schedule. Heartbeat can pre-research meeting topics.
++- [ ] **Email/message triage** — Gmail scanning in heartbeat. Flag urgent emails, draft replies. Needs brain foundation to be stable first.
++- [ ] **Brain ingestion: documents** — `maia ingest doc [path]`. PDF/text → chunk → embed. Needed for Zack's HVAC sales materials and research docs.
++- [ ] **Obsidian sync** — brain as Obsidian vault. Review layer on top of Postgres brain. Nice-to-have, not blocking.
++- [ ] **Heartbeat work queue** — priority-ranked backlog of things for the overnight agent to tackle. Currently heartbeat picks ad-hoc; queue makes it systematic.
++
++### Future Consideration (v2+)
++
++Defer until zBrain v1.0 is stable and the collaboration model with daughter's Promaia is established.
++
++- [ ] **Kanban board UI** — visualization of `brain.actions`. Defer until schema is stable.
++- [ ] **React web chat app** — daughter's domain. zBrain's CLI + iPhone access is sufficient.
++- [ ] **Desktop Electron app** — daughter's domain. Out of zBrain scope.
++- [ ] **Cross-project / team brain** — multi-user memory. Promaia handles this; zBrain stays personal.
++- [ ] **Automatic memory forgetting / decay** — weighted relevance over time. Interesting but adds complexity. v1 just keeps everything.
++
++---
++
++## Feature Prioritization Matrix
++
++| Feature | User Value | Implementation Cost | Priority |
++|---------|------------|---------------------|----------|
++| Postgres + pgvector migration | HIGH (unblocks everything) | MEDIUM (70% done, retarget Supabase) | P1 |
++| Brain schema | HIGH (data contract) | LOW (design + SQL) | P1 |
++| Session startup briefing | HIGH (core value: no amnesia) | MEDIUM (query + format + inject) | P1 |
++| Action extraction | HIGH (captures commitments automatically) | MEDIUM (async LLM pass over transcript) | P1 |
++| Standing directives | MEDIUM (reduces repetition) | LOW (config + prompt injection) | P1 |
++| Stale project alerts | MEDIUM (addresses Zack's bounce pattern) | LOW (timestamp query) | P1 |
++| Gemini model routing | MEDIUM (cost control, Gemini as specialist) | LOW (routing table in model adapter) | P1 |
++| Brain ingestion: YouTube | HIGH (Zack's primary research format) | MEDIUM (transcript API + chunking pipeline) | P1 |
++| Heartbeat agent | HIGH (works while sleeping) | HIGH (scheduler + loop + safety guards) | P1 |
++| iPhone access verification | HIGH (day-1 requirement) | LOW (Supabase cloud already provides this) | P1 |
++| Brain ingestion: web | MEDIUM | MEDIUM | P2 |
++| Brain ingestion: documents | MEDIUM (HVAC research) | MEDIUM | P2 |
++| Google Calendar integration | MEDIUM | MEDIUM | P2 |
++| Overnight work reporting | MEDIUM | LOW | P2 |
++| Email/message triage | HIGH (eventually) | HIGH | P2 |
++| Heartbeat work queue | MEDIUM | MEDIUM | P2 |
++| Obsidian sync | LOW-MEDIUM | MEDIUM | P3 |
++| Kanban board UI | MEDIUM | HIGH | P3 |
++
++**Priority key:**
++- P1: Must have for v1.0 launch
++- P2: v1.1 after validation
++- P3: v2+ or daughter's platform
++
++---
++
++## Competitor / Inspiration Feature Analysis
++
++| Feature | OpenClaw Heartbeat | Nate Jones Open Brain | zBrain Approach |
++|---------|--------------------|-----------------------|-----------------|
++| Proactive agent loop | HEARTBEAT.md checklist, every 30min | Not documented | Windows Task Scheduler + Python, HEARTBEAT.md pattern, overnight-only window |
++| Memory storage | File-based MEMORY.md | Postgres + pgvector | Supabase `brain` schema, pgvector, structured tables |
++| Session briefing | Not native (external integration) | Not documented | Built-in: fires on `maia chat` start, pulls from brain schema |
++| Model routing | Single model (Claude) | Single model (Claude) | Task-based routing table: Gemini Flash for cheap tasks, Claude for reasoning |
++| Ingestion sources | Files, web via skills | Manual capture | YouTube transcript, web fetch, docs, existing Notion/Gmail/Discord (Promaia) |
++| Standing directives | HEARTBEAT.md global directives | Not documented | Per-domain directives in `brain.domains`, injected at session start |
++| Action extraction | Not automatic | Not documented | Async post-session LLM pass over transcript |
++| iPhone access | Via Telegram bot | Via claude.ai | Supabase cloud + claude.ai MCP on iPhone |
++| Work reporting | Alert on condition | Not documented | Structured report written to `brain.reports`, surfaced in next briefing |
++
++---
++
++## Promaia Integration Dependencies
++
++These existing Promaia features are directly reused or extended — no rebuild needed.
++
++| zBrain Feature | Promaia Feature Reused | What Changes |
++|----------------|------------------------|--------------|
++| Gemini model routing | Multi-model LLM adapter (`claude primary, openai/gemini fallback`) | Add `task_type` routing logic. Gemini becomes primary for cheap tasks, not just fallback. |
++| Heartbeat agent | Scheduled agent system (early, in `feature/agent-scheduler` branch) | Extend with HEARTBEAT.md loop pattern, work queue, active-hours guard, report writing. |
++| Action extraction | Agent orchestration (intent classifier, context serializer) | Reuse context serializer for transcript post-processing. Add extraction prompt. |
++| Brain ingestion | Connector plugin architecture (BaseConnector) | YouTube/web/doc ingestion as new BaseConnector subclasses. |
++| Session briefing | CLI interface (`maia chat`) | Add briefing hook on chat session start. Pull from brain schema. |
++| Stale alerts | Natural language query orchestrator (NL → SQL/vector) | Stale query is straightforward SQL against `brain.domains`. NL orchestrator handles it. |
++
++---
++
++## Sources
++
++- [Task-Based LLM Routing — Portkey.ai](https://portkey.ai/blog/task-based-llm-routing/)
++- [OpenClaw HEARTBEAT.md Guide](https://openclawconsult.com/lab/openclaw-heartbeat-md)
++- [OpenClaw Heartbeat Official Docs](https://docs.openclaw.ai/gateway/heartbeat)
++- [Autonomous AI Dev Teams: Heartbeats, Work Queues — Medium](https://medium.com/@chen.yang_50796/autonomous-ai-dev-teams-heartbeats-work-queues-and-self-managing-agents-0fad942580e9)
++- [Self-Evolving AI Agent 59 Overnight Rounds — DEV Community](https://dev.to/terryfyl/i-built-a-self-evolving-ai-agent-that-ran-59-exploration-rounds-overnight-4jcj)
++- [Supabase pgvector Docs](https://supabase.com/docs/guides/database/extensions/pgvector)
++- [YouTube Transcripts to Knowledge Base — CustomGPT](https://customgpt.ai/ingest-youtube-video-data-ai-knowledge-base/)
++- [Gemini 2.5 Flash vs Claude 4.5 Haiku — Appaca](https://www.appaca.ai/resources/llm-comparison/gemini-2.5-flash-vs-claude-4.5-haiku)
++- [Proactive AI in 2026 — Alpha Sense](https://www.alpha-sense.com/resources/research-articles/proactive-ai/)
++- [AI Action Item Extraction — MyMobileLyfe](https://www.mymobilelyfe.com/artificial-intelligence/turn-meetings-into-action-automating-action-item-extraction-and-task-assignment-with-ai/)
++- [Building Smarter AI Agents: AgentCore Long-Term Memory — AWS](https://aws.amazon.com/blogs/machine-learning/building-smarter-ai-agents-agentcore-long-term-memory-deep-dive/)
++
++---
++
++*Feature research for: zBrain — Personal AI Brain / Proactive Agent System (Promaia milestone)*
++*Researched: 2026-03-04*
+diff --git a/.planning/research/PITFALLS.md b/.planning/research/PITFALLS.md
+new file mode 100644
+index 0000000..e15fe31
+--- /dev/null
++++ b/.planning/research/PITFALLS.md
+@@ -0,0 +1,418 @@
++# Pitfalls Research
++
++**Domain:** Adding cloud Postgres/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to an existing Python content management platform (Promaia fork)
++**Researched:** 2026-03-04
++**Confidence:** HIGH (most pitfalls verified via official docs + multiple sources)
++
++---
++
++## Critical Pitfalls
++
++### Pitfall 1: Supabase Transaction Pooler Breaks asyncpg Prepared Statements
++
++**What goes wrong:**
++Promaia's existing `PostgresDB` singleton likely uses asyncpg or SQLAlchemy with asyncpg. When pointed at Supabase's pooled connection (port 6543, PgBouncer in transaction mode), every query that uses a prepared statement fails with `PreparedStatementError: prepared statement 'asyncpg_stmt_X' does not exist`. This is a silent killer — it works on direct connections during local dev, then explodes when you point at Supabase.
++
++**Why it happens:**
++PgBouncer in transaction mode does not persist prepared statements between connections. asyncpg automatically uses prepared statements for performance. These two behaviors are mutually incompatible. The daughter's existing `PostgresDB` was written against a local Postgres at `192.168.0.69` (direct connection), not a pooler. Supabase's default public URL hits the pooler.
++
++**How to avoid:**
++- Use Supabase's direct connection string (port 5432) for all non-serverless, persistent Python processes.
++- If you must use the pooler (port 6543), disable prepared statements explicitly: `statement_cache_size=0` in `asyncpg.connect()` and `asyncpg.create_pool()`. For SQLAlchemy: set both `statement_cache_size` and `prepared_statement_cache_size` to 0 in `connect_args`, and use `NullPool`.
++- In the connection config, document which port is used and why. Never silently switch ports.
++
++**Warning signs:**
++- `PreparedStatementError` or `asyncpg.exceptions.InvalidCachedStatementError` in logs.
++- Queries that work locally fail after pointing at Supabase URL.
++- Intermittent failures that appear random but correlate with connection recycling.
++
++**Phase to address:** Phase 1 (Postgres/Supabase migration). This must be resolved before any other work proceeds.
++
++---
++
++### Pitfall 2: Anthropic ToS Violation — Heartbeat Agent Outside Claude Code
++
++**What goes wrong:**
++Running an autonomous overnight heartbeat agent that calls Claude via a workaround, third-party library, or by invoking Claude Code's internals programmatically violates Anthropic's Terms of Service as of January 2026. The OAuth tokens from Claude Max subscriptions may only be used within Claude Code's official CLI interface. Anthropic deployed technical blocks in January 2026 specifically to prevent this pattern.
++
++**Why it happens:**
++Claude Max provides unlimited tokens through Claude Code but the same usage through the API would cost $1,000+/month. Anthropic actively enforces this economic boundary. Third-party tools that spoofed Claude Code's client were blocked. The Agent SDK explicitly requires API key authentication — it will not accept Claude Max subscription billing.
++
++**How to avoid:**
++- The heartbeat agent MUST run via Claude Code's native interface (terminal subprocesses calling `claude` CLI) or via official Claude API with a paid API key.
++- Do NOT use Agent SDK or any library that uses Claude Max's OAuth token programmatically.
++- The compliant pattern: Windows Task Scheduler invokes a shell script, which calls `claude --headless ...` or similar official CLI entry points.
++- If you need programmatic API access beyond what Claude Code CLI supports, budget for an API key separately (different cost from Max subscription).
++- Review the current ToS before building the heartbeat: https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan
++
++**Warning signs:**
++- Any library that says it "uses your Claude subscription" and is not Anthropic-official.
++- Using OAuth tokens extracted from Claude's browser session in Python code.
++- Agent SDK or similar SDK initialized without an explicit API key.
++
++**Phase to address:** Phase 3 (Heartbeat agent). Must be designed around ToS constraints from the start.
++
++---
++
++### Pitfall 3: Embedding Dimension Lock-In — Schema Baked at Wrong Dimensions
++
++**What goes wrong:**
++The `brain.memories` table is created with `embedding vector(768)` based on one model's output. Later, when switching embedding models (or when text-embedding-004 is deprecated for text-embedding-005), the new model produces 768 or 1536 dimensions and every INSERT fails with `expected 768 dimensions, not 768` or a cryptic error about wrong dimensions. Rebuilding the column requires reprocessing every stored memory.
++
++**Why it happens:**
++pgvector columns are typed with a fixed dimension at creation time (`vector(N)`). text-embedding-004 outputs 768-dimensional vectors. text-embedding-005 (the replacement as of November 2025) may output different dimensions. Switching models mid-flight requires an ALTER TABLE and full re-embedding of all stored content — expensive and disruptive.
++
++**How to avoid:**
++- Verify Google text-embedding-005's exact output dimensions before writing the schema. (text-embedding-004 = 768 dims; text-embedding-005 = also 768 dims, but verify.)
++- Store the model name and output dimension in a `brain.embedding_config` metadata table. This makes future migrations discoverable.
++- Use HNSW index (not IVFFlat) — HNSW handles schema changes and live inserts without needing rebuild.
++- Add a migration path note in the schema: "if changing embedding model, run `ALTER TABLE brain.memories ALTER COLUMN embedding TYPE vector(NEW_DIM)` after full re-embedding."
++
++**Warning signs:**
++- Errors like `ERROR: expected N dimensions, not M` on INSERT.
++- Queries returning zero results after a model change.
++- HNSW index not being used (visible in `EXPLAIN ANALYZE`).
++
++**Phase to address:** Phase 1 (Brain schema definition). Dimension must be locked before any data is inserted.
++
++---
++
++### Pitfall 4: ChromaDB to pgvector API Mismatch — Not a Drop-in Replacement
++
++**What goes wrong:**
++Promaia uses ChromaDB's Python client (`collection.add()`, `collection.query()`, `collection.get()`). pgvector has no equivalent Python client — it's a SQL extension. All vector operations become raw SQL queries or ORM calls. Every caller of the vector store must be rewritten, not just the storage layer. Code that worked with `results = collection.query(query_embeddings=..., n_results=10)` must become `SELECT ... ORDER BY embedding <-> $1 LIMIT 10`.
++
++**Why it happens:**
++Developers assume "replacing the vector database" means swapping a configuration line. ChromaDB is a standalone service with a Python SDK. pgvector is a Postgres extension — it has no Python SDK. The query interface is SQL, not an object API. This touches every code path that does retrieval, not just the storage initialization.
++
++**How to avoid:**
++- Audit every use of `chromadb` in Promaia before writing a single line of pgvector code. (`grep -r "chromadb" --include="*.py"` in the repo.)
++- Build a `VectorStore` abstraction class that has identical method signatures to what Promaia currently uses, with ChromaDB and pgvector backends. This lets you swap without touching callers.
++- Export all ChromaDB data to JSON before deleting ChromaDB. ChromaDB migrations between major versions are notoriously fragile.
++- Test on a copy of production data — ChromaDB's JSON export has edge cases with empty collections and null embeddings.
++
++**Warning signs:**
++- Any file importing `chromadb` that isn't the storage adapter layer.
++- Search returning empty results after migration (dimension mismatch or wrong index type).
++- `collection.query()` calls that weren't wrapped behind an interface.
++
++**Phase to address:** Phase 1 (Storage migration). Abstraction layer must be built before migration begins.
++
++---
++
++### Pitfall 5: SQLite Parameter Style Breaking Postgres Queries
++
++**What goes wrong:**
++SQLite uses `?` as the parameter placeholder (`WHERE id = ?`). PostgreSQL uses `$1, $2, ...` (`WHERE id = $1`). The daughter's existing codebase was built against SQLite. When the `PostgresDB` branch is used as the base, some queries may already be converted. But any new SQL written referencing the old style will fail with `syntax error at or near "?"` in Postgres — silently working in tests that still hit SQLite.
++
++**Why it happens:**
++If the test suite still runs against SQLite (fast, no config), bugs in postgres-targeted code are invisible until you run the full integration test against Supabase. This is especially dangerous in a fork where you're extending code you didn't write and can't fully audit before starting.
++
++**How to avoid:**
++- Before writing any SQL: run `grep -r "= ?" --include="*.py"` across the entire repo. Document every location.
++- Make Supabase the default test target from day one. No SQLite fallback for any code path that touches the database.
++- In `zbrain` branch, never add test fixtures that use SQLite. All tests hit a Supabase test schema.
++- Add a linter rule or pre-commit hook that rejects `?` placeholders in `.py` files.
++
++**Warning signs:**
++- Tests passing locally but queries failing against Supabase.
++- `psycopg2.ProgrammingError: syntax error at or near "?"` in logs.
++- Boolean columns behaving strangely (SQLite stores 0/1, Postgres uses true/false).
++
++**Phase to address:** Phase 1 (Postgres migration). Catch all before building any new features on top.
++
++---
++
++### Pitfall 6: Heartbeat Agent Token Runaway — No Budget Ceiling
++
++**What goes wrong:**
++The heartbeat agent runs overnight, processes stale projects, extracts actions, generates briefings. If there is no per-run token budget, a single run against a large memory corpus can consume hours of context processing. At scale, an agent loop with a bug (infinite retry, cascading context, recursive summarization) can exhaust rate limits or generate massive unexpected API costs.
++
++**Why it happens:**
++Autonomous agents that "do as much as needed" don't naturally stop. A "process all stale projects" loop with no limit will process all 15+ projects in one run. A bug in action extraction that triggers a retry loop won't stop until rate limited. Claude Max has rate limits but does not have per-script cost visibility.
++
++**How to avoid:**
++- Implement hard limits per heartbeat run: max tokens consumed, max API calls, max wall-clock seconds. Kill the process if any limit is exceeded.
++- Use a risk-tier model: low-risk operations (read, summarize) run automatically; medium-risk operations (write to brain schema, generate directives) log but don't execute without confirmation; high-risk operations (send messages, create calendar events) never run autonomously in v1.0.
++- Log every API call with timestamp, model used, approximate token count to a `brain.heartbeat_log` table.
++- Windows Task Scheduler: set task timeout. Never let it run indefinitely.
++- Start with a single project scope per night. Expand only after proven safe.
++
++**Warning signs:**
++- Heartbeat logs showing >20 minutes runtime.
++- `brain.heartbeat_log` growing faster than expected.
++- Duplicate memories being inserted (sign of retry loop).
++- Claude Code rate limit errors appearing in morning logs.
++
++**Phase to address:** Phase 3 (Heartbeat agent). Budget and kill switches must be in the initial implementation, not retrofitted.
++
++---
++
++### Pitfall 7: Upstream Codebase Drift — Merge Conflict Accumulation
++
++**What goes wrong:**
++Zack works on `zbrain` branch. Daughter continues development on `feature/agent-scheduler` (the default branch). Over weeks, `zbrain` diverges significantly. When it's time to sync upstream changes (new connectors, agent fixes, schema changes), the merge is massive and conflicting. The daughter's scheduler conflicts with the heartbeat agent. Her schema migrations conflict with the brain schema additions. A full merge takes days or becomes impossible.
++
++**Why it happens:**
++"I'll sync upstream later" is a trap. Every week of divergence adds a day of merge work. When both branches modify `__init__.py`, `database.py`, or `config.py`, conflicts are guaranteed. Working on a living codebase that you don't control means the merge window is always closing.
++
++**How to avoid:**
++- Sync `zbrain` from the upstream default branch at minimum weekly. `git fetch upstream && git rebase upstream/feature/agent-scheduler` at the start of each work session.
++- Use `rebase` not `merge` to keep `zbrain` history linear and conflicts small.
++- Keep changes to existing Promaia files minimal. If a file must be changed, prefer adding new functions over modifying existing ones.
++- The `brain.*` schema strategy is correct — it isolates zBrain's database work entirely from Promaia's `public.*` tables. Protect this boundary aggressively.
++- Communicate with daughter before touching shared files: `database.py`, `config.py`, `models.py`, any connector base class.
++
++**Warning signs:**
++- Running `git log --oneline upstream/feature/agent-scheduler..zbrain` and seeing more than 20 commits since last sync.
++- Daughter's branch has new connector or agent code that wasn't in your base.
++- Config files have been refactored upstream.
++
++**Phase to address:** Every phase. Establish sync cadence in Phase 1. Never let it slip.
++
++---
++
++### Pitfall 8: IVFFlat Index on Empty Table — Silent Recall Degradation
++
++**What goes wrong:**
++The brain schema is created, IVFFlat index is added immediately on the empty `brain.memories` table, data is inserted over time. Vector search returns irrelevant or zero results even for obvious queries. The index was built with no data, so the internal cluster centers are meaningless. All vectors hash to the same cluster. Recall is catastrophically low but no error is thrown.
++
++**Why it happens:**
++IVFFlat builds cluster centers at index creation time based on the data present. An empty table means all clusters are initialized randomly. This is a well-documented pgvector pitfall but easy to miss because the SQL creates without error and queries "work" (return something).
++
++**How to avoid:**
++- Use HNSW index, not IVFFlat. HNSW builds incrementally as data is inserted, has no "populate first" requirement, and doesn't need rebuilding when data distribution changes. Supabase's own documentation recommends HNSW.
++- `CREATE INDEX ON brain.memories USING hnsw (embedding vector_cosine_ops)` — create this immediately on table creation, before any data.
++- If IVFFlat is ever used (it shouldn't be), only create it after inserting at least 1000 rows.
++
++**Warning signs:**
++- Vector search returning results that seem unrelated to the query.
++- `EXPLAIN ANALYZE` showing seq scan instead of index scan.
++- All vectors appearing in the same "cluster" during debugging.
++
++**Phase to address:** Phase 1 (Brain schema). Index type decision is final at table creation.
++
++---
++
++### Pitfall 9: Custom Schema Not Exposed in Supabase Data API
++
++**What goes wrong:**
++`brain.*` schema is created, tables are populated, but the Supabase client (JavaScript or Python using the REST API) returns "relation does not exist" or 404 errors. The Supabase Data API (PostgREST) only exposes the `public` schema by default. The `brain` schema exists in Postgres but is invisible to the REST layer.
++
++**Why it happens:**
++Supabase's PostgREST layer requires explicit schema exposure. It's not automatic for non-`public` schemas. Additionally, RLS (Row Level Security) policies default to `DENY ALL` for new tables, so even with the schema exposed, queries return empty results or permission errors without explicit policies.
++
++**How to avoid:**
++- Go to Supabase Dashboard → Project Settings → Data API → Exposed Schemas. Add `brain`.
++- Alternatively, use direct database connections (not the Supabase REST client) for all brain operations from Python. This bypasses PostgREST entirely and avoids the schema exposure issue.
++- For every new table in `brain.*`, explicitly set RLS policy or disable RLS for service-role access. Document which tables have RLS enabled.
++- Do not mix Supabase REST client and direct Postgres connection in the same code path without documentation.
++
++**Warning signs:**
++- `pgrst116: The schema must be one of the following: public` error from Supabase client.
++- Empty results from Python code when rows definitely exist (RLS silently filtering).
++- Dashboard showing table data but Python client returning nothing.
++
++**Phase to address:** Phase 1 (Brain schema). Set up schema exposure and access patterns before writing any application code.
++
++---
++
++### Pitfall 10: Google text-embedding-004 Deprecation Mid-Project
++
++**What goes wrong:**
++The embedding schema is built around `text-embedding-004` (768 dimensions). Google deprecated text-embedding-004 on November 18, 2025. If this project is being built now (March 2026), any code using `text-embedding-004` is calling a discontinued model. Requests may still succeed (Google often maintains deprecated endpoints temporarily) but will eventually break with no warning.
++
++**Why it happens:**
++PROJECT.md specifies `text-embedding-004` as the embedding model. As of the research date (March 2026), this model is past its deprecation date. text-embedding-005 is the current recommended model.
++
++**How to avoid:**
++- Verify text-embedding-004 availability before writing any embedding code. Call the API with a test string and check the response.
++- If 004 is unavailable, use text-embedding-005 (likely same 768-dim output, but verify).
++- Store the model name in `brain.embedding_config` so a future model swap is a one-row UPDATE + re-embedding job, not a code rewrite.
++- Never hardcode model names in embedding calls. Use a config constant: `EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-005")`.
++
++**Warning signs:**
++- `404 Not Found` or `Model not found` errors from Google Generative AI API.
++- Zero embeddings inserted into brain tables.
++
++**Phase to address:** Phase 0 / Phase 1 setup. Verify before writing schema.
++
++---
++
++### Pitfall 11: Windows Task Scheduler Path Context — Heartbeat Silently Does Nothing
++
++**What goes wrong:**
++The heartbeat script is scheduled in Windows Task Scheduler and shows as "running successfully" (exit code 0). But nothing is logged, no memories are inserted, no briefing is generated. The script runs in a different working directory than expected, cannot find `.env` files, uses the wrong Python interpreter, or fails to import modules — all silently, because Python catches the exception and the Task Scheduler sees exit code 0.
++
++**Why it happens:**
++Task Scheduler does not inherit the interactive user's environment. The working directory is often `C:\Windows\System32` unless explicitly set. Relative paths like `./config.py` or `../.env` resolve to wrong locations. The `python` command resolves to a different interpreter than the venv. If the script has a try/except that swallows errors and exits 0, Task Scheduler reports success regardless.
++
++**How to avoid:**
++- Always set "Start in" to the absolute path of the project directory in Task Scheduler.
++- Use absolute path to the Python interpreter: `C:\Users\Zachary Turner\dev\promaia\.venv\Scripts\python.exe`
++- Load `.env` using an absolute path in the script: `load_dotenv(Path(__file__).parent / ".env")`
++- Write a heartbeat log entry as the FIRST action in the script (before any imports or config loading that could fail). If this entry exists in the morning, the script started. If not, Task Scheduler never ran it.
++- Exit with non-zero exit code on failure. Task Scheduler will record it.
++
++**Warning signs:**
++- Task history shows "Task completed (0x0)" but no records in `brain.heartbeat_log`.
++- Morning briefing not generated despite scheduled task showing success.
++- No error emails or alerts (means alerting code never ran, not that nothing went wrong).
++
++**Phase to address:** Phase 3 (Heartbeat agent). Must be part of the initial heartbeat design.
++
++---
++
++## Technical Debt Patterns
++
++Shortcuts that seem reasonable but create long-term problems.
++
++| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
++|----------|-------------------|----------------|-----------------|
++| Using direct Postgres connection for everything (skip pooler) | Simpler config, no prepared statement issues | Connection limit exhaustion when heartbeat + CLI + any background process all run simultaneously; Supabase Pro limit is 60 direct connections | Acceptable for v1.0, document and revisit at v1.1 |
++| Hardcoding model names (claude-sonnet-4-6, gemini-2.0-flash) | Faster to build | Model deprecation breaks code silently; version-pinned models cost more as newer models are cheaper | Never — use config constants always |
++| Single `zbrain` branch (no feature branches) | Simple workflow | If a feature partially breaks upstream compatibility, you can't cherry-pick; daughter must accept the whole branch | Acceptable only if features are small and frequent syncs happen |
++| Skipping RLS on brain tables | Simpler access | Any compromised credential exposes all brain data | Never — add service-role access pattern from day one |
++| Running IVFFlat instead of HNSW | Marginally faster at scale | Built on empty table = broken recall; need to rebuild when data grows | Never — use HNSW |
++| Storing raw conversation transcripts in brain schema | Easier ingestion | Privacy risk; also grows unboundedly; Postgres is not a log store | Only if TTL and size limits are implemented from the start |
++
++---
++
++## Integration Gotchas
++
++Common mistakes when connecting to external services.
++
++| Integration | Common Mistake | Correct Approach |
++|-------------|----------------|------------------|
++| Supabase (pooler) | Pointing asyncpg at port 6543 without disabling prepared statements | Use port 5432 (direct) for Python processes; set `statement_cache_size=0` if pooler is required |
++| Supabase (schema) | Using PostgREST client for `brain.*` tables without exposing schema | Use direct psycopg2/asyncpg connection from Python; expose schema in dashboard for any REST calls |
++| Google Generative AI | Calling `embed_content` without rate limiting; the function internally uses batch endpoint with a separate rate limit | Add retry with exponential backoff; batch in groups of ≤100; track RPM |
++| Google Generative AI | Using text-embedding-004 (deprecated Nov 2025) | Verify current model name before each project phase; use config constant not hardcoded string |
++| Claude Code CLI (heartbeat) | Spawning Claude subprocesses without timeout | Always set subprocess timeout; kill on exceeded wall-clock time |
++| Anthropic API | Using Agent SDK with Claude Max OAuth token | Agent SDK requires API key; Max OAuth is only valid inside Claude Code CLI |
++| Windows Task Scheduler | Using relative paths, default Python, default working directory | Absolute paths to interpreter and start directory; test in cmd.exe first |
++
++---
++
++## Performance Traps
++
++Patterns that work at small scale but fail as usage grows.
++
++| Trap | Symptoms | Prevention | When It Breaks |
++|------|----------|------------|----------------|
++| Re-embedding all content on every heartbeat run | First few runs fine, then 30min+ runtimes | Incremental embedding: only embed new/changed content; track `last_embedded_at` | After ~100 memories |
++| Full table scan for similar memories (no index) | Sub-second locally, 10+ seconds against Supabase | HNSW index created at table creation, `EXPLAIN ANALYZE` every query in development | After ~500 rows |
++| Fetching all memories into Python, filtering in-app | Works with 50 memories, OOM with 5000 | All filtering in SQL; never `SELECT * FROM brain.memories` without LIMIT | After ~1000 rows |
++| Generating briefing by reading entire message history | Single session fine; briefing degrades after 6 months | Time-bounded lookups: `WHERE created_at > NOW() - INTERVAL '30 days'` | After ~3 months of use |
++| Model routing with no fallback timeout | One slow model call blocks entire pipeline | Per-model timeout with fallback; never await indefinitely | On first network hiccup |
++| Storing both raw text and embedding in brain.memories without size cap | Fine for first 100 notes | Postgres row size balloons; embedding alone is 3KB per row (768 floats × 4 bytes) | After ~50K memories |
++
++---
++
++## Security Mistakes
++
++Domain-specific security issues beyond general web security.
++
++| Mistake | Risk | Prevention |
++|---------|------|------------|
++| Supabase service role key in Python files or dotenv committed to git | Full database access exposed; Heatpup's 37+ tables at risk, not just brain schema | `.env` in `.gitignore` verified before first commit; separate service role per project if Supabase supports it |
++| Brain memories contain private data (voice notes, personal projects) accessible via public schema | If daughter's app inadvertently queries across schemas, personal data leaks | `brain.*` schema never cross-referenced in Promaia's `public.*` queries; RLS policy on brain tables |
++| Heartbeat agent credentials (API keys, Supabase URL) in scheduled task command line | Visible in Windows Task Scheduler UI and Event Viewer logs | Load all credentials from `.env` file; never pass secrets as CLI arguments |
++| Claude prompts containing Supabase credentials for database operations | Prompt injection can expose or modify credentials | Never include connection strings in prompts; use tool calls with pre-configured connections only |
++| Gemini API key shared between Promaia (daughter's app) and zBrain | Key rotation or exhaustion in one project breaks both | Separate API keys per project; zBrain uses Zack's Google AI Premium, Promaia uses separate key |
++
++---
++
++## UX Pitfalls
++
++Common user experience mistakes in this domain.
++
++| Pitfall | User Impact | Better Approach |
++|---------|-------------|-----------------|
++| Morning briefing generates but Zack never reads it | Memory system doesn't actually solve AI amnesia | Briefing must arrive via iPhone (push or claude.ai); passive file generation is ignored |
++| Briefing is too long (>500 words) | Skimmed or skipped while driving | Hard cap briefing at 3-5 bullet points per domain; details on demand |
++| Heartbeat runs but Zack can't tell if it worked | Trust degrades; stops relying on the system | One-line status summary always visible: last run time, memories added, actions pending |
++| Action extraction creates actions Zack never committed to | False urgency, system loses credibility | Mark extracted actions as "suggested" until explicitly confirmed; never auto-promote to active |
++| Multi-model routing is invisible | Zack doesn't know if Claude or Gemini answered | Log model used per response; show in briefings ("Gemini processed 3 of 5 tasks") |
++
++---
++
++## "Looks Done But Isn't" Checklist
++
++Things that appear complete but are missing critical pieces.
++
++- [ ] **Postgres migration:** Often missing — all ChromaDB callers updated, not just storage init. Verify: `grep -r "chromadb" --include="*.py"` returns zero results.
++- [ ] **Brain schema:** Often missing — HNSW index actually created (not just planned). Verify: `\d+ brain.memories` in psql shows index.
++- [ ] **Heartbeat agent:** Often missing — actual kill switch / timeout implemented (not just documented). Verify: Run heartbeat with a deliberately slow API call and confirm it terminates.
++- [ ] **Supabase connection:** Often missing — tested against actual Supabase, not just local Postgres. Verify: Run test query from the production connection string.
++- [ ] **ToS compliance:** Often missing — heartbeat invocation method is actually via Claude Code CLI, not via Agent SDK or OAuth spoofing. Verify: Check no OAuth token extraction occurs in the codebase.
++- [ ] **Schema exposure:** Often missing — `brain` schema added to Supabase's exposed schemas list. Verify: Test a PostgREST call to `brain.memories` returns data, not 404.
++- [ ] **Embedding model:** Often missing — verified text-embedding-005 (or current model) is available and dimensions confirmed. Verify: Make a test embedding call and print `len(result.embeddings[0].values)`.
++- [ ] **Upstream sync:** Often missing — `zbrain` branch has been rebased on latest upstream within the last week. Verify: `git log --oneline HEAD..upstream/feature/agent-scheduler` returns nothing.
++- [ ] **Gemini routing:** Often missing — fallback behavior when Gemini is unavailable is tested. Verify: Simulate a Gemini API error and confirm Claude handles the task without crashing.
++
++---
++
++## Recovery Strategies
++
++When pitfalls occur despite prevention, how to recover.
++
++| Pitfall | Recovery Cost | Recovery Steps |
++|---------|---------------|----------------|
++| asyncpg prepared statement errors on Supabase | LOW | Switch connection string to port 5432 (direct); restart Python process; no data loss |
++| Embedding dimension mismatch after model change | HIGH | 1) Add new column `embedding_v2 vector(NEW_DIM)`. 2) Re-embed all rows into new column. 3) Swap column names. 4) Rebuild HNSW index. Expect 2-4 hours of work. |
++| ChromaDB migration broke retrieval | MEDIUM | Keep ChromaDB running in parallel behind the abstraction layer; switch retrieval back to ChromaDB flag; debug pgvector in isolation |
++| Heartbeat ran away (many API calls, possible data pollution) | MEDIUM | 1) Disable Task Scheduler task immediately. 2) Audit `brain.heartbeat_log` for what ran. 3) Delete suspicious memories by `source = 'heartbeat' AND created_at > [runaway_start]`. 4) Fix budget ceiling before re-enabling. |
++| `zbrain` branch unmergeable with upstream | HIGH | 1) Create new branch from latest upstream. 2) Cherry-pick zbrain commits that don't conflict. 3) Manually reapply conflicting changes. Plan for 1-2 days. Prevent by weekly rebases. |
++| Supabase Heatpup tables affected by brain schema migration | CRITICAL | Brain schema (`brain.*`) never touches `public.*`. If this happens, a migration script ran against wrong schema. Restore from Supabase backup (Pro plan includes PITR). |
++| ToS violation discovered (wrong Claude access method) | MEDIUM | Swap invocation method to compliant Claude Code CLI subprocess; no API key needed; heartbeat functionality preserved |
++
++---
++
++## Pitfall-to-Phase Mapping
++
++How roadmap phases should address these pitfalls.
++
++| Pitfall | Prevention Phase | Verification |
++|---------|------------------|--------------|
++| asyncpg + Supabase pooler incompatibility | Phase 1: Postgres/Supabase setup | Test query against Supabase connection string succeeds; check port in connection config |
++| Anthropic ToS violation in heartbeat | Phase 3: Heartbeat agent design | Code review confirms no OAuth extraction; invocation uses `claude` CLI subprocess or API key |
++| Embedding dimension lock-in | Phase 1: Brain schema definition | `brain.embedding_config` table exists; model name is a config constant; test embedding call dimension printed |
++| ChromaDB API mismatch (not drop-in) | Phase 1: Storage migration | `grep -r "chromadb"` returns zero in non-adapter files |
++| SQLite parameter style (`?` placeholders) | Phase 1: Pre-migration audit | `grep -r "= ?" --include="*.py"` returns zero |
++| Heartbeat token runaway | Phase 3: Heartbeat initial implementation | Budget ceiling and kill switch tested; heartbeat log shows per-run token counts |
++| Upstream codebase drift | Phase 0: Branch setup + every phase | Weekly rebase confirmed in work log; no more than 20 unsynced upstream commits |
++| IVFFlat on empty table | Phase 1: Brain schema definition | `\d+ brain.memories` shows HNSW index; IVFFlat never appears in migration files |
++| Brain schema not exposed in Supabase | Phase 1: Supabase configuration | PostgREST call to `brain.*` endpoint succeeds |
++| text-embedding-004 deprecation | Phase 0/1 setup | Test API call to current model succeeds; model name is config constant not hardcoded |
++| Windows Task Scheduler path issues | Phase 3: Heartbeat agent | Heartbeat log entry written as first action; morning after first scheduled run, log entry exists |
++| Upstream files in Heatpup affected | Ongoing | Brain schema migrations never reference `public.*`; reviewed before each migration run |
++
++---
++
++## Sources
++
++- [Supabase: Pooling and asyncpg incompatibility (Medium)](https://medium.com/@patrickduch93/supabase-pooling-and-asyncpg-dont-mix-here-s-the-real-fix-44f700b05249)
++- [Supabase GitHub Issue: asyncpg prepared statement errors](https://github.com/supabase/supabase/issues/39227)
++- [Supabase Docs: Connecting to Postgres](https://supabase.com/docs/guides/database/connecting-to-postgres)
++- [Supabase Docs: HNSW Indexes](https://supabase.com/docs/guides/ai/vector-indexes/hnsw-indexes)
++- [Supabase Docs: pgvector extension](https://supabase.com/docs/guides/database/extensions/pgvector)
++- [Anthropic: Using Claude Code with Pro/Max plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
++- [Anthropic ToS changes 2025: aihackers.net](https://aihackers.net/posts/anthropic-tos-changes-2025/)
++- [TechCrunch: Anthropic rate limits Claude Code](https://techcrunch.com/2025/07/28/anthropic-unveils-new-rate-limits-to-curb-claude-code-power-users/)
++- [ChromaDB migration horror story: When ChromaDB Mutates](https://wwakabobik.github.io/2025/11/migrating_chroma_db/)
++- [pgvector GitHub: vector from ChromaDB import](https://github.com/pgvector/pgvector/issues/537)
++- [pgvector vs ChromaDB comparison (Elestio)](https://blog.elest.io/pgvector-vs-chromadb-when-to-extend-postgresql-and-when-to-go-dedicated/)
++- [DEV: Resolving vector dimension mismatches](https://dev.to/hijazi313/resolving-vector-dimension-mismatches-in-ai-workflows-47m)
++- [SQLite to PostgreSQL migration gotchas (Bytebase)](https://www.bytebase.com/blog/database-migration-sqlite-to-postgresql/)
++- [Migrating from SQLite to PostgreSQL (masteringpostgres.com)](https://masteringpostgres.com/articles/migrating-from-sqlite-to-postgresql)
++- [Agentic cost control: token runaway prevention](https://www.alpsagility.com/cost-control-agentic-systems)
++- [Agentic AI safety playbook 2025](https://dextralabs.com/blog/agentic-ai-safety-playbook-guardrails-permissions-auditability/)
++- [Google Generative AI: batch embed rate limit issue](https://github.com/googleapis/python-genai/issues/427)
++- [Google Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
++- [Windows Task Scheduler Python gotchas (ESRI)](https://support.esri.com/en-us/knowledge-base/windows-task-scheduler-will-not-run-a-python-script-146-000012657)
++- [GitHub Blog: Friendly fork management strategies](https://github.blog/2022-05-02-friend-zone-strategies-friendly-fork-management/)
++
++---
++*Pitfalls research for: zBrain — adding cloud Postgres/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to Promaia fork*
++*Researched: 2026-03-04*
+diff --git a/.planning/research/STACK.md b/.planning/research/STACK.md
+new file mode 100644
+index 0000000..faf7142
+--- /dev/null
++++ b/.planning/research/STACK.md
+@@ -0,0 +1,253 @@
++# Stack Research
++
++**Domain:** Personal AI memory / autonomous agent platform (Python backend, cloud Postgres, MCP server)
++**Researched:** 2026-03-04
++**Confidence:** HIGH for versions; MEDIUM for Gemini model naming (fast-moving); HIGH for integration patterns
++
++---
++
++## Context: What Already Exists (Do Not Re-Add)
++
++These are validated in Promaia and must integrate with, not replace:
++- `psycopg2` — already in daughter's `postgres-sql-changeover` branch, keep it
++- `google-generativeai` — already in multi-model adapter, being **migrated** (see SDK change below)
++- `anthropic` SDK — primary LLM, keep
++- `mcp` Python SDK — already powering Gmail/Notion/Filesystem/Git/SQLite servers
++- `FastAPI` — existing web interface
++- `python-dotenv` — existing config pattern
++
++---
++
++## New Additions: Core Technologies
++
++| Technology | Version | Purpose | Why Recommended |
++|------------|---------|---------|-----------------|
++| `pgvector` (Python) | 0.4.2 | Register vector type with psycopg2; numpy array <-> `vector` column marshaling | Official pgvector Python bindings. Works with existing psycopg2. One `register_vector(conn)` call wires it in. No separate vector DB process to run. |
++| `google-genai` | 1.65.0 | Replaces deprecated `google-generativeai`; embeddings via `gemini-embedding-001`; Gemini Flash for cheap tasks | `google-generativeai` is deprecated (EOL August 31, 2025 — already past). `google-genai` is the unified SDK supporting both AI Studio and Vertex AI. Migration is required, not optional. |
++| `mcp` (Python SDK) | 1.26.0 | Build the Brain MCP server with `@mcp.tool()` decorated functions | Already used in Promaia for external servers. Use the same SDK to build zBrain's own server. `FastMCP` is bundled inside `mcp[cli]` — no separate install. |
++
++---
++
++## New Additions: Supporting Libraries
++
++| Library | Version | Purpose | When to Use |
++|---------|---------|---------|-------------|
++| `pgvector[psycopg2]` | 0.4.2 | The `psycopg2` integration extra for pgvector | Use when registering vector type with existing psycopg2 connections in daughter's `PostgresDB` singleton |
++| `numpy` | >=1.24 | Required by pgvector for array <-> vector conversion | Already likely present; verify in requirements. pgvector Python bindings use numpy arrays for vectors |
++| `python-dotenv` | existing | Supabase connection string from env var | Already used — just add `SUPABASE_SESSION_POOLER_URL` to `.env` |
++
++---
++
++## Supabase Connection: Critical Decision
++
++**Use the Session Pooler, not the Direct Connection.**
++
++Supabase direct connections are IPv6-only. Windows 11 home networks are typically dual-stack but ISP behavior varies. The session pooler supports IPv4 + IPv6 and is the documented fallback for environments where direct IPv6 fails.
++
++Connection string format (session pooler):
++```
++postgresql://postgres.dulqttfidcjeujyieuqw:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
++```
++
++Direct connection format (IPv6 only — avoid on Windows unless confirmed IPv6 works):
++```
++postgresql://postgres:[PASSWORD]@db.dulqttfidcjeujyieuqw.supabase.co:5432/postgres
++```
++
++The existing `PostgresDB` singleton in daughter's branch targets `192.168.0.69`. The only change needed is swapping the connection string to the Supabase session pooler URL. The `psycopg2` code itself does not change.
++
++---
++
++## Embeddings: Use gemini-embedding-001, Not text-embedding-004
++
++**CRITICAL: text-embedding-004 is deprecated as of January 14, 2026.** Do not build against it.
++
++The replacement is `gemini-embedding-001`:
++- 128 to 3,072 output dimensions (MRL-based, recommended: 768, 1536, or 3072)
++- Available via `google-genai` SDK: `client.models.embed_content(model='gemini-embedding-001', ...)`
++- Covered by existing Google AI Premium subscription
++
++**pgvector column size decision:** Use 768 dimensions. Rationale: Supabase already has 37+ tables from Heatpup; 768 is the recommended efficient size, cuts storage/index cost vs 3072 while MRL guarantees no quality loss at this tier.
++
++```python
++# pgvector column: vector(768)
++CREATE TABLE brain.memories (
++    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++    embedding vector(768),
++    ...
++);
++```
++
++---
++
++## Gemini Model Routing: Use gemini-2.5-flash-lite
++
++**Purpose:** Cheap, fast tasks that should not consume Claude Max quota — action extraction, summarization, classification, briefing generation from raw content.
++
++**Model choice:** `gemini-2.5-flash-lite` (as of March 2026, this is the fastest/cheapest in the 2.5 family). The `google-genai` SDK uses model strings directly:
++
++```python
++from google import genai
++client = genai.Client()  # uses GEMINI_API_KEY env var
++response = client.models.generate_content(
++    model='gemini-2.5-flash-lite',
++    contents=prompt
++)
++```
++
++**Routing logic (not a library, a pattern):** In the existing multi-model adapter, add a routing tier:
++- `claude-3-5-sonnet` → strategic reasoning, final synthesis, anything touching user trust
++- `gemini-2.5-flash-lite` → extraction, classification, summarization, structured output from raw content
++- Do NOT add OpenAI to this — PROJECT.md explicitly replaces OpenAI with Gemini
++
++**MEDIUM confidence on model name:** Google model naming changes frequently. Verify `gemini-2.5-flash-lite` string at runtime startup. The SDK will return a clear error if model name is wrong.
++
++---
++
++## Brain MCP Server: Use mcp[cli] 1.26.0 (FastMCP)
++
++The Brain MCP server exposes tools that Claude Code (and claude.ai on iPhone) can call to read/write the brain schema.
++
++Pattern — this is what the server code looks like:
++
++```python
++from mcp.server.fastmcp import FastMCP
++import psycopg2
++from pgvector.psycopg2 import register_vector
++
++mcp = FastMCP(name="zBrain")
++
++@mcp.tool()
++def get_session_briefing(project: str) -> str:
++    """Return a briefing for the named project from brain.memories."""
++    conn = get_db_connection()
++    # ... query brain.memories, brain.actions, brain.directives
++    return briefing_text
++
++@mcp.tool()
++def store_memory(content: str, domain: str, source: str) -> str:
++    """Embed and store a memory in the brain."""
++    embedding = embed(content)  # google-genai call
++    # ... INSERT INTO brain.memories
++    return "stored"
++```
++
++**Note on MCP Python version requirement:** `mcp` 1.26.0 requires Python >=3.10. Promaia targets Python 3.8+. The brain MCP server should be written as a **separate runnable script** (`zbrain_mcp_server.py`) that uses Python 3.10+ from a dedicated venv, not embedded in the main Promaia package. This avoids forcing a Python version bump on the upstream codebase.
++
++---
++
++## Heartbeat Agent: Windows Task Scheduler + Batch Wrapper
++
++**No new Python library needed.** The heartbeat is a scheduled call to Claude Code CLI.
++
++Architecture:
++```
++Windows Task Scheduler (3am daily)
++  → run_heartbeat.bat
++    → activates zbrain venv
++    → runs: claude --model claude-opus-4-6 -p "$(cat heartbeat_prompt.txt)"
++```
++
++The `.bat` wrapper is required because Task Scheduler does not inherit PATH or venv state from interactive sessions.
++
++```batch
++@echo off
++call C:\Users\Zachary Turner\dev\promaia\.venv\Scripts\activate.bat
++cd /d C:\Users\Zachary Turner\dev\promaia
++claude --model claude-opus-4-6 --allowedTools "mcp__zbrain__*" -p "@heartbeat_prompt.txt" >> logs\heartbeat.log 2>&1
++```
++
++**Task Scheduler setup (one-time, via schtasks):**
++```batch
++schtasks /Create /SC DAILY /TN "zBrainHeartbeat" /TR "C:\Users\Zachary Turner\dev\promaia\run_heartbeat.bat" /ST 03:00 /RL HIGHEST /F
++```
++
++**Important:** Log to a file (heartbeat.log) because Task Scheduler swallows stdout. Use `/RL HIGHEST` (run with highest privileges) to avoid permission issues writing logs.
++
++---
++
++## What NOT to Add
++
++| Avoid | Why | Use Instead |
++|-------|-----|-------------|
++| `google-generativeai` | Deprecated August 31, 2025 (past deadline). Using it means running dead code | `google-genai` 1.65.0 |
++| `text-embedding-004` | Deprecated January 14, 2026. Will stop working | `gemini-embedding-001` via `google-genai` |
++| `supabase` Python client (PostgREST) | Adds REST layer over Postgres; daughter's code already uses psycopg2 direct. Mixing two connection patterns creates confusion | Direct psycopg2 via session pooler |
++| `vecs` (supabase/vecs) | Supabase's vector client adds abstraction that fights with custom brain schema. Designed for unstructured collections, not structured relational brain schema | pgvector Python bindings directly |
++| `chromadb` | Being replaced. Local files, no cloud, blocks iPhone access | pgvector on Supabase |
++| `sqlite3` / SQLite | Being replaced. Same reason — no cloud | psycopg2 + Supabase Postgres |
++| `openai` SDK | PROJECT.md explicitly replaces with Gemini. No new OpenAI cost. | `google-genai` for cheap tasks, `anthropic` for primary |
++| `celery` / `APScheduler` / `rq` | Over-engineered for one nightly task on a Windows PC. Adds Redis dependency or worker process | Windows Task Scheduler + batch file |
++| `langchain` / `llama-index` | Heavy frameworks that fight with existing Promaia multi-model adapter. Add 50+ transitive dependencies | Direct SDK calls (anthropic, google-genai) |
++| `FastMCP` standalone (PrefectHQ) | `mcp[cli]` already bundles FastMCP. Installing the standalone package creates version conflicts | `mcp[cli]` 1.26.0 |
++
++---
++
++## Installation
++
++```bash
++# Activate zbrain venv (Python 3.10+ required for mcp server)
++# Core new additions only — everything else already in Promaia requirements
++
++pip install pgvector==0.4.2
++pip install "mcp[cli]==1.26.0"
++pip install google-genai==1.65.0
++
++# numpy is likely already present; verify
++pip install numpy>=1.24
++```
++
++Migration step (required before first run):
++```bash
++# Remove deprecated SDK
++pip uninstall google-generativeai
++
++# Update imports in existing multi-model adapter
++# from google import generativeai → from google import genai
++# genai.configure(api_key=...) → client = genai.Client()
++```
++
++---
++
++## Version Compatibility
++
++| Package | Compatible With | Notes |
++|---------|-----------------|-------|
++| `pgvector==0.4.2` | `psycopg2>=2.9`, Python >=3.9 | Promaia uses 3.8+; **Brain MCP server must run on 3.10+ venv** |
++| `mcp[cli]==1.26.0` | Python >=3.10 | Run as separate server process, not embedded in main Promaia package |
++| `google-genai==1.65.0` | Python >=3.9 | Replaces `google-generativeai`. Not backwards-compatible — update adapter |
++| `psycopg2` (existing) | `pgvector==0.4.2` | Just add `register_vector(conn)` call after connecting |
++| Supabase session pooler | `psycopg2` (any version) | Port 5432, standard PostgreSQL protocol — psycopg2 needs no changes |
++
++---
++
++## Alternatives Considered
++
++| Recommended | Alternative | When to Use Alternative |
++|-------------|-------------|------------------------|
++| Session pooler URL | Direct Supabase IPv6 URL | Only if you confirm Windows machine has working IPv6 (test: `ping6 google.com`) |
++| `gemini-embedding-001` at 768 dims | 3072 dims | If you later find semantic search quality insufficient on short voice notes |
++| `mcp[cli]` (bundled FastMCP) | FastMCP 3.x standalone | If you need FastMCP 3.x-specific features like component versioning or OAuth |
++| Windows Task Scheduler + .bat | Python `schedule` library as always-on daemon | If you want sub-daily triggers without relying on the machine being on |
++| Direct `psycopg2` to Supabase | `supabase` Python client | If you add non-vector features that benefit from PostgREST (auth, realtime) |
++
++---
++
++## Sources
++
++- [pgvector Python PyPI](https://pypi.org/project/pgvector/) — Version 0.4.2, psycopg2 integration confirmed
++- [pgvector/pgvector-python GitHub](https://github.com/pgvector/pgvector-python) — register_vector pattern, requires Python >=3.9
++- [MCP Python SDK PyPI](https://pypi.org/project/mcp/) — Version 1.26.0, requires Python >=3.10
++- [Supabase Connecting to Postgres Docs](https://supabase.com/docs/guides/database/connecting-to-postgres) — Session pooler format, IPv6 direct-only warning
++- [Google Gemini Embeddings Docs](https://ai.google.dev/gemini-api/docs/embeddings) — gemini-embedding-001, 128-3072 dims, text-embedding-004 deprecated
++- [google-genai PyPI](https://pypi.org/project/google-genai/) — Version 1.65.0, released 2026-02-26
++- [Google deprecated-generative-ai-python GitHub](https://github.com/google-gemini/deprecated-generative-ai-python) — Confirms google-generativeai is deprecated
++- [Google AI Migration Docs](https://ai.google.dev/gemini-api/docs/migrate) — Migration path from google-generativeai to google-genai
++- [Gemini 2.5 Flash-Lite Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash) — Confirmed as fastest/cheapest 2.5 family model
++- [Windows Task Scheduler Python Guide](https://datatofish.com/python-script-windows-scheduler/) — .bat wrapper pattern, full path requirements
++- [n8n Community: text-embedding-004 deprecation](https://community.n8n.io/t/google-deprecating-text-embedding-004-but-gemini-embedding-001-doesnt-work/262008) — Deprecation confirmed January 14, 2026
++
++---
++
++*Stack research for: zBrain — Promaia fork with pgvector, Supabase, Gemini routing, Brain MCP, heartbeat agent*
++*Researched: 2026-03-04*
+diff --git a/.planning/research/SUMMARY.md b/.planning/research/SUMMARY.md
+new file mode 100644
+index 0000000..07b5e89
+--- /dev/null
++++ b/.planning/research/SUMMARY.md
+@@ -0,0 +1,219 @@
++# Project Research Summary
++
++**Project:** zBrain v1.0
++**Domain:** Personal AI memory layer and proactive agent system (Promaia fork)
++**Researched:** 2026-03-04
++**Confidence:** HIGH (stack and architecture based on direct code inspection; pitfalls verified against official docs)
++
++## Executive Summary
++
++zBrain is a personal AI brain built as a focused fork of the Promaia platform. Its core value proposition is eliminating AI amnesia: the system remembers across sessions, proactively surfaces what matters, extracts action commitments from conversations, and runs autonomous overnight work. The recommended approach is additive — build new `brain/` and `heartbeat/` modules on top of Promaia's existing agent orchestration, connector, and multi-model adapter infrastructure, while replacing the local SQLite/ChromaDB storage with Supabase Postgres and pgvector. Nothing in the existing connector or CLI layer needs to change; the work is primarily in storage migration, a new model router, and the brain behavioral layer.
++
++The most important sequencing decision is infrastructure first. Every zBrain feature — session briefings, action extraction, standing directives, stale project alerts, heartbeat agent — depends on the brain schema being live in Supabase with pgvector enabled. Daughter's `postgres-sql-changeover` branch is 70% complete and is the critical path blocker. Until Supabase is the storage target and the `brain.*` schema exists, no other work can proceed meaningfully. The model routing layer (new `ai/router.py`) should be built second, before the brain module, so brain features use Gemini Flash from day one rather than making direct API calls that need refactoring later.
++
++The principal risks are technical and operational. On the technical side: asyncpg prepared statement failures on Supabase's pooler (use port 5432 direct connection), chromadb-to-pgvector API mismatch (no drop-in replacement — requires a full abstraction layer), and embedding model deprecation (text-embedding-004 is past EOL; use `gemini-embedding-001` via the new `google-genai` SDK). On the operational side: the heartbeat agent must invoke Claude via the official Claude Code CLI subprocess pattern — not via Agent SDK or OAuth extraction — to comply with Anthropic's ToS. Upstream codebase drift is also a real risk given that daughter's Promaia is under active development; weekly rebases on `zbrain` are non-negotiable.
++
++---
++
++## Key Findings
++
++### Recommended Stack
++
++The new additions are minimal and deliberate. Three new packages cover all zBrain requirements: `pgvector==0.4.2` (vector type binding for the existing psycopg2 connection), `google-genai==1.65.0` (replaces deprecated `google-generativeai`, provides `gemini-embedding-001` embeddings and Gemini 2.5 Flash for cheap tasks), and `mcp[cli]==1.26.0` (bundles FastMCP for the Brain MCP server, already used in Promaia for external servers). The heartbeat agent requires no new Python scheduler library — Windows Task Scheduler plus a `.bat` wrapper is sufficient and simpler than running a daemon.
++
++Two migration steps are mandatory before writing new code: (1) uninstall `google-generativeai` and update all imports to `google-genai`, since the old SDK is deprecated and past EOL as of August 2025; (2) swap the Postgres connection string from the local `192.168.0.69` host to the Supabase session pooler URL. The Brain MCP server must run in a separate Python 3.10+ venv since `mcp[cli]` requires Python >=3.10 while Promaia targets 3.8+.
++
++**Core technologies:**
++- `pgvector==0.4.2`: Vector type for psycopg2 — one `register_vector(conn)` call, no separate DB process
++- `google-genai==1.65.0`: Required replacement for deprecated SDK; provides `gemini-embedding-001` (768 dims) and Gemini 2.5 Flash
++- `mcp[cli]==1.26.0`: FastMCP bundled; builds Brain MCP server; Python 3.10+ venv required
++- Supabase session pooler (port 5432): IPv4+IPv6 compatible; psycopg2 direct connection avoids asyncpg prepared statement issues
++- Windows Task Scheduler + `.bat` wrapper: Heartbeat trigger; no daemon, no Redis, no APScheduler
++
++**Critical version constraints:**
++- `gemini-embedding-001` at 768 dimensions (NOT `text-embedding-004`, deprecated Nov 2025; NOT `text-embedding-005` without dimension verification)
++- `google-genai` NOT `google-generativeai` (deprecated August 2025, past EOL)
++- Python 3.10+ for the Brain MCP server venv only
++
++### Expected Features
++
++The Postgres migration is the only pre-condition. Once the `brain.*` schema exists in Supabase, all features become buildable independently.
++
++**Must have (table stakes — v1.0):**
++- Persistent cross-session memory — core value proposition; without this the system is just a chatbot
++- Session startup briefing — surfaces open actions, stale projects, directives, overnight report; must complete in <5 seconds
++- Action extraction — async post-session LLM pass over transcript; writes to `brain.actions`
++- Standing directives — per-domain config injected into system prompt context; edit via `maia directive set`
++- Stale project alerts — timestamp query against `brain.domains`; addresses Zack's project-bouncing pattern
++- Gemini model routing — deterministic task-type table (not a fallback chain); Gemini Flash for cheap tasks, Claude for reasoning
++- Brain ingestion: YouTube — primary research format; `youtube-transcript-api` → chunk → embed → store
++- Heartbeat agent — Windows Task Scheduler, 2–6 AM window, single-run script, HEARTBEAT.md checklist pattern
++- iPhone access verification — Supabase cloud already provides this; verify claude.ai + MCP works day-1
++
++**Should have (competitive — v1.1):**
++- Google Calendar integration — briefing includes today's schedule; heartbeat pre-researches meetings
++- Email/message triage — Gmail scanning in heartbeat; draft replies
++- Brain ingestion: documents — PDF/text for HVAC sales materials and research docs
++- Overnight work reporting — structured `brain.reports` record surfaced in next briefing
++- Heartbeat work queue — priority-ranked backlog for systematic overnight work
++
++**Defer (v2+):**
++- Kanban board UI — defer until schema is stable; rework risk if built before data model matures
++- React web chat / Electron app — daughter's domain, out of zBrain scope
++- Cross-user / shared brain — Promaia handles multi-user; zBrain stays personal
++- Automatic memory forgetting / decay — adds complexity; v1 keeps everything
++
++**Anti-features to consciously avoid:**
++- Real-time conversation monitoring (always-on process, privacy surface, no clear session boundary)
++- Automatic memory deletion (creates unreliable system behavior; use manual archive instead)
++- Email triage in heartbeat v1 (needs stable brain foundation first)
++
++### Architecture Approach
++
++The architecture is strictly additive. Two new top-level modules (`brain/` and `heartbeat/`) contain all new behavioral logic. Two existing modules are modified (`storage/vector_db.py` replaces ChromaDB internals while preserving the public interface; `storage/postgres_db.py` changes its connection target). One new module is added to the AI layer (`ai/router.py`). The connector layer and CLI layer are untouched except for new hook points (briefing on chat startup, new `maia brain` and `maia heartbeat` commands).
++
++The `brain/` module is explicitly NOT in `storage/` — this separation matters for the daughter's fork. Storage is raw connector output; brain is derived intelligence (reasoning, extraction, directives). Keeping them in separate modules means she can cherry-pick storage changes without picking up brain logic. The `brain.*` Postgres schema is separate from `public.*` for the same reason.
++
++**Major components:**
++1. `brain/` module — `briefing.py`, `actions.py`, `directives.py`, `stale.py`; the behavioral intelligence layer that reads from storage and reasons about state
++2. `ai/router.py` — deterministic task-type routing; `TaskType` enum maps each task category to a specific model client (Gemini Flash for cheap tasks, Claude Sonnet for reasoning/chat)
++3. `storage/vector_db.py` (modified) — same public interface, ChromaDB internals replaced with pgvector SQL; callers unchanged
++4. `heartbeat/` module — `runner.py` (single-run entry point), `tasks.py` (stale check, action review, brain ingest); wraps existing `agents/executor.py`
++5. `storage/brain_schema.sql` — `brain.memories`, `brain.domains`, `brain.actions`, `brain.reviews`, `brain.directives`; HNSW index on embedding column from creation
++
++**Key patterns to follow:**
++- Preserve `VectorDBManager`'s public interface (`search`, `add_content`, `add_content_with_chunking`, `check_exists`) — four callers depend on these signatures
++- Use HNSW index (not IVFFlat) — HNSW builds incrementally, works on empty tables, Supabase recommends it
++- Build router before brain module so brain uses it from day one
++- Heartbeat is a single-run script, not a daemon — Task Scheduler handles scheduling
++
++### Critical Pitfalls
++
++1. **asyncpg + Supabase pooler incompatibility** — Supabase's pooler (port 6543, PgBouncer in transaction mode) does not persist prepared statements; asyncpg uses them automatically; queries that work locally fail against Supabase. Prevention: use port 5432 (direct connection) for all Python processes; never use the pooler for persistent Python services.
++
++2. **Anthropic ToS — heartbeat agent invocation method** — Claude Max OAuth tokens are valid only inside the official Claude Code CLI. Using Agent SDK or any library that extracts OAuth tokens programmatically is a ToS violation Anthropic actively enforces (blocks deployed January 2026). Prevention: heartbeat invokes Claude via `claude` CLI subprocess only. Never use Agent SDK with Max subscription credentials.
++
++3. **ChromaDB is not a drop-in replacement for pgvector** — ChromaDB has a Python client API (`collection.add()`, `collection.query()`); pgvector is a SQL extension with no Python SDK. All vector operations must be rewritten as SQL. Four existing Promaia callers reference `vector_db.py`. Prevention: audit all `chromadb` imports first; build a `VectorDBManager` abstraction that preserves the existing public interface; swap internals, not the interface.
++
++4. **Embedding dimension lock-in** — `text-embedding-004` is deprecated (November 2025); `gemini-embedding-001` is the replacement. pgvector columns are typed with fixed dimensions at creation. Switching models mid-project requires `ALTER TABLE` plus full re-embedding. Prevention: verify current model dimensions before writing schema; store model name in `brain.embedding_config`; use config constant not hardcoded string; use HNSW index which handles schema changes better.
++
++5. **Heartbeat token runaway** — autonomous agents with no budget ceiling can exhaust rate limits overnight or pollute the brain schema with a retry loop. Prevention: hard per-run limits (max tokens, max API calls, max wall-clock seconds); risk-tier model (low-risk ops run automatically, high-risk ops never run autonomously in v1); log every API call to `brain.heartbeat_log`.
++
++6. **Upstream codebase drift** — daughter's Promaia is under active development; every week of divergence adds merge conflict accumulation. Prevention: weekly rebase of `zbrain` on `feature/agent-scheduler`; prefer additive changes to existing files; keep `brain.*` schema separate from `public.*` to protect the boundary.
++
++7. **IVFFlat index on empty table** — IVFFlat builds cluster centers from data present at index creation; an empty table means broken recall with no error thrown. Prevention: use HNSW exclusively; never IVFFlat.
++
++8. **Custom schema not exposed in Supabase Data API** — `brain.*` schema is invisible to PostgREST by default; RLS defaults to DENY ALL. Prevention: add `brain` to exposed schemas in Supabase dashboard; use direct psycopg2 connection for all Python brain operations; set RLS policy for service-role access.
++
++---
++
++## Implications for Roadmap
++
++The dependency chain is clear: storage foundation unlocks everything. Model router enables brain features. Brain module enables heartbeat. This dictates a strict four-phase sequence.
++
++### Phase 1: Storage Foundation
++**Rationale:** Absolute critical path. Every zBrain feature depends on Supabase being the storage target and `brain.*` schema existing. This completes daughter's 70%-done `postgres-sql-changeover` branch, adds pgvector, creates the brain schema, and validates the connection. Nothing else can be built on an unvalidated foundation.
++**Delivers:** Supabase as active storage target; `brain.*` schema live with HNSW indexes; ChromaDB internals replaced in `VectorDBManager` while preserving public interface; `maia sync` writing embeddings to Supabase pgvector; verified connection from Windows 11 machine
++**Addresses:** Postgres/pgvector migration, brain schema creation, iPhone access (Supabase cloud)
++**Avoids:** asyncpg pooler incompatibility (port 5432 direct); IVFFlat on empty table (HNSW from creation); embedding dimension lock-in (gemini-embedding-001 at 768 dims via config constant); ChromaDB API mismatch (abstraction layer); SQLite parameter style bugs (audit before building); Supabase schema exposure (configure during setup)
++**Research flag:** STANDARD PATTERNS — Supabase Postgres migration is well-documented; pgvector HNSW setup is documented by Supabase; connection pooler behavior is documented in official Supabase docs. No phase research needed.
++
++### Phase 2: Model Router
++**Rationale:** Brain features need Gemini Flash for cheap tasks. Building the router before the brain module means brain code uses the router from day one and never makes direct API calls that need refactoring. This is infrastructure, not a user feature, so it should be invisible to end users.
++**Delivers:** `ai/router.py` with `TaskType` enum and `ModelRouter` class; Gemini Flash as first-class specialist (not fallback); `google-generativeai` → `google-genai` migration complete; model names as config constants
++**Uses:** `google-genai==1.65.0`, existing `ai/models.py` (data only, unchanged), existing `anthropic` SDK
++**Implements:** `TaskType.BRIEFING/EMBEDDING/EXTRACTION/REASONING/CHAT/HEARTBEAT` routing table
++**Avoids:** Using deprecated `google-generativeai`; hardcoding model names; routing all tasks through Claude (cost/quota risk)
++**Research flag:** STANDARD PATTERNS — task-based LLM routing is well-documented; `google-genai` migration path is official; no phase research needed.
++
++### Phase 3: Brain Module
++**Rationale:** Core value proposition. Once storage and routing exist, the brain behavioral layer can be built. Session briefing validates the schema before heartbeat adds autonomous execution on top — this is the correct verification order. Every brain component reads from validated storage and uses the validated router.
++**Delivers:** `brain/briefing.py` (session startup briefing hooked into `maia chat`); `brain/actions.py` (action extraction from conversation transcripts); `brain/directives.py` (per-project standing instructions); `brain/stale.py` (dormant project detection); `cli/brain_commands.py` (`maia brain status`, `maia brain briefing`, `maia directive set`)
++**Addresses:** Session startup briefing, action extraction, standing directives, stale project alerts
++**Avoids:** Putting brain logic in the storage layer (keep `brain/` separate from `storage/`); routing extraction tasks through Claude (use Gemini Flash via router); briefing exceeding 500 words (hard cap to 3-5 bullets per domain)
++**Research flag:** STANDARD PATTERNS for action extraction (well-documented LLM extraction pattern) and briefing composition. WATCH: prompt engineering for extraction quality — may need iteration. No dedicated phase research needed, but budget time for prompt tuning.
++
++### Phase 4: Heartbeat Agent
++**Rationale:** Last because it depends on all three prior phases. Brain provides context; storage provides read/write; router provides cheap model calls. The heartbeat is autonomous execution on top of validated infrastructure, not the other way around.
++**Delivers:** `heartbeat/runner.py` (single-run entry point, exits cleanly); `heartbeat/tasks.py` (stale check, action review, initial brain ingest); `cli/heartbeat_commands.py` (`maia heartbeat --run`, `--dry-run`, `--status`); Windows Task Scheduler setup (documented, configured once); budget ceiling and kill switch; heartbeat log to `brain.heartbeat_log`
++**Addresses:** Heartbeat agent, overnight work reporting
++**Avoids:** Daemon pattern (single-run script only); ToS violation (Claude Code CLI subprocess, not Agent SDK); token runaway (hard per-run limits from the start); Windows Task Scheduler path issues (absolute paths, first-action log entry); scope creep (no Gmail triage in v1)
++**Research flag:** NEEDS ATTENTION — Anthropic ToS compliance for CLI subprocess invocation pattern should be verified against current ToS before implementation. Task Scheduler path behavior on Windows 11 should be smoke-tested early. These are not blockers for phase planning but must be resolved before heartbeat is built.
++
++### Phase 5: Brain Ingestion Pipeline
++**Rationale:** YouTube ingestion is the highest-value ingestion source for Zack's research workflow and can be built independently of heartbeat. Web ingestion follows the same pipeline pattern. Both feed the brain schema established in Phase 1 and use the router from Phase 2.
++**Delivers:** `maia ingest youtube [url]` (transcript → chunk → embed → store with source metadata); `maia ingest web [url]` (fetch → extract → chunk → embed → store); ingestion as BaseConnector subclasses following existing connector plugin architecture
++**Addresses:** Brain ingestion: YouTube, Brain ingestion: web
++**Avoids:** Running continuous background sync (scheduled/on-demand only, not real-time); ingesting into `public.*` tables (ingestion goes to `brain.memories`)
++**Research flag:** STANDARD PATTERNS — `youtube-transcript-api` is well-documented; chunking and embedding pipelines are established patterns. No phase research needed.
++
++### Phase Ordering Rationale
++
++- Phase 1 is forced by dependency: all features require the storage layer. No alternatives.
++- Phase 2 before Phase 3 is forced by design: brain code should use the router from its first line, not make direct API calls and refactor later.
++- Phase 3 before Phase 4 is forced by dependency: heartbeat uses brain for context and writes to brain tables.
++- Phase 5 is independent of Phase 4 and can overlap with late Phase 3 if capacity allows. It is ordered after heartbeat because heartbeat's overnight operation benefits from having ingested content to work with.
++- v1.1 additions (Calendar, Gmail, document ingestion, Obsidian sync) are deferred until Phase 1–5 proves stable.
++
++### Research Flags
++
++Phases needing deeper research during planning:
++- **Phase 4 (Heartbeat Agent):** Verify current Anthropic ToS on CLI subprocess invocation pattern before implementation. The compliant path (calling `claude` CLI subprocess) is documented but ToS evolves rapidly. Also smoke-test Windows Task Scheduler absolute path behavior on Windows 11 before committing to the bat wrapper architecture.
++
++Phases with standard patterns (skip research-phase):
++- **Phase 1:** Supabase Postgres/pgvector migration is extensively documented. HNSW index setup is Supabase-official. psycopg2 direct connection is standard.
++- **Phase 2:** Task-based LLM routing is a well-established pattern. `google-genai` SDK migration is official and documented.
++- **Phase 3:** LLM-based action extraction and session briefing composition are established patterns. Prompt iteration may be needed but doesn't require research.
++- **Phase 5:** `youtube-transcript-api` and chunking pipelines are documented and stable.
++
++---
++
++## Confidence Assessment
++
++| Area | Confidence | Notes |
++|------|------------|-------|
++| Stack | HIGH | Versions verified against official PyPI and Google/Anthropic docs. One MEDIUM exception: Gemini model naming changes frequently — verify `gemini-2.5-flash-lite` string at runtime startup; SDK returns clear error if wrong. |
++| Features | MEDIUM-HIGH | Core patterns (session briefing, action extraction, heartbeat) are well-documented in analogous systems (OpenClaw, Nate Jones Open Brain). Specific Promaia integration points inferred from codebase context rather than tested. |
++| Architecture | HIGH | Based on direct code inspection of 400+ lines across 10 source files in the `zbrain` and `postgres-sql-changeover` branches. Component boundaries and integration points are verified, not inferred. |
++| Pitfalls | HIGH | Most pitfalls verified via official docs and multiple sources. asyncpg/pooler incompatibility confirmed via Supabase GitHub issues. Anthropic ToS constraint confirmed via official support article. ChromaDB migration pitfalls confirmed via multiple migration post-mortems. |
++
++**Overall confidence:** HIGH
++
++### Gaps to Address
++
++- **Gemini model name verification at runtime:** `gemini-2.5-flash-lite` is the recommended model as of March 2026 but Google model naming changes frequently. Add a startup check that validates the model string against the API before the first production run.
++- **`text-embedding-004` vs `gemini-embedding-001` availability:** STACK.md directs use of `gemini-embedding-001` (via `google-genai` SDK). ARCHITECTURE.md references `text-embedding-004` in some patterns (written slightly earlier). PITFALLS.md confirms `text-embedding-004` is deprecated. Treat `gemini-embedding-001` via `google-genai` as the definitive choice. Verify availability with a test API call before writing the schema.
++- **Python 3.10+ venv for Brain MCP server:** Promaia targets Python 3.8+. The Brain MCP server requires a separate 3.10+ venv. This venv setup is not yet documented in the project. Address in Phase 1 setup.
++- **Supabase Pro connection limit:** Pro plan allows 60 direct connections. With heartbeat + CLI + any concurrent processes, this could be a constraint. Document and revisit at v1.1 if needed. Not a day-1 blocker.
++- **Upstream sync cadence:** Daughter's `feature/agent-scheduler` branch is the sync target. Weekly rebases must begin in Phase 1 and never slip. This is a process requirement, not a technical gap.
++
++---
++
++## Sources
++
++### Primary (HIGH confidence)
++- Direct code inspection: `storage/vector_db.py`, `ai/models.py`, `storage/hybrid_storage.py`, `agent/agent_manager.py`, `agents/scheduler.py`, `agents/executor.py`, `mcp/client.py`, `connectors/base.py`, `storage/postgres_db.py`, `storage/schema.sql` — architecture and integration points
++- [Supabase Connecting to Postgres Docs](https://supabase.com/docs/guides/database/connecting-to-postgres) — session pooler format, IPv6 direct-only warning, port guidance
++- [Supabase pgvector Docs](https://supabase.com/docs/guides/database/extensions/pgvector) — HNSW index recommendation
++- [Google Gemini Embeddings Docs](https://ai.google.dev/gemini-api/docs/embeddings) — `gemini-embedding-001`, 128-3072 dims, `text-embedding-004` deprecated
++- [google-genai PyPI 1.65.0](https://pypi.org/project/google-genai/) — version confirmed 2026-02-26
++- [MCP Python SDK PyPI 1.26.0](https://pypi.org/project/mcp/) — Python >=3.10 requirement confirmed
++- [pgvector Python PyPI 0.4.2](https://pypi.org/project/pgvector/) — psycopg2 integration, Python >=3.9
++- [Anthropic: Using Claude Code with Pro/Max plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan) — ToS constraint on heartbeat invocation
++
++### Secondary (MEDIUM confidence)
++- [pgvector/pgvector-python GitHub](https://github.com/pgvector/pgvector-python) — `register_vector()` pattern
++- [Google deprecated-generativeai-python GitHub](https://github.com/google-gemini/deprecated-generativeai-python) — confirms `google-generativeai` is deprecated
++- [Supabase GitHub Issue: asyncpg prepared statement errors](https://github.com/supabase/supabase/issues/39227) — pooler incompatibility verified
++- [ChromaDB migration post-mortem](https://wwakabobik.github.io/2025/11/migrating_chroma_db/) — API mismatch pitfall confirmed
++- [pgvector vs ChromaDB comparison (Elestio)](https://blog.elest.io/pgvector-vs-chromadb-when-to-extend-postgresql-and-when-to-go-dedicated/) — no Python SDK for pgvector confirmed
++- [OpenClaw HEARTBEAT.md Guide](https://openclawconsult.com/lab/openclaw-heartbeat-md) — heartbeat pattern and checklist approach
++- [Gemini 2.5 Flash-Lite Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash) — fastest/cheapest 2.5 family model confirmed
++
++### Tertiary (LOW confidence — verify before use)
++- [n8n Community: text-embedding-004 deprecation](https://community.n8n.io/t/google-deprecating-text-embedding-004-but-gemini-embedding-001-doesnt-work/262008) — community report; deprecation confirmed by Google docs but endpoint availability should be verified directly
++- [Agentic cost control: token runaway prevention](https://www.alpsagility.com/cost-control-agentic-systems) — budget ceiling pattern; implement based on principles, not this specific source
++
++---
++*Research completed: 2026-03-04*
++*Ready for roadmap: yes*
+-- 
+2.51.0.windows.1
+
