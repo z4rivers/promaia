@@ -1,22 +1,27 @@
 /**
- * talk.src.js — Hands-free voice conversation engine for Promaia.
+ * talk.src.js — Real-Time WebSocket Voice Engine for Promaia
  *
- * Bundled by esbuild. Uses @ricky0123/vad-web (Silero VAD) for
- * speech detection, sends audio to Gemini for transcription,
- * plays response via Cloud TTS through <audio> element.
- *
- * Conversation loop: tap mic → listen → detect speech end →
- * transcribe → respond → TTS → auto-resume listen → tap to stop.
+ * Streams raw 16kHz PCM from mic -> Server -> Gemini Live API
+ * Receives raw 24kHz PCM from Gemini -> Server -> Browser
+ * Uses Silero VAD (loaded via CDN as `window.vad`) purely for UI state and interruption signaling.
  */
-import { MicVAD } from '@ricky0123/vad-web';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let vad = null;
 let conversationMode = false;
-let isProcessing = false;
-let currentAudio = null;
+let ws = null;
+
+// Audio Capture State
+let captureStream = null;
+let captureCtx = null;
+let captureScriptNode = null;
+
+// Audio Playback State
+let playCtx = null;
+let nextPlayTime = 0;
+let playingNodes = [];
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -33,50 +38,13 @@ const sendBtn = document.getElementById('send-btn');
 const closeKb = document.getElementById('close-kb');
 
 // ---------------------------------------------------------------------------
-// Float32Array → WAV blob (16-bit PCM, mono)
-// ---------------------------------------------------------------------------
-function writeString(view, offset, str) {
-    for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-    }
-}
-
-function float32ToWav(samples, sampleRate) {
-    // VAD outputs at 16kHz by default
-    sampleRate = sampleRate || 16000;
-    const numSamples = samples.length;
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + numSamples * 2, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);       // PCM chunk size
-    view.setUint16(20, 1, true);        // PCM format
-    view.setUint16(22, 1, true);        // mono
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true); // byte rate
-    view.setUint16(32, 2, true);        // block align
-    view.setUint16(34, 16, true);       // bits per sample
-    writeString(view, 36, 'data');
-    view.setUint32(40, numSamples * 2, true);
-
-    for (let i = 0; i < numSamples; i++) {
-        const s = Math.max(-1, Math.min(1, samples[i]));
-        view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-
-    return new Blob([buffer], { type: 'audio/wav' });
-}
-
-// ---------------------------------------------------------------------------
 // Status management
 // ---------------------------------------------------------------------------
 function setStatus(state, text) {
     statusLabel.dataset.state = state;
     statusLabel.textContent = text || {
         idle: 'Ready',
+        connecting: 'Connecting to Brain...',
         listening: 'Listening...',
         thinking: 'Thinking...',
         speaking: 'Speaking...',
@@ -85,10 +53,9 @@ function setStatus(state, text) {
 }
 
 // ---------------------------------------------------------------------------
-// Messages
+// Messages UI
 // ---------------------------------------------------------------------------
 function addMessage(role, text) {
-    // Remove empty state placeholder
     const empty = messagesEl.querySelector('.talk-empty');
     if (empty) empty.remove();
 
@@ -109,166 +76,297 @@ function addMessage(role, text) {
 }
 
 // ---------------------------------------------------------------------------
-// TTS Playback
+// WebSocket Connection
 // ---------------------------------------------------------------------------
-async function playTTS(text) {
-    setStatus('speaking');
+function connectWebSocket() {
+    return new Promise((resolve, reject) => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream`);
 
-    try {
-        const res = await fetch('/api/brain/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text }),
-        });
-
-        if (!res.ok) {
-            console.warn('TTS unavailable, skipping audio playback');
-            afterTTSComplete();
-            return;
-        }
-
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        currentAudio = new Audio(url);
-
-        // Media Session API — shows "Promaia" on lock screen
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Promaia',
-                artist: 'Your Brain',
-            });
-        }
-
-        currentAudio.onended = () => {
-            URL.revokeObjectURL(url);
-            currentAudio = null;
-            afterTTSComplete();
+        ws.onopen = () => {
+            console.log('[WS] Connected to Promaia stream');
+            resolve();
         };
 
-        currentAudio.onerror = () => {
-            URL.revokeObjectURL(url);
-            currentAudio = null;
-            afterTTSComplete();
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.serverContent) {
+                // Audio chunk recieved
+                if (msg.serverContent.modelTurn) {
+                    const parts = msg.serverContent.modelTurn.parts;
+                    for (const part of parts) {
+                        if (part.inlineData) {
+                            queuePlayback(part.inlineData.data);
+                            setStatus('speaking');
+                        }
+                        if (part.text) {
+                            // Transcript or text payload
+                            addMessage('assistant', part.text);
+                        }
+                    }
+                }
+                
+                // End of thought
+                if (msg.serverContent.turnComplete) {
+                    console.log('[WS] Turn Complete');
+                    // We wait for the audio queue to finish draining naturally before UI goes back to 'listening'
+                }
+            }
         };
 
-        await currentAudio.play();
-    } catch (err) {
-        console.error('TTS playback failed:', err);
-        currentAudio = null;
-        afterTTSComplete();
-    }
-}
+        ws.onclose = () => {
+            console.log('[WS] Disconnected');
+            if (conversationMode) {
+                setStatus('error', 'Connection lost');
+                stopConversation();
+            }
+        };
 
-function afterTTSComplete() {
-    if (conversationMode && vad) {
-        // Auto-resume listening (conversation loop)
-        setStatus('listening');
-        vad.start();
-    } else {
-        setStatus('idle');
-    }
+        ws.onerror = (err) => {
+            console.error('[WS] Error:', err);
+            reject(err);
+        };
+    });
 }
 
 // ---------------------------------------------------------------------------
-// VAD initialization
+// Audio Playback (Server -> Browser @ 24kHz)
+// ---------------------------------------------------------------------------
+function queuePlayback(base64Data) {
+    if (!playCtx) {
+        // Gemini standard TTS format is 24000Hz PCM
+        playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        nextPlayTime = playCtx.currentTime;
+    }
+
+    if (playCtx.state === 'suspended') {
+        playCtx.resume();
+    }
+
+    // Decode Base64 to Int16 to Float32
+    const binaryStr = window.atob(base64Data);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const int16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+        float32[i] = int16[i] / 32768; // normalize to -1.0 to 1.0
+    }
+
+    // Create Buffer
+    const buffer = playCtx.createBuffer(1, float32.length, 24000);
+    buffer.getChannelData(0).set(float32);
+
+    const source = playCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playCtx.destination);
+
+    // Schedule seamlessly back-to-back
+    if (nextPlayTime < playCtx.currentTime) {
+        nextPlayTime = playCtx.currentTime;
+    }
+    source.start(nextPlayTime);
+    nextPlayTime += buffer.duration;
+
+    playingNodes.push(source);
+    source.onended = () => {
+        playingNodes = playingNodes.filter(n => n !== source);
+        // If queue is completely empty, we are done speaking
+        if (playingNodes.length === 0 && conversationMode) {
+            setStatus('listening');
+        }
+    };
+}
+
+function stopPlayback() {
+    playingNodes.forEach(node => {
+        try { node.stop(); } catch(e){}
+    });
+    playingNodes = [];
+    if (playCtx) {
+        nextPlayTime = playCtx.currentTime;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Audio Capture (Browser -> Server @ 16kHz)
+// ---------------------------------------------------------------------------
+async function startCapture() {
+    captureStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        } 
+    });
+    
+    // Gemini Live API expects 16kHz audio out of the box
+    captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    const source = captureCtx.createMediaStreamSource(captureStream);
+    
+    // Create script processor to read raw PCM frames
+    captureScriptNode = captureCtx.createScriptProcessor(4096, 1, 1);
+    
+    captureScriptNode.onaudioprocess = (e) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        
+        const float32Array = e.inputBuffer.getChannelData(0);
+        // Convert Float32 to Int16
+        const int16Array = new Int16Array(float32Array.length);
+        for(let i=0; i<float32Array.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        
+        // Base64 encode
+        const uint8Array = new Uint8Array(int16Array.buffer);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+        }
+        const b64 = window.btoa(binary);
+        
+        ws.send(JSON.stringify({
+            realtimeInput: { 
+                mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }] 
+            }
+        }));
+    };
+    
+    source.connect(captureScriptNode);
+    // Connect to a silent gain node to prevent local mic echo
+    const silentGain = captureCtx.createGain();
+    silentGain.gain.value = 0;
+    captureScriptNode.connect(silentGain);
+    silentGain.connect(captureCtx.destination);
+}
+
+function stopCapture() {
+    if (captureScriptNode) {
+        captureScriptNode.disconnect();
+        captureScriptNode = null;
+    }
+    if (captureCtx) {
+        captureCtx.close();
+        captureCtx = null;
+    }
+    if (captureStream) {
+        captureStream.getTracks().forEach(t => t.stop());
+        captureStream = null;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VAD initialization (Used purely for UI State and Interruptions)
 // ---------------------------------------------------------------------------
 async function initVAD() {
-    setStatus('thinking', 'Loading...');
+    // CDN injects the library into the global window.vad object
+    if (!window.vad || !window.vad.MicVAD) {
+        throw new Error("VAD library not loaded from CDN yet.");
+    }
 
-    vad = await MicVAD.new({
-        baseAssetPath: '/static/vad/',
-        onnxWASMBasePath: '/static/vad/',
-
-        // Tuned for real-world use (driving, ambient noise)
-        positiveSpeechThreshold: 0.8,   // default 0.5 — high to avoid false starts from noise
-        negativeSpeechThreshold: 0.5,   // default 0.35 — raised so silence is detected sooner
-        redemptionFrames: 6,            // default 8 — fewer frames needed to confirm speech end
-        minSpeechFrames: 4,             // default 3 — slightly longer to avoid noise bursts
-        preSpeechPadFrames: 3,          // default 1 — capture a bit before speech starts
-        submitUserSpeechOnPause: false, // don't fire onSpeechEnd when we call vad.pause()
+    vad = await window.vad.MicVAD.new({
+        // By removing custom paths, vad-web fetches models natively from unpkg
+        positiveSpeechThreshold: 0.8,
+        negativeSpeechThreshold: 0.5,
+        redemptionFrames: 6,
+        minSpeechFrames: 4,
+        preSpeechPadFrames: 3,
 
         onSpeechStart: () => {
-            console.log('[VAD] Speech started');
-            if (!isProcessing) {
-                setStatus('listening');
+            console.log('[VAD] Speech started - Interruption triggered');
+            
+            // 11.4: The Interruption Mechanism
+            if (playingNodes.length > 0) {
+                stopPlayback(); // stop local audio echo immediately
+                
+                // Send explicit turnComplete interrupt to tell Gemini to stop talking and listen
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ 
+                        clientContent: { 
+                            turns: [{ role: "user", parts: [{ text: "Stop." }] }],
+                            turnComplete: true 
+                        } 
+                    }));
+                }
             }
+            setStatus('listening');
         },
 
-        onSpeechEnd: async (audio) => {
-            console.log('[VAD] Speech ended, audio samples:', audio.length);
-            if (isProcessing) return;
-            isProcessing = true;
-
-            // Pause VAD while processing (prevents double-triggers)
-            vad.pause();
-            setStatus('thinking');
-
-            try {
-                const wavBlob = float32ToWav(audio);
-                const formData = new FormData();
-                formData.append('audio', wavBlob, 'speech.wav');
-
-                const res = await fetch('/api/brain/voice', {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (!res.ok) {
-                    const errData = await res.json().catch(() => ({}));
-                    throw new Error(errData.detail || `HTTP ${res.status}`);
-                }
-
-                const data = await res.json();
-
-                if (data.transcript) {
-                    addMessage('user', data.transcript);
-                }
-                addMessage('assistant', data.reply);
-
-                // Play TTS — will auto-resume listening on completion
-                await playTTS(data.reply);
-            } catch (err) {
-                console.error('Voice processing failed:', err);
-                setStatus('error');
-                // Resume listening after error pause
-                setTimeout(() => {
-                    if (conversationMode && vad) {
-                        setStatus('listening');
-                        vad.start();
-                    }
-                }, 2000);
-            } finally {
-                isProcessing = false;
+        onSpeechEnd: () => {
+            console.log('[VAD] User stopped talking');
+            // Gemini handles STT automatically, we just update the UI state
+            if (playingNodes.length === 0) {
+                setStatus('thinking');
             }
         },
     });
-
-    console.log('[VAD] Initialized successfully');
+    console.log('[VAD] UI Monitor Initialized');
 }
 
 // ---------------------------------------------------------------------------
-// Text input
+// Lifecycle
 // ---------------------------------------------------------------------------
-async function sendText(text) {
-    if (!text.trim()) return;
+async function startConversation() {
+    conversationMode = true;
+    micBtn.classList.add('active');
+    feedsEl.classList.add('dimmed');
+    setStatus('connecting');
 
+    try {
+        console.log("Starting conversation sequence...");
+        await connectWebSocket();
+        console.log("WS connected. Init VAD...");
+        if (!vad) await initVAD();
+        console.log("VAD Init'd. Starting capture...");
+        await startCapture();
+        console.log("Capture started. Starting VAD...");
+        vad.start();
+        setStatus('listening');
+    } catch (err) {
+        console.error("FAILED to start conversation!");
+        console.error("Error payload:", err);
+        console.dir(err);
+        setStatus('error');
+        stopConversation();
+    }
+}
+
+function stopConversation() {
+    conversationMode = false;
+    micBtn.classList.remove('active');
+    feedsEl.classList.remove('dimmed');
+    setStatus('idle');
+    
+    stopPlayback();
+    stopCapture();
+    if (vad) vad.pause();
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Text input (Direct text push through WebSocket)
+// ---------------------------------------------------------------------------
+function sendText(text) {
+    if (!text.trim()) return;
     addMessage('user', text);
     setStatus('thinking');
 
-    try {
-        const res = await fetch('/api/brain/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text }),
-        });
-        const data = await res.json();
-        addMessage('assistant', data.reply);
-
-        // Play TTS for text responses too
-        await playTTS(data.reply);
-    } catch (err) {
-        console.error('Chat failed:', err);
-        addMessage('assistant', 'Something went wrong. Try again?');
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ 
+            clientContent: { 
+                turns: [{ role: "user", parts: [{ text: text }] }],
+                turnComplete: true 
+            } 
+        }));
+    } else {
+        addMessage('assistant', '(Disconnected — tap mic to connect first)');
         setStatus('idle');
     }
 }
@@ -276,45 +374,15 @@ async function sendText(text) {
 // ---------------------------------------------------------------------------
 // Event listeners
 // ---------------------------------------------------------------------------
-
-// Mic button — toggle conversation mode
-micBtn.addEventListener('click', async () => {
-    // Haptic feedback on supported devices
+micBtn.addEventListener('click', () => {
     if (navigator.vibrate) navigator.vibrate(50);
-
     if (!conversationMode) {
-        // Enter conversation mode
-        if (!vad) {
-            try {
-                await initVAD();
-            } catch (err) {
-                console.error('VAD init failed:', err);
-                setStatus('error', 'Mic access denied');
-                return;
-            }
-        }
-
-        vad.start();
-        conversationMode = true;
-        micBtn.classList.add('active');
-        feedsEl.classList.add('dimmed');
-        setStatus('listening');
+        startConversation();
     } else {
-        // Exit conversation mode
-        if (vad) vad.pause();
-        conversationMode = false;
-        micBtn.classList.remove('active');
-        feedsEl.classList.remove('dimmed');
-        setStatus('idle');
-
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
-        }
+        stopConversation();
     }
 });
 
-// Keyboard toggle
 kbToggle.addEventListener('click', () => {
     textBar.classList.add('visible');
     micArea.style.display = 'none';
@@ -326,7 +394,6 @@ closeKb.addEventListener('click', () => {
     micArea.style.display = '';
 });
 
-// Send text
 sendBtn.addEventListener('click', () => {
     const text = textField.value.trim();
     if (text) {
@@ -342,13 +409,9 @@ textField.addEventListener('keydown', (e) => {
     }
 });
 
-// Handle iOS backgrounding — stop recording if app is minimized
+// Avoid iOS background loops
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden && conversationMode && vad) {
-        vad.pause();
-        setStatus('idle', 'Paused');
-    } else if (!document.hidden && conversationMode && vad && !isProcessing) {
-        vad.start();
-        setStatus('listening');
+    if (document.hidden && conversationMode) {
+        stopConversation();
     }
 });

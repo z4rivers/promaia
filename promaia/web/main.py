@@ -1,5 +1,6 @@
 import logging
 import os
+import mimetypes
 from urllib.parse import unquote
 
 from dotenv import load_dotenv
@@ -61,6 +62,13 @@ if os.environ.get("PYTHON_ENV") == "production":
 
     app.add_middleware(HTTPSRedirectMiddleware)
 
+# Cross-Origin Isolation middleware (Required for ONNX threaded WASM / SharedArrayBuffer)
+@app.middleware("http")
+async def add_cross_origin_isolation_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    return response
 
 # Auth middleware (must be added BEFORE CORS so login redirects work)
 app.add_middleware(DashboardAuthMiddleware)
@@ -74,7 +82,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files
+# Static files and MIME Type Polyfills for WASM/MJS
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("application/wasm", ".wasm")
+
 _web_dir = os.path.dirname(os.path.abspath(__file__))
 _static_dir = os.path.join(_web_dir, "static")
 _templates_dir = os.path.join(_web_dir, "templates")

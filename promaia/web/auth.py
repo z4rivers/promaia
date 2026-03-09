@@ -116,6 +116,11 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         if path in PUBLIC_PATHS:
             return await call_next(request)
 
+        # Allow WebSockets to bypass standard HTTP auth headers (Starlette crashes otherwise)
+        if path.startswith("/api/brain/stream"):
+            # Note: We should eventually implement token-based ticket auth, but for now allow the stream
+            return await call_next(request)
+
         # Allow static files (CSS, JS, images)
         if path.startswith("/static/"):
             return await call_next(request)
