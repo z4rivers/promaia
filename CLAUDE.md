@@ -176,3 +176,4 @@ It makes it feel like respect.
 - Desktop UI capabilities to manually edit/adjust notes captured during audio mode.
 - Added feature to manually signal end of speech
 - Mobile UI slider or toggle for adjusting mic sensitivity/VAD thresholds depending on environment (e.g., quiet room vs driving/loud)
+- Never assume the user is testing on localhost unless explicitly instructed. Always provide the exact local IP link for mobile testing.
