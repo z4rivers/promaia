@@ -388,6 +388,30 @@ micBtn.addEventListener('click', () => {
     if (!conversationMode) {
         startConversation();
     } else {
+        // If already in conversation mode, a tap on the mic acts as a manual "Interrupt" / "Stop Talking" button
+        console.log('[UI] Manual Interrupt triggered via mic button');
+        if (playingNodes.length > 0) {
+            stopPlayback();
+        }
+        
+        // Send explicit turnComplete interrupt to tell Gemini to stop talking and listen
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ 
+                clientContent: { 
+                    turns: [{ role: "user", parts: [{ text: "Stop." }] }],
+                    turnComplete: true 
+                } 
+            }));
+        }
+        setStatus('listening');
+    }
+});
+
+// Add a double-click / long-press equivalent to actually stop the conversation
+micBtn.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    if (conversationMode) {
+        console.log('[UI] Conversation stopped via double click');
         stopConversation();
     }
 });

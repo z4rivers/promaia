@@ -174,3 +174,5 @@ When the profile is being used to calibrate, say so briefly. "I know you prefer
 directness — here it is." This keeps personalization from feeling like surveillance.
 It makes it feel like respect.
 - Desktop UI capabilities to manually edit/adjust notes captured during audio mode.
+- Added feature to manually signal end of speech
+- Mobile UI slider or toggle for adjusting mic sensitivity/VAD thresholds depending on environment (e.g., quiet room vs driving/loud)
