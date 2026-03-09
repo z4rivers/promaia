@@ -192,7 +192,10 @@ def _get_brain_data() -> dict:
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Render the main dashboard with live brain data."""
-    hour = datetime.now().hour
+    from zoneinfo import ZoneInfo
+    pacific = ZoneInfo("America/Los_Angeles")
+    now = datetime.now(pacific)
+    hour = now.hour
     if hour < 12:
         greeting = "Good morning"
     elif hour < 17:
@@ -200,7 +203,6 @@ async def dashboard(request: Request):
     else:
         greeting = "Good evening"
 
-    now = datetime.now()
     date_str = _format_day(now)
 
     brain = _get_brain_data()
