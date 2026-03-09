@@ -269,11 +269,10 @@ async function initVAD() {
     }
 
     vad = await window.vad.MicVAD.new({
-        // By removing custom paths, vad-web fetches models natively from unpkg
-        positiveSpeechThreshold: 0.8,
-        negativeSpeechThreshold: 0.5,
-        redemptionFrames: 6,
-        minSpeechFrames: 4,
+        positiveSpeechThreshold: 0.82,
+        negativeSpeechThreshold: 0.6,
+        redemptionFrames: 8,
+        minSpeechFrames: 5,
         preSpeechPadFrames: 3,
 
         onSpeechStart: () => {
@@ -376,6 +375,16 @@ function sendText(text) {
 // ---------------------------------------------------------------------------
 micBtn.addEventListener('click', () => {
     if (navigator.vibrate) navigator.vibrate(50);
+    
+    // Unlock iOS AudioContext on the very first user interaction
+    if (!playCtx) {
+        playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        nextPlayTime = playCtx.currentTime;
+    }
+    if (playCtx.state === 'suspended') {
+        playCtx.resume();
+    }
+
     if (!conversationMode) {
         startConversation();
     } else {

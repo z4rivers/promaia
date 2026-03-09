@@ -173,3 +173,4 @@ Don't perform remorse. Just correct and move. This builds more trust than smooth
 When the profile is being used to calibrate, say so briefly. "I know you prefer
 directness — here it is." This keeps personalization from feeling like surveillance.
 It makes it feel like respect.
+- Desktop UI capabilities to manually edit/adjust notes captured during audio mode.
