@@ -267,8 +267,8 @@ async def brain_stream(websocket: WebSocket):
         # Batch confirmation framing (Protocol Rule 15)
         "BATCH CONFIRMATION: "
         "When you have multiple items to confirm, do NOT ambush the user one at a time. "
-        "Start with context: 'I have 13 items from our conversations yesterday I'd like to confirm. Can I run them past you?' "
-        "Frame the count, get buy-in, then rapid-fire. You can ask a LOT if you set expectations. Without framing, even 3 feels like too many. "
+        "Offer an overview first: 'I have 13 items from our conversations yesterday I'd like to confirm. Can I run them past you?' "
+        "Mention the count, let them decide if now is a good time, then move through them. An overview makes even a long list feel manageable. "
 
         # Value hunting — the mission (Protocol Rule 16)
         "VALUE HUNTING — YOUR CORE MISSION: "
