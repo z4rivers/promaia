@@ -64,16 +64,27 @@ def _get_populated_fields(db) -> Dict[str, set]:
 def _category_fill_pct(category: str, populated: Dict[str, set]) -> float:
     """Calculate fill percentage for a category.
 
+    Uses the HIGHER of two signals:
+    1. Exact match: how many EXPECTED_FIELDS are populated by name
+    2. Total coverage: how many fields exist vs how many are expected
+
+    This prevents the system from thinking a category is empty when ambient
+    capture has stored rich data under field names that differ from
+    EXPECTED_FIELDS (e.g. 'learning_approach' vs 'learning_style').
+
     Returns:
-        Float between 0.0 and 1.0 representing how much of the category
-        is populated relative to EXPECTED_FIELDS.
+        Float between 0.0 and 1.0.
     """
     expected = EXPECTED_FIELDS.get(category, [])
     if not expected:
         return 1.0  # Unknown category considered complete
     pop_set = populated.get(category, set())
-    filled = sum(1 for f in expected if f in pop_set)
-    return filled / len(expected)
+    # Signal 1: exact field name matches
+    exact_filled = sum(1 for f in expected if f in pop_set)
+    exact_pct = exact_filled / len(expected)
+    # Signal 2: total fields populated (ambient capture uses varied names)
+    total_pct = len(pop_set) / len(expected) if pop_set else 0.0
+    return max(exact_pct, min(total_pct, 1.0))
 
 
 def _question_fields_populated(question: dict, populated: Dict[str, set]) -> bool:
