@@ -364,11 +364,11 @@ async def brain_stream(websocket: WebSocket):
             },
             {
                 "name": "switch_cognitive_mode",
-                "description": "Call this to switch your persona when the user asks for a specific thinking hat (e.g. Black Hat, Green Hat, Red Hat).",
+                "description": "Switch your thinking style based on natural user cues. Call this when the user asks you to: think critically / play devil's advocate / poke holes / what could go wrong (-> critical mode); brainstorm / wild ideas / what else could we try (-> creative mode); just the facts / what do we actually know (-> facts mode); what's your gut say / forget the logic (-> instinct mode); what's the upside / make the case for it (-> optimist mode); step back / help me think through this / big picture (-> process mode). NEVER mention mode names or thinking styles to the user.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "hat_color": { "type": "STRING", "description": "black, green, red, white, yellow, or blue" }
+                        "hat_color": { "type": "STRING", "description": "critical, creative, instinct, facts, optimist, or process" }
                     },
                     "required": ["hat_color"]
                 }
@@ -596,17 +596,23 @@ async def brain_stream(websocket: WebSocket):
                                             
                                     elif ft.name == "switch_cognitive_mode":
                                         args = ft.args
-                                        color = args.get("hat_color", "").lower().replace(' hat', '')
-                                        hats = {
-                                            "black": "CRITICAL INSTRUCTION: You are now in BLACK HAT mode. Focus ONLY on risks, flaws, potential failures, and obstacles. Do not be encouraging. Be ruthlessly critical to bulletproof the idea.",
-                                            "green": "CRITICAL INSTRUCTION: You are now in GREEN HAT mode. Focus ONLY on creativity, alternatives, and new ideas. No criticism allowed. Everything is possible.",
-                                            "red": "CRITICAL INSTRUCTION: You are now in RED HAT mode. Focus on emotion, gut feelings, and intuition. How does this make people feel? What are the underlying fears or excitement?",
-                                            "white": "CRITICAL INSTRUCTION: You are now in WHITE HAT mode. Focus ONLY on data, facts, and information needed. What do we know? What don't we know?",
-                                            "yellow": "CRITICAL INSTRUCTION: You are now in YELLOW HAT mode. Focus ONLY on the logical benefits and optimism. Why will this work? What is the upside?",
-                                            "blue": "CRITICAL INSTRUCTION: You are now in BLUE HAT mode. Focus on process control and organization. Summarize what has been done and set the agenda for what's next."
+                                        color = args.get("hat_color", "").lower()
+                                        modes = {
+                                            "critical":  "CRITICAL INSTRUCTION: Shift to devil's advocate mode. Focus on risks, flaws, and potential failures. Be honest and direct — your job is to bulletproof the idea, not to encourage it.",
+                                            "black":     "CRITICAL INSTRUCTION: Shift to devil's advocate mode. Focus on risks, flaws, and potential failures. Be honest and direct — your job is to bulletproof the idea, not to encourage it.",
+                                            "creative":  "CRITICAL INSTRUCTION: Shift to brainstorm mode. Generate alternatives, new angles, and unexpected ideas. No criticism — everything is on the table.",
+                                            "green":     "CRITICAL INSTRUCTION: Shift to brainstorm mode. Generate alternatives, new angles, and unexpected ideas. No criticism — everything is on the table.",
+                                            "instinct":  "CRITICAL INSTRUCTION: Shift to gut-check mode. Set logic aside. Respond from intuition — how does this feel? What's the emotional undercurrent?",
+                                            "red":       "CRITICAL INSTRUCTION: Shift to gut-check mode. Set logic aside. Respond from intuition — how does this feel? What's the emotional undercurrent?",
+                                            "facts":     "CRITICAL INSTRUCTION: Shift to just-the-facts mode. Only discuss what is known and verifiable. Flag what is unknown. No opinions or speculation.",
+                                            "white":     "CRITICAL INSTRUCTION: Shift to just-the-facts mode. Only discuss what is known and verifiable. Flag what is unknown. No opinions or speculation.",
+                                            "optimist":  "CRITICAL INSTRUCTION: Shift to upside mode. Focus on the best-case outcome and the logical reasons this will work. Be genuinely enthusiastic without ignoring reality.",
+                                            "yellow":    "CRITICAL INSTRUCTION: Shift to upside mode. Focus on the best-case outcome and the logical reasons this will work. Be genuinely enthusiastic without ignoring reality.",
+                                            "process":   "CRITICAL INSTRUCTION: Shift to big-picture mode. Zoom out. Organize what has been covered, identify what's missing, and set a clear direction for what's next.",
+                                            "blue":      "CRITICAL INSTRUCTION: Shift to big-picture mode. Zoom out. Organize what has been covered, identify what's missing, and set a clear direction for what's next.",
                                         }
-                                        instruction = hats.get(color, f"Mode {color} unrecognized. Stay in normal mode.")
-                                        logger.info(f"Switched to cognitive mode: {color} hat")
+                                        instruction = modes.get(color, "Return to your normal balanced mode.")
+                                        logger.info(f"Switched to cognitive mode: {color}")
                                         tool_responses.append(types.FunctionResponse(
                                             name=ft.name,
                                             id=ft.id,
