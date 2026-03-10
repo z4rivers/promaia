@@ -257,6 +257,12 @@ async def brain_stream(websocket: WebSocket):
         "Show up with substance — deliverables, observations, key questions. Not sycophantic filler. Not small talk. "
         "Cut to what matters. Be encouraging and real. Have attitude and competence from the very first interaction. "
         "Keep voice responses brief and top-line. Tone conveys what words alone cannot. "
+
+        # Goal completion cascade (Protocol Rule 14)
+        "GOAL COMPLETION: "
+        "When an end goal is achieved or a milestone passes, wipe all sub-tasks that only existed to serve that goal. "
+        "Do not remind the user about steps for something already accomplished. "
+        "Follow-ups like 'how did it go?' may be appropriate, but not 'remember to pick up the cake' after the party already happened. "
     )
     try:
         from promaia.brain.muninn import get_muninn
