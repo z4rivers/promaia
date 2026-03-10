@@ -59,6 +59,7 @@ from promaia.storage.postgres_db import get_postgres_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
+from promaia.brain.core.memory_pipeline import capture_memory
 from promaia.brain.onboarding import (
     start_onboarding, get_onboarding_status,
     mark_channel_progress, get_profile_coverage,
@@ -798,186 +799,37 @@ async def _handle_capture(args: dict) -> list[TextContent]:
 
     domain_name = args.get("domain")
 
-    # Insert memory row (without embedding first)
     try:
-        memory_id = db.insert_returning(
-            """
-            INSERT INTO brain.memories (content, domain, source, source_id)
-            VALUES (%s, %s, 'session', %s)
-            RETURNING id
-            """,
-            (content, domain_name, SESSION_ID),
+        results = await capture_memory(
+            db=db,
+            vector_mgr=get_vector_mgr(),
+            content=content,
+            session_id=SESSION_ID,
+            domain_name=domain_name,
+            source='session',
+            confidence=0.9
         )
     except Exception as e:
         logger.error(f"capture insert failed: {e}")
         return [TextContent(type="text", text=f"Error storing memory: {e}")]
 
-    # Generate embedding and update row
-    try:
-        vector_mgr = get_vector_mgr()
-        embedding = vector_mgr.generate_embedding(content)
-        embedding_array = np.array(embedding)
-        with db.get_connection() as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE brain.memories SET embedding = %s WHERE id = %s",
-                    (embedding_array, memory_id),
-                )
-    except Exception as e:
-        logger.warning(f"Embedding generation failed for memory {memory_id}: {e}")
-        # Non-fatal — memory is stored, just without embedding
-
-    # Extract actions
-    action_count = 0
-    try:
-        extraction_result = extract_actions(content)
-        if extraction_result.has_actions:
-            # Resolve domain_id if domain provided
-            domain_id = _get_or_create_domain_id(db, domain_name) if domain_name else None
-
-            for action in extraction_result.actions:
-                db.execute(
-                    """
-                    INSERT INTO brain.actions (memory_id, domain_id, description)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (memory_id, domain_id, action.description),
-                )
-            action_count = len(extraction_result.actions)
-    except Exception as e:
-        logger.warning(f"Action extraction/insert failed: {e}")
-
-    # -----------------------------------------------------------------------
-    # Conversation Intelligence extraction (the "Along For The Ride" engine)
-    # Extracts decisions, insights, preferences, and asides as independent
-    # sub-captures — each becomes its own memory node in MuninnDB's graph.
-    # -----------------------------------------------------------------------
-    intel_counts = {"decisions": 0, "insights": 0, "preferences": 0, "asides": 0}
-    try:
-        intel = extract_insights(content)
-        if intel.has_intelligence:
-            # Store each extracted element as its own tagged memory
-            sub_captures = []
-
-            for d in intel.decisions:
-                sub_captures.append((
-                    f"[DECISION] {d.description}",
-                    d.domain or domain_name,
-                    ["decision", d.confidence],
-                ))
-            intel_counts["decisions"] = len(intel.decisions)
-
-            for i in intel.insights:
-                sub_captures.append((
-                    f"[INSIGHT] {i.description}",
-                    i.domain or domain_name,
-                    ["insight", i.category],
-                ))
-            intel_counts["insights"] = len(intel.insights)
-
-            for p in intel.preferences:
-                sub_captures.append((
-                    f"[PREFERENCE] {p.description}",
-                    domain_name,
-                    ["preference", p.profile_category or "general"],
-                ))
-            intel_counts["preferences"] = len(intel.preferences)
-
-            for a in intel.asides:
-                sub_captures.append((
-                    f"[ASIDE] {a.description}",
-                    a.domain or domain_name,
-                    ["aside"],
-                ))
-            intel_counts["asides"] = len(intel.asides)
-
-            # Write sub-captures to Postgres + MuninnDB
-            for sub_content, sub_domain, sub_tags in sub_captures:
-                try:
-                    sub_id = db.insert_returning(
-                        """
-                        INSERT INTO brain.memories (content, domain, source, source_id)
-                        VALUES (%s, %s, 'intelligence', %s)
-                        RETURNING id
-                        """,
-                        (sub_content, sub_domain, SESSION_ID),
-                    )
-                    # Generate embedding for sub-capture
-                    try:
-                        sub_embedding = vector_mgr.generate_embedding(sub_content)
-                        sub_array = np.array(sub_embedding)
-                        with db.get_connection() as conn:
-                            register_vector(conn)
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    "UPDATE brain.memories SET embedding = %s WHERE id = %s",
-                                    (sub_array, sub_id),
-                                )
-                    except Exception:
-                        pass  # Non-fatal — sub-capture stored without embedding
-
-                    # MuninnDB write for sub-capture
-                    try:
-                        muninn = await get_muninn()
-                        if muninn:
-                            await muninn.write(
-                                concept=sub_content[:100],
-                                content=sub_content,
-                                tags=([sub_domain] if sub_domain else []) + sub_tags,
-                            )
-                    except Exception:
-                        pass  # Non-fatal
-
-                except Exception as e:
-                    logger.warning(f"Sub-capture insert failed: {e}")
-
-    except Exception as e:
-        logger.warning(f"Intelligence extraction failed (non-fatal): {e}")
-
-    # Log capture event
-    try:
-        db.execute(
-            """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('capture', %s::jsonb, 'session', %s)
-            """,
-            (json.dumps({
-                "memory_id": memory_id,
-                "action_count": action_count,
-                "intelligence": intel_counts,
-            }), SESSION_ID),
-        )
-    except Exception as e:
-        logger.warning(f"Could not log capture event: {e}")
-
-    # MuninnDB dual-write for primary memory (best-effort)
-    try:
-        muninn = await get_muninn()
-        if muninn:
-            tags = [domain_name] if domain_name else []
-            await muninn.write(
-                concept=content[:100],
-                content=content,
-                tags=tags,
-            )
-    except Exception as e:
-        logger.warning(f"MuninnDB write failed (non-fatal): {e}")
+    action_count = results.get("action_count", 0)
+    intel_counts = results.get("intel_counts", {})
 
     # Build response summary
     parts = ["Captured."]
     if action_count > 0:
         parts.append(f"Extracted {action_count} action(s).")
-    total_intel = sum(intel_counts.values())
+    total_intel = sum(intel_counts.values()) if intel_counts else 0
     if total_intel > 0:
         intel_parts = []
-        if intel_counts["decisions"]:
+        if intel_counts.get("decisions"):
             intel_parts.append(f"{intel_counts['decisions']} decision(s)")
-        if intel_counts["insights"]:
+        if intel_counts.get("insights"):
             intel_parts.append(f"{intel_counts['insights']} insight(s)")
-        if intel_counts["preferences"]:
+        if intel_counts.get("preferences"):
             intel_parts.append(f"{intel_counts['preferences']} preference(s)")
-        if intel_counts["asides"]:
+        if intel_counts.get("asides"):
             intel_parts.append(f"{intel_counts['asides']} aside(s)")
         parts.append(f"Intelligence: {', '.join(intel_parts)}.")
     return [TextContent(type="text", text=" ".join(parts))]
