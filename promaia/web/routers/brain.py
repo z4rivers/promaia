@@ -17,14 +17,18 @@ from pydantic import BaseModel
 from promaia.web.brain_chat import chat, transcribe_audio
 from promaia.storage.postgres_db import get_postgres_db, pg_connect
 import time
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-async def generate_session_review(transcript_log: list):
+async def generate_session_review(transcript_log: list, rescued_memories: list = None):
     """Background task to summarize a completed voice session and propose memories to the dashboard."""
     if not transcript_log:
         return
+        
+    if rescued_memories is None:
+        rescued_memories = []
         
     try:
         logger.info(f"Generating async session review for {len(transcript_log)} turns...")
@@ -77,6 +81,13 @@ async def generate_session_review(transcript_log: list):
         
         result_json = json.loads(response.text)
         
+        proposed = result_json.get("proposed_memories", [])
+        for rm in rescued_memories:
+            proposed.append({
+                "content": rm.get("content", ""),
+                "domain": rm.get("domain", "general")
+            })
+        
         # Save to PostgreSQL
         with pg_connect() as conn:
             with conn.cursor() as cursor:
@@ -86,7 +97,7 @@ async def generate_session_review(transcript_log: list):
                     (raw_transcript, summary, proposed_memories, status)
                     VALUES (%s, %s, %s, 'pending')
                     """,
-                    (json.dumps(transcript_log), result_json.get("summary", ""), json.dumps(result_json.get("proposed_memories", [])))
+                    (json.dumps(transcript_log), result_json.get("summary", ""), json.dumps(proposed))
                 )
         logger.info("Successfully saved AudioSessionReview to Postgres database.")
     except Exception as e:
@@ -206,8 +217,43 @@ async def brain_stream(websocket: WebSocket):
     """
     await websocket.accept()
     
+    # 0. Inject Phase 0 Clock & Calendar Context
+    current_time_str = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+    system_ctx = f"The current time is: {current_time_str}\n\n"
+    
+    try:
+        from promaia.gcal.google_calendar import GoogleCalendarManager
+        mgr = GoogleCalendarManager()
+        if mgr.authenticate():
+            now_dt = datetime.now(timezone.utc)
+            time_max = now_dt + timedelta(days=3)
+            
+            # TODO: extract to shared context_loaders
+            all_events = []
+            calendars = mgr.service.calendarList().list().execute().get("items", [])
+            for cal in calendars:
+                res = mgr.service.events().list(
+                    calendarId=cal["id"],
+                    timeMin=now_dt.isoformat().replace("+00:00", "Z"),
+                    timeMax=time_max.isoformat().replace("+00:00", "Z"),
+                    singleEvents=True,
+                    orderBy="startTime",
+                    maxResults=5,
+                ).execute()
+                for ev in res.get("items", []):
+                    start = ev.get("start", {})
+                    dt_str = start.get("dateTime") or start.get("date", "")
+                    all_events.append({"summary": ev.get("summary", "(no title)"), "time": dt_str, "sort_key": dt_str})
+                    
+            if all_events:
+                all_events.sort(key=lambda e: e["sort_key"])
+                evt_txt = "\n".join(f"- {e['time']}: {e['summary']}" for e in all_events[:10])
+                system_ctx += f"UPCOMING CALENDAR EVENTS:\n{evt_txt}\n\n"
+    except Exception as e:
+        logger.warning(f"Calendar fetch failed for Live API context: {e}")
+
     # 1. Inject Phase 10 MuninnDB Context
-    system_ctx = (
+    system_ctx += (
         "You are Promaia, Zack's cognitive assistant. Keep spoken responses very brief, conversational, and direct. "
         "Do not use markdown or lists because this is being spoken aloud. "
 
@@ -369,6 +415,7 @@ async def brain_stream(websocket: WebSocket):
 
     try:
         transcript_log = []
+        staged_memories = []
         async with client.aio.live.connect(model=model_id, config=config) as session:
             logger.info("Connected to Gemini Live API.")
 
@@ -407,9 +454,6 @@ async def brain_stream(websocket: WebSocket):
             # Background task to receive from Gemini (Gemini -> Server -> Browser)
             async def receive_from_gemini():
                 try:
-                    # Initialize staged_memories list
-                    staged_memories = []
-
                     while True:
                         async for response in session.receive():
                             server_content = response.server_content
@@ -498,13 +542,6 @@ async def brain_stream(websocket: WebSocket):
                     pass
                 except Exception as e:
                     logger.error(f"Gemini receive loop error: {e}", exc_info=True)
-                finally:
-                    # Session ended. If there are staged memories, we handle Step 11.5 confirmation loop here or frontend handles it
-                    if transcript_log:
-                        # Only summarize if it was a real conversation (more than just a 1 turn greeting)
-                        if len(transcript_log) > 2:
-                            logger.info(f"Voice session ended. Captured {len(transcript_log)} turns. Triggering async dashboard review extraction.")
-                            asyncio.create_task(generate_session_review(transcript_log))
 
             # Run both loops
             client_task = asyncio.create_task(receive_from_client())
@@ -516,6 +553,13 @@ async def brain_stream(websocket: WebSocket):
             )
             for p in pending:
                 p.cancel()
+                
+            # Session ended. Pass rescued memories to async extraction along with transcript
+            if transcript_log:
+                # Only summarize if it was a real conversation (more than just a 1 turn greeting)
+                if len(transcript_log) > 2:
+                    logger.info(f"Voice session ended. Captured {len(transcript_log)} turns. Triggering async dashboard review extraction.")
+                    asyncio.create_task(generate_session_review(transcript_log, rescued_memories=staged_memories))
 
     except Exception as e:
         logger.error(f"Live API connection failed: {e}", exc_info=True)
