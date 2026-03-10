@@ -16,6 +16,8 @@ from pydantic import BaseModel
 
 from promaia.web.brain_chat import chat, transcribe_audio
 from promaia.storage.postgres_db import get_postgres_db, pg_connect
+from promaia.storage.vector_db import VectorDBManager
+from promaia.brain.core.memory_pipeline import capture_memory
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -507,15 +509,26 @@ async def brain_stream(websocket: WebSocket):
                                         ))
                                     
                                     elif ft.name == "commit_staged_memories":
-                                        if staged_memories and muninn:
+                                        if staged_memories:
                                             # Bump confidence because of verbal confirmation
                                             for m in staged_memories:
                                                 m['confidence'] = min(1.0, m['confidence'] + 0.1)
                                             
                                             try:
-                                                # Write to MuninnDB
-                                                await muninn.write_batch(staged_memories)
-                                                logger.info(f"Successfully COMMITTED {len(staged_memories)} memories to MuninnDB after user confirmation.")
+                                                db = get_postgres_db()
+                                                vector_mgr = VectorDBManager()
+                                                # Write through unified pipeline
+                                                for m in staged_memories:
+                                                    await capture_memory(
+                                                        db=db,
+                                                        vector_mgr=vector_mgr,
+                                                        content=m['content'],
+                                                        session_id="voice-session",
+                                                        domain_name=m.get('domain'),
+                                                        source="voice",
+                                                        confidence=m['confidence']
+                                                    )
+                                                logger.info(f"Successfully COMMITTED {len(staged_memories)} memories through pipeline after user confirmation.")
                                                 staged_memories.clear()
                                                 tool_responses.append(types.FunctionResponse(
                                                     name=ft.name,
@@ -523,17 +536,17 @@ async def brain_stream(websocket: WebSocket):
                                                     response={"result": "committed_successfully"}
                                                 ))
                                             except Exception as e:
-                                                logger.error(f"Failed to commit batch to MuninnDB: {e}", exc_info=True)
+                                                logger.error(f"Failed to commit batch through pipeline: {e}", exc_info=True)
                                                 tool_responses.append(types.FunctionResponse(
                                                     name=ft.name,
                                                     id=ft.id,
-                                                    response={"result": "error_committing_to_db"}
+                                                    response={"result": "error_committing"}
                                                 ))
                                         else:
                                             tool_responses.append(types.FunctionResponse(
                                                 name=ft.name,
                                                 id=ft.id,
-                                                response={"result": "no_staged_memories_found_or_db_offline"}
+                                                response={"result": "no_staged_memories_found"}
                                             ))
                                         
                                 if tool_responses:

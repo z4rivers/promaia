@@ -31,15 +31,32 @@ from promaia.web.routers import mcp as mcp_router
 from promaia.web.routers import dashboard as dashboard_router
 
 import uvicorn
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
 config = get_config()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    from promaia.brain.heartbeat import start_heartbeat, stop_heartbeat
+    try:
+        start_heartbeat(interval_minutes=15)
+    except Exception as e:
+        logger.error(f"Failed to start Subconscious heartbeat: {e}")
+    yield
+    # Shutdown
+    try:
+        stop_heartbeat()
+    except Exception as e:
+        logger.error(f"Failed to stop Subconscious heartbeat: {e}")
+
 app = FastAPI(
     title="Promaia Web API",
     description="API + dashboard for the Promaia personal AI brain.",
     version="0.2.0",
+    lifespan=lifespan,
 )
 
 
