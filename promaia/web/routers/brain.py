@@ -254,94 +254,33 @@ async def brain_stream(websocket: WebSocket):
     except Exception as e:
         logger.warning(f"Calendar fetch failed for Live API context: {e}")
 
-    # 1. Inject Phase 10 MuninnDB Context
+    # 1. Inject Phase 10 MuninnDB Context (Compressed)
     system_ctx += (
-        "You are Promaia, Zack's cognitive assistant. Keep spoken responses very brief, conversational, and direct. "
-        "Do not use markdown or lists because this is being spoken aloud. "
-
-        # Anti-hallucination (Protocol Rules 5, 6, 11)
-        "CRITICAL RULE — NO HALLUCINATING: "
-        "If you do not hear clear speech from the user, DO NOT generate a response. "
-        "If there is silence, background noise, or the audio seems to cut out, stay quiet and wait. "
-        "NEVER fabricate, assume, or guess what the user said. NEVER fill silence with unprompted speech. "
-        "If you are unsure whether the user spoke, say nothing. Only respond to clear, intelligible input. "
-        "NEVER assume or fabricate the user's physical location, activity, or state — only reference what they explicitly stated. "
-        "Road noise, car horns, navigation voice, radio, and vehicle vibrations are NOT speech — ignore them completely. "
-
-        # Memory staging (Protocol Rules 2, 3, 7)
-        "MEMORY INSTRUCTIONS: "
-        "1. If you learn an important project decision or profile fact, you MUST call 'save_conversation_memory' to stage it. "
-        "2. STAGING IS NOT COMMITTING. Before the conversation ends, or if the user wants to wrap up, you MUST read the staged memories aloud to the user and ask 'Did I get that right?' "
-        "3. If the user verbally confirms they are correct, you MUST call 'commit_staged_memories'. Do not call commit without user permission. "
-
-        # Smart confirmation (Protocol Rules 2, 3, 7)
-        "CONFIRMATION PROTOCOL: "
-        "When a user states something clearly and unambiguously, accept it immediately — no confirmation needed. "
-        "Only ask for confirmation on synthesized summaries or edge-case extractions where meaning could be wrong. "
-        "When you DO confirm, read back the EXACT statement you intend to store, not a vague reference to the topic. "
-        "BAD: 'Confirming we talked about communication protocols.' "
-        "GOOD: 'Does this capture it? When I see messages repeated multiple times in a row, I recognize that as an error and record one memory.' "
-        "The confirmation IS the proof of understanding — specific, approvable, complete. "
-
-        # Duplicate detection (Protocol Rule 1)
-        "DUPLICATE DETECTION: "
-        "If the same message or statement appears multiple times in a row, that is a transcription or connection ERROR, not intentional repetition. "
-        "Record it as ONE memory and discard the duplicates. "
-
-        # Connectivity and intent (Protocol Rules 4, 8)
-        "MESSAGE INTENT: "
-        "Distinguish conversation from data. 'Are you there?' is a connectivity check needing a response, not content to store. "
-        "Greetings, status checks, and casual exchanges are NOT memories. "
-        "If the user repeats the same status update, your system failed to acknowledge — do not treat repetition as new information. "
-
-        # Question timing (Protocol Rule 13)
-        "QUESTION TIMING: "
-        "The user's flow is sacred. Do NOT interject with counter-questions when the user has clear focus, is working through something, "
-        "or is being urgent and direct. Match their energy. Questions should be RARE and well-timed — only when genuine ambiguity "
-        "blocks progress or the conversation has natural breathing room. Never say 'quick question before that' reflexively. "
-
-        # Personality and substance (Protocol Rules 9, 10, 12)
-        "PERSONALITY: "
-        "Show up with substance — deliverables, observations, key questions. Not sycophantic filler. Not small talk. "
-        "Cut to what matters. Be encouraging and real. Have attitude and competence from the very first interaction. "
-        "Keep voice responses brief and top-line. Tone conveys what words alone cannot. "
-
-        # Goal completion cascade (Protocol Rule 14)
-        "GOAL COMPLETION: "
-        "When an end goal is achieved or a milestone passes, wipe all sub-tasks that only existed to serve that goal. "
-        "Do not remind the user about steps for something already accomplished. "
-        "Follow-ups like 'how did it go?' may be appropriate, but not 'remember to pick up the cake' after the party already happened. "
-
-        # Batch confirmation framing (Protocol Rule 15)
-        "BATCH CONFIRMATION: "
-        "When you have multiple items to confirm, do NOT ambush the user one at a time. "
-        "Offer an overview first: 'I have 13 items from our conversations yesterday I'd like to confirm. Can I run them past you?' "
-        "Mention the count, let them decide if now is a good time, then move through them. An overview makes even a long list feel manageable. "
-
-        # Value hunting — the mission (Protocol Rule 16)
-        "VALUE HUNTING — YOUR CORE MISSION: "
-        "Your fundamental job is to listen for what is truly valuable underneath the conversation — even when it is messy, rambling, or half-formed. "
-        "Conversations are raw ore. Find the treasure: the insight, the decision, the principle, the connection the user might not realize they just articulated. "
-        "Do NOT wait for clean, packaged statements. The richest value lives in the chaos. "
-        "But do NOT force it — a duck hunting story does not need to become a work lesson. Not everything is a hidden gem. "
-        "Do NOT be sycophantic — do not see great ideas where there aren't any. But try to see where there might be. "
-        "Surface what you find: ask 'Are these ideas you want me to record?' or 'Would you like to use this to improve project X? For example...' — give a concrete example. "
-        "Distinguish personal from product: some ideas are just for the user, some could improve a project or system. Help the user see which is which. "
+        "You're Promaia, Zack's AI. Keep responses conversational, brief, and direct. No markdown.\n"
+        "1. NO HALLUCINATING: If you hear silence or noise, STAY QUIET. Never fabricate speech.\n"
+        "2. MEMORY: Call 'save_conversation_memory' for facts/decisions. You MUST read staged memories aloud and get verbal confirmation ('Did I get that right?') before calling 'commit_staged_memories'.\n"
+        "3. CONFIRMATION: Confirm ONLY synthesized points. Read the EXACT statement you intend to store.\n"
+        "4. INTENT: Treat repeated identical messages as connection errors. Greetings are NOT memories.\n"
+        "5. FLOW: Don't interrupt Zack's focus with unnecessary questions.\n"
+        "6. PERSONALITY: Be direct, highly competent, no sycophantic filler.\n"
+        "7. VALUE HUNTING: Extract hidden insights or decisions from messy thoughts and proactively offer to save them.\n"
     )
+    
     try:
         from promaia.brain.muninn import get_muninn
         muninn = await get_muninn()
         if muninn:
-            res = await muninn.activate(["Zack's active projects", "Zack's profile preferences", "recent priorities"], max_results=15)
+            # Token budget: Limit to 8 items, 200 chars each
+            res = await muninn.activate(["Zack's active projects", "Zack's profile preferences", "recent priorities"], max_results=8)
             activations = res.get("activations", [])
             if activations:
-                mem_text = "\n".join(f"- {a['content']}" for a in activations)
-                system_ctx += f"\n\nHere is what you know about Zack's current context right now:\n{mem_text}"
-                logger.info("Live API session populated with MuninnDB context.")
+                mem_text = "\n".join(f"- {a['content'][:200]}..." if len(a['content']) > 200 else f"- {a['content']}" for a in activations)
+                system_ctx += f"\n[CURRENT KNOWLEDGE]\n{mem_text}\n"
+                logger.info("Live API session populated with compressed MuninnDB context.")
     except Exception as e:
         logger.warning(f"Muninn context fetch for Live API failed: {e}. Degrading gracefully.")
 
-    # 2. Inject recent conversation summaries for continuity
+    # 2. Inject recent conversation summaries (Compressed)
     try:
         from promaia.storage.postgres_db import get_postgres_db
         db = get_postgres_db()
@@ -351,24 +290,22 @@ async def brain_stream(websocket: WebSocket):
             FROM brain.audio_session_reviews 
             WHERE summary IS NOT NULL AND status IN ('pending', 'accepted')
             ORDER BY created_at DESC 
-            LIMIT 3
+            LIMIT 2
             """
         )
         if recent_sessions:
-            system_ctx += "\n\nRECENT CONVERSATIONS YOU JUST HAD WITH ZACK:\n"
+            system_ctx += "\n[RECENT CONVERSATIONS]\n"
             for s in recent_sessions:
-                dt_str = s['created_at'].strftime("%Y-%m-%d %H:%M:%S") if hasattr(s['created_at'], 'strftime') else str(s['created_at'])
-                status_label = "UNAPPROVED SUMMARY" if s['status'] == 'pending' else "APPROVED"
-                system_ctx += f"- [{dt_str}] [{status_label}] {s['summary']}\n"
+                dt_str = s['created_at'].strftime("%Y-%m-%d %H:%M") if hasattr(s['created_at'], 'strftime') else str(s['created_at'])
+                status_label = "UNAPPROVED" if s['status'] == 'pending' else "APPROVED"
+                # Token budget: limit summary length
+                sum_text = s['summary'][:300] + "..." if len(s['summary']) > 300 else s['summary']
+                system_ctx += f"- [{dt_str}] [{status_label}] {sum_text}\n"
             system_ctx += (
-                "\nCRITICAL INSTRUCTION REGARDING PAST CONVERSATIONS:\n"
-                "If a recent conversation has an [UNAPPROVED SUMMARY], you must proactively try to round it off and confirm it with Zack. "
-                "Say something natural like 'Hey, last time you were saying X, did I get that right?' "
-                "Your goal is to get his verbal approval so you can use 'commit_staged_memories' and keep his unreviewed pile clean. "
-                "If the conversation felt cut-off, try to pick it back up. "
-                "If a conversation is already [APPROVED], treat it purely as passive context."
+                "ACTION: Proactively confirm [UNAPPROVED] summaries with Zack to call 'commit_staged_memories'. "
+                "Treat [APPROVED] purely as background context.\n"
             )
-            logger.info(f"Live API populated with {len(recent_sessions)} recent conversation summaries.")
+            logger.info(f"Live API populated with {len(recent_sessions)} compressed session summaries.")
     except Exception as e:
         logger.warning(f"Failed to fetch recent sessions for context: {e}")
 
@@ -396,6 +333,44 @@ async def brain_stream(websocket: WebSocket):
                         "confirmation_note": { "type": "STRING", "description": "A brief note on what the user said to confirm (e.g. 'User said exactly')" }
                     },
                     "required": ["confirmation_note"]
+                }
+            },
+            {
+                "name": "create_calendar_event",
+                "description": "Schedule a new event or reminder on Zack's calendar. ALWAYS verbally confirm details before calling.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "summary": { "type": "STRING", "description": "Event title/summary" },
+                        "description": { "type": "STRING", "description": "Event description (optional)" },
+                        "start_time": { "type": "STRING", "description": "Start time (ISO 8601 format: 2026-03-10T14:00:00)" },
+                        "end_time": { "type": "STRING", "description": "End time (ISO 8601 format: 2026-03-10T15:00:00)" }
+                    },
+                    "required": ["summary", "start_time", "end_time"]
+                }
+            },
+            {
+                "name": "send_email_draft",
+                "description": "Create an email draft in the Promaia Dashboard based on user's request. ALWAYS verbally confirm before calling.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "to": { "type": "STRING", "description": "Recipient email address" },
+                        "subject": { "type": "STRING", "description": "Email subject" },
+                        "body": { "type": "STRING", "description": "Email body text" }
+                    },
+                    "required": ["to", "subject", "body"]
+                }
+            },
+            {
+                "name": "switch_cognitive_mode",
+                "description": "Call this to switch your persona when the user asks for a specific thinking hat (e.g. Black Hat, Green Hat, Red Hat).",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "hat_color": { "type": "STRING", "description": "black, green, red, white, yellow, or blue" }
+                    },
+                    "required": ["hat_color"]
                 }
             }
         ]
@@ -548,6 +523,95 @@ async def brain_stream(websocket: WebSocket):
                                                 id=ft.id,
                                                 response={"result": "no_staged_memories_found"}
                                             ))
+                                        
+                                    elif ft.name == "create_calendar_event":
+                                        args = ft.args
+                                        try:
+                                            from promaia.gcal.google_calendar import GoogleCalendarManager
+                                            mgr = GoogleCalendarManager()
+                                            if mgr.authenticate():
+                                                event_body = {
+                                                    'summary': args.get('summary'),
+                                                    'start': {'dateTime': args.get('start_time'), 'timeZone': 'America/Los_Angeles'}, # Local time or UTC based on 'start_time' string format
+                                                    'end': {'dateTime': args.get('end_time'), 'timeZone': 'America/Los_Angeles'}
+                                                }
+                                                if args.get('description'):
+                                                    event_body['description'] = args.get('description')
+                                                
+                                                # Need to adjust timeZone to UTC if the AI provides native UTC Z time. 
+                                                # But if they don't, America/Los_Angeles helps (assuming user locale).
+                                                # It's better to force the AI to provide the correct TZ in the prompt, or just pass it through.
+                                                if 'Z' in str(args.get('start_time')):
+                                                    event_body['start']['timeZone'] = 'UTC'
+                                                    event_body['end']['timeZone'] = 'UTC'
+
+                                                event = mgr.service.events().insert(
+                                                    calendarId='primary',
+                                                    body=event_body
+                                                ).execute()
+                                                
+                                                logger.info(f"Successfully created calendar event: {args.get('summary')}")
+                                                tool_responses.append(types.FunctionResponse(
+                                                    name=ft.name,
+                                                    id=ft.id,
+                                                    response={"result": "event_created", "event_id": event.get('id'), "link": event.get('htmlLink')}
+                                                ))
+                                            else:
+                                                tool_responses.append(types.FunctionResponse(
+                                                    name=ft.name,
+                                                    id=ft.id,
+                                                    response={"result": "authentication_failed", "error": "Google Calendar authentication failed"}
+                                                ))
+                                        except Exception as e:
+                                            logger.error(f"Failed to create calendar event: {e}", exc_info=True)
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "error_creating_event", "error": str(e)}
+                                            ))
+
+                                    elif ft.name == "send_email_draft":
+                                        args = ft.args
+                                        try:
+                                            from promaia.mail.email_send_helpers import EmailSendHelper
+                                            helper = EmailSendHelper(workspace="zbrain")
+                                            draft_id = helper.create_draft_from_info(
+                                                recipient=args.get("to"),
+                                                subject=args.get("subject"),
+                                                message_body=args.get("body")
+                                            )
+                                            logger.info(f"Successfully created email draft to: {args.get('to')}")
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "draft_created", "draft_id": draft_id}
+                                            ))
+                                        except Exception as e:
+                                            logger.error(f"Failed to create email draft: {e}", exc_info=True)
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "error_creating_draft", "error": str(e)}
+                                            ))
+                                            
+                                    elif ft.name == "switch_cognitive_mode":
+                                        args = ft.args
+                                        color = args.get("hat_color", "").lower().replace(' hat', '')
+                                        hats = {
+                                            "black": "CRITICAL INSTRUCTION: You are now in BLACK HAT mode. Focus ONLY on risks, flaws, potential failures, and obstacles. Do not be encouraging. Be ruthlessly critical to bulletproof the idea.",
+                                            "green": "CRITICAL INSTRUCTION: You are now in GREEN HAT mode. Focus ONLY on creativity, alternatives, and new ideas. No criticism allowed. Everything is possible.",
+                                            "red": "CRITICAL INSTRUCTION: You are now in RED HAT mode. Focus on emotion, gut feelings, and intuition. How does this make people feel? What are the underlying fears or excitement?",
+                                            "white": "CRITICAL INSTRUCTION: You are now in WHITE HAT mode. Focus ONLY on data, facts, and information needed. What do we know? What don't we know?",
+                                            "yellow": "CRITICAL INSTRUCTION: You are now in YELLOW HAT mode. Focus ONLY on the logical benefits and optimism. Why will this work? What is the upside?",
+                                            "blue": "CRITICAL INSTRUCTION: You are now in BLUE HAT mode. Focus on process control and organization. Summarize what has been done and set the agenda for what's next."
+                                        }
+                                        instruction = hats.get(color, f"Mode {color} unrecognized. Stay in normal mode.")
+                                        logger.info(f"Switched to cognitive mode: {color} hat")
+                                        tool_responses.append(types.FunctionResponse(
+                                            name=ft.name,
+                                            id=ft.id,
+                                            response={"result": "mode_switched", "new_instructions": instruction}
+                                        ))
                                         
                                 if tool_responses:
                                     await session.send(input={"function_responses": tool_responses})
