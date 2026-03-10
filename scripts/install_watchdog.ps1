@@ -40,9 +40,10 @@ Register-ScheduledTask `
     -Trigger    $AutostartTrigger `
     -Settings   $AutostartSettings `
     -RunLevel   Highest `
-    -Description "Start Promaia web server at login" | Out-Null
+    -Description "Start Promaia web server at login" `
+    | Out-Null
 
-Write-Host "[OK] PromaiaAutostart task registered — will start Promaia at next login." -ForegroundColor Green
+Write-Host "[OK] PromaiaAutostart task registered - will start Promaia at next login." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 2. PROMAIA WATCHDOG — hourly health check with Telegram alert
@@ -55,11 +56,12 @@ $WatchdogAction = New-ScheduledTaskAction `
     -Argument "`"$WatchdogScript`"" `
     -WorkingDirectory $ProjectRoot
 
-# Repeat every 60 minutes, indefinitely
-$WatchdogTrigger = New-ScheduledTaskTrigger -Daily -At "07:00"
-$WatchdogRepeat  = New-TimeSpan -Minutes 60
-$WatchdogTrigger.RepetitionInterval = $WatchdogRepeat
-$WatchdogTrigger.RepetitionDuration = [TimeSpan]::MaxValue
+# Repeat every 60 minutes, indefinitely (PowerShell 5.1 compatible syntax)
+$WatchdogTrigger = New-ScheduledTaskTrigger `
+    -Once `
+    -At "07:00" `
+    -RepetitionInterval (New-TimeSpan -Minutes 60) `
+    -RepetitionDuration ([TimeSpan]::MaxValue)
 
 $WatchdogSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2) `
@@ -73,9 +75,10 @@ Register-ScheduledTask `
     -Trigger    $WatchdogTrigger `
     -Settings   $WatchdogSettings `
     -RunLevel   Highest `
-    -Description "Hourly Promaia health check — Telegrams Zack if offline during waking hours" | Out-Null
+    -Description "Hourly Promaia health check - Telegrams if offline during waking hours" `
+    | Out-Null
 
-Write-Host "[OK] PromaiaWatchdog task registered — runs hourly 07:00-23:00." -ForegroundColor Green
+Write-Host "[OK] PromaiaWatchdog task registered - runs hourly 07:00-23:00." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 3. Verify
