@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+import urllib.request
 import numpy as np
 import psycopg2.extras
 from mcp.types import TextContent
@@ -56,7 +57,27 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     db = get_db()
     lines = ["# Session Briefing\n"]
 
-    # --- Stale projects ---
+    # --- Promaia server health check (always first) ---
+    try:
+        promaia_url = "http://localhost:8000/api/health"
+        req = urllib.request.Request(promaia_url, headers={"User-Agent": "antigravity-briefing/1.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            promaia_up = resp.status == 200
+    except Exception:
+        promaia_up = False
+
+    if not promaia_up:
+        lines.append(
+            "## \u26a0\ufe0f PROMAIA IS OFFLINE\n"
+            "The Promaia server is not responding at localhost:8000.\n"
+            "**The heartbeat, memory capture, and voice bridge are all paused.**\n"
+            "Restart: open a terminal in `dev/promaia` and run:\n"
+            "`python -m uvicorn promaia.web.main:app --host 0.0.0.0 --port 8000`\n"
+        )
+    else:
+        lines.append("## Promaia: Online\n")
+
+
     try:
         stale = db.fetch_all(
             """
@@ -133,26 +154,56 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         logger.warning(f"briefing heartbeat query failed: {e}")
         lines.append("## Heartbeat Activity (last 24h)\n(query error)\n")
 
-    # --- Interview / Profile gaps ---
+    # --- Profile gap awareness ---
     try:
-        interview_state = get_interview_state(db=db)
-        next_q = get_next_question(db=db)
+        from promaia.brain.channels.interview import _get_populated_fields, _category_fill_pct
+        populated = _get_populated_fields(db=db)
 
-        if next_q:
-            lines.append("## Get to Know You")
-            lines.append(f"Profile {interview_state['completion_pct']}% covered — "
-                         f"{len(interview_state['categories_remaining'])} categories need attention.")
-            lines.append(f"**Next question ({next_q['category']}):** {next_q['text']}")
-            if next_q.get('ai_disclosure'):
-                lines.append(f"*Your disclosure:* {next_q['ai_disclosure']}")
+        # Build gap analysis: thin vs rich categories
+        thin = []  # < 3 fields populated
+        moderate = []  # 3-5 fields
+        rich = []  # 5+ fields
+        for cat in EXPECTED_FIELDS:
+            count = len(populated.get(cat, set()))
+            fill = _category_fill_pct(cat, populated)
+            if count == 0:
+                thin.append((cat, count))
+            elif fill < 0.4:
+                thin.append((cat, count))
+            elif fill < 0.7:
+                moderate.append((cat, count))
+            else:
+                rich.append((cat, count))
+
+        # Also check categories NOT in EXPECTED_FIELDS but in the profile
+        # (ambient capture may create categories the schema doesn't expect)
+        all_profile_cats = set(populated.keys())
+        expected_cats = set(EXPECTED_FIELDS.keys())
+        extra_cats = all_profile_cats - expected_cats
+        for cat in extra_cats:
+            count = len(populated.get(cat, set()))
+            rich.append((cat, count))
+
+        total_fields = sum(len(fs) for fs in populated.values())
+
+        if thin or moderate:
+            lines.append("## Profile Gaps")
+            lines.append(f"{total_fields} fields across {len(all_profile_cats)} categories.")
+            if thin:
+                thin_str = ", ".join(f"{c} ({n})" for c, n in sorted(thin, key=lambda x: x[1]))
+                lines.append(f"**Thin areas:** {thin_str}")
+            if moderate:
+                mod_str = ", ".join(f"{c} ({n})" for c, n in sorted(moderate, key=lambda x: x[1]))
+                lines.append(f"**Moderate:** {mod_str}")
+            lines.append("If a natural moment arises, explore a thin area — "
+                         "but only from genuine curiosity, not a script.")
             lines.append("")
-        elif interview_state['completion_pct'] < 100:
-            lines.append("## Get to Know You")
-            lines.append(f"Profile {interview_state['completion_pct']}% covered. "
-                         "Use progressive profiling during conversation.")
-            lines.append("")
+        else:
+            lines.append("## Profile\n"
+                         f"{total_fields} fields across {len(all_profile_cats)} categories. "
+                         "Well-covered — rely on progressive profiling.\n")
     except Exception as e:
-        logger.warning(f"briefing interview state failed: {e}")
+        logger.warning(f"briefing profile gaps failed: {e}")
 
     # Log briefing event (idempotent per session day)
     try:
