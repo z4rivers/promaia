@@ -316,6 +316,24 @@
         </div>
     </header>
 
+    <!-- Maia Active Session Widget (Additive, Expandable) -->
+    <details id="maia-widget-details" style="margin-bottom: var(--space-xl, 24px); background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); overflow: hidden;">
+        <summary style="padding: 12px 16px; cursor: pointer; font-family: var(--font-heading); font-weight: 600; display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); color: var(--accent-primary);">
+            <span>Maia Context Engine</span>
+            <span id="maia-status-label" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">Connecting...</span>
+        </summary>
+        
+        <div style="padding: var(--space-md, 16px); display: flex; flex-direction: column; gap: var(--space-md, 16px);">
+            <div id="maia-session-feed" style="background: var(--bg-card-hover); border-radius: var(--radius-sm); padding: var(--space-md, 16px); min-height: 120px; max-height: 250px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px;">
+                <div style="color: var(--text-muted); font-style: italic; text-align: center; margin-top: auto; margin-bottom: auto;">Engine standing by...</div>
+            </div>
+
+            <div style="display: flex; gap: var(--space-sm, 8px);">
+                <input type="text" id="maia-chat-input" placeholder="Query Muninn, run a tool, or chat natively..." style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem;">
+                <button id="maia-send-btn" style="padding: 8px 16px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem;">Engage</button>
+            </div>
+        </div>
+    </details>
     <!-- Voice Session Review Zone (Conditionally Rendered) -->
     {% if audio_reviews %}
     <section class="review-zone" style="margin-bottom: var(--section-gap, 48px);">
@@ -358,6 +376,7 @@
         {% endfor %}
     </section>
     {% endif %}
+
 
     <!-- Primary Zone: 2-column grid (skins override grid-template) -->
     <section class="primary-zone">
@@ -467,7 +486,7 @@
 <div class="talk-mic-area" id="mic-area">
     <div class="vad-toggle-wrapper" id="vad-toggle">
         <button class="vad-mode-btn active" data-mode="normal">Quiet</button>
-        <button class="vad-mode-btn" data-mode="driving">Driving</button>
+        <button class="vad-mode-btn" data-mode="driving">Noisy</button>
     </div>
 
     <button class="talk-kb-btn" id="kb-toggle" title="Type instead">
@@ -503,8 +522,10 @@
 <!-- CDN VAD Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
-<!-- Main Application Logic -->
+<!-- Main Application Logic (Existing /talk overlay) -->
 <script src="/static/js/talk.js?v=2.5"></script>
+<!-- New Maia Dashboard Widget Logic -->
+<script src="/static/js/maia_widget.js"></script>
 
 <script>
 // Mark all notifications as read when dashboard is viewed (EVENT-06)

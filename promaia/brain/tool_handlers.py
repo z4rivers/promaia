@@ -3,8 +3,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from google.genai import types
 
-from promaia.brain.memory_pipeline import capture_memory, VectorDBManager
-from promaia.db.connection import get_postgres_db
+from promaia.brain.core.memory_pipeline import capture_memory
+from promaia.storage.vector_db import VectorDBManager
+from promaia.storage.postgres_db import get_postgres_db
 
 logger = logging.getLogger(__name__)
 

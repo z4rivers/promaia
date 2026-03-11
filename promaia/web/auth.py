@@ -117,7 +117,7 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Allow WebSockets to bypass standard HTTP auth headers (Starlette crashes otherwise)
-        if path.startswith("/api/brain/stream"):
+        if path.startswith("/api/brain/stream") or path.startswith("/api/brain/maia_stream"):
             # Note: We should eventually implement token-based ticket auth, but for now allow the stream
             return await call_next(request)
 

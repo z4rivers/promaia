@@ -36,6 +36,46 @@ async def text_stream_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         active_text_listeners.remove(websocket)
 
+@router.websocket("/maia_stream")
+async def maia_stream_endpoint(websocket: WebSocket):
+    """Additive WebSocket endpoint specifically for the Maia Web Widget."""
+    await websocket.accept()
+    from promaia.web.maia_bridge import generate_maia_response
+    
+    async def status_callback(status: str):
+        try:
+            await websocket.send_json({"type": "activity", "text": status})
+        except Exception:
+            pass
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                user_message = payload.get("message", data)
+            except json.JSONDecodeError:
+                user_message = data
+                
+            if not isinstance(user_message, str) or not user_message.strip():
+                continue
+                
+            reply = await generate_maia_response(user_message, status_callback=status_callback)
+            
+            try:
+                await websocket.send_json({
+                    "type": "response",
+                    "text": reply
+                })
+            except Exception:
+                pass
+                
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Maia stream error: {e}", exc_info=True)
+
+
 async def broadcast_chat_log(role: str, text: str):
     dead_sockets = set()
     for ws in active_text_listeners:
