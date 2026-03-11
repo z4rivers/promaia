@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 active_text_listeners = set()
+active_maia_listeners = set()
 
 @router.websocket("/stream/text")
 async def text_stream_endpoint(websocket: WebSocket):
@@ -40,6 +41,7 @@ async def text_stream_endpoint(websocket: WebSocket):
 async def maia_stream_endpoint(websocket: WebSocket):
     """Additive WebSocket endpoint specifically for the Maia Web Widget."""
     await websocket.accept()
+    active_maia_listeners.add(websocket)
     from promaia.web.maia_bridge import generate_maia_response
     
     async def status_callback(status: str):
@@ -74,6 +76,58 @@ async def maia_stream_endpoint(websocket: WebSocket):
         pass
     except Exception as e:
         logger.error(f"Maia stream error: {e}", exc_info=True)
+    finally:
+        active_maia_listeners.remove(websocket)
+
+async def broadcast_maia_activity(text: str):
+    """Broadcast an activity message to all open Maia widget sessions."""
+    dead_sockets = set()
+    for ws in active_maia_listeners:
+        try:
+            await ws.send_json({"type": "activity", "text": text})
+        except Exception:
+            dead_sockets.add(ws)
+    for ws in dead_sockets:
+        active_maia_listeners.remove(ws)
+
+class BroadcastRequest(BaseModel):
+    text: str
+
+@router.post("/broadcast")
+async def api_broadcast(req: BroadcastRequest):
+    """Endpoint for IDEs and MCP servers to broadcast activity to the dashboard."""
+    await broadcast_maia_activity(req.text)
+    return {"status": "broadcast_sent"}
+
+class CommitCaptureRequest(BaseModel):
+    commit_hash: str
+    message: str
+    branch: str
+    files_changed: str
+
+@router.post("/capture_commit")
+async def api_capture_commit(req: CommitCaptureRequest):
+    """Webhook triggered by post-commit git hooks to auto-log work into MuninnDB."""
+    content = (
+        f"Git Commit on branch '{req.branch}': {req.message}\\n"
+        f"Hash: {req.commit_hash}\\n"
+        f"Files changed:\\n{req.files_changed}"
+    )
+    # Using the existing MuninnDB capture pipeline
+    import traceback
+    try:
+        from promaia.brain.core.memory_pipeline import capture_memory
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        # Dual-writes to MuninnDB
+        capture_memory(db, content, domain="promaia_codebase", source="git_hook")
+        
+        # Broadcast that a commit was captured
+        await broadcast_maia_activity("Captured new branch commit into permanent memory.")
+        return {"status": "captured"}
+    except Exception as e:
+        logger.error(f"Failed to capture commit: {e}\\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to capture commit")
 
 
 async def broadcast_chat_log(role: str, text: str):

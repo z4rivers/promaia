@@ -605,6 +605,23 @@ async def list_tools() -> list[Tool]:
                 "required": []
             }
         ),
+        Tool(
+            name="ide_activity_broadcast",
+            description=(
+                "Broadcast a status message to the Promaia dashboard's Active Session feed. "
+                "Use this to natively report what you are doing in the IDE (e.g. 'Writing test cases for X')."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The activity text to broadcast."
+                    }
+                },
+                "required": ["text"]
+            }
+        ),
     ]
 
 
@@ -649,6 +666,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_timeline(arguments)
         elif name == "brain_costs":
             return await _handle_brain_costs(arguments)
+        elif name == "ide_activity_broadcast":
+            import httpx
+            async with httpx.AsyncClient() as client:
+                try:
+                    await client.post("http://localhost:8000/api/brain/broadcast", json={"text": arguments["text"]}, timeout=3.0)
+                except Exception as ex:
+                    logger.warning(f"Failed to broadcast IDE activity: {ex}")
+            return [TextContent(type="text", text="Broadcast sent to dashboard.")]
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
