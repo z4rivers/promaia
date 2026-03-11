@@ -71,6 +71,7 @@ Doesn't replace your tools — listens to them. Every connector feeds the cognit
 | **Knowledge Graph** | See your mind mapped out. Obsidian without the filing. |
 | **Pattern Detection** | "You haven't touched this project in 5 days." |
 | **Weekly Recap** | Auto-generated infographic + audio of your week. |
+| **Active Session Post** | Dashboard feature to show input streams and activity in real-time so users can see what agents are working on. |
 
 ---
 

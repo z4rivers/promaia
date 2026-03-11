@@ -1,4 +1,616 @@
-(()=>{var G=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var X=G(()=>{var s=null,g=!1,r=null,k=null,u=null,w=null,i=null,h=0,p=[],v=null,E=null,A=null,x=null,B=document.getElementById("mic-btn"),W=document.getElementById("end-btn"),N=document.querySelectorAll(".vad-mode-btn"),V=document.getElementById("talk-status"),S=document.getElementById("messages"),O=document.getElementById("feeds"),P=document.getElementById("mic-area"),J=document.getElementById("kb-toggle"),F=document.getElementById("text-bar"),T=document.getElementById("text-field"),q=document.getElementById("send-btn"),z=document.getElementById("close-kb");function l(e,t){V.dataset.state=e,V.textContent=t||{idle:"Ready",connecting:"Connecting to Brain...",listening:"Listening...",thinking:"Thinking...",speaking:"Speaking...",error:"Error \u2014 tap to retry"}[e]||e}function R(e){try{let t=new(window.AudioContext||window.webkitAudioContext),o=t.createGain();if(o.connect(t.destination),e==="start"){o.gain.setValueAtTime(.15,t.currentTime),o.gain.exponentialRampToValueAtTime(.01,t.currentTime+.3);let n=t.createOscillator();n.type="sine",n.frequency.value=587.33,n.connect(o),n.start(t.currentTime),n.stop(t.currentTime+.12);let a=t.createGain();a.connect(t.destination),a.gain.setValueAtTime(.15,t.currentTime+.12),a.gain.exponentialRampToValueAtTime(.01,t.currentTime+.4);let d=t.createOscillator();d.type="sine",d.frequency.value=880,d.connect(a),d.start(t.currentTime+.12),d.stop(t.currentTime+.35),setTimeout(()=>t.close(),500)}else if(e==="end"){o.gain.setValueAtTime(.12,t.currentTime),o.gain.exponentialRampToValueAtTime(.01,t.currentTime+.35);let n=t.createOscillator();n.type="sine",n.frequency.setValueAtTime(659.25,t.currentTime),n.frequency.exponentialRampToValueAtTime(440,t.currentTime+.25),n.connect(o),n.start(t.currentTime),n.stop(t.currentTime+.3),setTimeout(()=>t.close(),500)}}catch(t){console.warn("[Tone] Could not play:",t.message)}}function y(e,t){let o=S.querySelector(".talk-empty");o&&o.remove();let n=document.createElement("div");n.className=`talk-msg talk-msg--${e}`;let a=document.createElement("div");a.className="talk-msg-label",a.textContent=e==="user"?"You":"Promaia",n.appendChild(a);let d=document.createElement("div");d.textContent=t,n.appendChild(d),S.appendChild(n),S.scrollTop=S.scrollHeight}function M(){return new Promise((e,t)=>{let o=window.location.protocol==="https:"?"wss:":"ws:";r=new WebSocket(`${o}//${window.location.host}/api/brain/stream`),r.onopen=()=>{console.log("[WS] Connected to Promaia stream"),e()},r.onmessage=n=>{let a=JSON.parse(n.data);if(a.serverContent){if(a.serverContent.control==="hang_up"){console.log("[WS] Handled server hang-up request"),g&&C();return}if(a.serverContent.modelTurn){let d=a.serverContent.modelTurn.parts;for(let m of d)m.inlineData&&(H(m.inlineData.data),l("speaking")),m.text&&(x=m.text,y("assistant",m.text))}a.serverContent.turnComplete&&console.log("[WS] Turn Complete")}},r.onclose=()=>{console.log("[WS] Disconnected"),g&&(l("error","Connection lost"),C())},r.onerror=n=>{console.error("[WS] Error:",n),t(n)}})}function H(e){i||(console.warn("Play context not initialized synchronously. Creating late (iOS may block this)."),i=new(window.AudioContext||window.webkitAudioContext)({sampleRate:24e3}),h=i.currentTime),i.state==="suspended"&&i.resume();let t=window.atob(e),o=t.length,n=new Uint8Array(o);for(let c=0;c<o;c++)n[c]=t.charCodeAt(c);let a=new Int16Array(n.buffer),d=new Float32Array(a.length);for(let c=0;c<a.length;c++)d[c]=a[c]/32768;let m=i.createBuffer(1,d.length,24e3);m.getChannelData(0).set(d);let f=i.createBufferSource();f.buffer=m,f.connect(i.destination),h<i.currentTime&&(h=i.currentTime),f.start(h),h+=m.duration,p.push(f),f.onended=()=>{p=p.filter(c=>c!==f),p.length===0&&g&&l("listening")}}function D(){p.forEach(e=>{try{e.stop()}catch{}}),p=[],i&&(h=i.currentTime)}async function _(){k=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0,autoGainControl:!0}}),u||(u=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16e3}));let e=u.createMediaStreamSource(k);w=u.createScriptProcessor(4096,1,1),w.onaudioprocess=o=>{if(!r||r.readyState!==WebSocket.OPEN)return;let n=o.inputBuffer.getChannelData(0),a=new Int16Array(n.length);for(let c=0;c<n.length;c++){let b=Math.max(-1,Math.min(1,n[c]));a[c]=b<0?b*32768:b*32767}let d=new Uint8Array(a.buffer),m="";for(let c=0;c<d.byteLength;c++)m+=String.fromCharCode(d[c]);let f=window.btoa(m);r.send(JSON.stringify({realtimeInput:{mediaChunks:[{mimeType:"audio/pcm;rate=16000",data:f}]}}))},e.connect(w);let t=u.createGain();t.gain.value=0,w.connect(t),t.connect(u.destination)}function j(){try{if(w){try{w.disconnect()}catch{}w=null}u&&(u.close().catch(()=>{}),u=null),k&&(k.getTracks().forEach(e=>{try{e.stop()}catch{}}),k=null)}catch(e){console.warn("[Capture] Teardown error:",e)}}var L="normal";async function U(){if(!window.vad||!window.vad.MicVAD)throw new Error("VAD library not loaded from CDN yet.");if(s){try{s.pause()}catch{}try{s.destroy()}catch{}try{s.stream&&s.stream.getTracks().forEach(t=>t.stop()),s.mediaStream&&s.mediaStream.getTracks().forEach(t=>t.stop())}catch{}s=null}let e=L==="driving"?{positiveSpeechThreshold:.95,negativeSpeechThreshold:.75,redemptionFrames:15,minSpeechFrames:8,preSpeechPadFrames:3}:{positiveSpeechThreshold:.82,negativeSpeechThreshold:.6,redemptionFrames:8,minSpeechFrames:5,preSpeechPadFrames:3};s=await window.vad.MicVAD.new({...e,onSpeechStart:()=>{p.length>0&&(console.log("[VAD] Speech detected during playback - Interrupting"),D(),r&&r.readyState===WebSocket.OPEN&&r.send(JSON.stringify({clientContent:{turns:[{role:"user",parts:[{text:"Stop."}]}],turnComplete:!0}})),l("listening"))},onSpeechEnd:()=>{console.log("[VAD] User stopped talking"),p.length===0&&l("thinking")}}),console.log("[VAD] UI Monitor Initialized")}async function K(){g=!0,B.classList.add("active"),W.classList.add("visible"),O.classList.add("dimmed"),l("connecting");try{"wakeLock"in navigator&&(v=await navigator.wakeLock.request("screen"),console.log("[WakeLock] Screen lock acquired \u2014 screen will stay on"),v.addEventListener("release",()=>{console.log("[WakeLock] Released"),g&&"wakeLock"in navigator&&navigator.wakeLock.request("screen").then(e=>{v=e,console.log("[WakeLock] Re-acquired after release")}).catch(()=>{})}))}catch(e){console.warn("[WakeLock] Could not acquire:",e.message)}try{console.log("Starting conversation sequence..."),await M(),console.log("WS connected. Init VAD..."),s||await U(),console.log("VAD Init'd. Starting capture..."),await _(),console.log("Capture started. Starting VAD..."),s.start(),R("start"),l("listening")}catch(e){console.error("FAILED to start conversation!"),console.error("Error payload:",e),console.dir(e),l("error"),C()}}function C(){if(g=!1,B.classList.remove("active"),W.classList.remove("visible"),O.classList.remove("dimmed"),l("idle"),R("end"),D(),j(),s){try{s.pause()}catch{}try{s.destroy()}catch{}try{s.stream&&s.stream.getTracks().forEach(e=>e.stop()),s.mediaStream&&s.mediaStream.getTracks().forEach(e=>e.stop())}catch{}s=null}i&&(i.close().catch(()=>{}),i=null,h=0),r&&(r.onclose=null,r.onerror=null,r.onmessage=null,(r.readyState===WebSocket.OPEN||r.readyState===WebSocket.CONNECTING)&&r.close(1e3,"user_hangup"),r=null,console.log("[WS] Force closed and nulled")),v&&(v.release().catch(()=>{}),v=null,console.log("[WakeLock] Released on conversation end"))}async function Y(e){if(e.trim()){if(A=e,y("user",e),l("thinking"),!r||r.readyState!==WebSocket.OPEN)try{await M()}catch{y("assistant","(Could not connect \u2014 try again)"),l("error");return}r.send(JSON.stringify({clientContent:{turns:[{role:"user",parts:[{text:e}]}],turnComplete:!0}}))}}B.addEventListener("click",()=>{navigator.vibrate&&navigator.vibrate(50);try{if(i)i.state==="suspended"&&i.resume();else{i=new(window.AudioContext||window.webkitAudioContext)({sampleRate:24e3}),h=i.currentTime;let e=i.createOscillator();e.connect(i.destination),e.start(0),e.stop(.001)}if(u)u.state==="suspended"&&u.resume();else{u=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16e3});let e=u.createOscillator();e.connect(u.destination),e.start(0),e.stop(.001)}}catch(e){console.error("Audio Context Unlock Error:",e)}g?(console.log("[UI] Manual Interrupt triggered via mic button"),p.length>0&&D(),r&&r.readyState===WebSocket.OPEN&&r.send(JSON.stringify({clientContent:{turns:[{role:"user",parts:[{text:"Stop."}]}],turnComplete:!0}})),l("listening")):K()});W.addEventListener("click",()=>{navigator.vibrate&&navigator.vibrate(50),g&&(console.log("[UI] Conversation stopped via End Call button"),C())});N.forEach(e=>{e.addEventListener("click",async()=>{N.forEach(t=>t.classList.remove("active")),e.classList.add("active"),L=e.dataset.mode,g&&s&&(console.log(`[VAD] Hot-swapping to ${L} mode`),await U(),s.start())})});J.addEventListener("click",()=>{F.classList.add("visible"),P.style.display="none",T.focus()});z.addEventListener("click",()=>{F.classList.remove("visible"),P.style.display=""});q.addEventListener("click",()=>{let e=T.value.trim();e&&(T.value="",Y(e))});T.addEventListener("keydown",e=>{e.key==="Enter"&&(e.preventDefault(),q.click())});var Q=document.getElementById("camera-toggle"),I=document.getElementById("camera-input");Q.addEventListener("click",()=>{I.click()});I.addEventListener("change",async e=>{let t=e.target.files[0];if(!t)return;navigator.vibrate&&navigator.vibrate(50),l("thinking","Analyzing photo..."),y("user","[Sent a photo]");let o=new FormData;o.append("photo",t);try{let n=await fetch("/api/capture",{method:"POST",body:o}),a=await n.json();n.ok?(y("assistant",`I saved this to memory:
+(() => {
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
 
-${a.description}`),l("idle")):(console.error("Capture error:",a),y("assistant",`Failed to process image: ${a.detail||a.message||"Unknown error"}`),l("error","Analysis failed"),setTimeout(()=>l("idle"),3e3))}catch(n){console.error("Network error during upload:",n),y("assistant","Network error while uploading photo."),l("error"),setTimeout(()=>l("idle"),3e3)}I.value=""});document.addEventListener("visibilitychange",()=>{document.hidden&&g&&console.warn("[Visibility] Page hidden during conversation \u2014 Wake Lock should prevent this")});function $(){let e=window.location.protocol==="https:"?"wss:":"ws:";E=new WebSocket(`${e}//${window.location.host}/api/brain/stream/text`),E.onmessage=t=>{try{let o=JSON.parse(t.data);if(o.type==="chat_log"){if(o.role==="user"&&o.text===A){A=null;return}if(o.role==="assistant"&&o.text===x){x=null;return}y(o.role,o.text)}}catch{}},E.onclose=()=>{setTimeout($,5e3)}}$()});X();})();
+  // promaia/web/static/js/talk.src.js
+  var require_talk_src = __commonJS({
+    "promaia/web/static/js/talk.src.js"() {
+      var VoiceSessionState = {
+        vad: null,
+        conversationMode: false,
+        ws: null,
+        // Audio Capture State
+        captureStream: null,
+        captureCtx: null,
+        captureScriptNode: null,
+        // Audio Playback State
+        playCtx: null,
+        nextPlayTime: 0,
+        playingNodes: [],
+        // Wake Lock
+        wakeLock: null,
+        // Real-Time Chat Sync State
+        textWs: null,
+        lastSentTextLocal: null,
+        lastReceivedTextLocal: null
+      };
+      var AudioProcessingUtils = {
+        base64ToFloat32Pcm: function(base64Data) {
+          const binaryStr = window.atob(base64Data);
+          const len = binaryStr.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          const int16 = new Int16Array(bytes.buffer);
+          const float32 = new Float32Array(int16.length);
+          for (let i = 0; i < int16.length; i++) {
+            float32[i] = int16[i] / 32768;
+          }
+          return float32;
+        },
+        float32ToBase64Pcm: function(float32Array) {
+          const int16Array = new Int16Array(float32Array.length);
+          for (let i = 0; i < float32Array.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            int16Array[i] = s < 0 ? s * 32768 : s * 32767;
+          }
+          const uint8Array = new Uint8Array(int16Array.buffer);
+          let binary = "";
+          for (let i = 0; i < uint8Array.byteLength; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          return window.btoa(binary);
+        }
+      };
+      var micBtn = document.getElementById("mic-btn");
+      var endBtn = document.getElementById("end-btn");
+      var vadModeBtns = document.querySelectorAll(".vad-mode-btn");
+      var statusLabel = document.getElementById("talk-status");
+      var messagesEl = document.getElementById("messages");
+      var feedsEl = document.getElementById("feeds");
+      var micArea = document.getElementById("mic-area");
+      var kbToggle = document.getElementById("kb-toggle");
+      var textBar = document.getElementById("text-bar");
+      var textField = document.getElementById("text-field");
+      var sendBtn = document.getElementById("send-btn");
+      var closeKb = document.getElementById("close-kb");
+      function setStatus(state, text) {
+        statusLabel.dataset.state = state;
+        statusLabel.textContent = text || {
+          idle: "Ready",
+          connecting: "Connecting to Brain...",
+          listening: "Listening...",
+          thinking: "Thinking...",
+          speaking: "Speaking...",
+          error: "Error \u2014 tap to retry"
+        }[state] || state;
+      }
+      function playTone(type) {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const gain = ctx.createGain();
+          gain.connect(ctx.destination);
+          if (type === "start") {
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            const osc1 = ctx.createOscillator();
+            osc1.type = "sine";
+            osc1.frequency.value = 587.33;
+            osc1.connect(gain);
+            osc1.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.12);
+            const gain2 = ctx.createGain();
+            gain2.connect(ctx.destination);
+            gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+            const osc2 = ctx.createOscillator();
+            osc2.type = "sine";
+            osc2.frequency.value = 880;
+            osc2.connect(gain2);
+            osc2.start(ctx.currentTime + 0.12);
+            osc2.stop(ctx.currentTime + 0.35);
+            setTimeout(() => ctx.close(), 500);
+          } else if (type === "end") {
+            gain.gain.setValueAtTime(0.12, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+            const osc = ctx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
+            osc.connect(gain);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.3);
+            setTimeout(() => ctx.close(), 500);
+          }
+        } catch (e) {
+          console.warn("[Tone] Could not play:", e.message);
+        }
+      }
+      function addMessage(role, text) {
+        const empty = messagesEl.querySelector(".talk-empty");
+        if (empty) empty.remove();
+        const div = document.createElement("div");
+        div.className = `talk-msg talk-msg--${role}`;
+        const label = document.createElement("div");
+        label.className = "talk-msg-label";
+        label.textContent = role === "user" ? "You" : "Promaia";
+        div.appendChild(label);
+        const content = document.createElement("div");
+        content.textContent = text;
+        div.appendChild(content);
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+      function connectWebSocket() {
+        return new Promise((resolve, reject) => {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          VoiceSessionState.ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream`);
+          VoiceSessionState.ws.onopen = () => {
+            console.log("[WS] Connected to Promaia stream");
+            resolve();
+          };
+          VoiceSessionState.ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.serverContent) {
+              if (msg.serverContent.control === "hang_up") {
+                console.log("[WS] Handled server hang-up request");
+                if (VoiceSessionState.conversationMode) stopConversation();
+                return;
+              }
+              if (msg.serverContent.modelTurn) {
+                const parts = msg.serverContent.modelTurn.parts;
+                for (const part of parts) {
+                  if (part.inlineData) {
+                    queuePlayback(part.inlineData.data);
+                    setStatus("speaking");
+                  }
+                  if (part.text) {
+                    VoiceSessionState.lastReceivedTextLocal = part.text;
+                    addMessage("assistant", part.text);
+                  }
+                }
+              }
+              if (msg.serverContent.turnComplete) {
+                console.log("[WS] Turn Complete");
+              }
+            }
+          };
+          VoiceSessionState.ws.onclose = () => {
+            console.log("[WS] Disconnected");
+            if (VoiceSessionState.conversationMode) {
+              setStatus("error", "Connection lost");
+              stopConversation();
+            }
+          };
+          VoiceSessionState.ws.onerror = (err) => {
+            console.error("[WS] Error:", err);
+            reject(err);
+          };
+        });
+      }
+      function queuePlayback(base64Data) {
+        if (!VoiceSessionState.playCtx) {
+          console.warn("Play context not initialized synchronously. Creating late (iOS may block this).");
+          VoiceSessionState.playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24e3 });
+          VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
+        }
+        if (VoiceSessionState.playCtx.state === "suspended") {
+          VoiceSessionState.playCtx.resume();
+        }
+        const float32 = AudioProcessingUtils.base64ToFloat32Pcm(base64Data);
+        const buffer = VoiceSessionState.playCtx.createBuffer(1, float32.length, 24e3);
+        buffer.getChannelData(0).set(float32);
+        const source = VoiceSessionState.playCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(VoiceSessionState.playCtx.destination);
+        if (VoiceSessionState.nextPlayTime < VoiceSessionState.playCtx.currentTime) {
+          VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
+        }
+        source.start(VoiceSessionState.nextPlayTime);
+        VoiceSessionState.nextPlayTime += buffer.duration;
+        VoiceSessionState.playingNodes.push(source);
+        source.onended = () => {
+          VoiceSessionState.playingNodes = VoiceSessionState.playingNodes.filter((n) => n !== source);
+          if (VoiceSessionState.playingNodes.length === 0 && VoiceSessionState.conversationMode) {
+            setStatus("listening");
+          }
+        };
+      }
+      function stopPlayback() {
+        VoiceSessionState.playingNodes.forEach((node) => {
+          try {
+            node.stop();
+          } catch (e) {
+          }
+        });
+        VoiceSessionState.playingNodes = [];
+        if (VoiceSessionState.playCtx) {
+          VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
+        }
+      }
+      async function startCapture() {
+        VoiceSessionState.captureStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        if (!VoiceSessionState.captureCtx) {
+          VoiceSessionState.captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16e3 });
+        }
+        const source = VoiceSessionState.captureCtx.createMediaStreamSource(VoiceSessionState.captureStream);
+        VoiceSessionState.captureScriptNode = VoiceSessionState.captureCtx.createScriptProcessor(4096, 1, 1);
+        VoiceSessionState.captureScriptNode.onaudioprocess = (e) => {
+          if (!VoiceSessionState.ws || VoiceSessionState.ws.readyState !== WebSocket.OPEN) return;
+          const float32Array = e.inputBuffer.getChannelData(0);
+          const b64 = AudioProcessingUtils.float32ToBase64Pcm(float32Array);
+          VoiceSessionState.ws.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: b64 }]
+            }
+          }));
+        };
+        source.connect(VoiceSessionState.captureScriptNode);
+        const silentGain = VoiceSessionState.captureCtx.createGain();
+        silentGain.gain.value = 0;
+        VoiceSessionState.captureScriptNode.connect(silentGain);
+        silentGain.connect(VoiceSessionState.captureCtx.destination);
+      }
+      function stopCapture() {
+        try {
+          if (VoiceSessionState.captureScriptNode) {
+            try {
+              VoiceSessionState.captureScriptNode.disconnect();
+            } catch (e) {
+            }
+            VoiceSessionState.captureScriptNode = null;
+          }
+          if (VoiceSessionState.captureCtx) {
+            VoiceSessionState.captureCtx.close().catch(() => {
+            });
+            VoiceSessionState.captureCtx = null;
+          }
+          if (VoiceSessionState.captureStream) {
+            VoiceSessionState.captureStream.getTracks().forEach((t) => {
+              try {
+                t.stop();
+              } catch (e) {
+              }
+            });
+            VoiceSessionState.captureStream = null;
+          }
+        } catch (e) {
+          console.warn("[Capture] Teardown error:", e);
+        }
+      }
+      var currentVadMode = "normal";
+      async function initVAD() {
+        if (!window.vad || !window.vad.MicVAD) {
+          throw new Error("VAD library not loaded from CDN yet.");
+        }
+        if (VoiceSessionState.vad) {
+          try {
+            VoiceSessionState.vad.pause();
+          } catch (e) {
+          }
+          try {
+            VoiceSessionState.vad.destroy();
+          } catch (e) {
+          }
+          try {
+            if (VoiceSessionState.vad.stream) {
+              VoiceSessionState.vad.stream.getTracks().forEach((t) => t.stop());
+            }
+            if (VoiceSessionState.vad.mediaStream) {
+              VoiceSessionState.vad.mediaStream.getTracks().forEach((t) => t.stop());
+            }
+          } catch (e) {
+          }
+          VoiceSessionState.vad = null;
+        }
+        const modeConfig = currentVadMode === "driving" ? {
+          positiveSpeechThreshold: 0.95,
+          negativeSpeechThreshold: 0.75,
+          redemptionFrames: 15,
+          minSpeechFrames: 8,
+          preSpeechPadFrames: 3
+        } : {
+          positiveSpeechThreshold: 0.82,
+          negativeSpeechThreshold: 0.6,
+          redemptionFrames: 8,
+          minSpeechFrames: 5,
+          preSpeechPadFrames: 3
+        };
+        VoiceSessionState.vad = await window.vad.MicVAD.new({
+          ...modeConfig,
+          onSpeechStart: () => {
+            if (VoiceSessionState.playingNodes.length > 0) {
+              console.log("[VAD] Speech detected during playback - Interrupting");
+              stopPlayback();
+              if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
+                VoiceSessionState.ws.send(JSON.stringify({
+                  clientContent: {
+                    turns: [{ role: "user", parts: [{ text: "Stop." }] }],
+                    turnComplete: true
+                  }
+                }));
+              }
+              setStatus("listening");
+            }
+          },
+          onSpeechEnd: () => {
+            console.log("[VAD] User stopped talking");
+            if (VoiceSessionState.playingNodes.length === 0) {
+              setStatus("thinking");
+            }
+          }
+        });
+        console.log("[VAD] UI Monitor Initialized");
+      }
+      async function startConversation() {
+        VoiceSessionState.conversationMode = true;
+        micBtn.classList.add("active");
+        endBtn.classList.add("visible");
+        feedsEl.classList.add("dimmed");
+        setStatus("connecting");
+        try {
+          if ("VoiceSessionState.wakeLock" in navigator) {
+            VoiceSessionState.wakeLock = await navigator.wakeLock.request("screen");
+            console.log("[WakeLock] Screen lock acquired \u2014 screen will stay on");
+            VoiceSessionState.wakeLock.addEventListener("release", () => {
+              console.log("[WakeLock] Released");
+              if (VoiceSessionState.conversationMode && "VoiceSessionState.wakeLock" in navigator) {
+                navigator.wakeLock.request("screen").then((wl) => {
+                  VoiceSessionState.wakeLock = wl;
+                  console.log("[WakeLock] Re-acquired after release");
+                }).catch(() => {
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn("[WakeLock] Could not acquire:", e.message);
+        }
+        try {
+          console.log("Starting conversation sequence...");
+          await connectWebSocket();
+          console.log("WS connected. Init VAD...");
+          if (!VoiceSessionState.vad) await initVAD();
+          console.log("VAD Init'd. Starting capture...");
+          await startCapture();
+          console.log("Capture started. Starting VAD...");
+          VoiceSessionState.vad.start();
+          playTone("start");
+          setStatus("listening");
+        } catch (err) {
+          console.error("FAILED to start conversation!");
+          console.error("Error payload:", err);
+          console.dir(err);
+          setStatus("error");
+          stopConversation();
+        }
+      }
+      function stopConversation() {
+        VoiceSessionState.conversationMode = false;
+        micBtn.classList.remove("active");
+        endBtn.classList.remove("visible");
+        feedsEl.classList.remove("dimmed");
+        setStatus("idle");
+        playTone("end");
+        stopPlayback();
+        stopCapture();
+        if (VoiceSessionState.vad) {
+          try {
+            VoiceSessionState.vad.pause();
+          } catch (e) {
+          }
+          try {
+            VoiceSessionState.vad.destroy();
+          } catch (e) {
+          }
+          try {
+            if (VoiceSessionState.vad.stream) {
+              VoiceSessionState.vad.stream.getTracks().forEach((t) => t.stop());
+            }
+            if (VoiceSessionState.vad.mediaStream) {
+              VoiceSessionState.vad.mediaStream.getTracks().forEach((t) => t.stop());
+            }
+          } catch (e) {
+          }
+          VoiceSessionState.vad = null;
+        }
+        if (VoiceSessionState.playCtx) {
+          VoiceSessionState.playCtx.close().catch(() => {
+          });
+          VoiceSessionState.playCtx = null;
+          VoiceSessionState.nextPlayTime = 0;
+        }
+        if (VoiceSessionState.ws) {
+          VoiceSessionState.ws.onclose = null;
+          VoiceSessionState.ws.onerror = null;
+          VoiceSessionState.ws.onmessage = null;
+          if (VoiceSessionState.ws.readyState === WebSocket.OPEN || VoiceSessionState.ws.readyState === WebSocket.CONNECTING) {
+            VoiceSessionState.ws.close(1e3, "user_hangup");
+          }
+          VoiceSessionState.ws = null;
+          console.log("[WS] Force closed and nulled");
+        }
+        if (VoiceSessionState.wakeLock) {
+          VoiceSessionState.wakeLock.release().catch(() => {
+          });
+          VoiceSessionState.wakeLock = null;
+          console.log("[WakeLock] Released on conversation end");
+        }
+      }
+      async function sendText(text) {
+        if (!text.trim()) return;
+        VoiceSessionState.lastSentTextLocal = text;
+        addMessage("user", text);
+        setStatus("thinking");
+        if (!VoiceSessionState.ws || VoiceSessionState.ws.readyState !== WebSocket.OPEN) {
+          try {
+            await connectWebSocket();
+          } catch (err) {
+            addMessage("assistant", "(Could not connect \u2014 try again)");
+            setStatus("error");
+            return;
+          }
+        }
+        VoiceSessionState.ws.send(JSON.stringify({
+          clientContent: {
+            turns: [{ role: "user", parts: [{ text }] }],
+            turnComplete: true
+          }
+        }));
+      }
+      micBtn.addEventListener("click", () => {
+        if (navigator.vibrate) navigator.vibrate(50);
+        try {
+          if (!VoiceSessionState.playCtx) {
+            VoiceSessionState.playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24e3 });
+            VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
+            const osc = VoiceSessionState.playCtx.createOscillator();
+            osc.connect(VoiceSessionState.playCtx.destination);
+            osc.start(0);
+            osc.stop(1e-3);
+          } else if (VoiceSessionState.playCtx.state === "suspended") {
+            VoiceSessionState.playCtx.resume();
+          }
+          if (!VoiceSessionState.captureCtx) {
+            VoiceSessionState.captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16e3 });
+            const osc2 = VoiceSessionState.captureCtx.createOscillator();
+            osc2.connect(VoiceSessionState.captureCtx.destination);
+            osc2.start(0);
+            osc2.stop(1e-3);
+          } else if (VoiceSessionState.captureCtx.state === "suspended") {
+            VoiceSessionState.captureCtx.resume();
+          }
+        } catch (e) {
+          console.error("Audio Context Unlock Error:", e);
+        }
+        if (!VoiceSessionState.conversationMode) {
+          startConversation();
+        } else {
+          console.log("[UI] Manual Interrupt triggered via mic button");
+          if (VoiceSessionState.playingNodes.length > 0) {
+            stopPlayback();
+          }
+          if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
+            VoiceSessionState.ws.send(JSON.stringify({
+              clientContent: {
+                turns: [{ role: "user", parts: [{ text: "Stop." }] }],
+                turnComplete: true
+              }
+            }));
+          }
+          setStatus("listening");
+        }
+      });
+      endBtn.addEventListener("click", () => {
+        if (navigator.vibrate) navigator.vibrate(50);
+        if (VoiceSessionState.conversationMode) {
+          console.log("[UI] Conversation stopped via End Call button");
+          stopConversation();
+        }
+      });
+      vadModeBtns.forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          vadModeBtns.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentVadMode = btn.dataset.mode;
+          if (VoiceSessionState.conversationMode && VoiceSessionState.vad) {
+            console.log(`[VAD] Hot-swapping to ${currentVadMode} mode`);
+            await initVAD();
+            VoiceSessionState.vad.start();
+          }
+        });
+      });
+      kbToggle.addEventListener("click", () => {
+        textBar.classList.add("visible");
+        micArea.style.display = "none";
+        textField.focus();
+      });
+      closeKb.addEventListener("click", () => {
+        textBar.classList.remove("visible");
+        micArea.style.display = "";
+      });
+      sendBtn.addEventListener("click", () => {
+        const text = textField.value.trim();
+        if (text) {
+          textField.value = "";
+          sendText(text);
+        }
+      });
+      textField.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendBtn.click();
+        }
+      });
+      var cameraBtn = document.getElementById("camera-toggle");
+      var cameraInput = document.getElementById("camera-input");
+      cameraBtn.addEventListener("click", () => {
+        cameraInput.click();
+      });
+      cameraInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (navigator.vibrate) navigator.vibrate(50);
+        setStatus("thinking", "Analyzing photo...");
+        addMessage("user", "[Sent a photo]");
+        const formData = new FormData();
+        formData.append("photo", file);
+        try {
+          const response = await fetch("/api/capture", {
+            method: "POST",
+            body: formData
+          });
+          const data = await response.json();
+          if (response.ok) {
+            addMessage("assistant", `I saved this to memory:
+
+${data.description}`);
+            setStatus("idle");
+          } else {
+            console.error("Capture error:", data);
+            addMessage("assistant", `Failed to process image: ${data.detail || data.message || "Unknown error"}`);
+            setStatus("error", "Analysis failed");
+            setTimeout(() => setStatus("idle"), 3e3);
+          }
+        } catch (err) {
+          console.error("Network error during upload:", err);
+          addMessage("assistant", "Network error while uploading photo.");
+          setStatus("error");
+          setTimeout(() => setStatus("idle"), 3e3);
+        }
+        cameraInput.value = "";
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && VoiceSessionState.conversationMode) {
+          console.warn("[Visibility] Page hidden during conversation \u2014 Wake Lock should prevent this");
+        }
+      });
+      function connectTextLog() {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        VoiceSessionState.textWs = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream/text`);
+        VoiceSessionState.textWs.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "chat_log") {
+              if (msg.role === "user" && msg.text === VoiceSessionState.lastSentTextLocal) {
+                VoiceSessionState.lastSentTextLocal = null;
+                return;
+              }
+              if (msg.role === "assistant" && msg.text === VoiceSessionState.lastReceivedTextLocal) {
+                VoiceSessionState.lastReceivedTextLocal = null;
+                return;
+              }
+              addMessage(msg.role, msg.text);
+            }
+          } catch (e) {
+          }
+        };
+        VoiceSessionState.textWs.onclose = () => {
+          setTimeout(connectTextLog, 5e3);
+        };
+      }
+      connectTextLog();
+    }
+  });
+  require_talk_src();
+})();
 //# sourceMappingURL=talk.js.map

@@ -57,13 +57,7 @@ from promaia.cli.prompt_sync_commands import add_prompt_commands
 from promaia.cli.agent_commands import add_agent_commands
 # Note: scheduled_agent_commands lazy-loaded (below) to keep imports clean
 
-# Import team management commands
-from promaia.cli.team_commands import add_team_commands
 
-# Import conversation management commands
-from promaia.cli.conversation_commands import (
-    add_conversation_commands, add_conversation_commands_to_existing_parser
-)
 
 # Import workspace commands
 from promaia.cli.workspace_commands import (
@@ -2914,20 +2908,9 @@ def main():
     # Add prompt sync commands
     add_prompt_commands(subparsers)
 
-    # Add team management commands
-    add_team_commands(subparsers)
-
     # Add OCR commands
     from promaia.cli.ocr_commands import register_ocr_commands
     register_ocr_commands(subparsers)
-
-    # Add conversation management commands
-    add_conversation_commands(subparsers)
-
-    # Add 'conv' alias for conversation commands
-    conv_parser = subparsers.add_parser('conv', help='Manage conversations (alias for conversation)')
-    conv_subparsers = conv_parser.add_subparsers(dest='conversation_command', help='Conversation commands')
-    add_conversation_commands_to_existing_parser(conv_parser, conv_subparsers)
 
     # Add agent commands (both external and scheduled)
     agent_subparsers = add_agent_commands(subparsers, include_scheduled=True)
