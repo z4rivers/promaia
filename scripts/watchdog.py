@@ -142,13 +142,20 @@ def main():
         
         try:
             import subprocess
-            script_dir = Path(__file__).parent
-            vbs_script = script_dir / "start_promaia_hidden.vbs"
-            if vbs_script.exists():
-                subprocess.Popen(["wscript.exe", str(vbs_script)], cwd=str(script_dir.parent))
-                message += "✅ Executed start_promaia_hidden.vbs"
+            import shutil
+            project_root = Path(__file__).parent.parent
+            pythonw = shutil.which("pythonw")
+            if pythonw:
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(project_root)
+                subprocess.Popen(
+                    [pythonw, "-m", "promaia.manager"],
+                    cwd=str(project_root),
+                    env=env,
+                )
+                message += "✅ Launched pythonw -m promaia.manager"
             else:
-                message += "❌ Failed to restart: start_promaia_hidden.vbs not found."
+                message += "❌ Failed to restart: pythonw.exe not found on PATH."
         except Exception as e:
             message += f"❌ Failed to restart: {e}"
     else:

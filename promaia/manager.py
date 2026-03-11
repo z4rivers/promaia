@@ -18,6 +18,13 @@ from pathlib import Path
 from collections import deque
 from datetime import datetime, timedelta
 
+# Self-configure PYTHONPATH so this works when launched headlessly
+# (e.g. from Task Scheduler via pythonw.exe -m promaia.manager)
+_project_root = str(Path(__file__).parent.parent.absolute())
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+os.environ.setdefault("PYTHONPATH", _project_root)
+
 # Create logs directory
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
