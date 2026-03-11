@@ -8,8 +8,5 @@ exit /b
 :hidden
 cd /d "c:\Users\Zachary Turner\dev\promaia"
 
-:: Start Muninn in the background
-start "MuninnDB" /B muninn start
-
-:: Start Promaia server (blocks the batch script so it stays alive)
-python -m uvicorn promaia.web.main:app --host 0.0.0.0 --port 8000
+:: Start Promaia Unified Manager (handles Web, Telegram, Scheduler, MuninnDB)
+python -m promaia.manager

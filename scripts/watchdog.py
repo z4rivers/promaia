@@ -137,8 +137,20 @@ def main():
             f"⚠️ *Promaia is OFFLINE*\n"
             f"Checked at {now}\n"
             f"Health endpoint: `{PROMAIA_URL}/api/health`\n\n"
-            f"The heartbeat, memory capture, and voice bridge are all paused.\n"
+            f"Attempting auto-restart via manager.py...\n"
         )
+        
+        try:
+            import subprocess
+            script_dir = Path(__file__).parent
+            vbs_script = script_dir / "start_promaia_hidden.vbs"
+            if vbs_script.exists():
+                subprocess.Popen(["wscript.exe", str(vbs_script)], cwd=str(script_dir.parent))
+                message += "✅ Executed start_promaia_hidden.vbs"
+            else:
+                message += "❌ Failed to restart: start_promaia_hidden.vbs not found."
+        except Exception as e:
+            message += f"❌ Failed to restart: {e}"
     else:
         message = (
             f"⚠️ *MuninnDB is OFFLINE*\n"

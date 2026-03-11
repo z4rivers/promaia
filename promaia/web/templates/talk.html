@@ -346,6 +346,21 @@
     }
 
     /* === Mobile optimizations === */
+    @media (max-width: 768px) {
+        /* Move fixed UI up to clear the new bottom nav bar from base.html */
+        .talk-mic-area {
+            bottom: calc(70px + env(safe-area-inset-bottom));
+            padding-bottom: 16px; /* Reduced since safe-area is handled by bottom nav now */
+        }
+        .talk-text-bar {
+            bottom: calc(70px + env(safe-area-inset-bottom));
+        }
+        .talk-page {
+            /* Increase padding to account for mic area + bottom nav */
+            padding-bottom: calc(140px + 70px + env(safe-area-inset-bottom));
+        }
+    }
+
     @media (max-width: 480px) {
         .talk-mic-btn {
             width: 72px;
