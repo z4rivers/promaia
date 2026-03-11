@@ -6,12 +6,7 @@ CRITICAL: These rules override all other instructions.
 
 2. **Never fabricate.** Do not invent email subjects, sender names, calendar events, costs, previous run results, or any other facts. If you are uncertain whether something is real, do not include it.
 
-3. **Report empty states explicitly.** When a data source has no items:
-   - Say "No new emails since last check" -- not silence.
-   - Say "No calendar events today" -- not skip the section.
-   - Say "No pending actions" -- not omit the section.
-   Knowing something was checked and found empty is valuable.
-
+3. **Omit empty states.** If there are no new emails, no completed actions, or no calendar events tomorrow, do NOT mention them. Do not include empty headings. Do not announce "No calendar items tomorrow." Simply skip the section entirely. Short updates are preferred.
 4. **When data is missing or errors occurred**, say so clearly: "Email context was not available for this run" or "Calendar data could not be loaded." Never fill gaps with fabricated content.
 
 5. **Do not reference previous runs** unless previous run data is explicitly provided in your context. You have no memory of prior executions.
@@ -55,7 +50,6 @@ Promaia has energy right now -- Phase 6 Plan 01 (model routing) is a clean start
 - What happened today (emails handled, calendar events, brain captures)
 - Any commitments made or actions completed
 - Only summarize events and actions that appear in your context data
-- If no activity data is available, state: "No activity data available for today's digest."
 
 ### Project Status
 - Which projects have momentum (recent commits, captures, context updates)

@@ -1,90 +1,47 @@
-{% extends "base.html" %}
+import sys
 
-{% block title %}Promaia — Talk{% endblock %}
+with open(r"promaia\web\templates\dashboard.html", "r", encoding="utf-8") as f:
+    content = f.read()
 
-{% block head %}
-<style>
-    .talk-page {
-        display: flex;
-        flex-direction: column;
-        min-height: calc(100vh - 120px);
+CSS_INJECTION = """    /* === VOICE OVERLAY === */
+    .dashboard {
         padding-bottom: 140px; /* space for fixed mic button */
-    }
-
-    /* === Compact Info Feeds === */
-    .talk-feeds {
         transition: opacity 300ms ease, filter 300ms ease;
     }
-    .talk-feeds.dimmed {
-        opacity: 0.25;
-        filter: blur(2px);
+    .dashboard.dimmed {
+        opacity: 0.15;
+        filter: blur(4px);
         pointer-events: none;
     }
 
-    .talk-brain-bar {
-        display: flex;
-        gap: var(--space-md, 16px);
-        align-items: center;
-        flex-wrap: wrap;
-        font-family: var(--font-mono, monospace);
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        letter-spacing: 0.03em;
-        padding: 10px 16px;
-        background: var(--bg-card);
-        border: var(--card-border, 1px solid var(--border-subtle));
-        border-radius: var(--card-radius, 8px);
-        margin-bottom: var(--space-md, 16px);
-    }
-    .talk-brain-bar .metric {
-        font-family: var(--font-display, var(--font-heading));
-        font-size: 1rem;
-        font-weight: 700;
-        color: var(--accent-primary);
-    }
-
-    .talk-actions-header {
-        font-family: var(--font-heading);
-        font-size: var(--section-header-size, 0.75rem);
-        font-weight: var(--section-header-weight, 600);
-        text-transform: uppercase;
-        letter-spacing: var(--section-header-tracking, 0.1em);
-        color: var(--text-muted);
-        margin-bottom: var(--space-sm, 8px);
-    }
-
-    .talk-action-card {
-        background: var(--bg-card);
-        border: var(--card-border, 1px solid var(--border-subtle));
-        border-left: var(--accent-border, 3px solid var(--accent-primary));
-        border-radius: var(--card-radius, 8px);
-        padding: 10px 14px;
-        font-size: 0.85rem;
-        color: var(--text-primary);
-        animation: pop-in 200ms ease both;
-    }
-    .talk-action-card + .talk-action-card {
-        margin-top: 6px;
-    }
-    .talk-action-card .action-domain {
-        font-family: var(--font-mono);
-        font-size: 0.65rem;
-        color: var(--text-muted);
-        margin-top: 2px;
-    }
-    .talk-action-card:nth-child(2) { animation-delay: 50ms; }
-    .talk-action-card:nth-child(3) { animation-delay: 100ms; }
-    .talk-action-card:nth-child(4) { animation-delay: 150ms; }
-
-    /* === Conversation Area === */
+    /* === Conversation Area (Overlay on dashboard) === */
     .talk-conversation {
-        flex: 1;
+        position: fixed;
+        bottom: 140px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: var(--page-max-width, 1120px);
+        max-height: 50vh;
+        z-index: 45;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        pointer-events: none; /* Let clicks pass through to dashboard when empty */
+    }
+    
+    #messages {
+        pointer-events: none;
+        max-height: 100%;
         overflow-y: auto;
-        margin-top: var(--space-lg, 24px);
-        padding-bottom: var(--space-md, 16px);
+        padding: 0 var(--page-pad-x, 16px);
+        display: flex;
+        flex-direction: column;
+        margin-top: auto;
     }
 
     .talk-msg {
+        pointer-events: auto; /* Catch clicks on messages */
         padding: 10px 16px;
         margin-bottom: 8px;
         border-radius: var(--card-radius, 8px);
@@ -92,6 +49,12 @@
         line-height: 1.5;
         animation: pop-in 200ms ease both;
         max-width: 90%;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        flex-shrink: 0;
+    }
+    @keyframes pop-in {
+        0% { opacity: 0; transform: translateY(10px) scale(0.98); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
     }
     .talk-msg--user {
         background: var(--bg-card);
@@ -115,41 +78,35 @@
         margin-bottom: 4px;
     }
 
-    .talk-empty {
-        text-align: center;
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        padding: var(--space-2xl, 48px) 0;
-        font-family: var(--font-body);
-    }
-
     /* === Status Indicator === */
     .talk-status {
+        position: fixed;
+        top: var(--space-lg, 24px);
+        left: 0;
+        right: 0;
         text-align: center;
-        padding: var(--space-md, 16px) 0;
-        min-height: 48px;
+        z-index: 50;
+        pointer-events: none;
     }
     .talk-status-label {
+        display: inline-block;
         font-family: var(--font-display, var(--font-heading));
         font-size: 1.2rem;
         font-weight: 700;
         letter-spacing: 0.04em;
         text-transform: uppercase;
+        padding: 6px 16px;
+        border-radius: 20px;
+        background: var(--bg-card);
         color: var(--text-muted);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         transition: color 200ms ease;
     }
-    .talk-status-label[data-state="listening"] {
-        color: var(--accent-primary, #FF3366);
-    }
-    .talk-status-label[data-state="thinking"] {
-        color: var(--accent-info, #8B00FF);
-    }
-    .talk-status-label[data-state="speaking"] {
-        color: var(--accent-success, #00CC88);
-    }
-    .talk-status-label[data-state="error"] {
-        color: var(--accent-warning, #FFE700);
-    }
+    .talk-status-label[data-state="idle"] { display: none; }
+    .talk-status-label[data-state="listening"] { color: var(--accent-primary, #FF3366); }
+    .talk-status-label[data-state="thinking"] { color: var(--accent-info, #8B00FF); }
+    .talk-status-label[data-state="speaking"] { color: var(--accent-success, #00CC88); }
+    .talk-status-label[data-state="error"] { color: var(--accent-warning, #FFE700); }
 
     /* Pulse animation for listening state */
     @keyframes status-pulse {
@@ -172,7 +129,7 @@
         align-items: center;
         gap: 16px;
         padding: 20px 20px 32px 20px;
-        background: linear-gradient(transparent, var(--bg-primary, #fff) 30%);
+        background: linear-gradient(transparent, var(--bg-primary, #fff) 60%);
         z-index: 50;
     }
 
@@ -211,7 +168,6 @@
         fill: #FFFFFF;
     }
 
-    /* Pulse ring when active */
     @keyframes mic-pulse {
         0% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4); }
         70% { box-shadow: 0 0 0 20px rgba(255, 51, 102, 0); }
@@ -243,9 +199,7 @@
         border-color: var(--accent-primary);
     }
     
-    .talk-end-btn {
-        display: none; /* hidden by default */
-    }
+    .talk-end-btn { display: none; }
     .talk-end-btn.visible {
         display: flex;
         border-color: var(--accent-primary, #FF3366);
@@ -254,7 +208,6 @@
         fill: var(--accent-primary, #FF3366);
     }
 
-    /* VAD Sensitivity Toggle */
     .vad-toggle-wrapper {
         position: absolute;
         top: -40px;
@@ -280,14 +233,12 @@
         color: var(--text-muted, #888);
         cursor: pointer;
         transition: all 150ms ease;
-        touch-action: manipulation;
     }
     .vad-mode-btn.active {
         background: var(--text-primary, #1A1A2E);
         color: #fff;
     }
 
-    /* Text input bar */
     .talk-text-bar {
         position: fixed;
         bottom: 0;
@@ -301,9 +252,7 @@
         gap: 8px;
         align-items: center;
     }
-    .talk-text-bar.visible {
-        display: flex;
-    }
+    .talk-text-bar.visible { display: flex; }
     .talk-text-bar input {
         flex: 1;
         font-family: var(--font-body);
@@ -315,9 +264,7 @@
         color: var(--text-primary);
         outline: none;
     }
-    .talk-text-bar input:focus {
-        border-color: var(--accent-primary, #FF3366);
-    }
+    .talk-text-bar input:focus { border-color: var(--accent-primary, #FF3366); }
     .talk-text-bar button {
         font-family: var(--font-heading);
         font-weight: 700;
@@ -330,11 +277,6 @@
         border: 2px solid var(--accent-primary, #FF3366);
         border-radius: var(--card-radius, 8px);
         cursor: pointer;
-        transition: all 150ms ease;
-    }
-    .talk-text-bar button:hover {
-        background: var(--text-primary, #1A1A2E);
-        border-color: var(--text-primary, #1A1A2E);
     }
     .talk-text-bar .close-kb {
         background: transparent;
@@ -344,76 +286,27 @@
         cursor: pointer;
         padding: 8px;
     }
-
-    /* === Mobile optimizations === */
     @media (max-width: 480px) {
-        .talk-mic-btn {
-            width: 72px;
-            height: 72px;
-        }
-        .talk-mic-btn svg {
-            width: 32px;
-            height: 32px;
-        }
-        .talk-msg {
-            max-width: 95%;
-        }
+        .talk-mic-btn { width: 72px; height: 72px; }
+        .talk-mic-btn svg { width: 32px; height: 32px; }
     }
+"""
 
-    /* Hide nav links except brand on very small screens when in conversation */
-    @media (max-width: 360px) {
-        .top-nav__links {
-            gap: var(--space-sm, 8px);
-            font-size: 0.75rem;
-        }
-    }
-</style>
-{% endblock %}
+content = content.replace("</style>", CSS_INJECTION + "\n</style>")
 
-{% block content %}
-<main class="talk-page" id="talk-page">
+# Replace <main class="dashboard"> with id="feeds"
+content = content.replace('<main class="dashboard">', '<main class="dashboard" id="feeds">')
 
-    <!-- Compact Info Feeds -->
-    <section class="talk-feeds" id="feeds">
-        <div class="talk-brain-bar">
-            <span><span class="metric">{{ brain_status.memories }}</span> memories</span>
-            <span>&middot;</span>
-            <span><span class="metric">{{ brain_status.actions }}</span> actions</span>
-            <span>&middot;</span>
-            <span><span class="metric">{{ brain_status.contexts }}</span> contexts</span>
-        </div>
+# Append UI after main
+HTML_INJECTION = """
+<!-- Voice Overlay UI -->
+<div class="talk-status">
+    <div class="talk-status-label" id="talk-status" data-state="idle">Ready</div>
+</div>
 
-        {% if actions %}
-        <div class="talk-actions-header">Pending</div>
-        {% for action in actions[:4] %}
-        <div class="talk-action-card">
-            {{ action.text }}
-            <div class="action-domain">{{ action.domain }}</div>
-        </div>
-        {% endfor %}
-        {% endif %}
-    </section>
-
-    <!-- Conversation Area -->
-    <section class="talk-conversation" id="conversation">
-        <div id="messages">
-            {% if last_message %}
-            <div class="talk-msg talk-msg--assistant">
-                <div class="talk-msg-label">Last session</div>
-                {{ last_message }}
-            </div>
-            {% else %}
-            <div class="talk-empty">Tap the mic to start talking</div>
-            {% endif %}
-        </div>
-    </section>
-
-    <!-- Status Indicator -->
-    <div class="talk-status">
-        <div class="talk-status-label" id="talk-status" data-state="idle">Ready</div>
-    </div>
-
-</main>
+<section class="talk-conversation" id="conversation">
+    <div id="messages"></div>
+</section>
 
 <!-- Fixed Mic Button Area -->
 <div class="talk-mic-area" id="mic-area">
@@ -447,15 +340,19 @@
     <input type="text" id="text-field" placeholder="Type a message..." autocomplete="off">
     <button id="send-btn">Send</button>
 </div>
+"""
 
-{% endblock %}
+content = content.replace('</main>', '</main>\n' + HTML_INJECTION)
 
-{% block scripts %}
-{{ super() }}
-    <!-- CDN VAD Scripts - Bypasses Local WASM Loading Errors -->
+JS_INJECTION = """
+    <!-- CDN VAD Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
-
     <!-- Main Application Logic -->
-    <script src="/static/js/talk.js?v=2.3"></script>
-{% endblock %}
+    <script src="/static/js/talk.js?v=2.5"></script>
+"""
+
+content = content.replace('{% block scripts %}\n{{ super() }}', '{% block scripts %}\n{{ super() }}' + JS_INJECTION)
+
+with open(r"promaia\web\templates\dashboard.html", "w", encoding="utf-8") as f:
+    f.write(content)

@@ -63,6 +63,18 @@ def is_promaia_up() -> bool:
     except Exception:
         return False
 
+def is_muninn_up() -> bool:
+    """Return True if MuninnDB /api/health responds 200."""
+    try:
+        req = urllib.request.Request(
+            "http://localhost:8475/api/health",
+            headers={"User-Agent": "promaia-watchdog/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
 
 def is_waking_hours() -> bool:
     """Return True if current local time is within waking hours."""
@@ -112,24 +124,35 @@ def main():
         print(f"[{now}] Outside waking hours ({WAKING_START}:00–{WAKING_END}:00). Skipping.")
         return
 
-    if is_promaia_up():
-        print(f"[{now}] Promaia is UP. All good.")
+    promaia_up = is_promaia_up()
+    muninn_up = is_muninn_up()
+
+    if promaia_up and muninn_up:
+        print(f"[{now}] Promaia and MuninnDB are UP. All good.")
         return
 
-    # Promaia is down during waking hours — alert
-    message = (
-        f"⚠️ *Promaia is OFFLINE*\n"
-        f"Checked at {now}\n"
-        f"Health endpoint: `{PROMAIA_URL}/api/health`\n\n"
-        f"The heartbeat, memory capture, and voice bridge are all paused.\n"
-        f"Restart: open a terminal in `dev/promaia` and run `python -m promaia.web.main`"
-    )
+    # Something is down during waking hours — alert
+    if not promaia_up:
+        message = (
+            f"⚠️ *Promaia is OFFLINE*\n"
+            f"Checked at {now}\n"
+            f"Health endpoint: `{PROMAIA_URL}/api/health`\n\n"
+            f"The heartbeat, memory capture, and voice bridge are all paused.\n"
+        )
+    else:
+        message = (
+            f"⚠️ *MuninnDB is OFFLINE*\n"
+            f"Checked at {now}\n"
+            f"Promaia server is running, but the cognitive memory substrate is unreachable.\n"
+            f"Voice memory, text search, and AI association are severely degraded.\n"
+        )
 
     sent = send_telegram(message)
     if sent:
-        print(f"[{now}] Promaia DOWN — Telegram alert sent.")
+        status_msg = "Promaia DOWN" if not promaia_up else "Muninn DOWN"
+        print(f"[{now}] {status_msg} — Telegram alert sent.")
     else:
-        print(f"[{now}] Promaia DOWN — Telegram alert FAILED to send.", file=sys.stderr)
+        print(f"[{now}] Alert FAILED to send.", file=sys.stderr)
         sys.exit(1)
 
 

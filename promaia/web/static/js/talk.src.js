@@ -26,6 +26,11 @@ let playingNodes = [];
 // Wake Lock (keeps screen on during voice sessions)
 let wakeLock = null;
 
+// Real-Time Chat Sync State
+let textWs = null;
+let lastSentTextLocal = null;
+let lastReceivedTextLocal = null;
+
 // ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
@@ -150,6 +155,11 @@ function connectWebSocket() {
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.serverContent) {
+                if (msg.serverContent.control === 'hang_up') {
+                    console.log('[WS] Handled server hang-up request');
+                    if (conversationMode) stopConversation();
+                    return;
+                }
                 // Audio chunk recieved
                 if (msg.serverContent.modelTurn) {
                     const parts = msg.serverContent.modelTurn.parts;
@@ -160,6 +170,7 @@ function connectWebSocket() {
                         }
                         if (part.text) {
                             // Transcript or text payload
+                            lastReceivedTextLocal = part.text;
                             addMessage('assistant', part.text);
                         }
                     }
@@ -307,17 +318,24 @@ async function startCapture() {
 }
 
 function stopCapture() {
-    if (captureScriptNode) {
-        captureScriptNode.disconnect();
-        captureScriptNode = null;
-    }
-    if (captureCtx) {
-        captureCtx.close();
-        captureCtx = null;
-    }
-    if (captureStream) {
-        captureStream.getTracks().forEach(t => t.stop());
-        captureStream = null;
+    try {
+        if (captureScriptNode) {
+            try { captureScriptNode.disconnect(); } catch (e) {}
+            captureScriptNode = null;
+        }
+        if (captureCtx) {
+            // AudioContext.close() returns a promise, so catch rejection
+            captureCtx.close().catch(() => {});
+            captureCtx = null;
+        }
+        if (captureStream) {
+            captureStream.getTracks().forEach(t => {
+                try { t.stop(); } catch (e) {}
+            });
+            captureStream = null;
+        }
+    } catch (e) {
+        console.warn("[Capture] Teardown error:", e);
     }
 }
 
@@ -445,10 +463,33 @@ function stopConversation() {
     
     stopPlayback();
     stopCapture();
-    if (vad) vad.pause();
+    if (vad) {
+        try { vad.pause(); } catch(e) {}
+        try { vad.destroy(); } catch(e) {}
+        // Force kill any hidden streams the VAD might be holding onto
+        try {
+            if (vad.stream) { vad.stream.getTracks().forEach(t => t.stop()); }
+            if (vad.mediaStream) { vad.mediaStream.getTracks().forEach(t => t.stop()); }
+        } catch(e) {}
+        vad = null;
+    }
+    // Close playback context to fully release audio hardware
+    if (playCtx) {
+        playCtx.close().catch(() => {});
+        playCtx = null;
+        nextPlayTime = 0;
+    }
     
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
+    if (ws) {
+        // Strip handlers to prevent ghost callbacks after intentional close
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close(1000, 'user_hangup');
+        }
+        ws = null;
+        console.log('[WS] Force closed and nulled');
     }
 
     // Release Wake Lock
@@ -464,6 +505,7 @@ function stopConversation() {
 // ---------------------------------------------------------------------------
 async function sendText(text) {
     if (!text.trim()) return;
+    lastSentTextLocal = text;
     addMessage('user', text);
     setStatus('thinking');
 
@@ -600,3 +642,29 @@ document.addEventListener('visibilitychange', () => {
         console.warn('[Visibility] Page hidden during conversation — Wake Lock should prevent this');
     }
 });
+
+function connectTextLog() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    textWs = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream/text`);
+    textWs.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'chat_log') {
+                // Deduplicate if we originated it locally
+                if (msg.role === 'user' && msg.text === lastSentTextLocal) {
+                    lastSentTextLocal = null;
+                    return;
+                }
+                if (msg.role === 'assistant' && msg.text === lastReceivedTextLocal) {
+                    lastReceivedTextLocal = null;
+                    return;
+                }
+                addMessage(msg.role, msg.text);
+            }
+        } catch (e) {}
+    };
+    textWs.onclose = () => {
+        setTimeout(connectTextLog, 5000);
+    };
+}
+connectTextLog();

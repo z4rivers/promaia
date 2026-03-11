@@ -24,6 +24,32 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+active_text_listeners = set()
+
+@router.websocket("/stream/text")
+async def text_stream_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_text_listeners.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_text_listeners.remove(websocket)
+
+async def broadcast_chat_log(role: str, text: str):
+    dead_sockets = set()
+    for ws in active_text_listeners:
+        try:
+            await ws.send_json({
+                "type": "chat_log",
+                "role": role,
+                "text": text
+            })
+        except Exception:
+            dead_sockets.add(ws)
+    for ws in dead_sockets:
+        active_text_listeners.remove(ws)
+
 async def generate_session_review(transcript_log: list, rescued_memories: list = None):
     """Background task to summarize a completed voice session and propose memories to the dashboard."""
     if not transcript_log:
@@ -256,15 +282,39 @@ async def brain_stream(websocket: WebSocket):
 
     # 1. Inject Phase 10 MuninnDB Context (Compressed)
     system_ctx += (
-        "You're Promaia, Zack's AI. Keep responses conversational, brief, and direct. No markdown.\n"
-        "1. NO HALLUCINATING: If you hear silence or noise, STAY QUIET. Never fabricate speech.\n"
-        "2. MEMORY: Call 'save_conversation_memory' for facts/decisions. You MUST read staged memories aloud and get verbal confirmation ('Did I get that right?') before calling 'commit_staged_memories'.\n"
-        "3. CONFIRMATION: Confirm ONLY synthesized points. Read the EXACT statement you intend to store.\n"
-        "4. INTENT: Treat repeated identical messages as connection errors. Greetings are NOT memories.\n"
-        "5. FLOW: Don't interrupt Zack's focus with unnecessary questions.\n"
-        "6. PERSONALITY: Be direct, highly competent, no sycophantic filler.\n"
-        "7. VALUE HUNTING: Extract hidden insights or decisions from messy thoughts and proactively offer to save them.\n"
-        "8. EASTER EGG (rare, use sparingly — at most once every few months): On a genuinely open-ended question where you truly have no better answer than a guess, you MAY ask: 'Do you want an answer from me, or from a cat?' If they say cat, say 'Fair enough — maybecat.com' and nothing more. If they've done this before, 'Maybecat?' is valid shorthand you can offer. Never force it, never explain it, never repeat it too soon.\n"
+        "CRITICAL PRIORITY - THE FIRST ORDER OF BUSINESS: When Zack initiates a call and asks a question or makes a request, answering that immediate question and solving his issue is your FIRST AND ONLY priority. YOU MUST NOT interrupt him to ask about old items, and you MUST NOT bring up past unapproved sessions, calendar events, or background context before you have completely resolved his immediate issue. Do not derail him. Focus 100% on what he just said.\n\n"
+        
+        "You are Promaia. You are Zack's AI — not a generic assistant, not a search engine, not a phone tree. "
+        "You know him. You know his projects, his priorities, his style. You've been here through the work. "
+        "Talk like someone who's been in the room, not someone reading a briefing for the first time.\n\n"
+
+        "HOW YOU SOUND: Conversational. Brief. Direct. Like a sharp collaborator who respects his time. "
+        "No markdown, no bullet points, no numbered lists — this is a voice conversation. "
+        "Match his energy. If he's short, be short. If he's thinking out loud, think with him. "
+        "Never be sycophantic. Never say 'Great question!' or 'Absolutely!' — just answer.\n\n"
+
+        "SILENCE: If you hear silence or noise with no speech, say nothing. Do not fill dead air. "
+        "Do not fabricate words you think you heard. Silence is fine.\n\n"
+
+        "MEMORY: You have a tool called 'save_conversation_memory'. Use it for real substance only — "
+        "decisions, priorities, commitments, insights, action items. Not every sentence is a memory. "
+        "Casual chat, greetings, mic tests, thinking-out-loud filler — none of that gets staged. "
+        "When you do stage something, write it from ZACK'S perspective: 'Zack decided X' or 'Zack wants Y' — "
+        "never 'I saved X' or 'I noted Y.' You are invisible in the memory. "
+        "For clear decisions, say 'Saved.' and move on. For ambiguous but potentially important things, stage silently. "
+        "Only ask if something sounds important AND you genuinely can't parse what he means.\n\n"
+
+        "CONVERSATION: A reply is acknowledgment. Once something is discussed, it's discussed. "
+        "Don't circle back. Don't re-confirm. Don't ask 'did I get that right?' "
+        "If Zack is testing the microphone or testing audio, everything he says is hardware noise — "
+        "just confirm the test works and move on. Repeated identical messages are connection glitches, not speech.\n\n"
+
+        "PERSONALITY: You're competent and grounded. You have opinions when asked. "
+        "You push back when something doesn't make sense. You don't perform helpfulness — you just help. "
+        "You can be warm without being soft. You can be funny without trying.\n\n"
+        
+        "SYSTEM FEEDBACK: If Zack complains about YOU, your performance, a bug in the app, or gives you instructions on how you should behave differently (e.g. 'Stop doing that', 'You need to be faster', 'This button is broken'): DO NOT ARGUE. DO NOT EXPLAIN YOURSELF. DO NOT APOLOGIZE. "
+        "Simply say 'Feedback logged.' and IMMEDIATELY use the 'log_system_feedback' tool. This sends the issue directly to the developer agent who can actually fix your code. Do not try to solve systemic issues yourself.\n\n"
     )
     
     try:
@@ -303,8 +353,8 @@ async def brain_stream(websocket: WebSocket):
                 sum_text = s['summary'][:300] + "..." if len(s['summary']) > 300 else s['summary']
                 system_ctx += f"- [{dt_str}] [{status_label}] {sum_text}\n"
             system_ctx += (
-                "ACTION: Proactively confirm [UNAPPROVED] summaries with Zack to call 'commit_staged_memories'. "
-                "Treat [APPROVED] purely as background context.\n"
+                "These are background context only. NEVER ask about them unprompted. NEVER ask for verification of these items at the beginning of a call or before addressing his immediate problem. "
+                "Use them exclusively to maintain conversational continuity if he brings them up — never to re-open closed topics.\n"
             )
             logger.info(f"Live API populated with {len(recent_sessions)} compressed session summaries.")
     except Exception as e:
@@ -315,7 +365,7 @@ async def brain_stream(websocket: WebSocket):
         "function_declarations": [
             {
                 "name": "save_conversation_memory",
-                "description": "Stage a memory when a significant topic, decision, or fact is discussed. Do NOT call this for casual greetings.",
+                "description": "Stage a memory for significant decisions, facts, or commitments. Write the summary from the USER's perspective (e.g. 'Zack decided...' not 'I noted...'). Do NOT call for casual chat, greetings, or filler.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -373,6 +423,21 @@ async def brain_stream(websocket: WebSocket):
                     },
                     "required": ["hat_color"]
                 }
+            },
+            {
+                "name": "hang_up_call",
+                "description": "End the current voice call and hang up the connection. Use this ONLY when Zack explicitly says 'hang up', 'goodbye', 'end call', etc. Say your goodbye FIRST, then call this tool."
+            },
+            {
+                "name": "log_system_feedback",
+                "description": "Log a bug report, behavior correction, or system feature request directly to the developer codebase. Call this IMMEDIATELY whenever Zack gives feedback on your performance, complains about the app, or suggests an improvement.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "feedback": { "type": "STRING", "description": "The exact complaint, bug, or feedback Zack provided." }
+                    },
+                    "required": ["feedback"]
+                }
             }
         ]
     }
@@ -419,6 +484,7 @@ async def brain_stream(websocket: WebSocket):
                             text_msg = msg["clientContent"]["turns"][0]["parts"][0]["text"]
                             
                             transcript_log.append({"role": "user", "text": text_msg, "time": time.time()})
+                            await broadcast_chat_log("user", text_msg)
                             
                             await session.send_client_content(
                                 turns=[types.Content(parts=[types.Part.from_text(text=text_msg)])],
@@ -452,6 +518,7 @@ async def brain_stream(websocket: WebSocket):
                                         # Text/Transcript payload (can be logged or displayed)
                                         elif part.text:
                                             transcript_log.append({"role": "promaia", "text": part.text, "time": time.time()})
+                                            await broadcast_chat_log("assistant", part.text)
                                             await websocket.send_json({
                                                 "serverContent": {
                                                     "modelTurn": {
@@ -619,6 +686,49 @@ async def brain_stream(websocket: WebSocket):
                                             id=ft.id,
                                             response={"result": "mode_switched", "new_instructions": instruction}
                                         ))
+                                        
+                                    elif ft.name == "hang_up_call":
+                                        logger.info(f"Agent decided to hang up the call.")
+                                        tool_responses.append(types.FunctionResponse(
+                                            name=ft.name,
+                                            id=ft.id,
+                                            response={"result": "hanging_up"}
+                                        ))
+                                        await websocket.send_json({
+                                            "serverContent": {
+                                                "control": "hang_up"
+                                            }
+                                        })
+                                        
+                                    elif ft.name == "log_system_feedback":
+                                        args = ft.args
+                                        feedback = args.get("feedback")
+                                        logger.info(f"USER SUBMITTED SYSTEM FEEDBACK: {feedback}")
+                                        
+                                        try:
+                                            db = get_postgres_db()
+                                            vector_mgr = VectorDBManager()
+                                            await capture_memory(
+                                                db=db,
+                                                vector_mgr=vector_mgr,
+                                                content=f"[SYSTEM BUG/FEEDBACK]: {feedback}",
+                                                session_id="voice-session-feedback",
+                                                domain_name="system_feedback",
+                                                source="voice",
+                                                confidence=1.0
+                                            )
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "feedback_logged_to_devs"}
+                                            ))
+                                        except Exception as e:
+                                            logger.error(f"Failed to log system feedback: {e}", exc_info=True)
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "error_logging_feedback"}
+                                            ))
                                         
                                 if tool_responses:
                                     await session.send(input={"function_responses": tool_responses})
