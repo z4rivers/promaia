@@ -179,28 +179,53 @@ def cleanup_existing_processes():
 def main():
     print(f"Starting Promaia Unified Manager. Logging to {LOG_FILE.absolute()}")
     
-    # Kill anything already running to prevent address-in-use errors
-    cleanup_existing_processes()
+    LOCK_FILE = Path.home() / ".promaia" / "manager.lock"
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if LOCK_FILE.exists():
+        try:
+            pid = int(LOCK_FILE.read_text().strip())
+            os.kill(pid, 0)
+            print(f"Manager is already running (PID {pid}). Exiting to prevent circular restart.")
+            sys.exit(0)
+        except Exception:
+            pass # stale lock or not running
+            
+    LOCK_FILE.write_text(str(os.getpid()))
     
-    # Check if MuninnDB should be started.
-    env_path = Path(__file__).parent.parent / ".env"
-    muninn_enabled = True
-    if env_path.exists():
-        content = env_path.read_text(encoding="utf-8")
-        if "MUNINN_LOCAL=false" in content.lower():
-            muninn_enabled = False
-
-    if muninn_enabled:
-        print("Starting MuninnDB daemon...")
-        subprocess.run(["muninn", "start"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    processes = [
-        ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", "8000"], "WEB"),
-        ManagedProcess("Telegram Bot", [sys.executable, "-m", "promaia.telegram_cli", "start"], "TG"),
-        ManagedProcess("Agent Scheduler", [sys.executable, "-m", "promaia.agents.scheduler_cli", "start"], "SCHED")
-    ]
-
     try:
+        # Kill anything already running to prevent address-in-use errors
+        cleanup_existing_processes()
+        
+        # Check .env configuration
+        env_path = Path(__file__).parent.parent / ".env"
+        muninn_enabled = True
+        telegram_enabled = True
+        
+        if env_path.exists():
+            content = env_path.read_text(encoding="utf-8")
+            if "MUNINN_LOCAL=false" in content.lower():
+                muninn_enabled = False
+                
+            for line in content.splitlines():
+                if line.strip().startswith("TELEGRAM_WEBHOOK_URL="):
+                    val = line.split("=", 1)[1].strip().strip("'\"")
+                    if val:
+                        telegram_enabled = False
+                        print(f"TELEGRAM_WEBHOOK_URL is set ({val}). Skipping local Telegram Bot process.")
+
+        if muninn_enabled:
+            print("Starting MuninnDB daemon...")
+            subprocess.run(["muninn", "start"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        processes = [
+            ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", "8000"], "WEB"),
+            ManagedProcess("Agent Scheduler", [sys.executable, "-m", "promaia.agents.scheduler_cli", "start"], "SCHED")
+        ]
+        
+        if telegram_enabled:
+            # Insert before scheduler
+            processes.insert(1, ManagedProcess("Telegram Bot", [sys.executable, "-m", "promaia.telegram_cli", "start"], "TG"))
+
         for p in processes:
             p.start()
             time.sleep(1) # stagger startups slightly
@@ -230,6 +255,12 @@ def main():
             print("Stopping MuninnDB daemon...")
             subprocess.run(["muninn", "stop"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
+        if LOCK_FILE.exists():
+            try:
+                LOCK_FILE.unlink()
+            except Exception:
+                pass
+                
         print("Shutdown complete.")
 
 if __name__ == "__main__":
