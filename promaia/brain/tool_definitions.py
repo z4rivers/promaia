@@ -112,6 +112,41 @@ memory_tools = {
                 },
                 "required": ["query"]
             }
+        },
+        {
+            "name": "query_workspace",
+            "description": "Query Zack's digital workspace (Notion, Discord, Gmail) to find information, read documents, check on project status, or search for past communications. Call this when Zack asks about a project, a message, a task, or a document. Keep the search query concise.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "query": { "type": "STRING", "description": "The search query (e.g. 'unfinished stories in koii workspace', 'discord messages about the auth flow')" },
+                    "workspace": { "type": "STRING", "description": "Optional specific workspace name if mentioned (e.g. 'promaia', 'koii', 'zbrain')" }
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "write_content",
+            "description": "Generate a new document, draft, or newsletter based on given parameters. Do NOT provide the raw text here — this tool triggers an external generation process that saves the draft for Zack to review later.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "topic": { "type": "STRING", "description": "The topic or subject of the content to write" },
+                    "format_type": { "type": "STRING", "description": "The format (e.g. 'newsletter', 'project update', 'memo', 'outline')" }
+                },
+                "required": ["topic", "format_type"]
+            }
+        },
+        {
+            "name": "run_workspace_sync",
+            "description": "Trigger a background sync to pull the absolute newest data from Notion, Discord, and Gmail. Call this when Zack asks if there's anything new, or explicitly asks to trigger a sync.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "target": { "type": "STRING", "description": "What to sync (e.g. 'notion', 'discord', 'gmail', or 'all')" }
+                },
+                "required": ["target"]
+            }
         }
     ]
 }
