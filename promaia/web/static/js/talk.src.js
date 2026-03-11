@@ -9,27 +9,63 @@
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let vad = null;
-let conversationMode = false;
-let ws = null;
+const VoiceSessionState = {
+    vad: null,
+    conversationMode: false,
+    ws: null,
+    
+    // Audio Capture State
+    captureStream: null,
+    captureCtx: null,
+    captureScriptNode: null,
+    
+    // Audio Playback State
+    playCtx: null,
+    nextPlayTime: 0,
+    playingNodes: [],
+    
+    // Wake Lock
+    wakeLock: null,
+    
+    // Real-Time Chat Sync State
+    textWs: null,
+    lastSentTextLocal: null,
+    lastReceivedTextLocal: null,
+};
 
-// Audio Capture State
-let captureStream = null;
-let captureCtx = null;
-let captureScriptNode = null;
-
-// Audio Playback State
-let playCtx = null;
-let nextPlayTime = 0;
-let playingNodes = [];
-
-// Wake Lock (keeps screen on during voice sessions)
-let wakeLock = null;
-
-// Real-Time Chat Sync State
-let textWs = null;
-let lastSentTextLocal = null;
-let lastReceivedTextLocal = null;
+const AudioProcessingUtils = {
+    base64ToFloat32Pcm: function(base64Data) {
+        const binaryStr = window.atob(base64Data);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+            float32[i] = int16[i] / 32768; // normalize to -1.0 to 1.0
+        }
+        return float32;
+    },
+    
+    float32ToBase64Pcm: function(float32Array) {
+        // Convert Float32 to Int16
+        const int16Array = new Int16Array(float32Array.length);
+        for(let i=0; i<float32Array.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        
+        // Base64 encode
+        const uint8Array = new Uint8Array(int16Array.buffer);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+        }
+        return window.btoa(binary);
+    }
+};
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -145,19 +181,19 @@ function addMessage(role, text) {
 function connectWebSocket() {
     return new Promise((resolve, reject) => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream`);
+        VoiceSessionState.ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream`);
 
-        ws.onopen = () => {
+        VoiceSessionState.ws.onopen = () => {
             console.log('[WS] Connected to Promaia stream');
             resolve();
         };
 
-        ws.onmessage = (event) => {
+        VoiceSessionState.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.serverContent) {
                 if (msg.serverContent.control === 'hang_up') {
                     console.log('[WS] Handled server hang-up request');
-                    if (conversationMode) stopConversation();
+                    if (VoiceSessionState.conversationMode) stopConversation();
                     return;
                 }
                 // Audio chunk recieved
@@ -170,7 +206,7 @@ function connectWebSocket() {
                         }
                         if (part.text) {
                             // Transcript or text payload
-                            lastReceivedTextLocal = part.text;
+                            VoiceSessionState.lastReceivedTextLocal = part.text;
                             addMessage('assistant', part.text);
                         }
                     }
@@ -184,15 +220,15 @@ function connectWebSocket() {
             }
         };
 
-        ws.onclose = () => {
+        VoiceSessionState.ws.onclose = () => {
             console.log('[WS] Disconnected');
-            if (conversationMode) {
+            if (VoiceSessionState.conversationMode) {
                 setStatus('error', 'Connection lost');
                 stopConversation();
             }
         };
 
-        ws.onerror = (err) => {
+        VoiceSessionState.ws.onerror = (err) => {
             console.error('[WS] Error:', err);
             reject(err);
         };
@@ -203,61 +239,51 @@ function connectWebSocket() {
 // Audio Playback (Server -> Browser @ 24kHz)
 // ---------------------------------------------------------------------------
 function queuePlayback(base64Data) {
-    if (!playCtx) {
+    if (!VoiceSessionState.playCtx) {
         console.warn("Play context not initialized synchronously. Creating late (iOS may block this).");
-        playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        nextPlayTime = playCtx.currentTime;
+        VoiceSessionState.playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
     }
 
-    if (playCtx.state === 'suspended') {
-        playCtx.resume();
+    if (VoiceSessionState.playCtx.state === 'suspended') {
+        VoiceSessionState.playCtx.resume();
     }
 
-    // Decode Base64 to Int16 to Float32
-    const binaryStr = window.atob(base64Data);
-    const len = binaryStr.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-    }
-    const int16 = new Int16Array(bytes.buffer);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-        float32[i] = int16[i] / 32768; // normalize to -1.0 to 1.0
-    }
+    // Decode Base64 to Int16 to Float32 using pure helper
+    const float32 = AudioProcessingUtils.base64ToFloat32Pcm(base64Data);
 
     // Create Buffer
-    const buffer = playCtx.createBuffer(1, float32.length, 24000);
+    const buffer = VoiceSessionState.playCtx.createBuffer(1, float32.length, 24000);
     buffer.getChannelData(0).set(float32);
 
-    const source = playCtx.createBufferSource();
+    const source = VoiceSessionState.playCtx.createBufferSource();
     source.buffer = buffer;
-    source.connect(playCtx.destination);
+    source.connect(VoiceSessionState.playCtx.destination);
 
     // Schedule seamlessly back-to-back
-    if (nextPlayTime < playCtx.currentTime) {
-        nextPlayTime = playCtx.currentTime;
+    if (VoiceSessionState.nextPlayTime < VoiceSessionState.playCtx.currentTime) {
+        VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
     }
-    source.start(nextPlayTime);
-    nextPlayTime += buffer.duration;
+    source.start(VoiceSessionState.nextPlayTime);
+    VoiceSessionState.nextPlayTime += buffer.duration;
 
-    playingNodes.push(source);
+    VoiceSessionState.playingNodes.push(source);
     source.onended = () => {
-        playingNodes = playingNodes.filter(n => n !== source);
+        VoiceSessionState.playingNodes = VoiceSessionState.playingNodes.filter(n => n !== source);
         // If queue is completely empty, we are done speaking
-        if (playingNodes.length === 0 && conversationMode) {
+        if (VoiceSessionState.playingNodes.length === 0 && VoiceSessionState.conversationMode) {
             setStatus('listening');
         }
     };
 }
 
 function stopPlayback() {
-    playingNodes.forEach(node => {
+    VoiceSessionState.playingNodes.forEach(node => {
         try { node.stop(); } catch(e){}
     });
-    playingNodes = [];
-    if (playCtx) {
-        nextPlayTime = playCtx.currentTime;
+    VoiceSessionState.playingNodes = [];
+    if (VoiceSessionState.playCtx) {
+        VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
     }
 }
 
@@ -265,7 +291,7 @@ function stopPlayback() {
 // Audio Capture (Browser -> Server @ 16kHz)
 // ---------------------------------------------------------------------------
 async function startCapture() {
-    captureStream = await navigator.mediaDevices.getUserMedia({ 
+    VoiceSessionState.captureStream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
             echoCancellation: true,
             noiseSuppression: true,
@@ -275,64 +301,52 @@ async function startCapture() {
     
     // Gemini Live API expects 16kHz audio out of the box
     // Context is normally created synchronously during micBtn click to bypass iOS Safari blocking
-    if (!captureCtx) {
-        captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (!VoiceSessionState.captureCtx) {
+        VoiceSessionState.captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
     }
-    const source = captureCtx.createMediaStreamSource(captureStream);
+    const source = VoiceSessionState.captureCtx.createMediaStreamSource(VoiceSessionState.captureStream);
     
     // Create script processor to read raw PCM frames
-    captureScriptNode = captureCtx.createScriptProcessor(4096, 1, 1);
+    VoiceSessionState.captureScriptNode = VoiceSessionState.captureCtx.createScriptProcessor(4096, 1, 1);
     
-    captureScriptNode.onaudioprocess = (e) => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    VoiceSessionState.captureScriptNode.onaudioprocess = (e) => {
+        if (!VoiceSessionState.ws || VoiceSessionState.ws.readyState !== WebSocket.OPEN) return;
         
         const float32Array = e.inputBuffer.getChannelData(0);
-        // Convert Float32 to Int16
-        const int16Array = new Int16Array(float32Array.length);
-        for(let i=0; i<float32Array.length; i++) {
-            let s = Math.max(-1, Math.min(1, float32Array[i]));
-            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
+        // Convert Float32 to Int16 to Base64 using pure helper
+        const b64 = AudioProcessingUtils.float32ToBase64Pcm(float32Array);
         
-        // Base64 encode
-        const uint8Array = new Uint8Array(int16Array.buffer);
-        let binary = '';
-        for (let i = 0; i < uint8Array.byteLength; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-        }
-        const b64 = window.btoa(binary);
-        
-        ws.send(JSON.stringify({
+        VoiceSessionState.ws.send(JSON.stringify({
             realtimeInput: { 
                 mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }] 
             }
         }));
     };
     
-    source.connect(captureScriptNode);
+    source.connect(VoiceSessionState.captureScriptNode);
     // Connect to a silent gain node to prevent local mic echo
-    const silentGain = captureCtx.createGain();
+    const silentGain = VoiceSessionState.captureCtx.createGain();
     silentGain.gain.value = 0;
-    captureScriptNode.connect(silentGain);
-    silentGain.connect(captureCtx.destination);
+    VoiceSessionState.captureScriptNode.connect(silentGain);
+    silentGain.connect(VoiceSessionState.captureCtx.destination);
 }
 
 function stopCapture() {
     try {
-        if (captureScriptNode) {
-            try { captureScriptNode.disconnect(); } catch (e) {}
-            captureScriptNode = null;
+        if (VoiceSessionState.captureScriptNode) {
+            try { VoiceSessionState.captureScriptNode.disconnect(); } catch (e) {}
+            VoiceSessionState.captureScriptNode = null;
         }
-        if (captureCtx) {
+        if (VoiceSessionState.captureCtx) {
             // AudioContext.close() returns a promise, so catch rejection
-            captureCtx.close().catch(() => {});
-            captureCtx = null;
+            VoiceSessionState.captureCtx.close().catch(() => {});
+            VoiceSessionState.captureCtx = null;
         }
-        if (captureStream) {
-            captureStream.getTracks().forEach(t => {
+        if (VoiceSessionState.captureStream) {
+            VoiceSessionState.captureStream.getTracks().forEach(t => {
                 try { t.stop(); } catch (e) {}
             });
-            captureStream = null;
+            VoiceSessionState.captureStream = null;
         }
     } catch (e) {
         console.warn("[Capture] Teardown error:", e);
@@ -350,15 +364,15 @@ async function initVAD() {
         throw new Error("VAD library not loaded from CDN yet.");
     }
     
-    // Cleanup old vad if swapping modes — must fully destroy to release mic stream
-    if (vad) {
-        try { vad.pause(); } catch(e) {}
-        try { vad.destroy(); } catch(e) {}
+    // Cleanup old VoiceSessionState.vad if swapping modes — must fully destroy to release mic stream
+    if (VoiceSessionState.vad) {
+        try { VoiceSessionState.vad.pause(); } catch(e) {}
+        try { VoiceSessionState.vad.destroy(); } catch(e) {}
         try {
-            if (vad.stream) { vad.stream.getTracks().forEach(t => t.stop()); }
-            if (vad.mediaStream) { vad.mediaStream.getTracks().forEach(t => t.stop()); }
+            if (VoiceSessionState.vad.stream) { VoiceSessionState.vad.stream.getTracks().forEach(t => t.stop()); }
+            if (VoiceSessionState.vad.mediaStream) { VoiceSessionState.vad.mediaStream.getTracks().forEach(t => t.stop()); }
         } catch(e) {}
-        vad = null;
+        VoiceSessionState.vad = null;
     }
 
     const modeConfig = currentVadMode === 'driving' ? {
@@ -375,17 +389,17 @@ async function initVAD() {
         preSpeechPadFrames: 3,
     };
 
-    vad = await window.vad.MicVAD.new({
+    VoiceSessionState.vad = await window.vad.MicVAD.new({
         ...modeConfig,
 
         onSpeechStart: () => {
             // Only trigger interruption if Promaia is actually speaking
-            if (playingNodes.length > 0) {
+            if (VoiceSessionState.playingNodes.length > 0) {
                 console.log('[VAD] Speech detected during playback - Interrupting');
                 stopPlayback();
                 
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ 
+                if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
+                    VoiceSessionState.ws.send(JSON.stringify({ 
                         clientContent: { 
                             turns: [{ role: "user", parts: [{ text: "Stop." }] }],
                             turnComplete: true 
@@ -400,7 +414,7 @@ async function initVAD() {
         onSpeechEnd: () => {
             console.log('[VAD] User stopped talking');
             // Gemini handles STT automatically, we just update the UI state
-            if (playingNodes.length === 0) {
+            if (VoiceSessionState.playingNodes.length === 0) {
                 setStatus('thinking');
             }
         },
@@ -412,7 +426,7 @@ async function initVAD() {
 // Lifecycle
 // ---------------------------------------------------------------------------
 async function startConversation() {
-    conversationMode = true;
+    VoiceSessionState.conversationMode = true;
     micBtn.classList.add('active');
     endBtn.classList.add('visible');
     feedsEl.classList.add('dimmed');
@@ -420,15 +434,15 @@ async function startConversation() {
 
     // Acquire Wake Lock to prevent screen sleep during voice session
     try {
-        if ('wakeLock' in navigator) {
-            wakeLock = await navigator.wakeLock.request('screen');
+        if ('VoiceSessionState.wakeLock' in navigator) {
+            VoiceSessionState.wakeLock = await navigator.wakeLock.request('screen');
             console.log('[WakeLock] Screen lock acquired — screen will stay on');
-            wakeLock.addEventListener('release', () => {
+            VoiceSessionState.wakeLock.addEventListener('release', () => {
                 console.log('[WakeLock] Released');
                 // Re-acquire if still in conversation (e.g. after tab switch back)
-                if (conversationMode && 'wakeLock' in navigator) {
+                if (VoiceSessionState.conversationMode && 'VoiceSessionState.wakeLock' in navigator) {
                     navigator.wakeLock.request('screen').then(wl => {
-                        wakeLock = wl;
+                        VoiceSessionState.wakeLock = wl;
                         console.log('[WakeLock] Re-acquired after release');
                     }).catch(() => {});
                 }
@@ -442,11 +456,11 @@ async function startConversation() {
         console.log("Starting conversation sequence...");
         await connectWebSocket();
         console.log("WS connected. Init VAD...");
-        if (!vad) await initVAD();
+        if (!VoiceSessionState.vad) await initVAD();
         console.log("VAD Init'd. Starting capture...");
         await startCapture();
         console.log("Capture started. Starting VAD...");
-        vad.start();
+        VoiceSessionState.vad.start();
         playTone('start');
         setStatus('listening');
     } catch (err) {
@@ -459,7 +473,7 @@ async function startConversation() {
 }
 
 function stopConversation() {
-    conversationMode = false;
+    VoiceSessionState.conversationMode = false;
     micBtn.classList.remove('active');
     endBtn.classList.remove('visible');
     feedsEl.classList.remove('dimmed');
@@ -468,39 +482,39 @@ function stopConversation() {
     
     stopPlayback();
     stopCapture();
-    if (vad) {
-        try { vad.pause(); } catch(e) {}
-        try { vad.destroy(); } catch(e) {}
+    if (VoiceSessionState.vad) {
+        try { VoiceSessionState.vad.pause(); } catch(e) {}
+        try { VoiceSessionState.vad.destroy(); } catch(e) {}
         // Force kill any hidden streams the VAD might be holding onto
         try {
-            if (vad.stream) { vad.stream.getTracks().forEach(t => t.stop()); }
-            if (vad.mediaStream) { vad.mediaStream.getTracks().forEach(t => t.stop()); }
+            if (VoiceSessionState.vad.stream) { VoiceSessionState.vad.stream.getTracks().forEach(t => t.stop()); }
+            if (VoiceSessionState.vad.mediaStream) { VoiceSessionState.vad.mediaStream.getTracks().forEach(t => t.stop()); }
         } catch(e) {}
-        vad = null;
+        VoiceSessionState.vad = null;
     }
     // Close playback context to fully release audio hardware
-    if (playCtx) {
-        playCtx.close().catch(() => {});
-        playCtx = null;
-        nextPlayTime = 0;
+    if (VoiceSessionState.playCtx) {
+        VoiceSessionState.playCtx.close().catch(() => {});
+        VoiceSessionState.playCtx = null;
+        VoiceSessionState.nextPlayTime = 0;
     }
     
-    if (ws) {
+    if (VoiceSessionState.ws) {
         // Strip handlers to prevent ghost callbacks after intentional close
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.onmessage = null;
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-            ws.close(1000, 'user_hangup');
+        VoiceSessionState.ws.onclose = null;
+        VoiceSessionState.ws.onerror = null;
+        VoiceSessionState.ws.onmessage = null;
+        if (VoiceSessionState.ws.readyState === WebSocket.OPEN || VoiceSessionState.ws.readyState === WebSocket.CONNECTING) {
+            VoiceSessionState.ws.close(1000, 'user_hangup');
         }
-        ws = null;
+        VoiceSessionState.ws = null;
         console.log('[WS] Force closed and nulled');
     }
 
     // Release Wake Lock
-    if (wakeLock) {
-        wakeLock.release().catch(() => {});
-        wakeLock = null;
+    if (VoiceSessionState.wakeLock) {
+        VoiceSessionState.wakeLock.release().catch(() => {});
+        VoiceSessionState.wakeLock = null;
         console.log('[WakeLock] Released on conversation end');
     }
 }
@@ -510,12 +524,12 @@ function stopConversation() {
 // ---------------------------------------------------------------------------
 async function sendText(text) {
     if (!text.trim()) return;
-    lastSentTextLocal = text;
+    VoiceSessionState.lastSentTextLocal = text;
     addMessage('user', text);
     setStatus('thinking');
 
     // Auto-connect WebSocket if not already open (text-only, no mic needed)
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
+    if (!VoiceSessionState.ws || VoiceSessionState.ws.readyState !== WebSocket.OPEN) {
         try {
             await connectWebSocket();
         } catch (err) {
@@ -525,7 +539,7 @@ async function sendText(text) {
         }
     }
 
-    ws.send(JSON.stringify({ 
+    VoiceSessionState.ws.send(JSON.stringify({ 
         clientContent: { 
             turns: [{ role: "user", parts: [{ text: text }] }],
             turnComplete: true 
@@ -541,46 +555,46 @@ micBtn.addEventListener('click', () => {
     
     // 1. Force completely synchronous initialization of ALL AudioContexts for iOS Safari
     try {
-        if (!playCtx) {
-            playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-            nextPlayTime = playCtx.currentTime;
+        if (!VoiceSessionState.playCtx) {
+            VoiceSessionState.playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
             
             // Hack to unlock iOS audio output immediately
-            const osc = playCtx.createOscillator();
-            osc.connect(playCtx.destination);
+            const osc = VoiceSessionState.playCtx.createOscillator();
+            osc.connect(VoiceSessionState.playCtx.destination);
             osc.start(0);
             osc.stop(0.001);
-        } else if (playCtx.state === 'suspended') {
-            playCtx.resume();
+        } else if (VoiceSessionState.playCtx.state === 'suspended') {
+            VoiceSessionState.playCtx.resume();
         }
 
-        if (!captureCtx) {
-            captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        if (!VoiceSessionState.captureCtx) {
+            VoiceSessionState.captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             
             // Hack to unlock iOS audio input pipeline immediately
-            const osc2 = captureCtx.createOscillator();
-            osc2.connect(captureCtx.destination);
+            const osc2 = VoiceSessionState.captureCtx.createOscillator();
+            osc2.connect(VoiceSessionState.captureCtx.destination);
             osc2.start(0);
             osc2.stop(0.001);
-        } else if (captureCtx.state === 'suspended') {
-            captureCtx.resume();
+        } else if (VoiceSessionState.captureCtx.state === 'suspended') {
+            VoiceSessionState.captureCtx.resume();
         }
     } catch (e) {
         console.error("Audio Context Unlock Error:", e);
     }
 
-    if (!conversationMode) {
+    if (!VoiceSessionState.conversationMode) {
         startConversation();
     } else {
         // If already in conversation mode, a tap on the mic acts as a manual "Interrupt" / "Stop Talking" button
         console.log('[UI] Manual Interrupt triggered via mic button');
-        if (playingNodes.length > 0) {
+        if (VoiceSessionState.playingNodes.length > 0) {
             stopPlayback();
         }
         
         // Send explicit turnComplete interrupt to tell Gemini to stop talking and listen
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ 
+        if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
+            VoiceSessionState.ws.send(JSON.stringify({ 
                 clientContent: { 
                     turns: [{ role: "user", parts: [{ text: "Stop." }] }],
                     turnComplete: true 
@@ -593,7 +607,7 @@ micBtn.addEventListener('click', () => {
 
 endBtn.addEventListener('click', () => {
     if (navigator.vibrate) navigator.vibrate(50);
-    if (conversationMode) {
+    if (VoiceSessionState.conversationMode) {
         console.log('[UI] Conversation stopped via End Call button');
         stopConversation();
     }
@@ -606,10 +620,10 @@ vadModeBtns.forEach(btn => {
         currentVadMode = btn.dataset.mode;
         
         // If we are currently in a conversation, we need to hot-swap the VAD
-        if (conversationMode && vad) {
+        if (VoiceSessionState.conversationMode && VoiceSessionState.vad) {
             console.log(`[VAD] Hot-swapping to ${currentVadMode} mode`);
             await initVAD();
-            vad.start();
+            VoiceSessionState.vad.start();
         }
     });
 });
@@ -691,32 +705,32 @@ cameraInput.addEventListener('change', async (e) => {
 // Screen sleep handling — DON'T kill conversation, just log
 // Wake Lock keeps screen on; if it fails, we still want audio to survive
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden && conversationMode) {
+    if (document.hidden && VoiceSessionState.conversationMode) {
         console.warn('[Visibility] Page hidden during conversation — Wake Lock should prevent this');
     }
 });
 
 function connectTextLog() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    textWs = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream/text`);
-    textWs.onmessage = (event) => {
+    VoiceSessionState.textWs = new WebSocket(`${protocol}//${window.location.host}/api/brain/stream/text`);
+    VoiceSessionState.textWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
             if (msg.type === 'chat_log') {
                 // Deduplicate if we originated it locally
-                if (msg.role === 'user' && msg.text === lastSentTextLocal) {
-                    lastSentTextLocal = null;
+                if (msg.role === 'user' && msg.text === VoiceSessionState.lastSentTextLocal) {
+                    VoiceSessionState.lastSentTextLocal = null;
                     return;
                 }
-                if (msg.role === 'assistant' && msg.text === lastReceivedTextLocal) {
-                    lastReceivedTextLocal = null;
+                if (msg.role === 'assistant' && msg.text === VoiceSessionState.lastReceivedTextLocal) {
+                    VoiceSessionState.lastReceivedTextLocal = null;
                     return;
                 }
                 addMessage(msg.role, msg.text);
             }
         } catch (e) {}
     };
-    textWs.onclose = () => {
+    VoiceSessionState.textWs.onclose = () => {
         setTimeout(connectTextLog, 5000);
     };
 }
