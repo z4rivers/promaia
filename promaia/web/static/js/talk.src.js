@@ -350,9 +350,15 @@ async function initVAD() {
         throw new Error("VAD library not loaded from CDN yet.");
     }
     
-    // Cleanup old vad if swapping modes
+    // Cleanup old vad if swapping modes — must fully destroy to release mic stream
     if (vad) {
         try { vad.pause(); } catch(e) {}
+        try { vad.destroy(); } catch(e) {}
+        try {
+            if (vad.stream) { vad.stream.getTracks().forEach(t => t.stop()); }
+            if (vad.mediaStream) { vad.mediaStream.getTracks().forEach(t => t.stop()); }
+        } catch(e) {}
+        vad = null;
     }
 
     const modeConfig = currentVadMode === 'driving' ? {
@@ -373,13 +379,11 @@ async function initVAD() {
         ...modeConfig,
 
         onSpeechStart: () => {
-            console.log('[VAD] Speech started - Interruption triggered');
-            
-            // 11.4: The Interruption Mechanism
+            // Only trigger interruption if Promaia is actually speaking
             if (playingNodes.length > 0) {
-                stopPlayback(); // stop local audio echo immediately
+                console.log('[VAD] Speech detected during playback - Interrupting');
+                stopPlayback();
                 
-                // Send explicit turnComplete interrupt to tell Gemini to stop talking and listen
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ 
                         clientContent: { 
@@ -388,8 +392,9 @@ async function initVAD() {
                         } 
                     }));
                 }
+                setStatus('listening');
             }
-            setStatus('listening');
+            // If not speaking, ignore — Gemini handles speech detection via its own audio stream
         },
 
         onSpeechEnd: () => {
