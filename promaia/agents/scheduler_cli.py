@@ -21,6 +21,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 from promaia.utils.config import load_environment
 load_environment()

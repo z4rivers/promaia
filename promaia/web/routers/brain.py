@@ -438,6 +438,30 @@ async def brain_stream(websocket: WebSocket):
                     },
                     "required": ["feedback"]
                 }
+            },
+            {
+                "name": "create_action",
+                "description": "Create a new action item or reminder for Zack. Requires title, optional due date, and domain.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "description": { "type": "STRING", "description": "Action item description/title" },
+                        "due_date": { "type": "STRING", "description": "Due date (e.g. YYYY-MM-DD) or 'ASAP' (optional)" },
+                        "domain": { "type": "STRING", "description": "Domain/project (e.g. 'heatpup', 'promaia', 'personal')" }
+                    },
+                    "required": ["description", "domain"]
+                }
+            },
+            {
+                "name": "recall_memory",
+                "description": "Recall specific facts or context from MuninnDB based on a semantic search query.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "query": { "type": "STRING", "description": "The concept or fact you are trying to remember." }
+                    },
+                    "required": ["query"]
+                }
             }
         ]
     }
@@ -728,6 +752,67 @@ async def brain_stream(websocket: WebSocket):
                                                 name=ft.name,
                                                 id=ft.id,
                                                 response={"result": "error_logging_feedback"}
+                                            ))
+                                            
+                                    elif ft.name == "create_action":
+                                        args = ft.args
+                                        try:
+                                            db = get_postgres_db()
+                                            db.execute(
+                                                """
+                                                INSERT INTO brain.actions (description, due_date, domain, status, created_at)
+                                                VALUES (%s, %s, %s, 'pending', NOW())
+                                                """,
+                                                (args.get("description"), args.get("due_date"), args.get("domain"))
+                                            )
+                                            logger.info(f"Successfully created action item: {args.get('description')}")
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "action_created"}
+                                            ))
+                                        except Exception as e:
+                                            logger.error(f"Failed to create action item: {e}", exc_info=True)
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "error_creating_action", "error": str(e)}
+                                            ))
+                                            
+                                    elif ft.name == "recall_memory":
+                                        args = ft.args
+                                        query = args.get("query")
+                                        try:
+                                            from promaia.brain.muninn import get_muninn
+                                            muninn = await get_muninn()
+                                            if muninn:
+                                                res = await muninn.activate([query], max_results=3)
+                                                activations = res.get("activations", [])
+                                                if activations:
+                                                    mem_text = "\n".join(f"- {a['content']}" for a in activations)
+                                                    tool_responses.append(types.FunctionResponse(
+                                                        name=ft.name,
+                                                        id=ft.id,
+                                                        response={"result": "memory_recalled", "memories": mem_text}
+                                                    ))
+                                                else:
+                                                    tool_responses.append(types.FunctionResponse(
+                                                        name=ft.name,
+                                                        id=ft.id,
+                                                        response={"result": "no_memories_found"}
+                                                    ))
+                                            else:
+                                                tool_responses.append(types.FunctionResponse(
+                                                    name=ft.name,
+                                                    id=ft.id,
+                                                    response={"result": "muninndb_offline"}
+                                                ))
+                                        except Exception as e:
+                                            logger.error(f"Failed to recall memory: {e}", exc_info=True)
+                                            tool_responses.append(types.FunctionResponse(
+                                                name=ft.name,
+                                                id=ft.id,
+                                                response={"result": "error_recalling_memory"}
                                             ))
                                         
                                 if tool_responses:

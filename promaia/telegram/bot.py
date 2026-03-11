@@ -14,7 +14,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.utils.backoff import BackoffConfig
 
 from promaia.telegram.auth import WhitelistMiddleware
-from promaia.telegram.handlers import commands, messages, voice, replies
+from promaia.telegram.handlers import commands, messages, voice, replies, photos
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,10 @@ def _setup_dispatcher() -> tuple[Bot, Dispatcher]:
     # Register whitelist middleware on all incoming messages
     dp.message.middleware(WhitelistMiddleware())
 
-    # Include routers in order: commands > voice > replies > messages (catch-all last)
+    # Include routers in order: commands > voice > photos > replies > messages (catch-all last)
     dp.include_router(commands.router)
     dp.include_router(voice.router)
+    dp.include_router(photos.router)
     dp.include_router(replies.router)
     dp.include_router(messages.router)
 

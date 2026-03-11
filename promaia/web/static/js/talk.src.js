@@ -635,6 +635,54 @@ textField.addEventListener('keydown', (e) => {
     }
 });
 
+// Camera upload handling
+const cameraBtn = document.getElementById('camera-toggle');
+const cameraInput = document.getElementById('camera-input');
+
+cameraBtn.addEventListener('click', () => {
+    cameraInput.click();
+});
+
+cameraInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (navigator.vibrate) navigator.vibrate(50);
+    setStatus('thinking', 'Analyzing photo...');
+    
+    // Add visual feedback to chat
+    addMessage('user', '[Sent a photo]');
+
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+        const response = await fetch('/api/capture', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            addMessage('assistant', `I saved this to memory:\n\n${data.description}`);
+            setStatus('idle');
+        } else {
+            console.error('Capture error:', data);
+            addMessage('assistant', `Failed to process image: ${data.detail || data.message || 'Unknown error'}`);
+            setStatus('error', 'Analysis failed');
+            setTimeout(() => setStatus('idle'), 3000);
+        }
+    } catch (err) {
+        console.error('Network error during upload:', err);
+        addMessage('assistant', 'Network error while uploading photo.');
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+    }
+    
+    // Reset file input
+    cameraInput.value = '';
+});
+
 // Screen sleep handling — DON'T kill conversation, just log
 // Wake Lock keeps screen on; if it fails, we still want audio to survive
 document.addEventListener('visibilitychange', () => {
