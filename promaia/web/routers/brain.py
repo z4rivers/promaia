@@ -51,7 +51,7 @@ async def _refresh_single(key: str):
             from promaia.brain.context_loaders import get_muninn_context
             entry["text"] = await asyncio.wait_for(get_muninn_context(), timeout=4.0)
         elif key == "prompt":
-            prompt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "prompts", "voice_agent_system.md")
+            prompt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "prompts", "voice_agent_system.md")
             with open(prompt_path, "r", encoding="utf-8") as f:
                 entry["text"] = f.read()
         entry["ts"] = time.time()
@@ -593,7 +593,7 @@ async def brain_stream(websocket: WebSocket):
                                     tool_responses.append(func_res)
                                 
                                 if tool_responses:
-                                    await session.send(input={"function_responses": tool_responses})
+                                    await session.send(input=tool_responses)
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
