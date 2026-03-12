@@ -22,10 +22,10 @@ class YouTubeIngester:
     Summarizes them via LLM and stores them in MuninnDB.
     """
     def __init__(self):
-        # We need GOOGLE_API_KEY for YouTube Data API
-        self.api_key = os.getenv("GOOGLE_API_KEY")
+        # We need YOUTUBE_API_KEY for YouTube Data API (fallback to GOOGLE_API_KEY)
+        self.api_key = os.getenv("YOUTUBE_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            logger.warning("GOOGLE_API_KEY not found. YouTubeIngester cannot run.")
+            logger.warning("YOUTUBE_API_KEY not found. YouTubeIngester cannot run.")
             
         self.youtube = build('youtube', 'v3', developerKey=self.api_key) if self.api_key else None
         self.llm = PromaiLLMAdapter()
@@ -77,9 +77,19 @@ class YouTubeIngester:
     def get_transcript(self, video_id: str) -> str:
         """Fetch the transcript text for a video."""
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            from youtube_transcript_api import YouTubeTranscriptApi
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
+            
+            try:
+                # Try manually created first
+                transcript = transcript_list.find_manually_created_transcript(['en'])
+            except:
+                # Fallback to generated
+                transcript = transcript_list.find_generated_transcript(['en'])
+                
             formatter = TextFormatter()
-            return formatter.format_transcript(transcript)
+            return formatter.format_transcript(transcript.fetch())
         except Exception as e:
             logger.error(f"Failed to fetch transcript for {video_id}: {e}")
             return None
