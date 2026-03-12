@@ -200,4 +200,6 @@ async def health_check():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     host = os.getenv("HOST", "0.0.0.0")
-    uvicorn.run(app, host=host, port=port)
+    # Use reload=True and import string to enable Uvicorn's process manager.
+    # This prevents Windows from stranding port 8000 on Ctrl+C.
+    uvicorn.run("promaia.web.main:app", host=host, port=port, reload=True)

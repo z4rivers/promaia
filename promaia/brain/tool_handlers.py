@@ -461,12 +461,18 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
             # Run asynchronously so we don't block the voice bridge
             asyncio.create_task(run_ingestion())
             
-            # Immediately pull the EXISTING cache to feed the agent now
+            # Immediately pull the EXISTING cache to feed the agent now, but truncate to fit in WS payload bounds
             from promaia.storage.postgres_db import get_postgres_db
             db = get_postgres_db()
             recent = db.fetch_all("SELECT content FROM brain.memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
             
-            summaries = "\n\n".join([r.get("content", "") for r in recent])
+            summary_list = []
+            for r in recent:
+                text = r.get("content", "")
+                if len(text) > 500:
+                    text = text[:500] + "... [TRUNCATED FOR LENGTH. USE RECALL_MEMORY OR SEARCH_BRAIN IF YOU NEED THE FULL TRANSCRIPT]"
+                summary_list.append(text)
+            summaries = "\n\n".join(summary_list)
             
             return types.FunctionResponse(
                 name=ft.name,
