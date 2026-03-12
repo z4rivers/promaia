@@ -324,13 +324,13 @@
         </summary>
         
         <div style="padding: var(--space-md, 16px); display: flex; flex-direction: column; gap: var(--space-md, 16px);">
-            <div id="maia-session-feed" style="background: var(--bg-card-hover); border-radius: var(--radius-sm); padding: var(--space-md, 16px); min-height: 120px; max-height: 250px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px;">
+            <div id="maia-session-feed" style="background: var(--bg-card-hover); border-radius: var(--radius-sm); padding: var(--space-md, 16px); min-height: 180px; max-height: 350px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px;">
                 <div style="color: var(--text-muted); font-style: italic; text-align: center; margin-top: auto; margin-bottom: auto;">Engine standing by...</div>
             </div>
 
-            <div style="display: flex; gap: var(--space-sm, 8px);">
-                <input type="text" id="maia-chat-input" placeholder="Query Muninn, run a tool, or chat natively..." style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem;">
-                <button id="maia-send-btn" style="padding: 8px 16px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem;">Engage</button>
+            <div style="display: flex; gap: var(--space-sm, 8px); align-items: flex-end;">
+                <textarea id="maia-chat-input" placeholder="Query Muninn, run a tool, or chat natively..." rows="3" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem; resize: vertical; min-height: 60px;"></textarea>
+                <button id="maia-send-btn" style="padding: 12px 20px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; align-self: flex-end;">Engage</button>
             </div>
         </div>
     </details>

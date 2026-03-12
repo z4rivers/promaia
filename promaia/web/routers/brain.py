@@ -118,9 +118,10 @@ async def api_capture_commit(req: CommitCaptureRequest):
     try:
         from promaia.brain.core.memory_pipeline import capture_memory
         from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.vector_db import VectorDBManager
         db = get_postgres_db()
         # Dual-writes to MuninnDB
-        capture_memory(db, content, domain="promaia_codebase", source="git_hook")
+        await capture_memory(db=db, vector_mgr=VectorDBManager(), content=content, session_id=req.commit_hash, domain_name="promaia_codebase", source="git_hook")
         
         # Broadcast that a commit was captured
         await broadcast_maia_activity("Captured new branch commit into permanent memory.")
@@ -434,34 +435,7 @@ async def brain_stream(websocket: WebSocket):
     except Exception as e:
         logger.warning(f"Muninn context fetch for Live API failed: {e}. Degrading gracefully.")
 
-    # 2. Inject recent conversation summaries (Compressed)
-    try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
-        recent_sessions = db.fetch_all(
-            """
-            SELECT summary, status, created_at 
-            FROM brain.audio_session_reviews 
-            WHERE summary IS NOT NULL AND status IN ('pending', 'accepted')
-            ORDER BY created_at DESC 
-            LIMIT 2
-            """
-        )
-        if recent_sessions:
-            system_ctx += "\n[RECENT CONVERSATIONS]\n"
-            for s in recent_sessions:
-                dt_str = s['created_at'].strftime("%Y-%m-%d %H:%M") if hasattr(s['created_at'], 'strftime') else str(s['created_at'])
-                status_label = "UNAPPROVED" if s['status'] == 'pending' else "APPROVED"
-                # Token budget: limit summary length
-                sum_text = s['summary'][:300] + "..." if len(s['summary']) > 300 else s['summary']
-                system_ctx += f"- [{dt_str}] [{status_label}] {sum_text}\n"
-            system_ctx += (
-                "These are background context. Use them to maintain conversational continuity "
-                "when he brings them up. His immediate question always comes first.\n"
-            )
-            logger.info(f"Live API populated with {len(recent_sessions)} compressed session summaries.")
-    except Exception as e:
-        logger.warning(f"Failed to fetch recent sessions for context: {e}")
+    # NOTE: audio_session_reviews context injection removed — queue abolished in Voice Intelligence Pipeline.\n
 
     # 11.5 Tool Definitions for Staging and Committing Memories
     from promaia.brain.tool_definitions import memory_tools
@@ -539,10 +513,19 @@ async def brain_stream(websocket: WebSocket):
                                                     }
                                                 }
                                             })
-                                        # Text/Transcript payload (can be logged or displayed)
+                                        # Text/Transcript payload — filter out internal tool-reasoning narration
                                         elif part.text:
                                             transcript_log.append({"role": "promaia", "text": part.text, "time": time.time()})
-                                            await broadcast_chat_log("assistant", part.text)
+                                            # Only broadcast clean spoken responses, not tool-call narration
+                                            # Tool reasoning starts with markdown bold (e.g. "**Logging User Feedback**")
+                                            # or references tool names — this is internal and should never face the user
+                                            _t = part.text.strip()
+                                            _is_tool_narration = (
+                                                _t.startswith("**") or
+                                                "tool" in _t.lower() and any(kw in _t.lower() for kw in ["i'll", "i plan", "i am", "utilize", "capture", "log_system", "save_conversation"])
+                                            )
+                                            if not _is_tool_narration:
+                                                await broadcast_chat_log("assistant", part.text)
                                             await websocket.send_json({
                                                 "serverContent": {
                                                     "modelTurn": {

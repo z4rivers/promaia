@@ -19,10 +19,15 @@
     max-width: var(--page-max-width, 1120px);
     max-height: 50vh;
     z-index: 45;
-    display: flex;
+    display: none; /* Hidden by default — shown only when voice is active */
     flex-direction: column;
     justify-content: flex-end;
-    pointer-events: none; /* Let clicks pass through to dashboard when empty */
+    pointer-events: none;
+}
+
+/* Show conversation overlay only when dashboard is dimmed (voice active) */
+.dashboard.dimmed ~ .talk-conversation {
+    display: flex;
 }
 
 #messages {
@@ -82,6 +87,12 @@
     text-align: center;
     z-index: 50;
     pointer-events: none;
+    display: none; /* Hidden by default */
+}
+
+/* Show status only when voice is active */
+.dashboard.dimmed ~ .talk-status {
+    display: block;
 }
 .talk-status-label {
     display: inline-block;

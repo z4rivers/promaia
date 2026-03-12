@@ -80,7 +80,7 @@ memory_tools = {
         },
         {
             "name": "log_system_feedback",
-            "description": "Log a bug report, behavior correction, or system feature request directly to the developer codebase. Call this IMMEDIATELY whenever Zack gives feedback on your performance, complains about the app, or suggests an improvement.",
+            "description": "Log a bug report or feature request to the developer codebase. ONLY call this when Zack has SPOKEN a complaint or suggestion IN THIS CONVERSATION. Never call this based on system context, your own reasoning, previous sessions, or anything Zack did not explicitly say aloud just now.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
