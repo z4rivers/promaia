@@ -97,7 +97,7 @@ def _get_brain_data() -> dict:
             SELECT content, domain, created_at
             FROM brain.memories
             ORDER BY created_at DESC
-            LIMIT 5
+            LIMIT 10
             """
         )
         recent_memories = []
@@ -123,48 +123,6 @@ def _get_brain_data() -> dict:
                 "created_at": time_str,
             })
 
-        # Recent Voice Session Reviews
-        audio_reviews_rows = db.fetch_all(
-            """
-            SELECT id, summary, proposed_memories, raw_transcript, created_at
-            FROM brain.audio_session_reviews
-            WHERE status = 'pending'
-            ORDER BY created_at DESC
-            """
-        )
-        audio_reviews = []
-        import json
-        for row in audio_reviews_rows:
-            # Handle JSON values whether they are strings or already parsed dicts
-            prop_mems = row["proposed_memories"]
-            if isinstance(prop_mems, str):
-                try: prop_mems = json.loads(prop_mems)
-                except: prop_mems = []
-            
-            raw_trans = row["raw_transcript"]
-            if isinstance(raw_trans, str):
-                try: raw_trans = json.loads(raw_trans)
-                except: raw_trans = []
-                
-            created = row.get("created_at")
-            if created:
-                now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now()
-                delta = (now - created).days
-                if delta == 0:
-                    time_str = "today"
-                else:
-                    time_str = f"{delta} days ago"
-            else:
-                time_str = ""
-                
-            audio_reviews.append({
-                "id": row["id"],
-                "summary": row["summary"],
-                "proposed_memories": prop_mems,
-                "raw_transcript": raw_trans,
-                "created_at": time_str
-            })
-
         return {
             "brain_status": {
                 "memories": counts["memory_count"],
@@ -174,7 +132,6 @@ def _get_brain_data() -> dict:
             "actions": actions,
             "projects": projects,
             "recent_memories": recent_memories,
-            "audio_reviews": audio_reviews,
         }
 
     except Exception as e:
@@ -184,7 +141,6 @@ def _get_brain_data() -> dict:
             "actions": [],
             "projects": [],
             "recent_memories": [],
-            "audio_reviews": [],
         }
 
 
@@ -220,80 +176,7 @@ async def dashboard(request: Request):
 
     return templates.TemplateResponse("dashboard.html", context)
 
-@router.post("/api/dashboard/review/{review_id}/accept")
-async def accept_audio_review(review_id: int):
-    try:
-        from promaia.storage.postgres_db import get_postgres_db, pg_connect
-        db = get_postgres_db()
-        review_row = db.fetch_one("SELECT * FROM brain.audio_session_reviews WHERE id = %s", (review_id,))
-        if not review_row:
-            raise HTTPException(status_code=404, detail="Review not found")
-            
-        import json
-        proposed_memories = review_row["proposed_memories"]
-        if isinstance(proposed_memories, str):
-            try: proposed_memories = json.loads(proposed_memories)
-            except: proposed_memories = []
-            
-        # Commit memories to Muninn
-        if proposed_memories:
-            from promaia.brain.muninn import get_muninn
-            muninn = await get_muninn()
-            if muninn:
-                await muninn.write_batch([
-                    {"content": m.get("content"), "domain": m.get("domain", "general"), "confidence": 0.9}
-                    for m in proposed_memories if m.get("content")
-                ])
-                
-        # Update status and null out transcript
-        with pg_connect() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE brain.audio_session_reviews SET status = 'accepted', raw_transcript = NULL WHERE id = %s",
-                    (review_id,)
-                )
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Failed to accept review {review_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/dashboard/review/{review_id}/reject")
-async def reject_audio_review(review_id: int):
-    try:
-        from promaia.storage.postgres_db import pg_connect
-        with pg_connect() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE brain.audio_session_reviews SET status = 'rejected', raw_transcript = NULL WHERE id = %s",
-                    (review_id,)
-                )
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Failed to reject review {review_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/dashboard/review/{review_id}/update")
-async def update_audio_review(review_id: int, request: Request):
-    """Update a review's summary (used by Edit button before Accept)."""
-    try:
-        body = await request.json()
-        new_summary = body.get("summary", "").strip()
-        if not new_summary:
-            raise HTTPException(status_code=400, detail="Summary cannot be empty")
-
-        from promaia.storage.postgres_db import pg_connect
-        with pg_connect() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE brain.audio_session_reviews SET summary = %s WHERE id = %s",
-                    (new_summary, review_id)
-                )
-        return {"status": "ok"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update review {review_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 

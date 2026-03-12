@@ -145,85 +145,154 @@ async def broadcast_chat_log(role: str, text: str):
         active_text_listeners.remove(ws)
 
 async def generate_session_review(transcript_log: list, rescued_memories: list = None):
-    """Background task to summarize a completed voice session and propose memories to the dashboard."""
+    """Background task to route voice session transcripts and staged memories.
+    Replaces the old 'audio_session_reviews' queue with a silent Triage + Capture pipeline.
+    """
+    import uuid
+    from google import genai
+    from google.genai import types
+
     if not transcript_log:
         return
         
     if rescued_memories is None:
         rescued_memories = []
-        
+
+    session_id = str(uuid.uuid4())
+    
+    # Process staged (rescued) memories independently immediately
+    if rescued_memories:
+        logger.info(f"Processing {len(rescued_memories)} rescued memories outside of triage.")
+        for rm in rescued_memories:
+            # We don't want strict triage on these - they were explicitly staged by tool calls
+            asyncio.create_task(_commit_signal(
+                content=rm.get("content", ""),
+                session_id=session_id,
+                domain_name=rm.get("domain", "voice_session"),
+                source="voice_rescued"
+            ))
+
+    # 1. Zero-Cost Heuristic (Gate 1)
+    # Check length
+    word_count = sum(len(t['text'].split()) for t in transcript_log)
+    user_turns = sum(1 for t in transcript_log if t["role"] == "user")
+    
+    # We already checked len(transcript_log) > 2 before calling this, but double check user participation
+    if word_count < 15 or user_turns == 0:
+        logger.info(f"Voice session failed zero-cost heuristic (words: {word_count}, user_turns: {user_turns}). Logging as noise and dropping.")
+        _log_brain_event("voice_noise", {"reason": "too_short", "word_count": word_count}, session_id)
+        return
+
+    # Prepare transcript string for Opus
+    lines = []
+    for t in transcript_log:
+        role = "Promaia" if t["role"] == "promaia" else "Zack"
+        lines.append(f"{role}: {t['text']}")
+    full_transcript = "\n".join(lines)
+
+    # 2. Strict Triage Filter
+    logger.info(f"Running triage filter on voice session ({word_count} words)...")
     try:
-        logger.info(f"Generating async session review for {len(transcript_log)} turns...")
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+        import json
         
-        # Format transcript
-        lines = []
-        for t in transcript_log:
-            role = "Promaia" if t["role"] == "promaia" else "Zack"
-            lines.append(f"{role}: {t['text']}")
-        full_transcript = "\n".join(lines)
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        client = genai.Client(api_key=api_key)
         
-        prompt = (
-            "You are reviewing a raw audio transcript between Zack and his AI assistant Promaia. "
-            "Write a very concise 2-3 sentence summary of the conversation. "
-            "Also, extract any significant decisions, facts, or context that Promaia should remember. "
+        triage_prompt = (
+            "You are reviewing a raw audio transcript between Zack and his AI assistant Promaia.\n"
+            "Evaluate the transcript and classify it into exactly one of these four categories:\n"
+            "1. 'signal' - A genuine conversation with substance, requests, ideas, or back-and-forth.\n"
+            "2. 'noise' - Audio tests ('hello?', 'can you hear me?'), connection issues, false triggers, or endless loops.\n"
+            "3. 'fragment' - Cut-off sentences or abrupt endings where no complete thought was communicated.\n"
+            "4. 'feedback' - Zack is explicitly commenting on Promaia's voice, capability, or bugs, rather than doing work.\n"
+            "\n"
+            "Return ONLY a JSON object with 'category' (string) and 'reason' (short string explanation).\n"
             f"\n\nTRANSCRIPT:\n{full_transcript}"
         )
         
-        # We need a proper JSON schema
         schema = {
             "type": "OBJECT",
             "properties": {
-                "summary": {"type": "STRING", "description": "Concise 2-3 sentence summary"},
-                "proposed_memories": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "content": {"type": "STRING", "description": "The extracted fact"},
-                            "domain": {"type": "STRING", "description": "e.g., personal, project, heatpup"}
-                        },
-                        "required": ["content", "domain"]
-                    }
-                }
+                "category": {"type": "STRING", "enum": ["signal", "noise", "fragment", "feedback"]},
+                "reason": {"type": "STRING"}
             },
-            "required": ["summary", "proposed_memories"]
+            "required": ["category", "reason"]
         }
         
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=triage_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=schema,
             ),
         )
+        triage_result = json.loads(response.text)
+        category = triage_result.get("category", "noise")
+        reason = triage_result.get("reason", "unknown")
         
-        result_json = json.loads(response.text)
+        logger.info(f"Voice triage result: {category.upper()} ({reason})")
         
-        proposed = result_json.get("proposed_memories", [])
-        for rm in rescued_memories:
-            proposed.append({
-                "content": rm.get("content", ""),
-                "domain": rm.get("domain", "general")
-            })
-        
-        # Save to PostgreSQL
-        with pg_connect() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO brain.audio_session_reviews 
-                    (raw_transcript, summary, proposed_memories, status)
-                    VALUES (%s, %s, %s, 'pending')
-                    """,
-                    (json.dumps(transcript_log), result_json.get("summary", ""), json.dumps(proposed))
-                )
-        logger.info("Successfully saved AudioSessionReview to Postgres database.")
+        # 3. Routing
+        if category in ["noise", "fragment"]:
+            _log_brain_event("voice_noise", {"reason": reason, "category": category, "preview": full_transcript[:100]}, session_id)
+            return
+            
+        elif category == "feedback":
+            # For feedback, we log it and maybe capture it as a specific feedback memory
+            _log_brain_event("voice_feedback", {"reason": reason, "preview": full_transcript[:100]}, session_id)
+            # Route it through capture as well so it's not lost
+            asyncio.create_task(_commit_signal(full_transcript, session_id, "promaia", "voice_feedback"))
+            
+        elif category == "signal":
+            _log_brain_event("voice_signal", {"reason": reason, "word_count": word_count}, session_id)
+            asyncio.create_task(_commit_signal(full_transcript, session_id, "voice_session", "voice_transcript"))
+            
     except Exception as e:
-        logger.error(f"Failed to generate session review: {e}", exc_info=True)
+        logger.error(f"Voice triage pipeline failed: {e}", exc_info=True)
+
+
+def _log_brain_event(event_type: str, payload: dict, session_id: str):
+    """Helper to cleanly log noise/signal events to Postgres."""
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        db.execute(
+            """
+            INSERT INTO brain.events (type, payload, source, session_id)
+            VALUES (%s, %s::jsonb, 'voice_pipeline', %s)
+            """,
+            (event_type, json.dumps(payload), session_id)
+        )
+    except Exception as e:
+        logger.warning(f"Could not log brain event (type={event_type}): {e}")
+
+
+async def _commit_signal(content: str, session_id: str, domain_name: str, source: str):
+    """Background task to run capture_memory for a vetted voice signal."""
+    try:
+        if not content.strip():
+            return
+        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.vector_db import VectorDBManager
+        from promaia.brain.core.memory_pipeline import capture_memory
+        
+        db = get_postgres_db()
+        vector_mgr = VectorDBManager()
+        
+        logger.info(f"Capturing voice signal ({source})...")
+        await capture_memory(
+            db=db,
+            vector_mgr=vector_mgr,
+            content=content,
+            session_id=session_id,
+            domain_name=domain_name,
+            source=source
+        )
+    except Exception as e:
+        logger.error(f"Async memory capture failed for voice signal: {e}", exc_info=True)
 
 
 

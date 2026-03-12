@@ -151,9 +151,9 @@ def extract_actions(text: str) -> ActionExtractionResult:
     if not text or not text.strip():
         return ActionExtractionResult(actions=[], has_actions=False)
 
-    api_key = os.environ.get('GOOGLE_API_KEY')
+    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not set — skipping action extraction")
+        logger.warning("Neither GEMINI_API_KEY nor GOOGLE_API_KEY set — skipping action extraction")
         return ActionExtractionResult(actions=[], has_actions=False)
 
     # Try instructor path first
@@ -197,9 +197,9 @@ def extract_insights(text: str) -> ConversationIntelligence:
     if len(text.strip()) < 80:
         return empty
 
-    api_key = os.environ.get('GOOGLE_API_KEY')
+    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not set — skipping intelligence extraction")
+        logger.warning("Neither GEMINI_API_KEY nor GOOGLE_API_KEY set — skipping intelligence extraction")
         return empty
 
     # Try instructor path first
