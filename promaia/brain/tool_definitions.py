@@ -150,7 +150,7 @@ memory_tools = {
         },
         {
             "name": "sync_youtube_context",
-            "description": "Trigger a background sync to pull the newest technical YouTube videos from Zack's focus channels and save the intelligence to MuninnDB. Call this when Zack asks about recent videos, Steve Yegge updates, or general AI news."
+            "description": "Trigger a background sync to pull the newest technical YouTube videos and save the intelligence to MuninnDB. IMPORTANT: Because this runs in the background, you MUST ALWAYS also use the `recall_memory` tool (e.g., query='recent youtube videos from Steve Yegge or Scrypster') so you can immediately tell Zack about the contents of the videos already in memory."
         }
     ]
 }
