@@ -465,7 +465,6 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
             from promaia.storage.postgres_db import get_postgres_db
             db = get_postgres_db()
             recent = db.fetch_all("SELECT content FROM brain.memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
-            db.close()
             
             summaries = "\n\n".join([r.get("content", "") for r in recent])
             
