@@ -72,7 +72,8 @@ class YouTubeIngester:
                 snippet = res["items"][0].get("snippet", {})
                 return {
                     "videoId": snippet.get("resourceId", {}).get("videoId"),
-                    "title": snippet.get("title", "Unknown Title")
+                    "title": snippet.get("title", "Unknown Title"),
+                    "publishedAt": snippet.get("publishedAt", "Unknown Date")
                 }
         except Exception as e:
             logger.debug(f"Failed to get latest video for channel via playlist: {e}")
@@ -91,7 +92,8 @@ class YouTubeIngester:
                 snippet = res["items"][0].get("snippet", {})
                 return {
                     "videoId": res["items"][0]["id"]["videoId"],
-                    "title": snippet.get("title", "Unknown Title")
+                    "title": snippet.get("title", "Unknown Title"),
+                    "publishedAt": snippet.get("publishedAt", "Unknown Date")
                 }
         except Exception as e:
             logger.error(f"Failed to search for latest video: {e}")
@@ -180,6 +182,7 @@ TRANSCRIPT:
                 
             video_id = latest_video_info.get("videoId")
             video_title = latest_video_info.get("title", "Unknown Title")
+            published_at = latest_video_info.get("publishedAt", "Unknown Date")
             
             if not video_id:
                 logger.warning(f"Extracted video info missing videoId for {handle}")
@@ -202,7 +205,7 @@ TRANSCRIPT:
             summary = self.summarize_transcript(transcript, video_title, creator_name)
             
             # 6. Prepend metadata block
-            full_content = f"Source: YouTube Channel '{creator_name}'\nVideo Title: {video_title}\nVideo ID: {video_id}\n\n{summary}"
+            full_content = f"Source: YouTube Channel '{creator_name}'\nVideo Title: {video_title}\nVideo Date: {published_at}\nVideo ID: {video_id}\n\n{summary}"
             
             # 7. Capture Memory
             try:
