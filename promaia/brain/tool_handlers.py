@@ -460,10 +460,22 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
                 
             # Run asynchronously so we don't block the voice bridge
             asyncio.create_task(run_ingestion())
+            
+            # Immediately pull the EXISTING cache to feed the agent now
+            from promaia.storage.postgres_db import get_postgres_db
+            db = get_postgres_db()
+            recent = db.fetch_all("SELECT content FROM brain.memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
+            db.close()
+            
+            summaries = "\n\n".join([r.get("content", "") for r in recent])
+            
             return types.FunctionResponse(
                 name=ft.name,
                 id=ft.id,
-                response={"result": "youtube_sync_started_in_background"}
+                response={
+                    "result": "youtube_sync_started_in_background",
+                    "existing_cache": summaries
+                }
             )
         except Exception as e:
             logger.error(f"Failed to start YouTube sync: {e}", exc_info=True)
