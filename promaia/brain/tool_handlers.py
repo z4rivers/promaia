@@ -449,6 +449,30 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
                 response={"result": "error", "error": str(e)}
             )
             
+    elif ft.name == "sync_youtube_context":
+        logger.info("Triggering YouTube background sync...")
+        try:
+            from promaia.brain.core.youtube_ingester import YouTubeIngester
+            
+            async def run_ingestion():
+                ingester = YouTubeIngester()
+                await ingester.run_sync()
+                
+            # Run asynchronously so we don't block the voice bridge
+            asyncio.create_task(run_ingestion())
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "youtube_sync_started_in_background"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to start YouTube sync: {e}", exc_info=True)
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "error", "error": str(e)}
+            )
+
     # Unhandled tools
     return types.FunctionResponse(
         name=ft.name,

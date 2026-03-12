@@ -147,6 +147,10 @@ memory_tools = {
                 },
                 "required": ["target"]
             }
+        },
+        {
+            "name": "sync_youtube_context",
+            "description": "Trigger a background sync to pull the newest technical YouTube videos from Zack's focus channels and save the intelligence to MuninnDB. Call this when Zack asks about recent videos, Steve Yegge updates, or general AI news."
         }
     ]
 }

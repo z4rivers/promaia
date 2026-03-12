@@ -251,6 +251,11 @@ class AgentScheduler:
         self.tasks["__heartbeat__"] = heartbeat_task
         logger.info("   Heartbeat loop started (every 5 min)")
 
+        # Start YouTube check loop (every 6 hours)
+        youtube_task = asyncio.create_task(self._youtube_check_loop())
+        self.tasks["__youtube_check__"] = youtube_task
+        logger.info("   YouTube check loop started (every 6 hours)")
+
         logger.info("✅ Scheduler started. Press Ctrl+C to stop.\n")
 
         # Notify via Telegram that Promaia is online
@@ -687,6 +692,30 @@ class AgentScheduler:
                 )
             except Exception as e:
                 logger.warning(f"Heartbeat write failed (non-fatal): {e}")
+
+    async def _youtube_check_loop(self):
+        """Periodically fetch new technical videos from configured YouTube channels."""
+        while self.running:
+            try:
+                # Sleep for 5 minutes initially, then every 6 hours
+                # so we don't hit the YouTube API immediately on every reboot wrapper
+                await asyncio.sleep(300)
+            except asyncio.CancelledError:
+                break
+                
+            try:
+                logger.info("Running automatic YouTube channel sync...")
+                from promaia.brain.core.youtube_ingester import YouTubeIngester
+                ingester = YouTubeIngester()
+                await ingester.run_sync()
+            except Exception as e:
+                logger.warning(f"YouTube check loop error (non-fatal): {e}")
+
+            try:
+                # Sleep for 6 hours (21600 seconds) minus the initial 5 mins
+                await asyncio.sleep(21300)
+            except asyncio.CancelledError:
+                break
 
     async def _send_telegram_notification(self, text: str):
         """Send a plain text notification to Telegram.
