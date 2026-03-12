@@ -14,6 +14,17 @@
       },
       "enabled": true
     },
+    "google-workspace": {
+      "description": "Google Workspace APIs via standard CLI MCP server",
+      "command": [
+        "C:\\gws_mcp\\node_modules\\.bin\\gws"
+      ],
+      "args": [
+        "mcp",
+        "serve"
+      ],
+      "enabled": true
+    },
     "filesystem": {
       "description": "Access local filesystem for reading and writing files",
       "command": [

@@ -45,7 +45,8 @@
       "prompt_file": "prompts/agent_morning_briefing.md",
       "mcp_tools": [
         "gmail",
-        "calendar"
+        "calendar",
+        "google-workspace"
       ],
       "max_iterations": 3,
       "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
@@ -87,7 +88,8 @@
       ],
       "prompt_file": "prompts/agent_email_triage.md",
       "mcp_tools": [
-        "gmail"
+        "gmail",
+        "google-workspace"
       ],
       "max_iterations": 3,
       "output_notion_page_id": "31b72180-6675-81ab-9da5-cbc2aabea6a0",
@@ -101,7 +103,7 @@
       "journal_db_id": null,
       "description": "Scan both Gmail accounts, classify and surface attention items",
       "created_at": null,
-      "last_run_at": "2026-03-11T22:22:15.761079+00:00",
+      "last_run_at": "2026-03-12T00:09:56.517182+00:00",
       "calendar_event_ids": null,
       "calendar_id": null,
       "source_access": null,
@@ -125,7 +127,8 @@
       "prompt_file": "prompts/agent_evening_digest.md",
       "mcp_tools": [
         "gmail",
-        "calendar"
+        "calendar",
+        "google-workspace"
       ],
       "max_iterations": 3,
       "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
@@ -144,7 +147,7 @@
       "journal_db_id": null,
       "description": "Evening summary \u00e2\u20ac\u201d day recap, project momentum, tonight's suggestions",
       "created_at": null,
-      "last_run_at": "2026-03-11T01:03:55.336117+00:00",
+      "last_run_at": "2026-03-11T23:30:55.569274+00:00",
       "calendar_event_ids": null,
       "calendar_id": null,
       "source_access": null,
