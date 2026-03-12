@@ -490,6 +490,49 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
                 response={"result": "error", "error": str(e)}
             )
 
+    elif ft.name == "query_youtube_transcript":
+        logger.info(f"Triggering direct YouTube query for video {ft.args.get('video_id')}...")
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            from youtube_transcript_api.formatters import TextFormatter
+            from google import genai
+            import os
+
+            video_id = ft.args.get("video_id")
+            question = ft.args.get("question")
+            
+            # Fetch full transcript
+            transcript_list = YouTubeTranscriptApi.list(video_id)
+            try:
+                transcript = transcript_list.find_manually_created_transcript(['en'])
+            except:
+                transcript = transcript_list.find_generated_transcript(['en'])
+                
+            formatter = TextFormatter()
+            text_result = formatter.format_transcript(transcript.fetch())
+            
+            # Call Gemini on the backend to synthesize the 1-hour video down to a dense answer
+            rag_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+            prompt = f"Transcript from YouTube video ({video_id}):\n\n{text_result[:80000]}\n\nAnalyze this transcript deeply. Answer the user's specific question or request: {question}\n\nProvide a very dense, direct, highly technical answer using exclusively the facts from the transcript. Make it concise enough to be spoken aloud (max 200 words). If the transcript doesn't answer it, explicitly state that."
+            
+            rag_response = rag_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "success", "answer": rag_response.text}
+            )
+        except Exception as e:
+            logger.error(f"Failed to query transcript: {e}", exc_info=True)
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "error", "error": str(e)}
+            )
+
     # Unhandled tools
     return types.FunctionResponse(
         name=ft.name,

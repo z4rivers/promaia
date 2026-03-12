@@ -150,7 +150,19 @@ memory_tools = {
         },
         {
             "name": "sync_youtube_context",
-            "description": "Trigger a background sync to pull the newest technical YouTube videos and save the intelligence to MuninnDB. IMPORTANT: Because this runs in the background, you MUST ALWAYS also use the `recall_memory` tool (e.g., query='recent youtube videos from Steve Yegge or Scrypster') so you can immediately tell Zack about the contents of the videos already in memory."
+            "description": "Trigger a background sync to pull the newest technical YouTube videos and save the intelligence to MuninnDB. Provides a high level summary and the Video ID. If Zack asks for more depth on a video, you MUST use the `query_youtube_transcript` tool."
+        },
+        {
+            "name": "query_youtube_transcript",
+            "description": "When Zack asks a specific question about a YouTube video that was recently synced, or asks for more detail than the high level summary provides, use this tool to query the raw transcript directly. Tell Zack what the video ACTUALLY said in detail.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "video_id": { "type": "STRING", "description": "The exact video ID string found in the metadata of the video." },
+                    "question": { "type": "STRING", "description": "The specific question or topic you want to search the transcript for (e.g. 'What did he say about LangChain?' or 'Summarize the whole transcript in deeply technical detail.')." }
+                },
+                "required": ["video_id", "question"]
+            }
         }
     ]
 }
