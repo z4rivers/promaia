@@ -58,20 +58,43 @@ class YouTubeIngester:
                 
         return None
 
-    def get_latest_video(self, channel_data: dict) -> dict:
+    def get_latest_video_id(self, channel_data: dict, channel_id: str) -> dict:
         """Get the most recent video from a channel's uploads playlist."""
         try:
             uploads_id = channel_data["contentDetails"]["relatedPlaylists"]["uploads"]
             req = self.youtube.playlistItems().list(
                 playlistId=uploads_id,
-                part="snippet,contentDetails",
+                part="snippet",
                 maxResults=1
             )
             res = req.execute()
             if "items" in res and len(res["items"]) > 0:
-                return res["items"][0]
+                snippet = res["items"][0].get("snippet", {})
+                return {
+                    "videoId": snippet.get("resourceId", {}).get("videoId"),
+                    "title": snippet.get("title", "Unknown Title")
+                }
         except Exception as e:
-            logger.error(f"Failed to get latest video for channel: {e}")
+            logger.debug(f"Failed to get latest video for channel via playlist: {e}")
+
+        # Fallback to search if playlist fails
+        try:
+            req = self.youtube.search().list(
+                channelId=channel_id,
+                order="date",
+                part="snippet",
+                type="video",
+                maxResults=1
+            )
+            res = req.execute()
+            if "items" in res and len(res["items"]) > 0:
+                snippet = res["items"][0].get("snippet", {})
+                return {
+                    "videoId": res["items"][0]["id"]["videoId"],
+                    "title": snippet.get("title", "Unknown Title")
+                }
+        except Exception as e:
+            logger.error(f"Failed to search for latest video: {e}")
         return None
 
     def get_transcript(self, video_id: str) -> str:
@@ -145,15 +168,21 @@ TRANSCRIPT:
                 continue
                 
             # 2. Get Latest Video
-            latest_video = self.get_latest_video(channel_data)
-            if not latest_video:
+            channel_id = channel_data["id"] if isinstance(channel_data, dict) and "id" in channel_data else None
+            if not channel_id:
+                logger.error(f"Could not extract channelId from channel_data for {handle}")
+                continue
+
+            latest_video_info = self.get_latest_video_id(channel_data, channel_id)
+            if not latest_video_info:
+                logger.warning(f"Could not find any videos for {handle}")
                 continue
                 
-            snippet = latest_video.get("snippet", {})
-            video_id = snippet.get("resourceId", {}).get("videoId")
-            video_title = snippet.get("title", "Unknown Title")
+            video_id = latest_video_info.get("videoId")
+            video_title = latest_video_info.get("title", "Unknown Title")
             
             if not video_id:
+                logger.warning(f"Extracted video info missing videoId for {handle}")
                 continue
                 
             # 3. Check if processed
