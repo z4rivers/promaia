@@ -27,6 +27,65 @@ router = APIRouter()
 active_text_listeners = set()
 active_maia_listeners = set()
 
+# ---------------------------------------------------------------------------
+# Voice Context Cache — keeps calendar/Muninn/prompt ready so connect is instant
+# ---------------------------------------------------------------------------
+_voice_ctx_cache = {
+    "calendar": {"text": "", "ts": 0, "ttl": 120},   # 2 min TTL
+    "muninn":   {"text": "", "ts": 0, "ttl": 60},     # 60s TTL
+    "prompt":   {"text": "", "ts": 0, "ttl": 3600},   # 1 hour (file rarely changes)
+}
+
+async def _refresh_single(key: str):
+    """Refresh one cache entry if stale. Returns immediately if still warm."""
+    entry = _voice_ctx_cache[key]
+    if time.time() - entry["ts"] <= entry["ttl"]:
+        return  # Still warm
+    
+    t0 = time.time()
+    try:
+        if key == "calendar":
+            from promaia.brain.context_loaders import get_calendar_context
+            entry["text"] = await asyncio.wait_for(get_calendar_context(), timeout=4.0)
+        elif key == "muninn":
+            from promaia.brain.context_loaders import get_muninn_context
+            entry["text"] = await asyncio.wait_for(get_muninn_context(), timeout=4.0)
+        elif key == "prompt":
+            prompt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "prompts", "voice_agent_system.md")
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                entry["text"] = f.read()
+        entry["ts"] = time.time()
+        logger.info(f"[VoiceCache] {key} refreshed in {time.time()-t0:.2f}s")
+    except asyncio.TimeoutError:
+        logger.warning(f"[VoiceCache] {key} timed out after {time.time()-t0:.2f}s — keeping stale data")
+    except Exception as e:
+        logger.warning(f"[VoiceCache] {key} refresh failed ({time.time()-t0:.2f}s): {e}")
+        if key == "prompt" and not entry["text"]:
+            entry["text"] = "You are Promaia, a helpful voice assistant."
+
+async def _refresh_voice_context():
+    """Refresh all stale cache entries IN PARALLEL. 5s hard ceiling."""
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(
+                _refresh_single("prompt"),
+                _refresh_single("calendar"),
+                _refresh_single("muninn"),
+                return_exceptions=True
+            ),
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[VoiceCache] Overall refresh timed out at 5s — proceeding with what we have")
+
+async def prewarm_voice_context():
+    """Call at server startup to ensure first voice connect is instant."""
+    logger.info("[VoiceCache] Pre-warming voice context...")
+    await _refresh_voice_context()
+    logger.info("[VoiceCache] Pre-warm complete")
+
+
+
 @router.websocket("/stream/text")
 async def text_stream_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -408,34 +467,19 @@ async def brain_stream(websocket: WebSocket):
     Includes Phase 10 MuninnDB context injection and Phase 11.5 Extraction logic.
     """
     await websocket.accept()
+    t_start = time.time()
     
-    # 0. Inject Phase 0 Clock & Calendar Context
+    # Refresh any stale cache entries (parallel, with 4s per-source timeout)
+    await _refresh_voice_context()
+    
+    # Assemble system context from cache (instant — all in memory)
     current_time_str = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
     system_ctx = f"The current time is: {current_time_str}\n\n"
+    system_ctx += _voice_ctx_cache["prompt"]["text"] + "\n\n"
+    system_ctx += _voice_ctx_cache["calendar"]["text"]
+    system_ctx += _voice_ctx_cache["muninn"]["text"]
     
-    try:
-        from promaia.brain.context_loaders import get_calendar_context
-        system_ctx += await get_calendar_context()
-    except Exception as e:
-        logger.warning(f"Calendar fetch failed for Live API context: {e}")
-
-    # 1. Core Identity & Behavioral Instructions (PERSONALITY-MANIFEST led)
-    try:
-        prompt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "prompts", "voice_agent_system.md")
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            system_ctx += f.read() + "\n\n"
-    except Exception as e:
-        logger.warning(f"Failed to load voice agent system prompt from {prompt_path}: {e}")
-        # Fallback to a minimal instruction set if file read fails
-        system_ctx += "You are Promaia, a helpful voice assistant.\n\n"
-    
-    try:
-        from promaia.brain.context_loaders import get_muninn_context
-        system_ctx += await get_muninn_context()
-    except Exception as e:
-        logger.warning(f"Muninn context fetch for Live API failed: {e}. Degrading gracefully.")
-
-    # NOTE: audio_session_reviews context injection removed — queue abolished in Voice Intelligence Pipeline.\n
+    logger.info(f"[Voice Connect] Context assembled in {time.time()-t_start:.2f}s")
 
     # 11.5 Tool Definitions for Staging and Committing Memories
     from promaia.brain.tool_definitions import memory_tools

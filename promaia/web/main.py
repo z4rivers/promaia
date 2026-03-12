@@ -46,6 +46,14 @@ async def lifespan(app: FastAPI):
         start_heartbeat(interval_minutes=15)
     except Exception as e:
         logger.error(f"Failed to start Subconscious heartbeat: {e}")
+    
+    # Pre-warm voice context cache so first voice connect is instant
+    try:
+        from promaia.web.routers.brain import prewarm_voice_context
+        await prewarm_voice_context()
+    except Exception as e:
+        logger.warning(f"Voice context pre-warm failed (non-fatal): {e}")
+    
     yield
     # Shutdown
     try:

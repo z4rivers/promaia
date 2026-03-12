@@ -434,13 +434,13 @@ async function startConversation() {
 
     // Acquire Wake Lock to prevent screen sleep during voice session
     try {
-        if ('VoiceSessionState.wakeLock' in navigator) {
+        if ('wakeLock' in navigator) {
             VoiceSessionState.wakeLock = await navigator.wakeLock.request('screen');
             console.log('[WakeLock] Screen lock acquired — screen will stay on');
             VoiceSessionState.wakeLock.addEventListener('release', () => {
                 console.log('[WakeLock] Released');
                 // Re-acquire if still in conversation (e.g. after tab switch back)
-                if (VoiceSessionState.conversationMode && 'VoiceSessionState.wakeLock' in navigator) {
+                if (VoiceSessionState.conversationMode && 'wakeLock' in navigator) {
                     navigator.wakeLock.request('screen').then(wl => {
                         VoiceSessionState.wakeLock = wl;
                         console.log('[WakeLock] Re-acquired after release');
