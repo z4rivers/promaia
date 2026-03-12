@@ -593,7 +593,7 @@ async def brain_stream(websocket: WebSocket):
                                     tool_responses.append(func_res)
                                 
                                 if tool_responses:
-                                    await session.send(input=tool_responses)
+                                    await session.send_tool_response(function_responses=tool_responses)
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
