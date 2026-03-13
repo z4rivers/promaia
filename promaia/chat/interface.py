@@ -1749,7 +1749,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 debug_print(f"  → Cache miss, will re-process query")
                 
                 try:
-                    from promaia.storage.unified_query import get_query_interface
+                    from promaia.storage.hybrid_query import get_query_interface
                     
                     # Determine workspace to use - preserve from original context
                     workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
@@ -2948,7 +2948,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
 
                         # Process multiple natural language queries
                         try:
-                            from promaia.storage.unified_query import get_query_interface
+                            from promaia.storage.hybrid_query import get_query_interface
 
                             if len(nl_prompts) > 1:
                                 print_text(f"🤖 Processing {len(nl_prompts)} separate natural language queries", style="dim")
@@ -3525,7 +3525,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                     
                     # Process the natural language queries (multiple prompts supported)
                     try:
-                        from promaia.storage.unified_query import get_query_interface
+                        from promaia.storage.hybrid_query import get_query_interface
                         
                         # Determine workspace for natural language processing
                         nl_workspace = workspace or context_state.get('resolved_workspace') or context_state.get('workspace')
@@ -4842,7 +4842,7 @@ def chat(sources=None, filters=None, workspace=None, resolved_workspace=None, no
                 if hasattr(selected_query, 'sql_query_prompt') and selected_query.sql_query_prompt:
                     # Natural language query - process it
                     try:
-                        from promaia.storage.unified_query import get_query_interface
+                        from promaia.storage.hybrid_query import get_query_interface
                         
                         # Determine workspace to use
                         workspace = context_state.get('resolved_workspace') or context_state.get('workspace')
@@ -7312,7 +7312,7 @@ The user will type `/send` to trigger the actual sending process.
                         continue
 
                 # Load thread context to get TO and CC recipients
-                from promaia.storage.unified_query import get_query_interface
+                from promaia.storage.hybrid_query import get_query_interface
                 import json
 
                 to_addr = ''

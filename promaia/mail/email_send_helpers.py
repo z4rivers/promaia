@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from promaia.mail.draft_manager import DraftManager
-from promaia.storage.unified_query import get_query_interface
+from promaia.storage.hybrid_query import get_query_interface
 
 logger = logging.getLogger(__name__)
 

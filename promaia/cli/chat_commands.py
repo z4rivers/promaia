@@ -354,7 +354,7 @@ def chat_run(args):
                     # Step 1: Process SQL queries (if present)
                     if sql_prompts:
                         try:
-                            from promaia.storage.unified_query import get_query_interface
+                            from promaia.storage.hybrid_query import get_query_interface
                             query_interface = get_query_interface()
 
                             combined_sql_content = {}
@@ -592,7 +592,7 @@ def chat_run(args):
                 # Step 1: Process natural language queries (if present)
                 if sql_prompts:
                     try:
-                        from promaia.storage.unified_query import get_query_interface
+                        from promaia.storage.hybrid_query import get_query_interface
                         query_interface = get_query_interface()
 
                         combined_sql_content = {}
@@ -729,7 +729,7 @@ def chat_run(args):
         # Note: Don't print "Processing..." messages here - the processor handles output
 
         try:
-            from promaia.storage.unified_query import get_query_interface
+            from promaia.storage.hybrid_query import get_query_interface
 
             # Resolve workspace first for natural language processing
             workspace_manager = get_workspace_manager()
@@ -1453,7 +1453,7 @@ def history_run(args):
                         print_text("🔄 Using cached natural language results from history", style="dim")
                     else:
                         # Fall back to regenerating if no cached content available
-                        from promaia.storage.unified_query import get_query_interface
+                        from promaia.storage.hybrid_query import get_query_interface
                         
                         workspace_manager = get_workspace_manager()
                         workspace = context.get('workspace')

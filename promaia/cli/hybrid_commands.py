@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 
-from promaia.storage.unified_query import get_query_interface
+from promaia.storage.hybrid_query import get_query_interface
 from promaia.storage.hybrid_storage import get_hybrid_registry
 
 # Simple display functions for hybrid commands

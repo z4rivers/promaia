@@ -18,7 +18,7 @@ from promaia.web.models.browser import (
     PreviewItem,
     DiscordServer
 )
-from ...storage.unified_query import get_query_interface
+from ...storage.hybrid_query import get_query_interface
 from ...config.workspaces import get_workspace_manager
 
 logger = logging.getLogger(__name__)
