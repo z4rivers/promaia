@@ -4,6 +4,7 @@ Notion database connector implementation.
 import os
 import asyncio
 import json
+import requests
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -666,6 +667,18 @@ class NotionConnector(BaseConnector):
                     result.add_success(file_path)
                     self.logger.debug(f"Saved page to markdown: {file_path}")
                     
+                    # --- Multimodal: download and embed image/file blocks ---
+                    try:
+                        await self._process_notion_media_blocks(
+                            page_content.get("content", []),
+                            final_title,
+                            page_id
+                        )
+                    except Exception as media_err:
+                        self.logger.warning(
+                            f"Multimodal media processing failed for page {page_id}: {media_err}"
+                        )
+                    
                     self.logger.debug(f"Processed page: {final_title}")
                     
                 except Exception as e:
@@ -1264,3 +1277,155 @@ class NotionConnector(BaseConnector):
                               "error": str(e)})
 
         return results
+
+    def _extract_media_urls_from_blocks(self, blocks: list) -> list:
+        """Recursively extract image and file URLs from Notion blocks."""
+        media_items = []
+
+        for block in blocks:
+            block_type = block.get("type", "")
+            content = block.get(block_type, {})
+
+            if block_type == "image":
+                img_type = content.get("type", "")
+                url = ""
+                if img_type == "external":
+                    url = content.get("external", {}).get("url", "")
+                elif img_type == "file":
+                    url = content.get("file", {}).get("url", "")
+                if url:
+                    caption = ""
+                    caption_arr = content.get("caption", [])
+                    if caption_arr:
+                        caption = " ".join(
+                            t.get("plain_text", "") for t in caption_arr
+                        )
+                    media_items.append({
+                        "url": url,
+                        "type": "image",
+                        "caption": caption
+                    })
+
+            elif block_type == "file":
+                file_type = content.get("type", "")
+                url = ""
+                if file_type == "external":
+                    url = content.get("external", {}).get("url", "")
+                elif file_type == "file":
+                    url = content.get("file", {}).get("url", "")
+                name = content.get("name", "attachment")
+                if url:
+                    media_items.append({
+                        "url": url,
+                        "type": "file",
+                        "caption": name
+                    })
+
+            elif block_type == "pdf":
+                pdf_type = content.get("type", "")
+                url = ""
+                if pdf_type == "external":
+                    url = content.get("external", {}).get("url", "")
+                elif pdf_type == "file":
+                    url = content.get("file", {}).get("url", "")
+                if url:
+                    media_items.append({
+                        "url": url,
+                        "type": "pdf",
+                        "caption": ""
+                    })
+
+            # Recurse into children
+            if block.get("children"):
+                media_items.extend(
+                    self._extract_media_urls_from_blocks(block["children"])
+                )
+
+        return media_items
+
+    async def _download_notion_media(self, url: str, page_id: str, index: int, ext: str = ".png") -> Optional[str]:
+        """Download media from a Notion URL."""
+        try:
+            save_dir = os.path.join(os.getcwd(), 'data', 'multimodal_assets', 'notion')
+            os.makedirs(save_dir, exist_ok=True)
+
+            safe_id = page_id.replace("-", "")[:12]
+            file_path = os.path.join(save_dir, f"{safe_id}_{index}{ext}")
+
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+
+            self.logger.info(f"Downloaded Notion media: {file_path}")
+            return file_path
+        except Exception as e:
+            self.logger.error(f"Failed to download Notion media from {url[:80]}: {e}")
+            return None
+
+    async def _process_notion_media_blocks(self, blocks: list, page_title: str, page_id: str) -> None:
+        """Extract, download, and embed media from Notion page blocks."""
+        SUPPORTED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'}
+
+        media_items = self._extract_media_urls_from_blocks(blocks)
+        if not media_items:
+            return
+
+        image_paths = []
+        doc_paths = []
+
+        for i, item in enumerate(media_items):
+            url = item["url"]
+
+            # Determine extension from URL
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            path_part = parsed.path
+            ext = os.path.splitext(path_part)[1].lower() or ".png"
+
+            local_path = await self._download_notion_media(url, page_id, i, ext)
+            if not local_path:
+                continue
+
+            if ext in SUPPORTED_IMAGE_EXT:
+                image_paths.append(local_path)
+            elif ext == '.pdf':
+                doc_paths.append(local_path)
+            elif item["type"] == "pdf":
+                doc_paths.append(local_path)
+            elif item["type"] == "image":
+                image_paths.append(local_path)
+
+        if not (image_paths or doc_paths):
+            return
+
+        context_str = f"Notion page: {page_title} (ID: {page_id})"
+
+        try:
+            from promaia.brain.core.memory_pipeline import capture_memory
+            from promaia.storage.postgres_db import get_postgres_db
+            from promaia.storage.vector_db import VectorDBManager
+
+            db = get_postgres_db()
+            vector_mgr = VectorDBManager(db)
+
+            workspace = self.config.get("workspace", "default")
+
+            await capture_memory(
+                db=db,
+                vector_mgr=vector_mgr,
+                content=context_str,
+                session_id="notion_media_ingest",
+                domain_name=workspace,
+                confidence=1.0,
+                image_paths=image_paths if image_paths else None,
+                document_paths=doc_paths if doc_paths else None,
+                source="notion_media"
+            )
+            self.logger.info(
+                f"Captured {len(image_paths)} images, {len(doc_paths)} docs "
+                f"from Notion page '{page_title}'"
+            )
+        except Exception as e:
+            self.logger.error(f"capture_memory failed for Notion page {page_id}: {e}")

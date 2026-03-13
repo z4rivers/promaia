@@ -10,6 +10,7 @@ import os
 import json
 import logging
 import asyncio
+import requests
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
 from pathlib import Path
@@ -541,6 +542,18 @@ class DiscordConnector(BaseConnector):
                     if saved_files:
                         result.add_success(saved_files.get('markdown', ''))
                         saved_count += 1
+                        
+                        # --- Multimodal: download and embed attachments ---
+                        raw_msg = page_data.get("metadata", {}).get("raw_message_data", {})
+                        if raw_msg.get("has_attachments"):
+                            try:
+                                await self._process_attachments_multimodal(
+                                    raw_msg, storage
+                                )
+                            except Exception as att_err:
+                                self.logger.warning(
+                                    f"Multimodal attachment processing failed for {page_data['page_id']}: {att_err}"
+                                )
                     else:
                         result.add_skip()
                         skipped_count += 1
@@ -1155,6 +1168,97 @@ class DiscordConnector(BaseConnector):
     async def refresh_channel_cache(self):
         """Refresh the channel access cache."""
         return await self.get_cached_accessible_channels(force_refresh=True)
+
+    async def _download_discord_attachment(self, url: str, filename: str, message_id: str) -> Optional[str]:
+        """Download a Discord attachment from its CDN URL."""
+        try:
+            save_dir = os.path.join(os.getcwd(), 'data', 'multimodal_assets', 'discord')
+            os.makedirs(save_dir, exist_ok=True)
+            
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).rstrip()
+            file_path = os.path.join(save_dir, f"{message_id}_{safe_filename}")
+            
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+            
+            self.logger.info(f"Downloaded Discord attachment: {filename} -> {file_path}")
+            return file_path
+        except Exception as e:
+            self.logger.error(f"Failed to download Discord attachment {filename}: {e}")
+            return None
+
+    async def _process_attachments_multimodal(self, message_data: Dict, storage) -> None:
+        """Download supported attachments and feed them through capture_memory."""
+        SUPPORTED_IMAGE = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+        SUPPORTED_AUDIO = {'.mp3', '.wav', '.m4a', '.ogg', '.flac'}
+        SUPPORTED_DOC   = {'.pdf'}
+        
+        attachments = message_data.get("attachments", [])
+        if not attachments:
+            return
+        
+        image_paths, audio_paths, doc_paths = [], [], []
+        msg_id = message_data.get("message_id", "unknown")
+        
+        for att in attachments:
+            filename = att.get("filename", "")
+            url = att.get("url", "")
+            ext = os.path.splitext(filename)[1].lower()
+            
+            if ext not in (SUPPORTED_IMAGE | SUPPORTED_AUDIO | SUPPORTED_DOC):
+                continue
+            
+            local_path = await self._download_discord_attachment(url, filename, msg_id)
+            if not local_path:
+                continue
+            
+            if ext in SUPPORTED_IMAGE:
+                image_paths.append(local_path)
+            elif ext in SUPPORTED_AUDIO:
+                audio_paths.append(local_path)
+            elif ext in SUPPORTED_DOC:
+                doc_paths.append(local_path)
+        
+        if not (image_paths or audio_paths or doc_paths):
+            return
+        
+        # Build context string
+        author = message_data.get("author_display_name") or message_data.get("author_name", "Unknown")
+        channel = message_data.get("channel_name", "unknown")
+        server = message_data.get("server_name", "unknown")
+        content = message_data.get("content", "")
+        ts = message_data.get("timestamp", "")
+        context_str = f"Discord message from {author} in #{channel} ({server}) at {ts}\n\n{content}"
+        
+        try:
+            from promaia.brain.core.memory_pipeline import capture_memory
+            from promaia.storage.postgres_db import get_postgres_db
+            from promaia.storage.vector_db import VectorDBManager
+            
+            db = get_postgres_db()
+            vector_mgr = VectorDBManager(db)
+            
+            await capture_memory(
+                db=db,
+                vector_mgr=vector_mgr,
+                content=context_str,
+                session_id="discord_attachment_ingest",
+                domain_name=self.workspace,
+                confidence=1.0,
+                image_paths=image_paths if image_paths else None,
+                audio_paths=audio_paths if audio_paths else None,
+                document_paths=doc_paths if doc_paths else None,
+                source="discord_attachment"
+            )
+            self.logger.info(
+                f"Captured {len(image_paths)} images, {len(audio_paths)} audio, {len(doc_paths)} docs "
+                f"from Discord message {msg_id}"
+            )
+        except Exception as e:
+            self.logger.error(f"capture_memory failed for Discord message {msg_id}: {e}")
 
     async def cleanup(self):
         """Clean up Discord connector."""
