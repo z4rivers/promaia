@@ -1,5 +1,9 @@
 """
-kill_server.py — Nuclear option for zombie Promaia servers on Windows.
+kill_server.py — FALLBACK nuclear option for zombie Promaia servers on Windows.
+
+NOTE: The primary shutdown path is POST /api/shutdown (graceful).
+      Only use this script when the graceful endpoint is unreachable
+      (server is hung, port is locked, etc.)
 
 Usage:
     python scripts/kill_server.py          # Kill all processes on port 8000

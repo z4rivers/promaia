@@ -29,6 +29,46 @@ active_text_listeners = set()
 active_maia_listeners = set()
 
 # ---------------------------------------------------------------------------
+# MCP Brain Heartbeat Tracking
+# ---------------------------------------------------------------------------
+_mcp_heartbeat: dict = {
+    "last_seen": 0.0,
+    "session_id": None,
+    "agent_name": None,
+}
+_MCP_HEARTBEAT_TIMEOUT_SECONDS = 90  # If no heartbeat in 90s, consider disconnected
+
+
+class HeartbeatRequest(BaseModel):
+    session_id: str | None = None
+    agent_name: str | None = None
+
+
+@router.post("/heartbeat")
+async def mcp_heartbeat(req: HeartbeatRequest = HeartbeatRequest()):
+    """Receive a heartbeat ping from an IDE MCP server."""
+    _mcp_heartbeat["last_seen"] = time.time()
+    if req.session_id:
+        _mcp_heartbeat["session_id"] = req.session_id
+    if req.agent_name:
+        _mcp_heartbeat["agent_name"] = req.agent_name
+    return {"status": "ok"}
+
+
+@router.get("/heartbeat")
+async def mcp_heartbeat_status():
+    """Return whether an MCP brain connection is alive."""
+    last = _mcp_heartbeat["last_seen"]
+    elapsed = time.time() - last if last > 0 else float("inf")
+    connected = elapsed < _MCP_HEARTBEAT_TIMEOUT_SECONDS
+    return {
+        "connected": connected,
+        "last_seen_seconds_ago": round(elapsed, 1) if last > 0 else None,
+        "session_id": _mcp_heartbeat["session_id"],
+        "agent_name": _mcp_heartbeat["agent_name"],
+    }
+
+# ---------------------------------------------------------------------------
 # Voice Context Cache — keeps calendar/Muninn/prompt ready so connect is instant
 # ---------------------------------------------------------------------------
 _voice_ctx_cache = {

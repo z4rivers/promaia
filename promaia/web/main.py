@@ -199,6 +199,46 @@ if config["telegram_webhook_url"]:
         logger.warning(f"Could not register Telegram webhook route: {e}")
 
 
+@app.post("/api/shutdown", tags=["Health"])
+async def graceful_shutdown():
+    """Gracefully shut down the web server.
+    
+    Drains active background tasks, closes database connections,
+    stops the heartbeat, and signals uvicorn to exit cleanly.
+    Replaces the old kill_server.py sledgehammer approach.
+    """
+    import signal
+    import asyncio
+
+    logger.info("🛑 Graceful shutdown requested via /api/shutdown")
+
+    # 1. Stop the heartbeat
+    try:
+        from promaia.brain.heartbeat import stop_heartbeat
+        stop_heartbeat()
+        logger.info("  ✅ Heartbeat stopped")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Heartbeat stop failed: {e}")
+
+    # 2. Close Postgres connection pool
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        get_postgres_db().close_pool()
+        logger.info("  ✅ Postgres pool closed")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Postgres pool close failed: {e}")
+
+    # 3. Signal uvicorn to shut down after this response is sent
+    async def _delayed_exit():
+        await asyncio.sleep(0.5)  # Let the response flush
+        logger.info("  🛑 Sending SIGTERM to self")
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    asyncio.create_task(_delayed_exit())
+
+    return {"status": "shutting_down", "message": "Server will exit in ~1 second."}
+
+
 @app.get("/api/health", tags=["Health"])
 async def health_check():
     health_status = {

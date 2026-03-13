@@ -685,14 +685,49 @@ from promaia.brain.mcp.handlers.muninn_ops import _handle_activate
 from promaia.brain.mcp.handlers.metrics_ops import _handle_brain_costs
 
 # ---------------------------------------------------------------------------
+# Heartbeat emitter — pings the web server so the dashboard knows we're alive
+# ---------------------------------------------------------------------------
+_heartbeat_running = False
+
+async def _heartbeat_loop():
+    """POST to the web server every 30 seconds so the dashboard shows 🟢."""
+    global _heartbeat_running
+    _heartbeat_running = True
+    import httpx
+    url = "http://localhost:8000/api/brain/heartbeat"
+    payload = {"session_id": SESSION_ID[:8], "agent_name": "ide-mcp-stdio"}
+
+    while _heartbeat_running:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json=payload, timeout=3.0)
+        except Exception:
+            pass  # Web server might not be up yet — that's fine
+        await asyncio.sleep(30)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 async def main():
     """Run the Brain MCP server over stdio."""
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     logger.info(f"Starting zBrain MCP server (session: {SESSION_ID[:8]}...)")
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+    # Start the heartbeat emitter as a background task
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        global _heartbeat_running
+        _heartbeat_running = False
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
 
 def run_selftest():
