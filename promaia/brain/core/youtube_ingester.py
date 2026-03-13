@@ -1,8 +1,9 @@
 import os
 import json
 import logging
+import requests
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -98,6 +99,41 @@ class YouTubeIngester:
         except Exception as e:
             logger.error(f"Failed to search for latest video: {e}")
         return None
+
+    def _get_thumbnail_url(self, video_id: str) -> str:
+        """Get the best available thumbnail URL for a video."""
+        # YouTube provides thumbnail URLs in a predictable format
+        # Try maxresdefault first, then fall back to lower res
+        for quality in ['maxresdefault', 'hqdefault', 'mqdefault', 'default']:
+            url = f"https://img.youtube.com/vi/{video_id}/{quality}.jpg"
+            try:
+                resp = requests.head(url, timeout=5)
+                if resp.status_code == 200:
+                    return url
+            except:
+                continue
+        return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
+    def _download_thumbnail(self, video_id: str) -> Optional[str]:
+        """Download the best thumbnail for a video."""
+        try:
+            save_dir = os.path.join(os.getcwd(), 'data', 'multimodal_assets', 'youtube')
+            os.makedirs(save_dir, exist_ok=True)
+
+            url = self._get_thumbnail_url(video_id)
+            file_path = os.path.join(save_dir, f"{video_id}_thumb.jpg")
+
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+
+            logger.info(f"Downloaded thumbnail for {video_id}: {file_path}")
+            return file_path
+        except Exception as e:
+            logger.warning(f"Failed to download thumbnail for {video_id}: {e}")
+            return None
 
     def get_transcript(self, video_id: str) -> str:
         """Fetch the transcript text for a video."""
@@ -207,7 +243,11 @@ TRANSCRIPT:
             # 6. Prepend metadata block
             full_content = f"Source: YouTube Channel '{creator_name}'\nVideo Title: {video_title}\nVideo Date: {published_at}\nVideo ID: {video_id}\n\n{summary}"
             
-            # 7. Capture Memory
+            # 7. Download thumbnail
+            thumb_path = self._download_thumbnail(video_id)
+            image_paths = [thumb_path] if thumb_path else None
+            
+            # 8. Capture Memory (with thumbnail if available)
             try:
                 await capture_memory(
                     db=self.db,
@@ -216,9 +256,10 @@ TRANSCRIPT:
                     session_id=video_id,
                     domain_name="tech_radar",
                     source="youtube",
-                    confidence=0.9
+                    confidence=0.9,
+                    image_paths=image_paths
                 )
-                logger.info(f"Successfully ingested video: {video_id}")
+                logger.info(f"Successfully ingested video: {video_id} (thumbnail: {'yes' if thumb_path else 'no'})")
                 ingested.append({"creator": creator_name, "title": video_title, "id": video_id})
             except Exception as e:
                 logger.error(f"Failed to capture memory for {video_id}: {e}")
