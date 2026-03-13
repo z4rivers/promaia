@@ -66,7 +66,7 @@ def main():
         return
 
     print(f"  Found {len(pids)} process(es): {pids}\n")
-    print("💀 Killing all processes...")
+    print("🧹 Cleaning up old processes...")
 
     for pid in pids:
         kill_pid(pid)
