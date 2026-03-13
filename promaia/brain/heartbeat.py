@@ -116,3 +116,9 @@ def stop_heartbeat():
         _scheduler.shutdown()
         _scheduler = None
         logger.info("Subconscious heartbeat scheduler stopped.")
+
+
+def is_heartbeat_running() -> bool:
+    """Return True if the background scheduler is currently alive."""
+    global _scheduler
+    return _scheduler is not None and getattr(_scheduler, 'running', False)

@@ -695,11 +695,66 @@ async def main():
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-if __name__ == "__main__":
+def run_selftest():
+    """Run diagnostics to verify MCP server dependencies before launching."""
+    print("Running zBrain MCP Server Self-Test...\n")
+    success = True
+    
+    # 1. Postgres Check
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Brain MCP server stopped")
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        db.execute("SELECT 1")
+        print("✅ PostgreSQL Connection: OK")
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        sys.exit(1)
+        print(f"❌ PostgreSQL Connection: FAILED ({e})")
+        success = False
+        
+    # 2. Vector DB Check
+    try:
+        from promaia.storage.vector_db import VectorDBManager
+        mgr = VectorDBManager()
+        print("✅ Vector DB Manager: OK")
+    except Exception as e:
+        print(f"❌ Vector DB Manager: FAILED ({e})")
+        success = False
+        
+    # 3. MuninnDB Check
+    try:
+        from promaia.brain.muninn import get_muninn
+        import asyncio
+        m = asyncio.run(get_muninn())
+        if m is not None:
+            print("✅ MuninnDB Access: OK")
+        else:
+            print("❌ MuninnDB Access: FAILED (Returned None - Server may be down)")
+            success = False
+    except Exception as e:
+        print(f"❌ MuninnDB Access: FAILED ({e})")
+        success = False
+        
+    # 4. LLM API Keys
+    import os
+    keys = {"ANTHROPIC": os.getenv("ANTHROPIC_API_KEY"), "OPENAI": os.getenv("OPENAI_API_KEY"), "GEMINI": os.getenv("GOOGLE_API_KEY")}
+    found = [k for k, v in keys.items() if v]
+    if found:
+        print(f"✅ LLM API Keys: OK ({', '.join(found)})")
+    else:
+        print("❌ LLM API Keys: FAILED (No core generation keys found)")
+        success = False
+        
+    print(f"\nSelf-Test {'PASSED' if success else 'FAILED'}")
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        run_selftest()
+    else:
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            logger.info("Brain MCP server stopped")
+        except Exception as e:
+            logger.error(f"Fatal error: {e}", exc_info=True)
+            sys.exit(1)

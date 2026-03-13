@@ -200,7 +200,72 @@ if config["telegram_webhook_url"]:
 
 @app.get("/api/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "auth": "enabled" if is_auth_enabled() else "disabled"}
+    health_status = {
+        "status": "healthy",
+        "auth": "enabled" if is_auth_enabled() else "disabled",
+        "components": {}
+    }
+    
+    # 1. Check PostgreSQL Database
+    try:
+        from promaia.storage.postgres_db import get_postgres_db
+        db = get_postgres_db()
+        db.execute("SELECT 1")
+        health_status["components"]["database"] = "connected"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["components"]["database"] = f"error: {str(e)}"
+        
+    # 2. Check MCP Configuration
+    try:
+        from promaia.config.mcp_servers import get_mcp_manager
+        mcp_manager = get_mcp_manager()
+        configured_servers = len(mcp_manager.get_enabled_servers())
+        health_status["components"]["mcp_config"] = f"{configured_servers} servers enabled"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["components"]["mcp_config"] = f"error: {str(e)}"
+
+    # 3. Check MuninnDB Cognitive Memory
+    try:
+        from promaia.brain.muninn import get_muninn
+        m = await get_muninn()
+        if m is not None:
+            health_status["components"]["muninn"] = "connected"
+        else:
+            health_status["components"]["muninn"] = "unreachable"
+            health_status["status"] = "degraded"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["components"]["muninn"] = f"error: {str(e)}"
+
+    # 4. Check Background Heartbeat
+    try:
+        from promaia.brain.heartbeat import is_heartbeat_running
+        if is_heartbeat_running():
+            health_status["components"]["heartbeat"] = "running"
+        else:
+            health_status["components"]["heartbeat"] = "stopped"
+    except Exception as e:
+        health_status["components"]["heartbeat"] = f"error: {str(e)}"
+
+    # 5. Check Core API Keys
+    try:
+        keys = {
+            "anthropic": os.getenv("ANTHROPIC_API_KEY"),
+            "openai": os.getenv("OPENAI_API_KEY"),
+            "gemini": os.getenv("GOOGLE_API_KEY")
+        }
+        available = [k for k, v in keys.items() if v]
+        if available:
+            health_status["components"]["llm_keys"] = f"available ({', '.join(available)})"
+        else:
+            health_status["components"]["llm_keys"] = "missing - AI generation offline!"
+            health_status["status"] = "degraded"
+    except Exception as e:
+        health_status["components"]["llm_keys"] = f"error: {str(e)}"
+
+    return health_status
 
 
 if __name__ == "__main__":
