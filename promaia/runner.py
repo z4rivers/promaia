@@ -21,7 +21,7 @@ async def _run_web(host: str = "0.0.0.0", port: int = 8000):
         "promaia.web.main:app",
         host=host,
         port=port,
-        log_level="warning",
+        log_level="info",
         # In production behind a reverse proxy, trust forwarded headers
         forwarded_allow_ips="*" if os.environ.get("PYTHON_ENV") == "production" else None,
     )

@@ -10,7 +10,7 @@ import sys
 def main():
     # Fast path: 'python -m promaia dev' skips CLI entirely
     if len(sys.argv) > 1 and sys.argv[1] == "dev":
-        from promaia.runner import main as run_dev
+        from scripts.manager import main as run_dev
         run_dev()
         return
 
