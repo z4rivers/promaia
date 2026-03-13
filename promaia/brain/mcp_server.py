@@ -83,23 +83,7 @@ logger = logging.getLogger(__name__)
 server = Server("zbrain-brain")
 SESSION_ID = str(uuid.uuid4())
 
-# Lazy-initialised singletons so the server can start without a live DB
-_db = None
-_vector_manager = None
-
-
-def get_db():
-    global _db
-    if _db is None:
-        _db = get_postgres_db()
-    return _db
-
-
-def get_vector_mgr():
-    global _vector_manager
-    if _vector_manager is None:
-        _vector_manager = VectorDBManager()
-    return _vector_manager
+from promaia.brain.mcp.core_context import get_db, get_vector_mgr
 
 
 # ---------------------------------------------------------------------------
