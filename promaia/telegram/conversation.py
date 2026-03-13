@@ -247,6 +247,81 @@ def _get_known_projects() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Postgres fallback when MuninnDB is offline
+# ---------------------------------------------------------------------------
+
+def _postgres_context_fallback() -> list[str]:
+    """Pull profile, recent memories, and projects from Postgres.
+
+    Used when MuninnDB is unreachable so Gemini still has real context
+    instead of flying blind with just pending actions.
+    """
+    db = _get_db()
+    parts = []
+
+    # 1. User profile (top traits by confidence)
+    try:
+        profile_rows = db.fetch_all(
+            """
+            SELECT category, field, value
+            FROM brain.profile
+            WHERE confidence >= 0.5
+            ORDER BY confidence DESC
+            LIMIT 15
+            """
+        )
+        if profile_rows:
+            profile_text = "\n".join(
+                f"- {r['field']}: {r['value']}" for r in profile_rows
+            )
+            parts.append(f"## Zack's Profile\n{profile_text}")
+    except Exception as e:
+        logger.warning(f"Postgres fallback: profile query failed: {e}")
+
+    # 2. Recent memories (most recent captures, skip YouTube bulk)
+    try:
+        memories = db.fetch_all(
+            """
+            SELECT content, domain
+            FROM brain.memories
+            WHERE source IS DISTINCT FROM 'youtube'
+            ORDER BY created_at DESC
+            LIMIT 10
+            """
+        )
+        if memories:
+            mem_text = "\n".join(
+                f"- [{r.get('domain') or 'general'}] {r['content'][:200]}"
+                for r in memories
+            )
+            parts.append(f"## Recent Memories\n{mem_text}")
+    except Exception as e:
+        logger.warning(f"Postgres fallback: memories query failed: {e}")
+
+    # 3. Active projects / contexts (join domains for names)
+    try:
+        contexts = db.fetch_all(
+            """
+            SELECT d.name, c.directive, c.current_state
+            FROM brain.contexts c
+            JOIN brain.domains d ON d.id = c.domain_id
+            ORDER BY c.priority ASC
+            LIMIT 5
+            """
+        )
+        if contexts:
+            ctx_text = "\n".join(
+                f"- **{r['name']}**: {(r.get('directive') or r.get('current_state') or 'no directive')[:150]}"
+                for r in contexts
+            )
+            parts.append(f"## Active Projects\n{ctx_text}")
+    except Exception as e:
+        logger.warning(f"Postgres fallback: contexts query failed: {e}")
+
+    return parts
+
+
+# ---------------------------------------------------------------------------
 # Context assembly (maximalist per D1)
 # ---------------------------------------------------------------------------
 
@@ -300,37 +375,35 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
     except Exception as e:
         logger.warning(f"Context assembly: history query failed: {e}")
 
-    # 3. Relevant memories + Profile + Projects (MuninnDB Cognitive Memory)
+    # 3. Relevant memories + Profile + Projects (MuninnDB or Postgres fallback)
     try:
         from promaia.brain.muninn import get_muninn
         muninn = await get_muninn()
-        
-        # Opus Safety Check: Fallback if Muninn is offline
+
         if not muninn:
-            logger.warning("Context assembly: MuninnDB is offline. Falling back to Postgres sync fetch.")
-            fallback_parts = await asyncio.to_thread(_sync_fetch)
+            logger.warning("Context assembly: MuninnDB offline. Using Postgres fallback.")
+            fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
             parts.extend(fallback_parts)
         else:
             history_content = await get_conversation_history(chat_id, limit=3)
             context_list = [h['content'] for h in history_content] if history_content else []
             context_list.append(user_message)
-            
+
             res = await muninn.activate(context=context_list, max_results=15)
             activations = res.get("activations", [])
-            
+
             if activations:
                 mem_text = "\n".join(f"- {a['content']}" for a in activations)
-                # Insert directly after history
                 insert_pos = min(2, len(parts))
                 parts.insert(insert_pos, f"## Cognitive Context (MuninnDB)\n{mem_text}")
             else:
-                logger.warning("Context assembly: MuninnDB returned empty activations. Falling back to Postgres.")
-                fallback_parts = await asyncio.to_thread(_sync_fetch)
+                logger.warning("Context assembly: MuninnDB returned empty activations. Using Postgres fallback.")
+                fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
                 parts.extend(fallback_parts)
-                
+
     except Exception as e:
-        logger.warning(f"Context assembly: MuninnDB activate failed with exception: {e}. Falling back to Postgres.")
-        fallback_parts = await asyncio.to_thread(_sync_fetch)
+        logger.warning(f"Context assembly: MuninnDB failed: {e}. Using Postgres fallback.")
+        fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
         parts.extend(fallback_parts)
 
     return "\n\n".join(parts)

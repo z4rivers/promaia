@@ -251,39 +251,12 @@
     left: 0;
     right: 0;
     display: none;
-    padding: 12px 16px 28px 16px;
+    flex-direction: column;
     background: var(--bg-primary, #fff);
     border-top: 2px solid var(--border-visible, #1A1A2E);
     z-index: 51;
-    gap: 8px;
-    align-items: center;
 }
 .talk-text-bar.visible { display: flex; }
-.talk-text-bar input {
-    flex: 1;
-    font-family: var(--font-body);
-    font-size: 1rem;
-    padding: 10px 14px;
-    border: 2px solid var(--border-visible, #1A1A2E);
-    border-radius: var(--card-radius, 8px);
-    background: var(--bg-card, #fff);
-    color: var(--text-primary);
-    outline: none;
-}
-.talk-text-bar input:focus { border-color: var(--accent-primary, #FF3366); }
-.talk-text-bar button {
-    font-family: var(--font-heading);
-    font-weight: 700;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 10px 18px;
-    background: var(--accent-primary, #FF3366);
-    color: #fff;
-    border: 2px solid var(--accent-primary, #FF3366);
-    border-radius: var(--card-radius, 8px);
-    cursor: pointer;
-}
 .talk-text-bar .close-kb {
     background: transparent;
     border: none;

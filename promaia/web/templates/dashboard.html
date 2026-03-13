@@ -329,8 +329,15 @@
             </div>
 
             <div style="display: flex; gap: var(--space-sm, 8px); align-items: flex-end;">
-                <textarea id="maia-chat-input" placeholder="Query Muninn, run a tool, or chat natively..." rows="3" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem; resize: vertical; min-height: 60px;"></textarea>
-                <button id="maia-send-btn" style="padding: 12px 20px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; align-self: flex-end;">Engage</button>
+                <input type="file" id="maia-media-upload" accept="image/*,audio/*,application/pdf,text/plain,text/csv,text/markdown" multiple style="display: none;">
+                <button id="maia-upload-btn" title="Attach Media or Take Photo" style="padding: 11px 14px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; align-self: stretch; display: flex; align-items: center; justify-content: center; transition: all 150ms ease;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                </button>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px;">
+                    <div id="maia-attachments-preview" style="display: none; padding: 4px 8px; gap: 8px; flex-wrap: wrap;"></div>
+                    <textarea id="maia-chat-input" placeholder="Query Muninn, drop a screenshot, or chat natively..." rows="2" style="width: 100%; background: transparent; border: none; padding: 6px 10px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem; resize: vertical; min-height: 50px; outline: none;"></textarea>
+                </div>
+                <button id="maia-send-btn" style="padding: 0 20px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; align-self: stretch;">Engage</button>
             </div>
         </div>
     </details>
@@ -448,11 +455,7 @@
         <button class="vad-mode-btn" data-mode="driving">Noisy</button>
     </div>
 
-    <button class="talk-kb-btn" id="kb-toggle" title="Type instead">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
-        </svg>
-    </button>
+
     
     <button class="talk-mic-btn" id="mic-btn" title="Tap to Start">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -467,12 +470,7 @@
     </button>
 </div>
 
-<!-- Text Input Bar (hidden by default) -->
-<div class="talk-text-bar" id="text-bar">
-    <button class="close-kb" id="close-kb" title="Back to voice">&times;</button>
-    <input type="text" id="text-field" placeholder="Type a message..." autocomplete="off">
-    <button id="send-btn">Send</button>
-</div>
+
 {% endblock %}
 
 {% block scripts %}

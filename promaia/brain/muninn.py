@@ -140,31 +140,52 @@ class MuninnClient:
 
 
 # ---------------------------------------------------------------------------
-# Module-level lazy singleton
+# Module-level lazy singleton with periodic retry
 # ---------------------------------------------------------------------------
 
 _muninn: MuninnClient | None = None
-_muninn_checked: bool = False
+_muninn_last_check: float = 0.0
+_RETRY_INTERVAL: float = 60.0  # Re-check every 60s if previously offline
 
 
 async def get_muninn() -> Optional[MuninnClient]:
     """Return MuninnDB client singleton, or None if unavailable.
 
-    Checks health once on first call. If MuninnDB is unreachable,
-    caches None to avoid repeated connection attempts. All callers
-    are async handlers so the await is fine.
+    Checks health on first call. If MuninnDB is unreachable, retries
+    every 60 seconds instead of giving up permanently. Once connected,
+    stays connected until a call fails.
     """
-    global _muninn, _muninn_checked
-    if not _muninn_checked:
-        _muninn_checked = True
-        client = MuninnClient()
-        if await client.health():
-            _muninn = client
-            logger.info("MuninnDB connected (zbrain-vault)")
-        else:
-            logger.warning(
-                "MuninnDB unreachable at localhost:8475 "
-                "-- cognitive memory disabled"
-            )
-            await client.close()
+    global _muninn, _muninn_last_check
+    import time
+
+    now = time.monotonic()
+
+    # Already connected — return immediately
+    if _muninn is not None:
+        return _muninn
+
+    # Rate-limit retry attempts
+    if now - _muninn_last_check < _RETRY_INTERVAL:
+        return None
+
+    _muninn_last_check = now
+    client = MuninnClient()
+    if await client.health():
+        _muninn = client
+        logger.info("MuninnDB connected (zbrain-vault)")
+    else:
+        logger.warning(
+            "MuninnDB unreachable at localhost:8475 "
+            "-- will retry in %ds", int(_RETRY_INTERVAL)
+        )
+        await client.close()
     return _muninn
+
+
+async def reset_muninn() -> None:
+    """Force a reconnection attempt on next get_muninn() call."""
+    global _muninn, _muninn_last_check
+    if _muninn:
+        await _muninn.close()
+    _muninn = None
+    _muninn_last_check = 0.0

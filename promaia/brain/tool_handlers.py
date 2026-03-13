@@ -321,10 +321,11 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
                         response={"result": "no_memories_found"}
                     )
             else:
+                # Don't leak system internals — just say nothing was found
                 return types.FunctionResponse(
                     name=ft.name,
                     id=ft.id,
-                    response={"result": "muninndb_offline"}
+                    response={"result": "no_memories_found", "note": "Memory search temporarily unavailable. Use conversation context instead."}
                 )
         except Exception as e:
             logger.error(f"Failed to recall memory: {e}", exc_info=True)

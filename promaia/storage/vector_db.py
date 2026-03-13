@@ -138,6 +138,7 @@ class VectorDBManager:
         text: Optional[str] = None,
         image_paths: Optional[List[str]] = None,
         audio_paths: Optional[List[str]] = None,
+        document_paths: Optional[List[str]] = None,
         task_type: str = "RETRIEVAL_DOCUMENT"
     ) -> List[float]:
         """
@@ -148,12 +149,13 @@ class VectorDBManager:
             text: Optional text content
             image_paths: Optional list of absolute paths to images
             audio_paths: Optional list of absolute paths to audio files
+            document_paths: Optional list of absolute paths to documents (PDFs, txt, csv, md)
             task_type: Defaults to RETRIEVAL_DOCUMENT
 
         Returns:
             List of floats representing the embedding vector, L2 normalized (768 dimensions).
         """
-        if not text and not image_paths and not audio_paths:
+        if not text and not image_paths and not audio_paths and not document_paths:
             raise ValueError("Must provide at least one modality for embedding")
 
         try:
@@ -196,6 +198,23 @@ class VectorDBManager:
                         mime = 'audio/mpeg'
                         
                     parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=mime))
+
+            if document_paths:
+                for doc_path in document_paths:
+                    with open(doc_path, 'rb') as f:
+                        doc_bytes = f.read()
+                        
+                    lower_path = doc_path.lower()
+                    if lower_path.endswith('.pdf'):
+                        mime = 'application/pdf'
+                    elif lower_path.endswith('.csv'):
+                        mime = 'text/csv'
+                    elif lower_path.endswith('.md'):
+                        mime = 'text/markdown'
+                    else:
+                        mime = 'text/plain'
+                        
+                    parts.append(types.Part.from_bytes(data=doc_bytes, mime_type=mime))
 
             # Assemble content entry for aggregation
             content_entry = types.Content(parts=parts)

@@ -10,9 +10,10 @@ import base64
 import json
 import logging
 import os
-from fastapi import APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Form
 from fastapi.responses import Response
 from pydantic import BaseModel
+from typing import List, Optional
 
 from promaia.web.brain_chat import chat, transcribe_audio
 from promaia.storage.postgres_db import get_postgres_db, pg_connect
@@ -189,6 +190,98 @@ async def api_capture_commit(req: CommitCaptureRequest):
         logger.error(f"Failed to capture commit: {e}\\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to capture commit")
 
+
+@router.post("/capture_multimodal")
+async def api_capture_multimodal(
+    message: str = Form(...),
+    files: List[UploadFile] = File(None)
+):
+    """Hybrid out-of-band capture for heavy media. Broadcasts response down the WebSocket."""
+    import uuid
+    import shutil
+    
+    image_paths = []
+    audio_paths = []
+    document_paths = []
+    
+    if files:
+        asset_dir = r"E:\promaia_assets\media"
+        os.makedirs(asset_dir, exist_ok=True)
+        
+        for file in files:
+            if not file.filename:
+                continue
+            ext = os.path.splitext(file.filename)[1].lower()
+            file_id = str(uuid.uuid4())
+            safe_filename = f"{file_id}{ext}"
+            save_path = os.path.join(asset_dir, safe_filename)
+            
+            try:
+                with open(save_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                    
+                mime = file.content_type or ""
+                if mime.startswith("image/") or ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                    image_paths.append(save_path)
+                elif mime.startswith("audio/") or ext in [".wav", ".mp3", ".ogg", ".aac"]:
+                    audio_paths.append(save_path)
+                elif mime == "application/pdf" or mime.startswith("text/") or ext in [".pdf", ".txt", ".csv", ".md"]:
+                    document_paths.append(save_path)
+            except Exception as e:
+                logger.error(f"Failed to save uploaded file {file.filename}: {e}")
+                
+    # Alert the widget we're working (broadcast)
+    await broadcast_maia_activity("Analyzing multimodal input...")
+    
+    # Process through the Maia Bridge (brain_chat handles Muninn search & formatting)
+    from promaia.web.maia_bridge import generate_maia_response
+    
+    async def status_callback(status: str):
+        await broadcast_maia_activity(status)
+        
+    try:
+        reply = await generate_maia_response(
+            message, 
+            status_callback=status_callback, 
+            image_paths=image_paths, 
+            audio_paths=audio_paths,
+            document_paths=document_paths
+        )
+        
+        # Now do the dual-write capture with the media
+        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.vector_db import VectorDBManager
+        from promaia.brain.core.memory_pipeline import capture_memory
+        
+        db = get_postgres_db()
+        # This will use generate_multimodal_embedding under the hood
+        await capture_memory(
+            db=db, 
+            vector_mgr=VectorDBManager(), 
+            content=message, 
+            session_id=str(uuid.uuid4()), 
+            domain_name="promaia_multimodal", 
+            source="dashboard_widget",
+            image_paths=image_paths,
+            audio_paths=audio_paths,
+            document_paths=document_paths
+        )
+        
+        # Broadcast the actual response back to the websocket
+        for ws in active_maia_listeners:
+            try:
+                await ws.send_json({
+                    "type": "response",
+                    "text": reply
+                })
+            except Exception:
+                pass
+                
+        return {"status": "success", "images": len(image_paths), "audio": len(audio_paths)}
+    except Exception as e:
+        logger.error(f"Multimodal capture failed: {e}", exc_info=True)
+        await broadcast_maia_activity(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Multimodal engine failed")
 
 async def broadcast_chat_log(role: str, text: str):
     dead_sockets = set()

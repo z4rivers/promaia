@@ -38,7 +38,7 @@ PERSONALITY_SYSTEM_PROMPT = (
     "exploring."
 )
 
-async def generate_maia_response(user_message: str, status_callback=None) -> str:
+async def generate_maia_response(user_message: str, status_callback=None, image_paths=None, audio_paths=None, document_paths=None) -> str:
     """
     Generate a conversational response for the web dashboard using Gemini.
     status_callback is an async function that takes a string to update the UI "Active Session" feed.
@@ -67,9 +67,51 @@ async def generate_maia_response(user_message: str, status_callback=None) -> str
     if status_callback:
         await status_callback("Consulting Gemini models...")
 
+    user_parts = [types.Part.from_text(text=f"{context}\n\nUser: {user_message}")]
+    
+    if image_paths:
+        for img_path in image_paths:
+            try:
+                with open(img_path, 'rb') as f:
+                    image_bytes = f.read()
+                lower = img_path.lower()
+                mime = 'image/png' if lower.endswith('.png') else 'image/webp' if lower.endswith('.webp') else 'image/jpeg'
+                user_parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime))
+            except Exception as e:
+                logger.error(f"Failed to attach image {img_path} to Maia context: {e}")
+
+    if audio_paths:
+        for aud_path in audio_paths:
+            try:
+                with open(aud_path, 'rb') as f:
+                    audio_bytes = f.read()
+                lower = aud_path.lower()
+                mime = 'audio/wav' if lower.endswith('.wav') else 'audio/ogg' if lower.endswith('.ogg') else 'audio/mpeg'
+                user_parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=mime))
+            except Exception as e:
+                logger.error(f"Failed to attach audio {aud_path} to Maia context: {e}")
+                
+    if document_paths:
+        for doc_path in document_paths:
+            try:
+                with open(doc_path, 'rb') as f:
+                    doc_bytes = f.read()
+                lower = doc_path.lower()
+                if lower.endswith('.pdf'):
+                    mime = 'application/pdf'
+                elif lower.endswith('.csv'):
+                    mime = 'text/csv'
+                elif lower.endswith('.md'):
+                    mime = 'text/markdown'
+                else:
+                    mime = 'text/plain'
+                user_parts.append(types.Part.from_bytes(data=doc_bytes, mime_type=mime))
+            except Exception as e:
+                logger.error(f"Failed to attach document {doc_path} to Maia context: {e}")
+
     # We will maintain a conversation history for tool loops
     history = [
-        types.Content(role="user", parts=[types.Part.from_text(text=f"{context}\n\nUser: {user_message}")])
+        types.Content(role="user", parts=user_parts)
     ]
 
     try:

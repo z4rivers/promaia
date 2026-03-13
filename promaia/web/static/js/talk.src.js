@@ -79,8 +79,6 @@ const feedsEl = document.getElementById('feeds');
 const micArea = document.getElementById('mic-area');
 const kbToggle = document.getElementById('kb-toggle');
 const textBar = document.getElementById('text-bar');
-const textField = document.getElementById('text-field');
-const sendBtn = document.getElementById('send-btn');
 const closeKb = document.getElementById('close-kb');
 
 // ---------------------------------------------------------------------------
@@ -628,31 +626,24 @@ vadModeBtns.forEach(btn => {
     });
 });
 
-kbToggle.addEventListener('click', () => {
-    textBar.classList.add('visible');
-    micArea.style.display = 'none';
-    textField.focus();
-});
+if (kbToggle) {
+    kbToggle.addEventListener('click', () => {
+        textBar.classList.add('visible');
+        micArea.style.display = 'none';
+        const input = document.getElementById('maia-chat-input');
+        if (input) input.focus();
+    });
+}
 
-closeKb.addEventListener('click', () => {
-    textBar.classList.remove('visible');
-    micArea.style.display = '';
-});
+if (closeKb) {
+    closeKb.addEventListener('click', () => {
+        textBar.classList.remove('visible');
+        micArea.style.display = '';
+    });
+}
 
-sendBtn.addEventListener('click', () => {
-    const text = textField.value.trim();
-    if (text) {
-        textField.value = '';
-        sendText(text);
-    }
-});
-
-textField.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        sendBtn.click();
-    }
-});
+// The text input is now handled entirely by the Maia Widget (maia_widget.js)
+// which talks directly to the Brain API instead of the Voice API.
 
 // Camera upload handling
 const cameraBtn = document.getElementById('camera-toggle');

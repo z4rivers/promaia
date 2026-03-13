@@ -89,11 +89,17 @@ if os.environ.get("PYTHON_ENV") == "production":
     app.add_middleware(HTTPSRedirectMiddleware)
 
 # Cross-Origin Isolation middleware (Required for ONNX threaded WASM / SharedArrayBuffer)
+# Also sets no-cache on HTML to prevent mobile browsers from serving stale pages.
 @app.middleware("http")
 async def add_cross_origin_isolation_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    # Prevent mobile browsers from caching HTML pages
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     return response
 
 # Auth middleware (must be added BEFORE CORS so login redirects work)

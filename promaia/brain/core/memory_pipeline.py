@@ -38,8 +38,10 @@ async def capture_memory(
     content: str,
     session_id: str,
     domain_name: Optional[str] = None,
-    source: str = 'session',
     confidence: float = 0.9,
+    image_paths: Optional[List[str]] = None,
+    audio_paths: Optional[List[str]] = None,
+    document_paths: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Insert memory, generate embedding, extract actions + conversation intelligence.
@@ -56,21 +58,42 @@ async def capture_memory(
     if not content:
         raise ValueError("content is required")
 
+    import json
+    assets_combined = []
+    if image_paths:
+        assets_combined.extend(image_paths)
+    if audio_paths:
+        assets_combined.extend(audio_paths)
+    if document_paths:
+        assets_combined.extend(document_paths)
+    
+    asset_paths_json = json.dumps(assets_combined)
+
     # 1. Insert memory row (without embedding first)
     memory_id = db.insert_returning(
         """
-        INSERT INTO brain.memories (content, domain, source, source_id)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO brain.memories (content, domain, source, source_id, asset_paths)
+        VALUES (%s, %s, %s, %s, %s::jsonb)
         RETURNING id
         """,
-        (content, domain_name, source, session_id),
+        (content, domain_name, source, session_id, asset_paths_json),
     )
 
     # 2. Generate embedding and update row
     try:
-        embedding = vector_mgr.generate_embedding(content)
+        if assets_combined:
+            embedding = vector_mgr.generate_multimodal_embedding(
+                text=content, 
+                image_paths=image_paths, 
+                audio_paths=audio_paths,
+                document_paths=document_paths
+            )
+        else:
+            embedding = vector_mgr.generate_embedding(content)
+            
         embedding_array = np.array(embedding)
         with db.get_connection() as conn:
+            from pgvector.psycopg2 import register_vector
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(
@@ -78,6 +101,8 @@ async def capture_memory(
                     (embedding_array, memory_id),
                 )
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
         logger.warning(f"Embedding generation failed for memory {memory_id}: {e}")
         # Non-fatal — memory is stored, just without embedding
 

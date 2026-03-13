@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBtn = document.getElementById('maia-send-btn');
     const sessionFeed = document.getElementById('maia-session-feed');
     const statusLabel = document.getElementById('maia-status-label');
+    const uploadBtn = document.getElementById('maia-upload-btn');
+    const mediaUpload = document.getElementById('maia-media-upload');
+    const attachmentsPreview = document.getElementById('maia-attachments-preview');
     
     let ws = null;
 
@@ -91,11 +94,41 @@ document.addEventListener('DOMContentLoaded', () => {
     function sendMessage() {
         if (!chatInput || !ws || ws.readyState !== WebSocket.OPEN) return;
         const text = chatInput.value.trim();
-        if (!text) return;
+        const files = mediaUpload ? mediaUpload.files : [];
+        if (!text && files.length === 0) return;
         
-        appendFeedItem(text, "user");
-        ws.send(JSON.stringify({ message: text }));
-        chatInput.value = '';
+        appendFeedItem(files.length > 0 ? `${text} [${files.length} attachments]` : text, "user");
+        
+        // HYBRID ARCHITECTURE: 
+        // If there are files attached, we send out-of-band via HTTP POST so we don't crash the websocket payload limit.
+        if (files.length > 0) {
+            updateStatus("Uploading media...", "working");
+            const formData = new FormData();
+            formData.append("message", text || "Attached media");
+            for(let i = 0; i < files.length; i++) {
+                formData.append("files", files[i]);
+            }
+            
+            fetch('/api/brain/capture_multimodal', {
+                method: 'POST',
+                body: formData
+            }).then(resp => {
+                if (!resp.ok) console.error("Media upload failed", resp);
+            }).catch(e => console.error("Fetch media upload error", e))
+            .finally(() => {
+                // The websocket will broadcast the response, we just reset the input
+                chatInput.value = '';
+                if(mediaUpload) mediaUpload.value = '';
+                if(attachmentsPreview) {
+                    attachmentsPreview.innerHTML = '';
+                    attachmentsPreview.style.display = 'none';
+                }
+            });
+        } else {
+            // Standard WebSocket delivery for lightweight text
+            ws.send(JSON.stringify({ message: text }));
+            chatInput.value = '';
+        }
     }
 
     if (sendBtn) {
@@ -108,6 +141,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 sendMessage();
             }
+        });
+    }
+
+    // Attach functionality for media upload button
+    if (uploadBtn && mediaUpload) {
+        uploadBtn.addEventListener('click', () => mediaUpload.click());
+        mediaUpload.addEventListener('change', () => {
+             if (!attachmentsPreview) return;
+             attachmentsPreview.innerHTML = '';
+             if (mediaUpload.files.length > 0) {
+                 attachmentsPreview.style.display = 'flex';
+                 for(let i=0; i < mediaUpload.files.length; i++){
+                    const file = mediaUpload.files[i];
+                    const objUrl = URL.createObjectURL(file);
+                    const div = document.createElement('div');
+                    div.style.cssText = "background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 4px; font-size: 0.75rem; display: flex; align-items: center; gap: 4px;";
+                    if (file.type.startsWith('image/')) {
+                         div.innerHTML = `<img src="${objUrl}" style="height:24px; width:24px; object-fit:cover; border-radius:2px;"> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80px;">${file.name}</span>`;
+                    } else if (file.type.startsWith('audio/')) {
+                         div.innerHTML = `🎵 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80px;">${file.name}</span>`;
+                    } else {
+                         div.innerHTML = `📄 <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80px;">${file.name}</span>`;
+                    }
+                    attachmentsPreview.appendChild(div);
+                 }
+             } else {
+                 attachmentsPreview.style.display = 'none';
+             }
         });
     }
 
