@@ -462,7 +462,7 @@ def main():
 
     # Unified dev runner
     if args.command == "dev":
-        from promaia.runner import main as run_dev
+        from scripts.manager import main as run_dev
         run_dev()
         return
 

@@ -49,8 +49,9 @@ async def lifespan(app: FastAPI):
     
     # Pre-warm voice context cache so first voice connect is instant
     try:
-        from promaia.web.routers.brain import prewarm_voice_context
-        await prewarm_voice_context()
+        pass
+        # from promaia.web.routers.brain import prewarm_voice_context
+        # await prewarm_voice_context()
     except Exception as e:
         logger.warning(f"Voice context pre-warm failed (non-fatal): {e}")
     
