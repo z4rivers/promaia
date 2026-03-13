@@ -183,10 +183,11 @@ async def _handle_recall(args: dict) -> list[TextContent]:
     domain_name = args.get("domain")
     days = int(args.get("days", 30))
     limit = int(args.get("limit", 20))
+    has_media = bool(args.get("has_media", False))
 
     try:
         query = """
-            SELECT id, content, domain, created_at
+            SELECT id, content, domain, created_at, asset_paths
             FROM brain.memories
             WHERE created_at > NOW() - %s * INTERVAL '1 day'
         """
@@ -195,6 +196,9 @@ async def _handle_recall(args: dict) -> list[TextContent]:
         if domain_name:
             query += " AND domain = %s"
             params.append(domain_name)
+            
+        if has_media:
+            query += " AND jsonb_array_length(asset_paths) > 0"
 
         query += " ORDER BY created_at DESC LIMIT %s"
         params.append(limit)
@@ -205,6 +209,8 @@ async def _handle_recall(args: dict) -> list[TextContent]:
             msg = f"No memories found"
             if domain_name:
                 msg += f" in domain '{domain_name}'"
+            if has_media:
+                msg += f" with attached media"
             msg += f" from the last {days} days."
             return [TextContent(type="text", text=msg)]
 
@@ -212,8 +218,12 @@ async def _handle_recall(args: dict) -> list[TextContent]:
         for row in rows:
             domain_label = f" [{row['domain']}]" if row.get('domain') else ""
             ts = _fmt_ts(row.get('created_at'))
+            
+            assets = row.get('asset_paths') or []
+            asset_label = f" 📎 {len(assets)} file(s)" if assets else ""
+            
             content_preview = row['content'][:300] + ("..." if len(row['content']) > 300 else "")
-            lines.append(f"**[{ts}]**{domain_label} {content_preview}\n")
+            lines.append(f"**[{ts}]**{domain_label}{asset_label} {content_preview}\n")
 
         return [TextContent(type="text", text="\n".join(lines))]
 

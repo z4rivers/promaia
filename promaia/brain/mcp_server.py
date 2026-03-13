@@ -188,7 +188,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="recall",
             description=(
-                "Retrieve recent memories, optionally filtered by domain and time range."
+                "Retrieve recent memories, optionally filtered by domain and time range. "
+                "Set has_media=true to ONLY return memories that contain attached files (images/audio/docs)."
             ),
             inputSchema={
                 "type": "object",
@@ -206,6 +207,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Maximum results (default 20).",
                         "default": 20
+                    },
+                    "has_media": {
+                        "type": "boolean",
+                        "description": "If true, only returns memories that have attached files.",
+                        "default": False
                     }
                 },
                 "required": []
