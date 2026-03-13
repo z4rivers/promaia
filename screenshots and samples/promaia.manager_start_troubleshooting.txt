@@ -1,0 +1,346 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Zachary Turner> cd dev
+PS C:\Users\Zachary Turner\dev> python -m promaia.manager
+Starting Promaia Unified Manager. Logging to C:\Users\Zachary Turner\dev\logs\promaia.log
+[2026-03-10 17:42:46] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:42:46] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:42:47] [WEB] Starting Web Server...
+[2026-03-10 17:42:48] [TG] Starting Telegram Bot...
+[2026-03-10 17:42:48] [TG] 17:42:48 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:48] [TG] 17:42:48 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:48] [TG] 17:42:48 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:42:48] [TG] 17:42:48 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:42:49] [SCHED] Starting Agent Scheduler...
+[2026-03-10 17:42:50] [TG] 17:42:50 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:50] [TG] 17:42:50 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.agents.scheduler - 🗑️  PID file removed: C:\Users\Zachary Turner\.promaia\scheduler.pid
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.agents.scheduler - 📝 PID file written: C:\Users\Zachary Turner\.promaia\scheduler.pid
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:51] [TG] 17:42:51 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:42:51] [WEB] INFO:     Started server process [46384]
+[2026-03-10 17:42:51] [WEB] INFO:     Waiting for application startup.
+[2026-03-10 17:42:51] [WEB] INFO:     Application startup complete.
+[2026-03-10 17:42:51] [WEB] INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+[2026-03-10 17:42:51] [SCHED] 17:42:51 INFO promaia.storage.postgres_db - PostgreSQL connection pool initialized via DATABASE_URL: aws-1-us-east-1.pooler.supabase.com:5432/postgres
+[2026-03-10 17:42:51] [TG] 17:42:51 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:42:51] [TG] 17:42:51 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:42:51] [TG] 17:42:51 ERROR asyncio - Unclosed client session
+[2026-03-10 17:42:51] [TG] client_session: <aiohttp.client.ClientSession object at 0x000001B64B48FE00>
+[2026-03-10 17:42:51] [TG] 17:42:51 ERROR asyncio - Unclosed connector
+[2026-03-10 17:42:51] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x000001B64B32CAD0>, 25716.4858595)])']
+[2026-03-10 17:42:51] [TG] connector: <aiohttp.connector.TCPConnector object at 0x000001B64B48FA10>
+[2026-03-10 17:42:52] [SCHED] 17:42:52 INFO promaia.agents.cost_tracker - brain.agent_costs table initialized
+[2026-03-10 17:42:52] [MUNINN] Process exited with code 0.
+[2026-03-10 17:42:52] [MUNINN] Restarting MuninnDB (Restart 1/5 in last 10m)...
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.events.router - TelegramChannel registered for chat_id=6269250506
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - 🚀 Starting Agent Scheduler...
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - 📋 Found 3 enabled agents
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    Missed evening-digest (scheduled 16:30, last run 2026-03-07T22:01:42.049239+00:00) — will run now
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    ✓ Scheduled 'morning-briefing' (time-of-day: daily 06:00)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    ✓ Scheduled 'email-triage' (every 480 min)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    ✓ Scheduled 'evening-digest' (time-of-day: daily 16:30)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    Email check loop started (polling Gmail every 60s)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    Event router started (polling every 30s)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -    Heartbeat loop started (every 5 min)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - ✅ Scheduler started. Press Ctrl+C to stop.
+[2026-03-10 17:42:54] [SCHED]
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - 🕐 Starting scheduled loop for 'morning-briefing'
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - ⏳ 'morning-briefing' next run at 2026-03-11 06:00 PDT (sleeping 12.3h)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler - 🔄 Starting loop for 'email-triage'
+[2026-03-10 17:42:54] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:42:54] [TG] Process exited with code 0.
+[2026-03-10 17:42:54] [TG] Restarting Telegram Bot (Restart 1/5 in last 10m)...
+[2026-03-10 17:42:54] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:42:54] [SCHED] 17:42:54 INFO promaia.agents.scheduler -
+[2026-03-10 17:42:54] [SCHED] ⏰ Triggering 'email-triage' (interval: 480m)
+[2026-03-10 17:42:55] [SCHED] 17:42:55 INFO promaia.agents.execution_tracker - ✅ Agent executions table initialized
+[2026-03-10 17:42:55] [SCHED] 17:42:55 INFO promaia.agents.cost_tracker - brain.agent_costs table initialized
+[2026-03-10 17:42:56] [TG] Starting Telegram Bot...
+[2026-03-10 17:42:56] [TG] 17:42:56 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:56] [TG] 17:42:56 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:56] [TG] 17:42:56 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.agents.execution_tracker - Started execution 136 for agent 'email-triage'
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.agents.executor - 🤖 Starting agent 'email-triage' (execution 136)
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.agents.executor - 📚 Loading context from 1 source(s)...
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.config.databases - Loaded configuration for 1 databases
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.storage.hybrid_storage - ✅ Hybrid content registry connected to PostgreSQL
+[2026-03-10 17:42:57] [SCHED] 17:42:57 INFO promaia.storage.hybrid_storage - Found 3 Notion tables for unified view: ['notion_cms', 'notion_journal', 'notion_stories']
+[2026-03-10 17:42:58] [TG] 17:42:58 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:42:58] [TG] 17:42:58 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:42:58] [SCHED] 17:42:58 INFO promaia.storage.hybrid_storage - ✅ Rebuilt unified_content view with 6 sources
+[2026-03-10 17:42:58] [MUNINN] Process exited with code 0.
+[2026-03-10 17:42:58] [MUNINN] Restarting MuninnDB (Restart 2/5 in last 10m)...
+[2026-03-10 17:42:59] [TG] 17:42:59 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:42:59] [TG] 17:42:59 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:42:59] [TG] 17:42:59 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:42:59] [TG] 17:42:59 ERROR asyncio - Unclosed client session
+[2026-03-10 17:42:59] [TG] client_session: <aiohttp.client.ClientSession object at 0x0000022CA53AFE00>
+[2026-03-10 17:42:59] [TG] 17:42:59 ERROR asyncio - Unclosed connector
+[2026-03-10 17:42:59] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000022CA524CAD0>, 25724.2133764)])']
+[2026-03-10 17:42:59] [TG] connector: <aiohttp.connector.TCPConnector object at 0x0000022CA53AFA10>
+[2026-03-10 17:43:00] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:43:00] [TG] Process exited with code 0.
+[2026-03-10 17:43:00] [TG] Restarting Telegram Bot (Restart 2/5 in last 10m)...
+[2026-03-10 17:43:00] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:43:02] [TG] Starting Telegram Bot...
+[2026-03-10 17:43:02] [TG] 17:43:02 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:02] [TG] 17:43:02 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:02] [TG] 17:43:02 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:04] [TG] 17:43:04 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:04] [TG] 17:43:04 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:04] [MUNINN] Process exited with code 0.
+[2026-03-10 17:43:04] [MUNINN] Restarting MuninnDB (Restart 3/5 in last 10m)...
+[2026-03-10 17:43:05] [TG] 17:43:05 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:43:05] [TG] 17:43:05 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:43:05] [TG] 17:43:05 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:05] [TG] 17:43:05 ERROR asyncio - Unclosed client session
+[2026-03-10 17:43:05] [TG] client_session: <aiohttp.client.ClientSession object at 0x000001B4B019BE00>
+[2026-03-10 17:43:05] [TG] 17:43:05 ERROR asyncio - Unclosed connector
+[2026-03-10 17:43:05] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x000001B4B003CAD0>, 25730.153319)])']
+[2026-03-10 17:43:05] [TG] connector: <aiohttp.connector.TCPConnector object at 0x000001B4B019BA10>
+[2026-03-10 17:43:06] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:43:06] [TG] Process exited with code 0.
+[2026-03-10 17:43:06] [TG] Restarting Telegram Bot (Restart 3/5 in last 10m)...
+[2026-03-10 17:43:06] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:43:08] [TG] Starting Telegram Bot...
+[2026-03-10 17:43:08] [TG] 17:43:08 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:08] [TG] 17:43:08 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:08] [TG] 17:43:08 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:10] [TG] 17:43:10 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:10] [TG] 17:43:10 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:10] [MUNINN] Process exited with code 0.
+[2026-03-10 17:43:10] [MUNINN] Restarting MuninnDB (Restart 4/5 in last 10m)...
+[2026-03-10 17:43:11] [TG] 17:43:11 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:43:11] [TG] 17:43:11 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:43:11] [TG] 17:43:11 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:11] [TG] 17:43:11 ERROR asyncio - Unclosed client session
+[2026-03-10 17:43:11] [TG] client_session: <aiohttp.client.ClientSession object at 0x0000019D029CFE00>
+[2026-03-10 17:43:11] [TG] 17:43:11 ERROR asyncio - Unclosed connector
+[2026-03-10 17:43:11] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000019D0286CAD0>, 25736.2315985)])']
+[2026-03-10 17:43:11] [TG] connector: <aiohttp.connector.TCPConnector object at 0x0000019D029CFA10>
+[2026-03-10 17:43:12] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:43:12] [TG] Process exited with code 0.
+[2026-03-10 17:43:12] [TG] Restarting Telegram Bot (Restart 4/5 in last 10m)...
+[2026-03-10 17:43:12] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:43:14] [TG] Starting Telegram Bot...
+[2026-03-10 17:43:14] [TG] 17:43:14 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:14] [TG] 17:43:14 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:14] [TG] 17:43:14 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:16] [TG] 17:43:16 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:16] [TG] 17:43:16 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:16] [MUNINN] Process exited with code 0.
+[2026-03-10 17:43:16] [MUNINN] Restarting MuninnDB (Restart 5/5 in last 10m)...
+[2026-03-10 17:43:17] [TG] 17:43:17 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:43:17] [TG] 17:43:17 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:43:17] [TG] 17:43:17 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:17] [TG] 17:43:17 ERROR asyncio - Unclosed client session
+[2026-03-10 17:43:17] [TG] client_session: <aiohttp.client.ClientSession object at 0x000001235502FE00>
+[2026-03-10 17:43:17] [TG] 17:43:17 ERROR asyncio - Unclosed connector
+[2026-03-10 17:43:17] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000012354ECCAD0>, 25742.2949988)])']
+[2026-03-10 17:43:17] [TG] connector: <aiohttp.connector.TCPConnector object at 0x000001235502FA10>
+[2026-03-10 17:43:18] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:43:18] [TG] Process exited with code 0.
+[2026-03-10 17:43:18] [TG] Restarting Telegram Bot (Restart 5/5 in last 10m)...
+[2026-03-10 17:43:19] [MUNINN] muninn already running (pid 38296)
+[2026-03-10 17:43:20] [TG] Starting Telegram Bot...
+[2026-03-10 17:43:20] [TG] 17:43:20 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:20] [TG] 17:43:20 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:20] [TG] 17:43:20 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:43:22] [TG] 17:43:22 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:43:22] [TG] 17:43:22 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:43:22] [MUNINN] Process exited with code 0.
+[2026-03-10 17:43:22] [MUNINN] CRITICAL: MuninnDB exceeded 5 restarts in 10 minutes. Giving up.
+FATAL: MuninnDB failed to stabilize. Shutting down entire system.
+[2026-03-10 17:43:22] [SCHED] Stopping Agent Scheduler...
+[2026-03-10 17:43:22] [SCHED] Agent Scheduler stopped.
+[2026-03-10 17:43:22] [TG] Stopping Telegram Bot...
+[2026-03-10 17:43:22] [TG] Telegram Bot stopped.
+[2026-03-10 17:43:22] [WEB] Stopping Web Server...
+[2026-03-10 17:43:22] [WEB] Web Server stopped.
+[2026-03-10 17:43:22] [MUNINN] Stopping MuninnDB...
+[2026-03-10 17:43:22] [MUNINN] MuninnDB stopped.
+Shutdown complete.
+PS C:\Users\Zachary Turner\dev> python -m promaia.manager
+Starting Promaia Unified Manager. Logging to C:\Users\Zachary Turner\dev\logs\promaia.log
+Pre-flight check: cleaning up any lingering processes...
+  Killing lingering muninn.exe...
+Cleaned up 1 old processes. Waiting 2 seconds for ports to free...
+[2026-03-10 17:47:21] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:21] [MUNINN] muninn started (pid 21296)
+[2026-03-10 17:47:21] [MUNINN]
+[2026-03-10 17:47:21] [MUNINN]
+[2026-03-10 17:47:21] [MUNINN]   muninn  [up]  running
+[2026-03-10 17:47:21] [MUNINN]
+[2026-03-10 17:47:21] [MUNINN]     database   8475   [up]
+[2026-03-10 17:47:21] [MUNINN]     mcp        8750   [up]
+[2026-03-10 17:47:21] [MUNINN]     web ui     8476   [up]
+[2026-03-10 17:47:21] [MUNINN]
+[2026-03-10 17:47:21] [MUNINN]   Web UI → http://127.0.0.1:8476
+[2026-03-10 17:47:21] [MUNINN]
+[2026-03-10 17:47:22] [WEB] Starting Web Server...
+[2026-03-10 17:47:23] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:23] [TG] 17:47:23 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:23] [TG] 17:47:23 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:23] [TG] 17:47:23 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:24] [SCHED] Starting Agent Scheduler...
+[2026-03-10 17:47:24] [TG] 17:47:24 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:24] [TG] 17:47:24 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:25] [TG] 17:47:25 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.agents.scheduler - 🗑️  PID file removed: C:\Users\Zachary Turner\.promaia\scheduler.pid
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.agents.scheduler - 📝 PID file written: C:\Users\Zachary Turner\.promaia\scheduler.pid
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:25] [SCHED] 17:47:25 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:25] [WEB] INFO:     Started server process [652]
+[2026-03-10 17:47:25] [WEB] INFO:     Waiting for application startup.
+[2026-03-10 17:47:25] [WEB] INFO:     Application startup complete.
+[2026-03-10 17:47:25] [WEB] INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+[2026-03-10 17:47:26] [TG] 17:47:26 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:47:26] [TG] 17:47:26 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:26] [TG] 17:47:26 ERROR asyncio - Unclosed client session
+[2026-03-10 17:47:26] [TG] client_session: <aiohttp.client.ClientSession object at 0x0000022E7D52FE00>
+[2026-03-10 17:47:26] [TG] 17:47:26 ERROR asyncio - Unclosed connector
+[2026-03-10 17:47:26] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000022E7D3CCAD0>, 25990.6813934)])']
+[2026-03-10 17:47:26] [TG] connector: <aiohttp.connector.TCPConnector object at 0x0000022E7D52FA10>
+[2026-03-10 17:47:26] [SCHED] 17:47:26 INFO promaia.storage.postgres_db - PostgreSQL connection pool initialized via DATABASE_URL: aws-1-us-east-1.pooler.supabase.com:5432/postgres
+[2026-03-10 17:47:26] [SCHED] 17:47:26 INFO promaia.agents.cost_tracker - brain.agent_costs table initialized
+[2026-03-10 17:47:27] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:27] [MUNINN] Restarting MuninnDB (Restart 1/5 in last 10m)...
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.events.router - TelegramChannel registered for chat_id=6269250506
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler - 🚀 Starting Agent Scheduler...
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler - 📋 Found 3 enabled agents
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    Missed evening-digest (scheduled 16:30, last run 2026-03-07T22:01:42.049239+00:00) — will run now
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    ✓ Scheduled 'morning-briefing' (time-of-day: daily 06:00)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    ✓ Scheduled 'email-triage' (every 480 min)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    ✓ Scheduled 'evening-digest' (time-of-day: daily 16:30)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    Email check loop started (polling Gmail every 60s)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    Event router started (polling every 30s)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler -    Heartbeat loop started (every 5 min)
+[2026-03-10 17:47:27] [SCHED] 17:47:27 INFO promaia.agents.scheduler - ✅ Scheduler started. Press Ctrl+C to stop.
+[2026-03-10 17:47:27] [SCHED]
+[2026-03-10 17:47:28] [SCHED] 17:47:28 INFO promaia.agents.scheduler - 🕐 Starting scheduled loop for 'morning-briefing'
+[2026-03-10 17:47:28] [SCHED] 17:47:28 INFO promaia.agents.scheduler - ⏳ 'morning-briefing' next run at 2026-03-11 06:00 PDT (sleeping 12.2h)
+[2026-03-10 17:47:28] [SCHED] 17:47:28 INFO promaia.agents.scheduler - 🔄 Starting loop for 'email-triage'
+[2026-03-10 17:47:28] [SCHED] 17:47:28 INFO promaia.agents.scheduler -
+[2026-03-10 17:47:28] [SCHED] ⏰ Triggering 'email-triage' (interval: 480m)
+[2026-03-10 17:47:28] [SCHED] 17:47:28 INFO promaia.agents.execution_tracker - ✅ Agent executions table initialized
+[2026-03-10 17:47:29] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:29] [TG] Process exited with code 0.
+[2026-03-10 17:47:29] [TG] Restarting Telegram Bot (Restart 1/5 in last 10m)...
+[2026-03-10 17:47:29] [MUNINN] muninn already running (pid 21296)
+[2026-03-10 17:47:29] [SCHED] 17:47:29 INFO promaia.agents.cost_tracker - brain.agent_costs table initialized
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.agents.execution_tracker - Started execution 137 for agent 'email-triage'
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.agents.executor - 🤖 Starting agent 'email-triage' (execution 137)
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.agents.executor - 📚 Loading context from 1 source(s)...
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.config.databases - Loaded configuration for 1 databases
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.storage.hybrid_storage - ✅ Hybrid content registry connected to PostgreSQL
+[2026-03-10 17:47:30] [SCHED] 17:47:30 INFO promaia.storage.hybrid_storage - Found 3 Notion tables for unified view: ['notion_cms', 'notion_journal', 'notion_stories']
+[2026-03-10 17:47:31] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:31] [TG] 17:47:31 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:31] [TG] 17:47:31 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:31] [TG] 17:47:31 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:31] [SCHED] 17:47:31 INFO promaia.storage.hybrid_storage - ✅ Rebuilt unified_content view with 6 sources
+[2026-03-10 17:47:32] [TG] 17:47:32 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:32] [TG] 17:47:32 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:33] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:33] [MUNINN] Restarting MuninnDB (Restart 2/5 in last 10m)...
+[2026-03-10 17:47:33] [TG] 17:47:33 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:47:33] [TG] 17:47:33 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:47:33] [TG] 17:47:33 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:34] [TG] 17:47:34 ERROR asyncio - Unclosed client session
+[2026-03-10 17:47:34] [TG] client_session: <aiohttp.client.ClientSession object at 0x0000020B71AABE00>
+[2026-03-10 17:47:34] [TG] 17:47:34 ERROR asyncio - Unclosed connector
+[2026-03-10 17:47:34] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000020B7194CAD0>, 25998.6110229)])']
+[2026-03-10 17:47:34] [TG] connector: <aiohttp.connector.TCPConnector object at 0x0000020B71AABA10>
+[2026-03-10 17:47:35] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:35] [TG] Process exited with code 0.
+[2026-03-10 17:47:35] [TG] Restarting Telegram Bot (Restart 2/5 in last 10m)...
+[2026-03-10 17:47:35] [MUNINN] muninn already running (pid 21296)
+[2026-03-10 17:47:37] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:37] [TG] 17:47:37 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:37] [TG] 17:47:37 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:37] [TG] 17:47:37 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:38] [TG] 17:47:38 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:38] [TG] 17:47:38 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:39] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:39] [MUNINN] Restarting MuninnDB (Restart 3/5 in last 10m)...
+[2026-03-10 17:47:39] [TG] 17:47:39 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:47:40] [TG] 17:47:40 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:47:40] [TG] 17:47:40 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:40] [TG] 17:47:40 ERROR asyncio - Unclosed client session
+[2026-03-10 17:47:40] [TG] client_session: <aiohttp.client.ClientSession object at 0x0000027E71E2FE00>
+[2026-03-10 17:47:40] [TG] 17:47:40 ERROR asyncio - Unclosed connector
+[2026-03-10 17:47:40] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000027E71CCCAD0>, 26004.6442145)])']
+[2026-03-10 17:47:40] [TG] connector: <aiohttp.connector.TCPConnector object at 0x0000027E71E2FA10>
+[2026-03-10 17:47:41] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:41] [TG] Process exited with code 0.
+[2026-03-10 17:47:41] [TG] Restarting Telegram Bot (Restart 3/5 in last 10m)...
+[2026-03-10 17:47:41] [MUNINN] muninn already running (pid 21296)
+[2026-03-10 17:47:43] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:43] [TG] 17:47:43 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:43] [TG] 17:47:43 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:43] [TG] 17:47:43 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:44] [TG] 17:47:44 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:44] [TG] 17:47:44 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:45] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:45] [MUNINN] Restarting MuninnDB (Restart 4/5 in last 10m)...
+[2026-03-10 17:47:45] [TG] 17:47:45 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:47:45] [TG] 17:47:45 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:47:45] [TG] 17:47:45 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:46] [TG] 17:47:46 ERROR asyncio - Unclosed client session
+[2026-03-10 17:47:46] [TG] client_session: <aiohttp.client.ClientSession object at 0x000001830877FE00>
+[2026-03-10 17:47:46] [TG] 17:47:46 ERROR asyncio - Unclosed connector
+[2026-03-10 17:47:46] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x000001830861CAD0>, 26010.6270175)])']
+[2026-03-10 17:47:46] [TG] connector: <aiohttp.connector.TCPConnector object at 0x000001830877FA10>
+[2026-03-10 17:47:47] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:47] [TG] Process exited with code 0.
+[2026-03-10 17:47:47] [TG] Restarting Telegram Bot (Restart 4/5 in last 10m)...
+[2026-03-10 17:47:47] [MUNINN] muninn already running (pid 21296)
+[2026-03-10 17:47:49] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:49] [TG] 17:47:49 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:49] [TG] 17:47:49 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:49] [TG] 17:47:49 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:50] [TG] 17:47:50 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:50] [TG] 17:47:50 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:51] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:51] [MUNINN] Restarting MuninnDB (Restart 5/5 in last 10m)...
+[2026-03-10 17:47:51] [TG] 17:47:51 INFO promaia.telegram.auth - WhitelistMiddleware loaded 1 allowed chat ID(s)
+[2026-03-10 17:47:52] [TG] 17:47:52 WARNING promaia.telegram.bot - Skipping polling — active webhook exists: https://promaia-production.up.railway.app/telegram/webhook  Set TELEGRAM_WEBHOOK_URL to use webhook mode, or call /deleteWebhook manually to force polling.
+[2026-03-10 17:47:52] [TG] 17:47:52 INFO __main__ - PID file removed: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:52] [TG] 17:47:52 ERROR asyncio - Unclosed client session
+[2026-03-10 17:47:52] [TG] client_session: <aiohttp.client.ClientSession object at 0x000002D9FCB6BE00>
+[2026-03-10 17:47:52] [TG] 17:47:52 ERROR asyncio - Unclosed connector
+[2026-03-10 17:47:52] [TG] connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x000002D9FCA0CAD0>, 26016.690317)])']
+[2026-03-10 17:47:52] [TG] connector: <aiohttp.connector.TCPConnector object at 0x000002D9FCB6BA10>
+[2026-03-10 17:47:53] [MUNINN] Starting MuninnDB...
+[2026-03-10 17:47:53] [TG] Process exited with code 0.
+[2026-03-10 17:47:53] [TG] Restarting Telegram Bot (Restart 5/5 in last 10m)...
+[2026-03-10 17:47:53] [MUNINN] muninn already running (pid 21296)
+[2026-03-10 17:47:55] [TG] Starting Telegram Bot...
+[2026-03-10 17:47:55] [TG] 17:47:55 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:55] [TG] 17:47:55 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:55] [TG] 17:47:55 INFO __main__ - PID file written: C:\Users\Zachary Turner\.promaia\telegram_bot.pid
+[2026-03-10 17:47:56] [TG] 17:47:56 INFO promaia.utils.config - Optional AI services available:
+[2026-03-10 17:47:56] [TG] 17:47:56 INFO promaia.utils.config -   - Local Llama (LLAMA_BASE_URL)
+[2026-03-10 17:47:56] [SCHED] 17:47:56 INFO promaia.agents.executor -   ✓ Loaded 100 pages from 'gmail_zachary4rivers'
+[2026-03-10 17:47:57] [MUNINN] Process exited with code 0.
+[2026-03-10 17:47:57] [MUNINN] CRITICAL: MuninnDB exceeded 5 restarts in 10 minutes. Giving up.
+FATAL: MuninnDB failed to stabilize. Shutting down entire system.
+[2026-03-10 17:47:57] [SCHED] Stopping Agent Scheduler...
+[2026-03-10 17:47:57] [SCHED] Agent Scheduler stopped.
+[2026-03-10 17:47:57] [TG] Stopping Telegram Bot...
+[2026-03-10 17:47:57] [TG] Telegram Bot stopped.
+[2026-03-10 17:47:57] [WEB] Stopping Web Server...
+[2026-03-10 17:47:57] [WEB] Web Server stopped.
+[2026-03-10 17:47:57] [MUNINN] Stopping MuninnDB...
+[2026-03-10 17:47:57] [MUNINN] MuninnDB stopped.
+Shutdown complete.
+PS C:\Users\Zachary Turner\dev>
