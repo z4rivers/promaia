@@ -6,7 +6,7 @@ import json
 from typing import Dict, Any
 from pathlib import Path
 
-from promaia.storage.unified_storage import get_unified_storage
+from promaia.storage.content_writer import ContentWriter
 from promaia.storage.hybrid_storage import get_hybrid_registry
 
 def handle_migration_migrate(args):
@@ -24,7 +24,7 @@ def handle_migration_migrate(args):
     print()
     
     try:
-        storage = get_unified_storage()
+        storage = ContentWriter()
         report = storage.migrate_existing_data(dry_run=dry_run)
         
         # Display migration report

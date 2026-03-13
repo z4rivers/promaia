@@ -227,10 +227,9 @@ class ConversationConnector(BaseConnector):
                            force_update: bool = False,
                            excluded_properties: List[str] = None) -> SyncResult:
         """Sync conversation history to local storage (legacy method)."""
-        # This is the old API - forward to sync_to_local_unified
-        from promaia.storage.unified_storage import UnifiedStorage
-
-        storage = UnifiedStorage()
+        from promaia.storage.content_writer import ContentWriter
+        
+        storage = ContentWriter()
 
         # Get database config
         db_config = {

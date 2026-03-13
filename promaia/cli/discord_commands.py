@@ -226,7 +226,7 @@ async def handle_discord_sync(args):
     
     try:
         from promaia.config.databases import get_database_manager
-        from promaia.storage.unified_storage import get_unified_storage
+        from promaia.storage.content_writer import get_content_writer
         from promaia.connectors.base import QueryFilter, DateRangeFilter
         from datetime import datetime, timedelta
         
@@ -270,7 +270,7 @@ async def handle_discord_sync(args):
         date_filter = DateRangeFilter("timestamp", days_back=days)
         
         # Get storage
-        storage = get_unified_storage()
+        storage = get_content_writer()
         
         print(f"🔄 Syncing Discord messages from channel {channel_id}...")
         print(f"📅 Days back: {days}")

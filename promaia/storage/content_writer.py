@@ -19,7 +19,7 @@ from promaia.storage.hybrid_storage import get_hybrid_registry
 
 logger = logging.getLogger(__name__)
 
-class UnifiedStorage:
+class ContentWriter:
     """Unified storage manager for the new directory structure."""
     
     def __init__(self, config_file: str = "promaia.config.json"):
@@ -568,9 +568,9 @@ def load_metadata_with_filters(property_filters: Optional[Dict[str, str]] = None
 # Global storage instance
 _storage_instance = None
 
-def get_unified_storage(config_file: str = "promaia.config.json") -> UnifiedStorage:
-    """Get the global unified storage instance."""
+def get_content_writer(config_file: str = "promaia.config.json") -> ContentWriter:
+    """Get or create singleton instance of ContentWriter."""
     global _storage_instance
     if _storage_instance is None:
-        _storage_instance = UnifiedStorage(config_file)
-    return _storage_instance 
+        _storage_instance = ContentWriter(config_file)
+    return _storage_instance

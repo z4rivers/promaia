@@ -1475,8 +1475,8 @@ async def sync_database(source_spec: Dict[str, Any], args):
         complex_filter = source_spec.get('complex_filter')
         
         # Use the new unified storage system instead of old output_directory
-        from promaia.storage.unified_storage import get_unified_storage
-        storage = get_unified_storage()
+        from promaia.storage.content_writer import ContentWriter
+        storage = ContentWriter()
 
         # Build sync arguments - properties_only only supported by Notion connector
         sync_args = {

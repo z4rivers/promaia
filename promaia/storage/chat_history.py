@@ -108,7 +108,7 @@ class ChatHistoryManager:
             return False
 
         try:
-            from promaia.storage.unified_storage import UnifiedStorage
+            from promaia.storage.content_writer import ContentWriter
             from promaia.markdown.converter import conversation_to_markdown
             from promaia.config.databases import get_database_config
 
@@ -186,9 +186,9 @@ class ChatHistoryManager:
             }
 
             # Save to unified storage (includes vector embeddings and SQL)
-            storage = UnifiedStorage()
+            storage = ContentWriter()
 
-            # Save using the correct UnifiedStorage API
+            # Save using the correct ContentWriter API
             result = storage.save_content(
                 page_id=thread.id,
                 title=thread.name,
