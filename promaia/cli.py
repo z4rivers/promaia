@@ -467,8 +467,10 @@ def main():
         return
 
     # Handle commands
-    if args.command in ["chat", "model", "write", "r", "history", "h", "status"]:
+    if args.command in ["chat", "model", "write", "r", "history", "h"]:
         args.func(args)
+    elif args.command == "status":
+        asyncio.run(args.func(args))
     elif args.command == "cms":
         if hasattr(args, 'func'):
             asyncio.run(args.func(args))
