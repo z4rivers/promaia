@@ -30,6 +30,14 @@ except ImportError:
     google_vision_available = False
     GoogleVisionEngine = None
 
+# Try to import Gemini Semantic engine
+try:
+    from promaia.ocr.engines.gemini_semantic import GeminiSemanticEngine
+    gemini_semantic_available = True
+except ImportError:
+    gemini_semantic_available = False
+    GeminiSemanticEngine = None
+
 # Try to import Notion sync
 try:
     from promaia.ocr.notion_sync import create_notion_page_from_ocr
@@ -37,6 +45,15 @@ try:
 except ImportError:
     notion_sync_available = False
     create_notion_page_from_ocr = None
+
+# Try to import Brain connection
+try:
+    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.vector_db import VectorDBManager
+    from promaia.brain.core.memory_pipeline import capture_memory
+    brain_integration_available = True
+except ImportError:
+    brain_integration_available = False
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +136,12 @@ class OCRProcessor:
                 logger.warning("Falling back to mock engine")
                 return MockOCREngine(engine_config)
             return GoogleVisionEngine(engine_config)
+        elif engine_name == "gemini":
+            if not gemini_semantic_available:
+                logger.error("Gemini OCR engine not available. Install google-genai to use.")
+                logger.warning("Falling back to mock engine")
+                return MockOCREngine(engine_config)
+            return GeminiSemanticEngine(engine_config)
         elif engine_name == "mock":
             return MockOCREngine(engine_config)
         elif engine_name == "tesseract":
@@ -223,6 +246,39 @@ class OCRProcessor:
                         logger.warning(f"Failed to sync to Notion: {e}")
                         import traceback
                         logger.debug(traceback.format_exc())
+
+            # Dual-write to MuninnDB if available
+            if brain_integration_available and status == "completed":
+                try:
+                    db = get_postgres_db()
+                    vector_mgr = VectorDBManager()
+
+                    brain_content = ""
+                    meta = doc.ocr_result.metadata if hasattr(doc.ocr_result, 'metadata') and doc.ocr_result.metadata else {}
+                    
+                    if "summary" in meta and meta["summary"]:
+                        brain_content += f"Summary: {meta['summary']}\n\n"
+                    if "action_items" in meta and meta["action_items"]:
+                        brain_content += "Action Items:\n"
+                        for action in meta["action_items"]:
+                            brain_content += f"- {action}\n"
+                        brain_content += "\n"
+
+                    brain_content += f"Raw OCR Text:\n{doc.ocr_result.text}"
+
+                    await capture_memory(
+                        db=db,
+                        vector_mgr=vector_mgr,
+                        content=brain_content,
+                        session_id="ocr_pipeline",
+                        domain_name=self.workspace or "promaia",
+                        confidence=doc.ocr_result.confidence or 0.9,
+                        image_paths=[str(image_path)],
+                        source="ocr"
+                    )
+                    logger.info(f"✓ Embedded {image_path.name} into MuninnDB")
+                except Exception as e:
+                    logger.warning(f"Failed to embed in MuninnDB: {e}")
 
             # Move image to processed directory (after all processing is complete)
             if move_to_processed:
@@ -374,6 +430,10 @@ class OCRProcessor:
             "processed_date": datetime.now().isoformat(),
             "text_length": len(ocr_result.text)
         }
+        
+        # Inject Gemini semantic insights
+        if hasattr(ocr_result, 'metadata') and ocr_result.metadata:
+            metadata.update(ocr_result.metadata)
 
         # Create markdown content
         markdown_content = create_ocr_markdown(

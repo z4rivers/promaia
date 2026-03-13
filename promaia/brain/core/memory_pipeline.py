@@ -42,6 +42,7 @@ async def capture_memory(
     image_paths: Optional[List[str]] = None,
     audio_paths: Optional[List[str]] = None,
     document_paths: Optional[List[str]] = None,
+    source: str = "capture",
 ) -> Dict[str, Any]:
     """
     Insert memory, generate embedding, extract actions + conversation intelligence.

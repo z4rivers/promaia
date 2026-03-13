@@ -163,17 +163,58 @@ class TextPostprocessor:
         """
         parts = []
 
-        # Add frontmatter if metadata provided
+        # Extract semantic fields if they exist to format them nicely
+        doc_type = None
+        summary = None
+        entities = []
+        action_items = []
+        
         if metadata:
+            doc_type = metadata.pop("document_type", None)
+            summary = metadata.pop("summary", None)
+            entities = metadata.pop("entities", [])
+            action_items = metadata.pop("action_items", [])
+            
+            # Format frontmatter
             parts.append("---")
+            if doc_type:
+                parts.append(f"type: \"{doc_type}\"")
+            if entities:
+                parts.append("tags:")
+                for e in entities:
+                    parts.append(f"  - \"{e}\"")
             for key, value in metadata.items():
-                parts.append(f"{key}: {value}")
+                if isinstance(value, list):
+                    parts.append(f"{key}:")
+                    for item in value:
+                        parts.append(f"  - {item}")
+                else:
+                    parts.append(f"{key}: {value}")
             parts.append("---")
             parts.append("")
 
         # Add title if provided
         if title:
             parts.append(f"# {title}")
+            parts.append("")
+
+        # Add visual summary and actions to the body
+        if doc_type:
+            parts.append(f"**Document Type:** {doc_type}")
+            parts.append("")
+        if summary:
+            parts.append(f"> {summary}")
+            parts.append("")
+        if action_items:
+            parts.append("### Action Items")
+            for action in action_items:
+                parts.append(f"- [ ] {action}")
+            parts.append("")
+            
+        if summary or action_items or doc_type:
+            parts.append("---")
+            parts.append("")
+            parts.append("### Raw Text")
             parts.append("")
 
         # Add text content

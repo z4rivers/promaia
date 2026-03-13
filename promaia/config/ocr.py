@@ -21,7 +21,7 @@ class OCRConfig:
 
     # Core settings
     enabled: bool = True
-    engine: str = "google_cloud_vision"  # google_cloud_vision, tesseract, mock
+    engine: str = "gemini"  # gemini, google_cloud_vision, tesseract, mock
 
     # Directories
     uploads_directory: str = "data/uploads/pending"
@@ -130,7 +130,14 @@ class OCRConfig:
 
     def get_engine_config(self) -> Dict[str, Any]:
         """Get configuration specific to the selected OCR engine."""
-        if self.engine == "google_cloud_vision":
+        if self.engine == "gemini":
+            from promaia.ai.models import GOOGLE_MODELS
+            return {
+                "api_key": os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+                "model": GOOGLE_MODELS.get("flash", "gemini-3-flash-preview"),
+                **self.api_settings
+            }
+        elif self.engine == "google_cloud_vision":
             return {
                 "api_key": os.getenv("GOOGLE_CLOUD_VISION_API_KEY"),
                 **self.api_settings
@@ -241,7 +248,12 @@ class OCRConfigManager:
             return False
 
         # Validate engine-specific configuration
-        if self.config.engine == "google_cloud_vision":
+        if self.config.engine == "gemini":
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                logger.error("GEMINI_API_KEY or GOOGLE_API_KEY not found in environment")
+                return False
+        elif self.config.engine == "google_cloud_vision":
             api_key = os.getenv("GOOGLE_CLOUD_VISION_API_KEY")
             if not api_key:
                 logger.error("GOOGLE_CLOUD_VISION_API_KEY not found in environment")

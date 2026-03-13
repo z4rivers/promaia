@@ -117,7 +117,11 @@ async def get_or_create_ocr_properties(database_id: str, workspace: str = None) 
         "source_image": ["Source Image", "Image", "Original"],
         "language": ["Language", "Lang"],
         "text_length": ["Text Length", "Length", "Characters"],
-        "notes": ["Notes", "Comments", "Remarks"]
+        "notes": ["Notes", "Comments", "Remarks"],
+        "summary": ["Summary", "Description", "Overview"],
+        "document_type": ["Document Type", "Type", "Category"],
+        "entities": ["Entities", "Tags", "Keywords"],
+        "action_items": ["Action Items", "Tasks", "Todos"]
     }
 
     for purpose, possible_names in name_mapping.items():
@@ -169,7 +173,10 @@ def get_recommended_database_schema() -> Dict[str, Dict[str, Any]]:
             }
         },
         "Text Length": {"type": "number"},
-        "Notes": {"type": "rich_text"}
+        "Notes": {"type": "rich_text"},
+        "Summary": {"type": "rich_text"},
+        "Document Type": {"type": "select"},
+        "Entities": {"type": "multi_select"}
     }
 
 
@@ -257,24 +264,90 @@ async def create_notion_page_from_ocr(
                 "number": len(doc.ocr_result.text) if doc.ocr_result.text else 0
             }
 
+        # Gemini Semantic Properties
+        if doc.ocr_result and doc.ocr_result.metadata:
+            meta = doc.ocr_result.metadata
+            
+            # Document Type
+            if "document_type" in property_map and "document_type" in meta and meta["document_type"]:
+                properties[property_map["document_type"]] = {
+                    "select": {"name": meta["document_type"][:100]} # Notion limits select names to 100 chars
+                }
+                
+            # Summary
+            if "summary" in property_map and "summary" in meta and meta["summary"]:
+                properties[property_map["summary"]] = {
+                    "rich_text": [{"text": {"content": str(meta["summary"])[:2000]}}]
+                }
+
+            # Entities
+            if "entities" in property_map and "entities" in meta and meta["entities"]:
+                entities = meta["entities"]
+                if entities:
+                    properties[property_map["entities"]] = {
+                        "multi_select": [{"name": str(e)[:100]} for e in entities[:100]] # Limit items and length
+                    }
+
         # Create page content (blocks)
         children = []
 
-        if doc.ocr_result and doc.ocr_result.text:
-            # Split text into paragraphs and add as blocks
-            paragraphs = doc.ocr_result.text.split('\n\n')
-            for para in paragraphs[:50]:  # Limit to 50 blocks
-                if para.strip():
+        if doc.ocr_result:
+            meta = doc.ocr_result.metadata if hasattr(doc.ocr_result, 'metadata') and doc.ocr_result.metadata else {}
+            
+            # Add summary callout block
+            if "summary" in meta and meta["summary"]:
+                children.append({
+                    "object": "block",
+                    "type": "callout",
+                    "callout": {
+                        "rich_text": [{"type": "text", "text": {"content": str(meta["summary"])[:2000]}}],
+                        "icon": {"type": "emoji", "emoji": "✨"}
+                    }
+                })
+
+            # Add Action Items as to-do blocks
+            if "action_items" in meta and meta["action_items"]:
+                children.append({
+                    "object": "block",
+                    "type": "heading_3",
+                    "heading_3": {
+                        "rich_text": [{"type": "text", "text": {"content": "Action Items"}}]
+                    }
+                })
+                for action in meta["action_items"]:
                     children.append({
                         "object": "block",
-                        "type": "paragraph",
-                        "paragraph": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": para.strip()[:2000]}  # Max 2000 chars per block
-                            }]
+                        "type": "to_do",
+                        "to_do": {
+                            "rich_text": [{"type": "text", "text": {"content": str(action)[:2000]}}],
+                            "checked": False
                         }
                     })
+
+            # Add divider
+            if meta.get("summary") or meta.get("action_items"):
+                children.append({
+                    "object": "block",
+                    "type": "divider",
+                    "divider": {}
+                })
+                
+            # Add raw text
+            if doc.ocr_result.text:
+                # Split text into paragraphs and add as blocks
+                paragraphs = doc.ocr_result.text.split('\n\n')
+                for para in paragraphs[:50]:  # Limit to 50 blocks
+                    if para.strip():
+                        children.append({
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{
+                                    "type": "text",
+                                    "text": {"content": para.strip()[:2000]}  # Max 2000 chars per block
+                                }]
+                            }
+                        })
 
         # Create the page
         page = await client.pages.create(
