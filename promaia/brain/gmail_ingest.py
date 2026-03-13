@@ -15,6 +15,9 @@ Usage via CLI:
 import hashlib
 import json
 import logging
+import base64
+import os
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -165,11 +168,90 @@ def _ingest_account(
             _insert_message(db, row)
             result["inserted"] += 1
 
+            # Multimodal Assets Capture
+            if row.get("attachments"):
+                atts = json.loads(row["attachments"])
+                downloaded_paths = []
+                for att in atts:
+                    if att.get("attachmentId") and att.get("mimeType", "").startswith(("image/", "application/pdf", "audio/")):
+                        logger.info(f"Downloading attachment {att['filename']} for message {msg_id}")
+                        local_path = _download_attachment(service, msg_id, att["attachmentId"], att["filename"])
+                        if local_path:
+                            downloaded_paths.append(local_path)
+                
+                if downloaded_paths:
+                    from promaia.brain.core.memory_pipeline import capture_memory
+                    from promaia.storage.vector_db import VectorDBManager
+                    
+                    vector_mgr = VectorDBManager(db)
+                    
+                    image_paths = [p for p in downloaded_paths if p.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+                    audio_paths = [p for p in downloaded_paths if p.lower().endswith(('.mp3', '.wav', '.m4a', '.ogg'))]
+                    doc_paths = [p for p in downloaded_paths if p.lower().endswith(('.pdf',))]
+                    
+                    context_str = f"Email Date: {row['email_date']}\nFrom: {row['sender_name']} <{row['sender_email']}>\nSubject: {row['subject']}\n\nEmail snippet: {row.get('body_snippet', '')}"
+                    
+                    try:
+                        _run_async(
+                            capture_memory(
+                                db=db,
+                                vector_mgr=vector_mgr,
+                                content=context_str,
+                                session_id="gmail_ingest",
+                                domain_name=workspace,
+                                confidence=1.0,  # Exact file
+                                image_paths=image_paths if image_paths else None,
+                                audio_paths=audio_paths if audio_paths else None,
+                                document_paths=doc_paths if doc_paths else None,
+                                source="gmail_attachment"
+                            )
+                        )
+                        logger.info(f"Successfully captured multimodal memory for email {msg_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to capture multimodal memory for {msg_id}: {e}")
+
         except Exception as e:
             logger.warning(f"Failed to ingest message {msg_id}: {e}")
             result["errors"] += 1
 
     return result
+
+def _download_attachment(service, message_id: str, attachment_id: str, filename: str) -> Optional[str]:
+    """Download an attachment, save it to disk, and return the local path."""
+    try:
+        attachment = service.users().messages().attachments().get(
+            userId='me', messageId=message_id, id=attachment_id
+        ).execute()
+        
+        file_data = base64.urlsafe_b64decode(attachment['data'])
+        
+        save_dir = os.path.join(os.getcwd(), 'data', 'multimodal_assets', 'gmail')
+        os.makedirs(save_dir, exist_ok=True)
+        
+        safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).rstrip()
+        file_path = os.path.join(save_dir, f"{message_id}_{safe_filename}")
+        
+        with open(file_path, 'wb') as f:
+            f.write(file_data)
+        
+        return file_path
+    except Exception as e:
+        logger.error(f"Failed to download attachment {filename} for msg {message_id}: {e}")
+        return None
+
+def _run_async(coro):
+    """Safely run a coroutine whether an event loop is currently running or not."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+        
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 def _parse_full_message(
@@ -300,6 +382,7 @@ def _extract_attachment_info(payload: dict) -> list:
                 "filename": part["filename"],
                 "mimeType": part.get("mimeType", ""),
                 "size": part.get("body", {}).get("size", 0),
+                "attachmentId": part.get("body", {}).get("attachmentId", ""),
             })
         if part.get("parts"):
             attachments.extend(_extract_attachment_info(part))

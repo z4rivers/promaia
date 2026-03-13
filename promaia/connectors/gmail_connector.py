@@ -987,6 +987,29 @@ Subject: {subject}
 
         return attachments
 
+    def download_attachment(self, message_id: str, attachment_id: str, filename: str) -> Optional[str]:
+        """Download an attachment, save it to disk, and return the local path."""
+        try:
+            attachment = self.service.users().messages().attachments().get(
+                userId='me', messageId=message_id, id=attachment_id
+            ).execute()
+            
+            file_data = base64.urlsafe_b64decode(attachment['data'])
+            
+            save_dir = os.path.join(os.getcwd(), 'data', 'multimodal_assets', 'gmail')
+            os.makedirs(save_dir, exist_ok=True)
+            
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).rstrip()
+            file_path = os.path.join(save_dir, f"{message_id}_{safe_filename}")
+            
+            with open(file_path, 'wb') as f:
+                f.write(file_data)
+            
+            return file_path
+        except Exception as e:
+            self.logger.error(f"Failed to download attachment {filename} for msg {message_id}: {e}")
+            return None
+
     def _build_gmail_query(self, 
                           filters: Optional[List[QueryFilter]] = None,
                           date_filter: Optional[DateRangeFilter] = None) -> str:
