@@ -62,7 +62,7 @@ class PromaiaBot(commands.Bot):
         self.ai = ChatInterface()
         
         # Initialize unified conversation manager
-        from promaia.agents.conversation_manager import ConversationManager
+        from promaia.agents.messaging.conversation_manager import ConversationManager
         from promaia.agents.messaging.discord_platform import DiscordPlatform
         
         self.conv_manager = ConversationManager()
@@ -170,10 +170,8 @@ class PromaiaBot(commands.Bot):
                 return
             
             # Check if this is part of an active conversation (unified manager)
-            conversation = await self.conv_manager.get_active_conversation(
-                platform='discord',
-                channel_id=str(message.channel.id),
-                user_id=str(message.author.id)
+            conversation = self.conv_manager.get_active_conversation(
+                channel_id=str(message.channel.id)
             )
             
             if conversation:

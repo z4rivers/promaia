@@ -821,7 +821,7 @@ Current time: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
                 return False
             
             # Import conversation manager
-            from promaia.agents.conversation_manager import ConversationManager
+            from promaia.agents.messaging.conversation_manager import ConversationManager
             
             conv_manager = ConversationManager()
             
