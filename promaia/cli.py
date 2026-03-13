@@ -729,6 +729,11 @@ def main():
     edit_status_parser.add_argument("content_type", nargs="?", help="Content type to check status for (optional)")
     edit_status_parser.set_defaults(func=handle_edit_status)
 
+    # Status command
+    status_parser = subparsers.add_parser("status", help="Check system health and core module connections")
+    from promaia.cli.status_commands import handle_status
+    status_parser.set_defaults(func=handle_status)
+
     # Discord bot command
     discord_parser = subparsers.add_parser("discord-bot", help="Start Promaia Discord bot")
     discord_parser.add_argument("--workspace", "-w", default="koii", help="Workspace to use for bot configuration")
@@ -789,7 +794,7 @@ def main():
         return
 
     # Handle commands
-    if args.command in ["chat", "model", "write", "r", "history", "h"]:
+    if args.command in ["chat", "model", "write", "r", "history", "h", "status"]:
         args.func(args)
     elif args.command == "cms":
         if hasattr(args, 'func'):

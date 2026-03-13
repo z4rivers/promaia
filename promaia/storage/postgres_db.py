@@ -136,6 +136,17 @@ class PostgresDB:
         finally:
             if conn:
                 self._pool.putconn(conn)
+                
+    def close_pool(self):
+        """Close all connections in the pool gracefully."""
+        if self._pool:
+            try:
+                self._pool.closeall()
+                logger.info("PostgreSQL connection pool closed successfully.")
+            except Exception as e:
+                logger.error(f"Error closing PostgreSQL connection pool: {e}")
+        self._initialized = False
+        PostgresDB._instance = None
     
     @contextmanager
     def get_cursor(self, cursor_factory=None):

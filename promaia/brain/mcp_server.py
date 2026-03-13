@@ -758,3 +758,9 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Fatal error: {e}", exc_info=True)
             sys.exit(1)
+        finally:
+            try:
+                from promaia.storage.postgres_db import get_postgres_db
+                get_postgres_db().close_pool()
+            except Exception as e:
+                logger.error(f"Failed to close Postgres connection pool: {e}")
