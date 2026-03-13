@@ -133,6 +133,95 @@ class VectorDBManager:
             logger.error(f"Embedding generation failed: {e}")
             raise
 
+    def generate_multimodal_embedding(
+        self,
+        text: Optional[str] = None,
+        image_paths: Optional[List[str]] = None,
+        audio_paths: Optional[List[str]] = None,
+        task_type: str = "RETRIEVAL_DOCUMENT"
+    ) -> List[float]:
+        """
+        Generate a single aggregated embedding from mixed modalities
+        using Gemini Embedding 2.
+
+        Args:
+            text: Optional text content
+            image_paths: Optional list of absolute paths to images
+            audio_paths: Optional list of absolute paths to audio files
+            task_type: Defaults to RETRIEVAL_DOCUMENT
+
+        Returns:
+            List of floats representing the embedding vector, L2 normalized (768 dimensions).
+        """
+        if not text and not image_paths and not audio_paths:
+            raise ValueError("Must provide at least one modality for embedding")
+
+        try:
+            if self.embedding_provider != "google":
+                raise RuntimeError(f"Multimodal embeddings require Google provider. Current: {self.embedding_provider}")
+
+            from google.genai import types
+
+            parts = []
+            if text and text.strip():
+                parts.append(types.Part.from_text(text=text))
+
+            if image_paths:
+                for img_path in image_paths:
+                    with open(img_path, 'rb') as f:
+                        image_bytes = f.read()
+                    
+                    # Basic mime type inference
+                    lower_path = img_path.lower()
+                    if lower_path.endswith('.png'):
+                        mime = 'image/png'
+                    elif lower_path.endswith('.webp'):
+                        mime = 'image/webp'
+                    else:
+                        mime = 'image/jpeg'
+                        
+                    parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime))
+
+            if audio_paths:
+                for aud_path in audio_paths:
+                    with open(aud_path, 'rb') as f:
+                        audio_bytes = f.read()
+                        
+                    lower_path = aud_path.lower()
+                    if lower_path.endswith('.wav'):
+                        mime = 'audio/wav'
+                    elif lower_path.endswith('.ogg'):
+                        mime = 'audio/ogg'
+                    else:
+                        mime = 'audio/mpeg'
+                        
+                    parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=mime))
+
+            # Assemble content entry for aggregation
+            content_entry = types.Content(parts=parts)
+
+            result = self.genai_client.models.embed_content(
+                model=GOOGLE_MODELS["embedding"],
+                contents=content_entry,
+                config={
+                    'output_dimensionality': 768,
+                    'task_type': task_type,
+                },
+            )
+            raw = result.embeddings[0].values
+            
+            # Gemini Embedding 2 only normalizes the full 3072d output.
+            # Sub-3072 dimensions require manual L2 normalization.
+            arr = np.array(raw, dtype=np.float64)
+            norm = np.linalg.norm(arr)
+            if norm > 0:
+                arr = arr / norm
+            return arr.tolist()
+
+        except Exception as e:
+            logger.error(f"Multimodal embedding generation failed: {e}")
+            raise
+
     def add_content(
         self,
         page_id: str,
