@@ -271,7 +271,7 @@ async def search_brain(query: str, limit: int = 5) -> str:
         pg_rows = []
         try:
             vector_mgr = _get_vector_mgr()
-            query_embedding = vector_mgr.generate_embedding(query)
+            query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
             query_array = np.array(query_embedding)
 
             with db.get_connection() as conn:

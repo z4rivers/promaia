@@ -108,7 +108,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
     pg_rows = []
     try:
         vector_mgr = get_vector_mgr()
-        query_embedding = vector_mgr.generate_embedding(query)
+        query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
         query_array = np.array(query_embedding)
 
         with db.get_connection() as conn:

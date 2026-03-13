@@ -16,8 +16,8 @@ GOOGLE_MODELS = {
     # TTS-specific models (2.5 generation — 3.x doesn't support audio output yet)
     "tts": "gemini-2.5-flash-preview-tts",
     "tts-hq": "gemini-2.5-pro-preview-tts",
-    # Embeddings
-    "embedding": "gemini-embedding-001",
+    # Embeddings (Gemini Embedding 2 — multimodal: text, image, audio, video, PDF)
+    "embedding": "gemini-embedding-2-preview",
 }
 
 # Local Llama models (commonly used models with Ollama or similar local setups)

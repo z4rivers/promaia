@@ -88,12 +88,18 @@ class VectorDBManager:
         logger.error("Failed to initialize embedding provider: GOOGLE_API_KEY not set")
         raise RuntimeError("No embedding provider available. Set GOOGLE_API_KEY.")
 
-    def generate_embedding(self, text: str) -> List[float]:
+    def generate_embedding(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> List[float]:
         """
         Generate embedding for given text.
 
         Args:
             text: Input text to embed
+            task_type: Gemini task type to optimize vector geometry.
+                       Use "RETRIEVAL_DOCUMENT" when storing content (default).
+                       Use "RETRIEVAL_QUERY" when embedding a search query.
+                       Other options: SEMANTIC_SIMILARITY, CLASSIFICATION,
+                       CLUSTERING, CODE_RETRIEVAL_QUERY, QUESTION_ANSWERING,
+                       FACT_VERIFICATION.
 
         Returns:
             List of floats representing the embedding vector (768 dimensions)
@@ -106,9 +112,20 @@ class VectorDBManager:
                 result = self.genai_client.models.embed_content(
                     model=GOOGLE_MODELS["embedding"],
                     contents=text,
-                    config={'output_dimensionality': 768},
+                    config={
+                        'output_dimensionality': 768,
+                        'task_type': task_type,
+                    },
                 )
-                return result.embeddings[0].values
+                raw = result.embeddings[0].values
+                # Gemini Embedding 2 only normalizes the full 3072d output.
+                # Sub-3072 dimensions (768, 1536) require manual L2 normalization
+                # for accurate cosine similarity computations.
+                arr = np.array(raw, dtype=np.float64)
+                norm = np.linalg.norm(arr)
+                if norm > 0:
+                    arr = arr / norm
+                return arr.tolist()
             else:
                 raise RuntimeError(f"Unknown embedding provider: {self.embedding_provider}")
 
@@ -488,8 +505,8 @@ class VectorDBManager:
             List of results with page_id and similarity scores
         """
         try:
-            # Generate query embedding
-            query_embedding = self.generate_embedding(query_text)
+            # Generate query embedding (asymmetric: queries use RETRIEVAL_QUERY)
+            query_embedding = self.generate_embedding(query_text, task_type="RETRIEVAL_QUERY")
             query_array = np.array(query_embedding)
 
             sql = """
@@ -565,8 +582,8 @@ class VectorDBManager:
             List of dicts with page_id, distance (similarity), and metadata
         """
         try:
-            # Generate query embedding
-            query_embedding = self.generate_embedding(query_text)
+            # Generate query embedding (asymmetric: queries use RETRIEVAL_QUERY)
+            query_embedding = self.generate_embedding(query_text, task_type="RETRIEVAL_QUERY")
             query_array = np.array(query_embedding)
 
             sql = """
