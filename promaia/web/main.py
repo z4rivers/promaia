@@ -160,7 +160,7 @@ async def login_submit(
             value=create_session_cookie(username),
             max_age=COOKIE_MAX_AGE,
             httponly=True,
-            samesite="lax",
+            samesite="strict",
             secure=os.environ.get("PYTHON_ENV") == "production",
         )
         logger.info(f"Login successful for user '{username}'")

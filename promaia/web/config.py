@@ -32,11 +32,14 @@ def _parse_cors_origins() -> list[str]:
     if not raw:
         # Default: allow common local + production origins
         return [
+            "https://zbrain.online",
             "http://localhost:5174",
             "http://localhost:8000",
             "https://www.koiib.com",
         ]
     if raw.strip() == "*":
+        if os.environ.get("PYTHON_ENV") == "production":
+            return ["https://zbrain.online"]
         return ["*"]
     return [o.strip() for o in raw.split(",") if o.strip()]
 

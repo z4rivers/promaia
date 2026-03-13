@@ -25,9 +25,9 @@ from starlette.responses import RedirectResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
 
-# Cookie name and max age (30 days)
+# Cookie name and max age (24 hours)
 COOKIE_NAME = "promaia_session"
-COOKIE_MAX_AGE = 30 * 24 * 60 * 60
+COOKIE_MAX_AGE = 24 * 60 * 60
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/login", "/api/health", "/telegram/webhook"}
@@ -106,23 +106,26 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        # If auth is not enabled, pass everything through
-        if not is_auth_enabled():
-            return await call_next(request)
-
         path = request.url.path
 
         # Allow public paths
-        if path in PUBLIC_PATHS:
+        if path in PUBLIC_PATHS or path.startswith("/static/"):
             return await call_next(request)
 
-        # Allow WebSockets to bypass standard HTTP auth headers (Starlette crashes otherwise)
+        # Fail-closed auth mechanism
+        if not is_auth_enabled():
+            if os.environ.get("PYTHON_ENV") == "production":
+                return JSONResponse(
+                    {"detail": "Server authentication not configured. DASHBOARD_PASSWORD is required in production."},
+                    status_code=500,
+                )
+            else:
+                # In local dev, allow pass-through if no password is set
+                return await call_next(request)
+
+        # Allow WebSockets to bypass standard HTTP auth headers (Starlette HTTP res crash avoid)
+        # Note: WebSocket stream endpoints explicitly check auth via cookie parameter manually.
         if path.startswith("/api/brain/stream") or path.startswith("/api/brain/maia_stream"):
-            # Note: We should eventually implement token-based ticket auth, but for now allow the stream
-            return await call_next(request)
-
-        # Allow static files (CSS, JS, images)
-        if path.startswith("/static/"):
             return await call_next(request)
 
         # Check Bearer token (for API/programmatic access)
@@ -147,7 +150,29 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         if session_cookie:
             username = _verify_token(session_cookie)
             if username:
-                return await call_next(request)
+                response = await call_next(request)
+                
+                # Sliding refresh: if token is nearing expiration, refresh it
+                parts = session_cookie.split("|")
+                if len(parts) == 3:
+                    try:
+                        expires = int(parts[1])
+                        # If more than 1 hour has passed since this 24hr cookie was minted
+                        if time.time() > expires - (COOKIE_MAX_AGE - 3600):
+                            new_cookie = create_session_cookie(username)
+                            is_prod = os.environ.get("PYTHON_ENV") == "production"
+                            response.set_cookie(
+                                key=COOKIE_NAME,
+                                value=new_cookie,
+                                max_age=COOKIE_MAX_AGE,
+                                httponly=True,
+                                samesite="strict",
+                                secure=is_prod,
+                            )
+                    except ValueError:
+                        pass
+                
+                return response
 
         # Not authenticated
         if path.startswith("/api/"):

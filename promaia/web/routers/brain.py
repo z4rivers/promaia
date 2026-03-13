@@ -89,6 +89,15 @@ async def prewarm_voice_context():
 
 @router.websocket("/stream/text")
 async def text_stream_endpoint(websocket: WebSocket):
+    from promaia.web.auth import COOKIE_NAME, _verify_token, is_auth_enabled
+    
+    # Authenticate via cookie from handshake before accepting
+    if is_auth_enabled() and os.environ.get("PYTHON_ENV") == "production":
+        cookie = websocket.cookies.get(COOKIE_NAME)
+        if not cookie or not _verify_token(cookie):
+            await websocket.close(code=1008)
+            return
+            
     await websocket.accept()
     active_text_listeners.add(websocket)
     try:
@@ -100,6 +109,15 @@ async def text_stream_endpoint(websocket: WebSocket):
 @router.websocket("/maia_stream")
 async def maia_stream_endpoint(websocket: WebSocket):
     """Additive WebSocket endpoint specifically for the Maia Web Widget."""
+    from promaia.web.auth import COOKIE_NAME, _verify_token, is_auth_enabled
+    
+    # Authenticate via cookie from handshake before accepting
+    if is_auth_enabled() and os.environ.get("PYTHON_ENV") == "production":
+        cookie = websocket.cookies.get(COOKIE_NAME)
+        if not cookie or not _verify_token(cookie):
+            await websocket.close(code=1008)
+            return
+            
     await websocket.accept()
     active_maia_listeners.add(websocket)
     from promaia.web.maia_bridge import generate_maia_response
