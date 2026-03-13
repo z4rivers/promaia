@@ -7,7 +7,7 @@ Used by both the MCP server and the realtime Voice Agent.
 import json
 import logging
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from pgvector.psycopg2 import register_vector
 from promaia.storage.postgres_db import PostgresDB
