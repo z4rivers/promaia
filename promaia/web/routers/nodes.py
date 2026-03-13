@@ -10,7 +10,7 @@ from openai import OpenAI
 from google import genai
 
 # Maia specific imports
-from promaia.storage.unified_reader import read_database_content
+from promaia.storage.content_reader import read_database_content
 from promaia.ai.prompts import create_system_prompt
 from promaia.ai.models import ANTHROPIC_MODELS, GOOGLE_MODELS
 from promaia.config.workspaces import get_workspace_manager

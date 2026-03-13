@@ -15,7 +15,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
 
 from promaia.storage.files import read_markdown_files, get_existing_page_ids
-from promaia.storage.unified_reader import read_content_by_type
+from promaia.storage.content_reader import read_content_by_type
 from promaia.utils.config import get_chat_days_setting, set_chat_days_setting, load_environment
 from promaia.chat.interface import get_api_preference, create_system_prompt, display_message_with_timestamp
 from promaia.ai.models import ANTHROPIC_MODELS
