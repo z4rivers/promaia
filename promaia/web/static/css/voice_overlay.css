@@ -183,7 +183,7 @@
     animation: mic-pulse 2s ease-out infinite;
 }
 
-.talk-kb-btn, .talk-end-btn {
+.talk-kb-btn {
     width: 44px;
     height: 44px;
     border-radius: 50%;
@@ -196,53 +196,13 @@
     transition: all 150ms ease;
     touch-action: manipulation;
 }
-.talk-kb-btn svg, .talk-end-btn svg {
+.talk-kb-btn svg {
     width: 20px;
     height: 20px;
     fill: var(--text-muted, #888);
 }
-.talk-kb-btn:hover, .talk-end-btn:hover {
+.talk-kb-btn:hover {
     border-color: var(--accent-primary);
-}
-
-.talk-end-btn { display: none; }
-.talk-end-btn.visible {
-    display: flex;
-    border-color: var(--accent-primary, #FF3366);
-}
-.talk-end-btn.visible svg {
-    fill: var(--accent-primary, #FF3366);
-}
-
-.vad-toggle-wrapper {
-    position: absolute;
-    top: -40px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-card, #fff);
-    border: 1px solid var(--border-subtle, #E0E0E8);
-    border-radius: 20px;
-    padding: 4px;
-    display: flex;
-    gap: 4px;
-    z-index: 52;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-}
-.vad-mode-btn {
-    background: transparent;
-    border: none;
-    padding: 4px 12px;
-    border-radius: 14px;
-    font-family: 'Outfit', sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted, #888);
-    cursor: pointer;
-    transition: all 150ms ease;
-}
-.vad-mode-btn.active {
-    background: var(--text-primary, #1A1A2E);
-    color: #fff;
 }
 
 .talk-text-bar {

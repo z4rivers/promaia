@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from promaia.web.brain_chat import chat, transcribe_audio
-from promaia.storage.postgres_db import get_postgres_db, pg_connect
+from promaia.storage.db_factory import get_db, db_connect
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.core.memory_pipeline import capture_memory
 import time
@@ -235,9 +235,9 @@ async def api_capture_commit(req: CommitCaptureRequest):
     import traceback
     try:
         from promaia.brain.core.memory_pipeline import capture_memory
-        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.db_factory import get_db
         from promaia.storage.vector_db import VectorDBManager
-        db = get_postgres_db()
+        db = get_db()
         # Dual-writes to MuninnDB
         await capture_memory(db=db, vector_mgr=VectorDBManager(), content=content, session_id=req.commit_hash, domain_name="promaia_codebase", source="git_hook")
         
@@ -307,11 +307,11 @@ async def api_capture_multimodal(
         )
         
         # Now do the dual-write capture with the media
-        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.db_factory import get_db
         from promaia.storage.vector_db import VectorDBManager
         from promaia.brain.core.memory_pipeline import capture_memory
         
-        db = get_postgres_db()
+        db = get_db()
         # This will use generate_multimodal_embedding under the hood
         await capture_memory(
             db=db, 
@@ -468,12 +468,12 @@ async def generate_session_review(transcript_log: list, rescued_memories: list =
 def _log_brain_event(event_type: str, payload: dict, session_id: str):
     """Helper to cleanly log noise/signal events to Postgres."""
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
         db.execute(
             """
             INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES (%s, %s::jsonb, 'voice_pipeline', %s)
+            VALUES (%s, %s, 'voice_pipeline', %s)
             """,
             (event_type, json.dumps(payload), session_id)
         )
@@ -486,11 +486,11 @@ async def _commit_signal(content: str, session_id: str, domain_name: str, source
     try:
         if not content.strip():
             return
-        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.db_factory import get_db
         from promaia.storage.vector_db import VectorDBManager
         from promaia.brain.core.memory_pipeline import capture_memory
         
-        db = get_postgres_db()
+        db = get_db()
         vector_mgr = VectorDBManager()
         
         logger.info(f"Capturing voice signal ({source})...")
@@ -647,6 +647,15 @@ async def brain_stream(websocket: WebSocket):
         response_modalities=[types.Modality.AUDIO],
         system_instruction=types.Content(parts=[types.Part.from_text(text=system_ctx)]),
         tools=[memory_tools],
+        realtime_input_config=types.RealtimeInputConfig(
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                disabled=False,
+                start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
+                end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                prefix_padding_ms=20,
+                silence_duration_ms=500,
+            )
+        ),
     )
 
     try:
@@ -729,6 +738,13 @@ async def brain_stream(websocket: WebSocket):
                                                 }
                                             })
     
+                                # Handle interruption signal from Gemini's VAD
+                                if server_content.interrupted:
+                                    logger.info("[Voice] Gemini detected user interruption")
+                                    await websocket.send_json({
+                                        "serverContent": {"interrupted": True}
+                                    })
+
                                 # Handle Turn Complete signal
                                 if server_content.turn_complete:
                                     await websocket.send_json({

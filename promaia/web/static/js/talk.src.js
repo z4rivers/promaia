@@ -3,7 +3,8 @@
  *
  * Streams raw 16kHz PCM from mic -> Server -> Gemini Live API
  * Receives raw 24kHz PCM from Gemini -> Server -> Browser
- * Uses Silero VAD (loaded via CDN as `window.vad`) purely for UI state and interruption signaling.
+ * Uses Gemini's server-side VAD for turn-taking and interruption detection.
+ * Silero VAD (browser) is kept only for instant local playback cutoff.
  */
 
 // ---------------------------------------------------------------------------
@@ -71,8 +72,6 @@ const AudioProcessingUtils = {
 // DOM
 // ---------------------------------------------------------------------------
 const micBtn = document.getElementById('mic-btn');
-const endBtn = document.getElementById('end-btn');
-const vadModeBtns = document.querySelectorAll('.vad-mode-btn');
 const statusLabel = document.getElementById('talk-status');
 const messagesEl = document.getElementById('messages');
 const feedsEl = document.getElementById('feeds');
@@ -210,6 +209,13 @@ function connectWebSocket() {
                     }
                 }
                 
+                // Gemini's server-side VAD detected user interruption
+                if (msg.serverContent.interrupted) {
+                    console.log('[WS] Gemini detected interruption — stopping playback');
+                    stopPlayback();
+                    setStatus('listening');
+                }
+
                 // End of thought
                 if (msg.serverContent.turnComplete) {
                     console.log('[WS] Turn Complete');
@@ -351,18 +357,15 @@ function stopCapture() {
     }
 }
 
-let currentVadMode = 'normal';
-
 // ---------------------------------------------------------------------------
-// VAD initialization (Used purely for UI State and Interruptions)
+// VAD initialization — local Silero VAD for instant playback cutoff only.
+// Gemini's server-side VAD handles turn-taking and interruption signaling.
 // ---------------------------------------------------------------------------
 async function initVAD() {
-    // CDN injects the library into the global window.vad object
     if (!window.vad || !window.vad.MicVAD) {
         throw new Error("VAD library not loaded from CDN yet.");
     }
-    
-    // Cleanup old VoiceSessionState.vad if swapping modes — must fully destroy to release mic stream
+
     if (VoiceSessionState.vad) {
         try { VoiceSessionState.vad.pause(); } catch(e) {}
         try { VoiceSessionState.vad.destroy(); } catch(e) {}
@@ -373,51 +376,30 @@ async function initVAD() {
         VoiceSessionState.vad = null;
     }
 
-    const modeConfig = currentVadMode === 'driving' ? {
+    VoiceSessionState.vad = await window.vad.MicVAD.new({
         positiveSpeechThreshold: 0.95,
         negativeSpeechThreshold: 0.75,
         redemptionFrames: 15,
         minSpeechFrames: 8,
         preSpeechPadFrames: 3,
-    } : {
-        positiveSpeechThreshold: 0.82,
-        negativeSpeechThreshold: 0.6,
-        redemptionFrames: 8,
-        minSpeechFrames: 5,
-        preSpeechPadFrames: 3,
-    };
-
-    VoiceSessionState.vad = await window.vad.MicVAD.new({
-        ...modeConfig,
 
         onSpeechStart: () => {
-            // Only trigger interruption if Promaia is actually speaking
+            // Instant local playback cutoff — don't wait for server round-trip
             if (VoiceSessionState.playingNodes.length > 0) {
-                console.log('[VAD] Speech detected during playback - Interrupting');
+                console.log('[VAD] Speech during playback — cutting local audio');
                 stopPlayback();
-                
-                if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
-                    VoiceSessionState.ws.send(JSON.stringify({ 
-                        clientContent: { 
-                            turns: [{ role: "user", parts: [{ text: "Stop." }] }],
-                            turnComplete: true 
-                        } 
-                    }));
-                }
                 setStatus('listening');
             }
-            // If not speaking, ignore — Gemini handles speech detection via its own audio stream
         },
 
         onSpeechEnd: () => {
-            console.log('[VAD] User stopped talking');
-            // Gemini handles STT automatically, we just update the UI state
+            // UI hint only — Gemini's VAD is authoritative for turn-taking
             if (VoiceSessionState.playingNodes.length === 0) {
                 setStatus('thinking');
             }
         },
     });
-    console.log('[VAD] UI Monitor Initialized');
+    console.log('[VAD] Local playback monitor initialized');
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +408,6 @@ async function initVAD() {
 async function startConversation() {
     VoiceSessionState.conversationMode = true;
     micBtn.classList.add('active');
-    endBtn.classList.add('visible');
     feedsEl.classList.add('dimmed');
     setStatus('connecting');
 
@@ -473,7 +454,6 @@ async function startConversation() {
 function stopConversation() {
     VoiceSessionState.conversationMode = false;
     micBtn.classList.remove('active');
-    endBtn.classList.remove('visible');
     feedsEl.classList.remove('dimmed');
     setStatus('idle');
     playTone('end');
@@ -550,14 +530,19 @@ async function sendText(text) {
 // ---------------------------------------------------------------------------
 micBtn.addEventListener('click', () => {
     if (navigator.vibrate) navigator.vibrate(50);
-    
-    // 1. Force completely synchronous initialization of ALL AudioContexts for iOS Safari
+
+    // Toggle: tap to start, tap to stop
+    if (VoiceSessionState.conversationMode) {
+        console.log('[UI] Conversation stopped via mic toggle');
+        stopConversation();
+        return;
+    }
+
+    // Starting — force synchronous AudioContext init for iOS Safari
     try {
         if (!VoiceSessionState.playCtx) {
             VoiceSessionState.playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
             VoiceSessionState.nextPlayTime = VoiceSessionState.playCtx.currentTime;
-            
-            // Hack to unlock iOS audio output immediately
             const osc = VoiceSessionState.playCtx.createOscillator();
             osc.connect(VoiceSessionState.playCtx.destination);
             osc.start(0);
@@ -568,8 +553,6 @@ micBtn.addEventListener('click', () => {
 
         if (!VoiceSessionState.captureCtx) {
             VoiceSessionState.captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            
-            // Hack to unlock iOS audio input pipeline immediately
             const osc2 = VoiceSessionState.captureCtx.createOscillator();
             osc2.connect(VoiceSessionState.captureCtx.destination);
             osc2.start(0);
@@ -581,49 +564,7 @@ micBtn.addEventListener('click', () => {
         console.error("Audio Context Unlock Error:", e);
     }
 
-    if (!VoiceSessionState.conversationMode) {
-        startConversation();
-    } else {
-        // If already in conversation mode, a tap on the mic acts as a manual "Interrupt" / "Stop Talking" button
-        console.log('[UI] Manual Interrupt triggered via mic button');
-        if (VoiceSessionState.playingNodes.length > 0) {
-            stopPlayback();
-        }
-        
-        // Send explicit turnComplete interrupt to tell Gemini to stop talking and listen
-        if (VoiceSessionState.ws && VoiceSessionState.ws.readyState === WebSocket.OPEN) {
-            VoiceSessionState.ws.send(JSON.stringify({ 
-                clientContent: { 
-                    turns: [{ role: "user", parts: [{ text: "Stop." }] }],
-                    turnComplete: true 
-                } 
-            }));
-        }
-        setStatus('listening');
-    }
-});
-
-endBtn.addEventListener('click', () => {
-    if (navigator.vibrate) navigator.vibrate(50);
-    if (VoiceSessionState.conversationMode) {
-        console.log('[UI] Conversation stopped via End Call button');
-        stopConversation();
-    }
-});
-
-vadModeBtns.forEach(btn => {
-    btn.addEventListener('click', async () => {
-        vadModeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentVadMode = btn.dataset.mode;
-        
-        // If we are currently in a conversation, we need to hot-swap the VAD
-        if (VoiceSessionState.conversationMode && VoiceSessionState.vad) {
-            console.log(`[VAD] Hot-swapping to ${currentVadMode} mode`);
-            await initVAD();
-            VoiceSessionState.vad.start();
-        }
-    });
+    startConversation();
 });
 
 if (kbToggle) {
