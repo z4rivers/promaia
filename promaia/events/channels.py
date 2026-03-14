@@ -27,7 +27,7 @@ class NotificationChannel(ABC):
         """Deliver an event through this channel.
 
         Args:
-            event: Event dict from brain.events row.
+            event: Event dict from events row.
 
         Returns:
             True if delivery succeeded, False otherwise.
@@ -68,7 +68,7 @@ class DashboardChannel(NotificationChannel):
         try:
             db = get_db()
             db.execute(
-                "UPDATE brain.events SET routed_at = NOW(), channel = 'dashboard' WHERE id = %s",
+                "UPDATE events SET routed_at = datetime('now'), channel = 'dashboard' WHERE id = ?",
                 (event["id"],),
             )
             logger.info(f"Dashboard: routed event {event['id']} (type={event.get('type')})")

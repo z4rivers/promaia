@@ -7,8 +7,8 @@ Two extraction tiers:
                            preferences, and secondary elements/asides.
 
 Both use instructor + Gemini Flash with a raw-Gemini JSON fallback.
-The capture handler calls both: actions go to brain.actions,
-insights go to brain.memories as tagged sub-captures.
+The capture handler calls both: actions go to actions,
+insights go to memories as tagged sub-captures.
 
 Philosophy: MuninnDB's cognitive engine (Hebbian learning, temporal decay,
 graph traversal) is designed to sort for patterns and relevance. The input
@@ -64,7 +64,7 @@ class ExtractedInsight(BaseModel):
 class ExtractedPreference(BaseModel):
     """A revealed preference about how the user thinks, works, or values things."""
     description: str
-    profile_category: Optional[str] = None  # maps to brain.profile categories
+    profile_category: Optional[str] = None  # maps to profile categories
     profile_field: Optional[str] = None     # suggested field name
 
 

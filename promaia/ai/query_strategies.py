@@ -184,7 +184,7 @@ Return a PostgreSQL query that:
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
 - Applies date filters using the rules below - CRITICAL: distinguish between content dates vs sync dates
 - LIMIT 1200
-- IMPORTANT: This is PostgreSQL, NOT SQLite. Use PostgreSQL syntax only.
+- IMPORTANT: This is SQLite, NOT PostgreSQL. Use SQLite date functions (date(), datetime(), julianday()).
 
 DATE FILTER RULES - CRITICAL DISTINCTION:
 
@@ -211,7 +211,7 @@ For CONTENT dates (sprints, deadlines, business dates):
 
 For SYNC dates (when content was added/created):
 - Use: u.created_time (no need to join workspace table)
-- If days_back provided: "AND u.created_time >= (NOW() - '-N days')"
+- If days_back provided: "AND u.created_time >= (datetime('now') - '-N days')"
 - If start_date/end_date provided:
   - start: "AND u.created_time >= 'YYYY-MM-DD'"
   - end: "AND u.created_time <= 'YYYY-MM-DD'"
@@ -229,7 +229,7 @@ CONTENT DATE FILTERING (use workspace-specific table date column):
   FROM unified_content u
   JOIN notion_koii_stories n ON u.page_id = n.page_id
   WHERE u.database_name = 'stories'
-    AND n.date >= CURRENT_DATE - INTERVAL '7 days'
+    AND n.date >= date('now', '-7 days')
     AND n.date <= '2026-04-30'
   ```
 

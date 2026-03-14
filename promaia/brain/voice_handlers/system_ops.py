@@ -81,8 +81,8 @@ async def handle(ft, websocket) -> types.FunctionResponse:
             db = get_db()
             db.execute(
                 """
-                INSERT INTO brain.actions (description, due_date, domain, status, created_at)
-                VALUES (%s, %s, %s, 'pending', NOW())
+                INSERT INTO actions (description, due_date, domain, status, created_at)
+                VALUES (%s, %s, %s, 'pending', datetime('now'))
                 """,
                 (args.get("description"), args.get("due_date"), args.get("domain"))
             )

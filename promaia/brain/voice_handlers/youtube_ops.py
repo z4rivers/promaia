@@ -20,7 +20,7 @@ async def handle(ft) -> types.FunctionResponse:
             # Immediately pull the EXISTING cache to feed the agent now, but truncate to fit in WS payload bounds
             from promaia.storage.db_factory import get_db
             db = get_db()
-            recent = db.fetch_all("SELECT content FROM brain.memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
+            recent = db.fetch_all("SELECT content FROM memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
             
             summary_list = []
             for r in recent:

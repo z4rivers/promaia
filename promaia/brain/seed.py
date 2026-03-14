@@ -1,5 +1,5 @@
 """
-zBrain seed data — populates brain.domains and brain.contexts with initial data.
+zBrain seed data — populates domains and contexts with initial data.
 
 Idempotent: uses INSERT ... ON CONFLICT DO NOTHING for domains and
 INSERT ... ON CONFLICT (domain_id) DO NOTHING for contexts.
@@ -118,14 +118,14 @@ def seed_domains(db) -> dict[str, int]:
         # Upsert-style: insert if not exists, then fetch id
         db.execute(
             """
-            INSERT INTO brain.domains (name, is_project, description)
+            INSERT INTO domains (name, is_project, description)
             VALUES (%s, %s, %s)
             ON CONFLICT (name) DO NOTHING
             """,
             (domain["name"], domain["is_project"], domain["description"]),
         )
         row = db.fetch_one(
-            "SELECT id FROM brain.domains WHERE name = %s",
+            "SELECT id FROM domains WHERE name = %s",
             (domain["name"],),
         )
         if row:
@@ -149,7 +149,7 @@ def seed_contexts(db, domain_ids: dict[str, int]) -> int:
 
         # Check if context already exists for this domain
         existing = db.fetch_one(
-            "SELECT id FROM brain.contexts WHERE domain_id = %s",
+            "SELECT id FROM contexts WHERE domain_id = %s",
             (domain_id,),
         )
         if existing:
@@ -158,7 +158,7 @@ def seed_contexts(db, domain_ids: dict[str, int]) -> int:
 
         db.execute(
             """
-            INSERT INTO brain.contexts (domain_id, directive, stale_threshold_days, priority)
+            INSERT INTO contexts (domain_id, directive, stale_threshold_days, priority)
             VALUES (%s, %s, %s, %s)
             """,
             (domain_id, ctx["directive"], ctx["stale_threshold_days"], ctx["priority"]),
@@ -183,7 +183,7 @@ def main():
     # Seed domains
     logger.info(f"Seeding {len(DOMAINS)} domains...")
     domain_ids = seed_domains(db)
-    logger.info(f"Domains complete: {len(domain_ids)} total in brain.domains")
+    logger.info(f"Domains complete: {len(domain_ids)} total in domains")
 
     # Seed contexts
     logger.info(f"Seeding {len(CONTEXTS)} contexts...")

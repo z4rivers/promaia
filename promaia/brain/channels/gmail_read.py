@@ -494,7 +494,7 @@ def _extract_profile_intelligence(messages: List[Dict], result: Dict, db) -> Non
     # Load existing contacts first
     try:
         rows = db.fetch_all(
-            "SELECT value FROM brain.profile WHERE category = 'relationships' AND field = 'email_contacts'"
+            "SELECT value FROM profile WHERE category = 'relationships' AND field = 'email_contacts'"
         )
         if rows:
             existing = rows[0]["value"] if isinstance(rows[0], dict) else rows[0][0]
@@ -765,18 +765,18 @@ def _extract_keywords(subjects: List[str]) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def _upsert_profile(db, category: str, field: str, value: Any, confidence: float) -> None:
-    """Upsert a profile field in brain.profile."""
+    """Upsert a profile field in profile."""
     value_json = json.dumps(value, default=str)
     try:
         db.execute(
             """
-            INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
-            VALUES (%s, %s, %s, %s, 'inferred', NOW())
+            INSERT INTO profile (category, field, value, confidence, source, updated_at)
+            VALUES (%s, %s, %s, %s, 'inferred', datetime('now'))
             ON CONFLICT (category, field) DO UPDATE SET
                 value = EXCLUDED.value,
                 confidence = EXCLUDED.confidence,
                 source = EXCLUDED.source,
-                updated_at = NOW()
+                updated_at = datetime('now')
             """,
             (category, field, value_json, confidence),
         )

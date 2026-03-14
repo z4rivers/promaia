@@ -2,7 +2,7 @@
 PC digital fingerprint scanner — automated profile data extraction.
 
 Analyzes local git repos, file structure, and installed apps to infer
-profile data. Results are stored in brain.profile with source='inferred'.
+profile data. Results are stored in profile with source='inferred'.
 
 This formalizes the manual scan that was proved in Phase 2 (populating 39 fields).
 Safe to run multiple times — results are upserted via ON CONFLICT.
@@ -339,7 +339,7 @@ def _scan_installed_apps(db) -> Dict[str, Any]:
             try:
                 db.execute(
                     """
-                    INSERT INTO brain.memories (content, domain, source, source_id)
+                    INSERT INTO memories (content, domain, source, source_id)
                     VALUES (%s, 'personal', 'pc_scan', 'pc_scan_apps')
                     ON CONFLICT DO NOTHING
                     """,
@@ -452,18 +452,18 @@ def _upsert_profile(
     confidence: float = CONFIDENCE_INFERRED,
     source: str = "inferred",
 ) -> None:
-    """Upsert a single profile field in brain.profile."""
+    """Upsert a single profile field in profile."""
     value_json = json.dumps(value)
     try:
         db.execute(
             """
-            INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
-            VALUES (%s, %s, %s, %s, %s, NOW())
+            INSERT INTO profile (category, field, value, confidence, source, updated_at)
+            VALUES (%s, %s, %s, %s, %s, datetime('now'))
             ON CONFLICT (category, field) DO UPDATE SET
                 value = EXCLUDED.value,
                 confidence = EXCLUDED.confidence,
                 source = EXCLUDED.source,
-                updated_at = NOW()
+                updated_at = datetime('now')
             """,
             (category, field, value_json, confidence, source),
         )
@@ -480,7 +480,7 @@ def _upsert_profile(
 
                 db.execute(
                     """
-                    UPDATE brain.profile SET embedding = %s
+                    UPDATE profile SET embedding = %s
                     WHERE category = %s AND field = %s
                     """,
                     (embedding_array, category, field),

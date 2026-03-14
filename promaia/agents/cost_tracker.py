@@ -1,7 +1,7 @@
 """
 Cost Tracker - Per-call cost logging and computation for agent API calls.
 
-Logs every API call to brain.agent_costs with model, tokens, cached tokens,
+Logs every API call to agent_costs with model, tokens, cached tokens,
 thinking tokens, and dollar cost. Provides daily/run spend queries and
 summary aggregation.
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CostRecord:
-    """A single API call cost record for brain.agent_costs."""
+    """A single API call cost record for agent_costs."""
     agent_name: str
     model_id: str
     task_type: str
@@ -37,7 +37,7 @@ class CostRecord:
 class CostTracker:
     """Tracks and computes costs for agent API calls.
 
-    On initialization, ensures the brain.agent_costs table exists.
+    On initialization, ensures the agent_costs table exists.
     Follows the same connection pattern as ExecutionTracker.
 
     Usage:
@@ -51,7 +51,7 @@ class CostTracker:
         self._ensure_table()
 
     def _ensure_table(self):
-        """Create brain.agent_costs table and indexes if they don't exist."""
+        """Create agent_costs table and indexes if they don't exist."""
         try:
             db = get_db()
 
@@ -85,10 +85,10 @@ class CostTracker:
                 CREATE INDEX IF NOT EXISTS idx_agent_costs_execution
                 ON brain_agent_costs (execution_id)
             """)
-            logger.info("brain.agent_costs table initialized")
+            logger.info("agent_costs table initialized")
 
         except Exception as e:
-            logger.error(f"Failed to initialize brain.agent_costs table: {e}")
+            logger.error(f"Failed to initialize agent_costs table: {e}")
             raise
 
     def log_call(self, record: CostRecord) -> None:

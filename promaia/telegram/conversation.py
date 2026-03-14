@@ -108,7 +108,7 @@ _FLASH_OUTPUT_PRICE_PER_M = 3.00
 
 
 def _log_cost(response, agent_name: str) -> None:
-    """Log Gemini API cost to brain.agent_costs. Never fails."""
+    """Log Gemini API cost to agent_costs. Never fails."""
     try:
         usage = getattr(response, "usage_metadata", None)
         if usage is None:
@@ -125,7 +125,7 @@ def _log_cost(response, agent_name: str) -> None:
         db = _get_db()
         db.execute(
             """
-            INSERT INTO brain.agent_costs
+            INSERT INTO agent_costs
                 (agent_name, model_id, task_type, input_tokens, output_tokens,
                  cached_tokens, thinking_tokens, cost_usd)
             VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
@@ -224,7 +224,7 @@ def score_impact(text: str, known_projects: list[str] = None) -> float:
 # ---------------------------------------------------------------------------
 
 def _get_known_projects() -> list[str]:
-    """Return list of project names from brain.domains. Cached for 5 minutes."""
+    """Return list of project names from domains. Cached for 5 minutes."""
     global _project_cache, _project_cache_time
 
     now = time.time()
@@ -234,7 +234,7 @@ def _get_known_projects() -> list[str]:
     try:
         db = _get_db()
         rows = db.fetch_all(
-            "SELECT name FROM brain.domains WHERE is_project = true"
+            "SELECT name FROM domains WHERE is_project = 1"
         )
         _project_cache = [r["name"] for r in rows] if rows else []
     except Exception as e:
@@ -263,7 +263,7 @@ def _postgres_context_fallback() -> list[str]:
         profile_rows = db.fetch_all(
             """
             SELECT category, field, value
-            FROM brain.profile
+            FROM profile
             WHERE confidence >= 0.5
             ORDER BY confidence DESC
             LIMIT 15
@@ -282,7 +282,7 @@ def _postgres_context_fallback() -> list[str]:
         memories = db.fetch_all(
             """
             SELECT content, domain
-            FROM brain.memories
+            FROM memories
             WHERE source IS DISTINCT FROM 'youtube'
             ORDER BY created_at DESC
             LIMIT 10
@@ -302,8 +302,8 @@ def _postgres_context_fallback() -> list[str]:
         contexts = db.fetch_all(
             """
             SELECT d.name, c.directive, c.current_state
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
             ORDER BY c.priority ASC
             LIMIT 5
             """
@@ -344,7 +344,7 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
             actions = db.fetch_all(
                 """
                 SELECT description
-                FROM brain.actions
+                FROM actions
                 WHERE status = 'pending'
                 ORDER BY extracted_at DESC
                 LIMIT 5
@@ -419,7 +419,7 @@ async def generate_response(chat_id: int, user_message: str) -> str:
     1. Get or create session
     2. Score user message impact
     3. Save user message to conversations
-    4. Promote to brain.memories if high-impact
+    4. Promote to memories if high-impact
     5. Assemble maximalist context
     6. Call Gemini 3 Flash with personality system prompt
     7. Save assistant response to conversations
@@ -437,7 +437,7 @@ async def generate_response(chat_id: int, user_message: str) -> str:
         chat_id, session_id, "user", user_message, impact_score=impact
     )
 
-    # 4. Promote high-impact messages to brain.memories
+    # 4. Promote high-impact messages to memories
     if impact >= IMPACT_PROMOTION_THRESHOLD:
         try:
             await promote_message_to_memory(msg_id, user_message)
@@ -549,7 +549,7 @@ async def _run_synthesis(chat_id: int) -> None:
     """Synthesize a session into a permanent memory.
 
     Gets the current session's messages, calls Gemini with a synthesis prompt,
-    stores the result as a brain.memories entry, and marks the session synthesized.
+    stores the result as a memories entry, and marks the session synthesized.
     """
     try:
         # Get current session
@@ -611,13 +611,13 @@ async def _run_synthesis(chat_id: int) -> None:
         except Exception as e:
             logger.warning(f"Dual-write to MuninnDB failed: {e}")
 
-        # Get the memory ID from brain.memories (most recent with this domain)
+        # Get the memory ID from memories (most recent with this domain)
         try:
             db = _get_db()
             row = await asyncio.to_thread(
                 lambda: db.fetch_one(
                     """
-                    SELECT id FROM brain.memories
+                    SELECT id FROM memories
                     WHERE domain = 'conversation-synthesis'
                     ORDER BY created_at DESC LIMIT 1
                     """
@@ -641,7 +641,7 @@ async def _run_synthesis(chat_id: int) -> None:
 async def cleanup_stale_sessions() -> None:
     """Synthesize any sessions orphaned by bot restart.
 
-    Checks brain.conversation_sessions for unsynthesized sessions where
+    Checks conversation_sessions for unsynthesized sessions where
     last_message_at is older than SYNTHESIS_SILENCE_SECONDS. Runs synthesis
     for each to prevent lost session data.
     """
@@ -652,9 +652,9 @@ async def cleanup_stale_sessions() -> None:
             return db.fetch_all(
                 f"""
                 SELECT chat_id, session_id
-                FROM brain.conversation_sessions
+                FROM conversation_sessions
                 WHERE synthesized = FALSE
-                  AND last_message_at < NOW() - INTERVAL '{SYNTHESIS_SILENCE_SECONDS} seconds'
+                  AND last_message_at < datetime('now', '-{SYNTHESIS_SILENCE_SECONDS} seconds')
                 ORDER BY last_message_at ASC
                 """
             )

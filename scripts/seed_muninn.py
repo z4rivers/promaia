@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.brain.muninn import get_muninn
 
 logging.basicConfig(level=logging.INFO)
@@ -13,7 +13,7 @@ async def seed_muninn():
         logger.error("Failed to connect to MuninnDB.")
         return
 
-    db = get_postgres_db()
+    db = get_db()
     engrams = []
 
     # 1. Fetch Profile

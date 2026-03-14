@@ -78,13 +78,13 @@ def _fmt_ts(ts) -> str:
 def _get_or_create_domain_id(db, domain_name: str) -> int:
     """Return the domain.id for domain_name, creating it if absent."""
     existing = db.fetch_one(
-        "SELECT id FROM brain.domains WHERE name = %s",
+        "SELECT id FROM domains WHERE name = %s",
         (domain_name,),
     )
     if existing:
         return existing["id"]
     return db.insert_returning(
-        "INSERT INTO brain.domains (name) VALUES (%s) RETURNING id",
+        "INSERT INTO domains (name) VALUES (%s) RETURNING id",
         (domain_name,),
     )
 
@@ -106,9 +106,9 @@ async def get_briefing() -> str:
                 """
                 SELECT d.name, c.directive, c.current_state, c.last_updated,
                        c.stale_threshold_days, c.priority
-                FROM brain.contexts c
-                JOIN brain.domains d ON d.id = c.domain_id
-                WHERE NOW() - c.last_updated > c.stale_threshold_days * INTERVAL '1 day'
+                FROM contexts c
+                JOIN domains d ON d.id = c.domain_id
+                WHERE julianday('now') - julianday(c.last_updated) > c.stale_threshold_days
                 ORDER BY c.priority ASC, c.last_updated ASC
                 LIMIT 10
                 """
@@ -133,8 +133,8 @@ async def get_briefing() -> str:
             pending = db.fetch_all(
                 """
                 SELECT a.id, a.description, d.name AS domain_name, a.extracted_at
-                FROM brain.actions a
-                LEFT JOIN brain.domains d ON d.id = a.domain_id
+                FROM actions a
+                LEFT JOIN domains d ON d.id = a.domain_id
                 WHERE a.status = 'pending'
                 ORDER BY a.extracted_at DESC
                 LIMIT 10
@@ -157,9 +157,9 @@ async def get_briefing() -> str:
             heartbeat_events = db.fetch_all(
                 """
                 SELECT type, payload, created_at
-                FROM brain.events
+                FROM events
                 WHERE source = 'heartbeat'
-                  AND created_at > NOW() - INTERVAL '24 hours'
+                  AND created_at > datetime('now', '-24 hours')
                 ORDER BY created_at DESC
                 LIMIT 5
                 """
@@ -193,7 +193,7 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
         try:
             memory_id = db.insert_returning(
                 """
-                INSERT INTO brain.memories (content, domain, source, source_id)
+                INSERT INTO memories (content, domain, source, source_id)
                 VALUES (%s, %s, 'telegram', 'telegram')
                 RETURNING id
                 """,
@@ -209,7 +209,7 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
             embedding = vector_mgr.generate_embedding(content)
             embedding_array = json.dumps(embedding)
             db.execute(
-                        "UPDATE brain.memories SET embedding = %s WHERE id = %s",
+                        "UPDATE memories SET embedding = %s WHERE id = %s",
                         (embedding_array, memory_id),
                     )
         except Exception as e:
@@ -224,7 +224,7 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
                 for action in extraction_result.actions:
                     db.execute(
                         """
-                        INSERT INTO brain.actions (memory_id, domain_id, description)
+                        INSERT INTO actions (memory_id, domain_id, description)
                         VALUES (%s, %s, %s)
                         """,
                         (memory_id, domain_id, action.description),
@@ -258,7 +258,7 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
 
 
 async def search_brain(query: str, limit: int = 5) -> str:
-    """Semantic vector search over brain.memories. Returns formatted results."""
+    """Semantic vector search over memories. Returns formatted results."""
     if not query or not query.strip():
         return "Error: query is required."
 
@@ -276,7 +276,7 @@ async def search_brain(query: str, limit: int = 5) -> str:
                         """
                         SELECT id, content, domain, created_at,
                                embedding <=> %s::vector AS distance
-                        FROM brain.memories
+                        FROM memories
                         WHERE embedding IS NOT NULL
                         ORDER BY distance ASC
                         LIMIT %s
@@ -313,8 +313,8 @@ async def get_actions(status: str = "pending") -> str:
                 """
                 SELECT a.id, a.description, a.status, a.extracted_at,
                        d.name AS domain_name
-                FROM brain.actions a
-                LEFT JOIN brain.domains d ON d.id = a.domain_id
+                FROM actions a
+                LEFT JOIN domains d ON d.id = a.domain_id
                 WHERE a.status = %s
                 ORDER BY a.extracted_at DESC
                 LIMIT 50
@@ -348,8 +348,8 @@ async def get_projects() -> str:
                 """
                 SELECT d.name, c.directive, c.current_state, c.last_updated,
                        c.stale_threshold_days, c.priority
-                FROM brain.contexts c
-                JOIN brain.domains d ON d.id = c.domain_id
+                FROM contexts c
+                JOIN domains d ON d.id = c.domain_id
                 ORDER BY c.priority ASC, d.name ASC
                 """
             )
@@ -384,7 +384,7 @@ async def save_conversation_message(
     content: str,
     impact_score: float = 0.0,
 ) -> int:
-    """Insert a message into brain.conversations and update session counters.
+    """Insert a message into conversations and update session counters.
 
     Returns the conversation message id.
     """
@@ -393,7 +393,7 @@ async def save_conversation_message(
         db = _get_db()
         msg_id = db.insert_returning(
             """
-            INSERT INTO brain.conversations
+            INSERT INTO conversations
                 (chat_id, session_id, role, content, impact_score)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id
@@ -403,9 +403,9 @@ async def save_conversation_message(
         # Update session counters
         db.execute(
             """
-            UPDATE brain.conversation_sessions
+            UPDATE conversation_sessions
             SET message_count = message_count + 1,
-                last_message_at = NOW()
+                last_message_at = datetime('now')
             WHERE session_id = %s
             """,
             (session_id,),
@@ -426,7 +426,7 @@ async def get_conversation_history(chat_id: int, limit: int = 10) -> list[dict]:
         rows = db.fetch_all(
             """
             SELECT role, content, created_at
-            FROM brain.conversations
+            FROM conversations
             WHERE chat_id = %s
             ORDER BY created_at DESC
             LIMIT %s
@@ -452,7 +452,7 @@ async def get_or_create_session(chat_id: int, gap_minutes: int = 30) -> str:
         row = db.fetch_one(
             """
             SELECT session_id, last_message_at, synthesized
-            FROM brain.conversation_sessions
+            FROM conversation_sessions
             WHERE chat_id = %s
             ORDER BY started_at DESC
             LIMIT 1
@@ -478,7 +478,7 @@ async def get_or_create_session(chat_id: int, gap_minutes: int = 30) -> str:
         new_session_id = str(uuid.uuid4())
         db.execute(
             """
-            INSERT INTO brain.conversation_sessions (chat_id, session_id)
+            INSERT INTO conversation_sessions (chat_id, session_id)
             VALUES (%s, %s)
             """,
             (chat_id, new_session_id),
@@ -495,9 +495,9 @@ async def update_session_synthesized(session_id: str, memory_id: int) -> None:
         db = _get_db()
         db.execute(
             """
-            UPDATE brain.conversation_sessions
+            UPDATE conversation_sessions
             SET synthesized = TRUE,
-                synthesized_at = NOW(),
+                synthesized_at = datetime('now'),
                 synthesis_memory_id = %s
             WHERE session_id = %s
             """,
@@ -518,7 +518,7 @@ async def get_session_messages(session_id: str) -> list[dict]:
         return db.fetch_all(
             """
             SELECT role, content, impact_score, created_at
-            FROM brain.conversations
+            FROM conversations
             WHERE session_id = %s
             ORDER BY created_at ASC
             """,
@@ -533,7 +533,7 @@ async def promote_message_to_memory(
     content: str,
     domain: str = None,
 ) -> int:
-    """Promote a conversation message to brain.memories.
+    """Promote a conversation message to memories.
 
     Inserts the content as a permanent memory with source='telegram-conversation',
     generates an embedding, and marks the conversation row as promoted.
@@ -543,10 +543,10 @@ async def promote_message_to_memory(
     def _sync():
         db = _get_db()
 
-        # Insert into brain.memories
+        # Insert into memories
         memory_id = db.insert_returning(
             """
-            INSERT INTO brain.memories (content, domain, source, source_id)
+            INSERT INTO memories (content, domain, source, source_id)
             VALUES (%s, %s, 'telegram-conversation', 'promoted')
             RETURNING id
             """,
@@ -559,7 +559,7 @@ async def promote_message_to_memory(
             embedding = vector_mgr.generate_embedding(content)
             embedding_array = json.dumps(embedding)
             db.execute(
-                        "UPDATE brain.memories SET embedding = %s WHERE id = %s",
+                        "UPDATE memories SET embedding = %s WHERE id = %s",
                         (embedding_array, memory_id),
                     )
         except Exception as e:
@@ -567,7 +567,7 @@ async def promote_message_to_memory(
 
         # Mark conversation message as promoted
         db.execute(
-            "UPDATE brain.conversations SET promoted = TRUE WHERE id = %s",
+            "UPDATE conversations SET promoted = 1 WHERE id = %s",
             (conversation_id,),
         )
 

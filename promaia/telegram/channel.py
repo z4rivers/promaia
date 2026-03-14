@@ -65,7 +65,7 @@ class TelegramChannel(NotificationChannel):
             # Mark event as routed
             db = get_db()
             db.execute(
-                "UPDATE brain.events SET routed_at = NOW(), channel = 'telegram' WHERE id = %s",
+                "UPDATE events SET routed_at = datetime('now'), channel = 'telegram' WHERE id = ?",
                 (event["id"],),
             )
 

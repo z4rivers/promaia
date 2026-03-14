@@ -466,14 +466,14 @@ async def generate_session_review(transcript_log: list, rescued_memories: list =
 
 
 def _log_brain_event(event_type: str, payload: dict, session_id: str):
-    """Helper to cleanly log noise/signal events to Postgres."""
+    """Helper to cleanly log noise/signal events to SQLite."""
     try:
         from promaia.storage.db_factory import get_db
         db = get_db()
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES (%s, %s, 'voice_pipeline', %s)
+            INSERT INTO events (type, payload, source, session_id)
+            VALUES (?, ?, 'voice_pipeline', ?)
             """,
             (event_type, json.dumps(payload), session_id)
         )

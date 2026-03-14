@@ -20,7 +20,7 @@ import logging
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 
 logging.basicConfig(
@@ -118,7 +118,7 @@ def migrate_table(
     workspace_col = table_config["workspace"]
     extra_meta_cols = table_config.get("extra_meta", [])
 
-    db = get_postgres_db()
+    db = get_db()
 
     # Check if table exists
     if not table_exists(db, table_name):

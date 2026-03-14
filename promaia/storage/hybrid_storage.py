@@ -41,8 +41,8 @@ class HybridContentRegistry:
             with self.db.get_cursor() as cursor:
                 # Check if tables exist, if not log a message
                 cursor.execute("""
-                    SELECT COUNT(*) FROM sqlite_master WHERE type='table' 
-                    WHERE table_schema = 'public' AND table_name = 'gmail_content'
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='table' AND name = 'gmail_content'
                 """)
                 if cursor.fetchone()[0] == 0:
                     logger.warning("Database tables not found. Please run: python -m promaia db init")
@@ -164,8 +164,8 @@ class HybridContentRegistry:
                 cursor.execute("""
                     SELECT name FROM sqlite_master
                     WHERE type = 'table' AND name LIKE 'notion_%%'
-                    AND table_name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
-                    ORDER BY table_name
+                    AND name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
+                    ORDER BY name
                 """)
 
                 notion_tables = [row[0] for row in cursor.fetchall()]
@@ -608,13 +608,11 @@ class HybridContentRegistry:
             with self.db.get_cursor() as cursor:
                 # Check if table exists
                 cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' AND table_name = %s
-                    )
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='table' AND name = ?
                 """, (table_name,))
                 
-                if cursor.fetchone()[0]:
+                if cursor.fetchone()[0] > 0:
                     return True  # Table already exists
 
                 # Create table with base schema (PostgreSQL syntax)
@@ -1321,12 +1319,10 @@ class HybridContentRegistry:
                 
                 # Journal stats - check if table exists first
                 cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' AND table_name = 'notion_journal'
-                    )
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='table' AND name = 'notion_journal'
                 """)
-                if cursor.fetchone()[0]:
+                if cursor.fetchone()[0] > 0:
                     cursor.execute("SELECT COUNT(*) FROM notion_journal")
                     stats['journal'] = cursor.fetchone()[0]
                 else:
@@ -1334,12 +1330,10 @@ class HybridContentRegistry:
                 
                 # Stories stats
                 cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' AND table_name = 'notion_stories'
-                    )
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='table' AND name = 'notion_stories'
                 """)
-                if cursor.fetchone()[0]:
+                if cursor.fetchone()[0] > 0:
                     cursor.execute("SELECT COUNT(*) FROM notion_stories")
                     stats['stories'] = cursor.fetchone()[0]
                 else:
@@ -1347,12 +1341,10 @@ class HybridContentRegistry:
                 
                 # CMS stats
                 cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' AND table_name = 'notion_cms'
-                    )
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='table' AND name = 'notion_cms'
                 """)
-                if cursor.fetchone()[0]:
+                if cursor.fetchone()[0] > 0:
                     cursor.execute("SELECT COUNT(*) FROM notion_cms")
                     stats['cms'] = cursor.fetchone()[0]
                 else:
@@ -1364,12 +1356,10 @@ class HybridContentRegistry:
                 
                 # Total stats - check if unified_content view exists
                 cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.views 
-                        WHERE table_schema = 'public' AND table_name = 'unified_content'
-                    )
+                    SELECT COUNT(*) FROM sqlite_master
+                    WHERE type='view' AND name = 'unified_content'
                 """)
-                if cursor.fetchone()[0]:
+                if cursor.fetchone()[0] > 0:
                     cursor.execute("SELECT COUNT(*) FROM unified_content")
                     stats['total'] = cursor.fetchone()[0]
                 else:
@@ -2180,12 +2170,9 @@ class HybridContentRegistry:
                     column_name = prop['column_name']
                     sqlite_type = prop['sqlite_type']
 
-                    # Check if column already exists (PostgreSQL)
-                    cursor.execute("""
-                        SELECT column_name FROM information_schema.columns
-                        WHERE table_schema = 'public' AND table_name = %s
-                    """, (table_name,))
-                    columns = {row[0] for row in cursor.fetchall()}
+                    # Check if column already exists (SQLite)
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = {row[1] for row in cursor.fetchall()}
 
                     if column_name in columns:
                         logger.warning(f"Column '{column_name}' already exists in {table_name}, skipping")
@@ -2284,12 +2271,9 @@ class HybridContentRegistry:
 
                 # Check for missing columns (properties in schema but not in table)
                 with self.db.get_cursor() as cursor:
-                    # Get current table columns (PostgreSQL)
-                    cursor.execute("""
-                        SELECT column_name FROM information_schema.columns
-                        WHERE table_schema = 'public' AND table_name = %s
-                    """, (table_name,))
-                    existing_columns = {row[0] for row in cursor.fetchall()}
+                    # Get current table columns (SQLite)
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    existing_columns = {row[1] for row in cursor.fetchall()}
 
                     # Get all active properties from schema
                     cursor.execute("""

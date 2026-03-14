@@ -50,7 +50,7 @@ class AgentContext:
 
     # User identity
     user_name: str
-    user_profile_summary: str  # ~200 tokens from brain.profile top traits
+    user_profile_summary: str  # ~200 tokens from profile top traits
 
     # Temporal
     current_time: datetime
@@ -143,7 +143,7 @@ class AgentContext:
         user_name = "Zack"  # default
         try:
             row = db.fetch_one(
-                "SELECT value FROM brain.profile WHERE field = 'name' LIMIT 1"
+                "SELECT value FROM profile WHERE field = 'name' LIMIT 1"
             )
             if row and row.get("value"):
                 val = row["value"]
@@ -155,14 +155,14 @@ class AgentContext:
                 else:
                     user_name = str(val)
         except Exception as e:
-            logger.warning("Could not load user name from brain.profile: %s", e)
+            logger.warning("Could not load user name from profile: %s", e)
 
         # Build profile summary from top traits
         user_profile_summary = "No profile data available"
         try:
             rows = db.fetch_all(
                 """SELECT category, field, value, confidence
-                   FROM brain.profile
+                   FROM profile
                    ORDER BY confidence DESC
                    LIMIT 10"""
             )
@@ -185,7 +185,7 @@ class AgentContext:
         try:
             rows = db.fetch_all(
                 """SELECT id, description, status, extracted_at
-                   FROM brain.actions
+                   FROM actions
                    WHERE status = 'pending'
                    ORDER BY extracted_at DESC
                    LIMIT 5"""
@@ -199,9 +199,9 @@ class AgentContext:
         try:
             rows = db.fetch_all(
                 """SELECT c.id, d.name, c.directive, c.current_state, c.priority
-                   FROM brain.contexts c
-                   JOIN brain.domains d ON c.domain_id = d.id
-                   WHERE d.is_project = true
+                   FROM contexts c
+                   JOIN domains d ON c.domain_id = d.id
+                   WHERE d.is_project = 1
                    ORDER BY c.priority ASC, c.last_updated DESC
                    LIMIT 5"""
             )
@@ -214,7 +214,7 @@ class AgentContext:
         try:
             rows = db.fetch_all(
                 """SELECT id, content, summary, domain, created_at
-                   FROM brain.memories
+                   FROM memories
                    ORDER BY created_at DESC
                    LIMIT 5"""
             )

@@ -1,5 +1,5 @@
 """
-Event router -- polls brain.events and dispatches to notification channels.
+Event router -- polls events and dispatches to notification channels.
 
 Runs as an asyncio task inside the agent scheduler, polling every
 ``poll_interval`` seconds for unrouted events with urgency set.
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class EventRouter:
-    """Poll brain.events for unrouted events and dispatch to channels.
+    """Poll events for unrouted events and dispatch to channels.
 
     The router uses ``WHERE routed_at IS NULL`` (not a since-last-poll
     timestamp), so it catches up on missed events after a restart.
@@ -78,15 +78,15 @@ class EventRouter:
     # ------------------------------------------------------------------
 
     def _fetch_unrouted_events(self) -> list[dict]:
-        """Query brain.events for unrouted events ready to be dispatched."""
+        """Query events for unrouted events ready to be dispatched."""
         db = get_db()
         return db.fetch_all(
             """
             SELECT id, type, payload, source, urgency, created_at, held_until
-            FROM brain.events
+            FROM events
             WHERE urgency IS NOT NULL
               AND routed_at IS NULL
-              AND (held_until IS NULL OR held_until <= NOW())
+              AND (held_until IS NULL OR held_until <= datetime('now'))
             ORDER BY
               CASE urgency
                 WHEN 'interrupt' THEN 1
@@ -163,7 +163,7 @@ class EventRouter:
 
         db = get_db()
         db.execute(
-            "UPDATE brain.events SET held_until = %s WHERE id = %s",
+            "UPDATE events SET held_until = ? WHERE id = ?",
             (next_morning, event_id),
         )
         logger.info(f"Event {event_id} held until {next_morning.isoformat()}")
@@ -172,7 +172,7 @@ class EventRouter:
         """Mark an archive event as routed without channel delivery."""
         db = get_db()
         db.execute(
-            "UPDATE brain.events SET routed_at = NOW(), channel = 'archive' WHERE id = %s",
+            "UPDATE events SET routed_at = datetime('now'), channel = 'archive' WHERE id = ?",
             (event_id,),
         )
         logger.info(f"Event {event_id} archived (no channel delivery)")

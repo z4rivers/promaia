@@ -383,7 +383,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Run the PC digital fingerprint scan. Analyzes local git repos, "
                 "file structure, and installed apps to infer profile data. "
-                "Results are stored in brain.profile with source='inferred'. "
+                "Results are stored in profile with source='inferred'. "
                 "Safe to run multiple times — results are upserted."
             ),
             inputSchema={

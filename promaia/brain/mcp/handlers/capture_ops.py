@@ -71,7 +71,7 @@ async def _handle_capture(args: dict) -> list[TextContent]:
     return [TextContent(type="text", text=" ".join(parts))]
 
 async def _handle_search(args: dict) -> list[TextContent]:
-    """Semantic vector search over brain.memories + MuninnDB ACTIVATE (parallel trial)."""
+    """Semantic vector search over memories + MuninnDB ACTIVATE (parallel trial)."""
     db = get_db()
     query = args.get("query", "").strip()
     if not query:

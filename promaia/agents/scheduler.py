@@ -246,7 +246,7 @@ class AgentScheduler:
         self.tasks["__event_router__"] = router_task
         logger.info("   Event router started (polling every 30s)")
 
-        # Start heartbeat loop (writes to brain.events every 5 min)
+        # Start heartbeat loop (writes to events every 5 min)
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self.tasks["__heartbeat__"] = heartbeat_task
         logger.info("   Heartbeat loop started (every 5 min)")
@@ -661,7 +661,7 @@ class AgentScheduler:
                 # Continue polling -- transient errors should not kill the loop
 
     async def _heartbeat_loop(self):
-        """Write a heartbeat event to brain.events every 5 minutes.
+        """Write a heartbeat event to events every 5 minutes.
 
         Allows the dashboard to show "scheduler last seen: X min ago".
         """
@@ -685,8 +685,8 @@ class AgentScheduler:
                 ]
                 db.execute(
                     """
-                    INSERT INTO brain.events (type, payload, source, created_at)
-                    VALUES ('scheduler_heartbeat', %s, 'heartbeat', NOW())
+                    INSERT INTO events (type, payload, source, created_at)
+                    VALUES ('scheduler_heartbeat', %s, 'heartbeat', datetime('now'))
                     """,
                     (json.dumps({"active_agents": active_tasks}),),
                 )

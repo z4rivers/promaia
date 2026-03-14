@@ -59,33 +59,78 @@ def kill_pid(pid: int) -> bool:
         return False
 
 
+def get_promaia_pids() -> set[int]:
+    """Find ALL python processes with 'promaia' in their command line.
+    
+    This catches the orchestrator (python -m promaia dev), the web server
+    (uvicorn promaia.web.main:app), the scheduler, telegram bot, etc.
+    Excludes the current kill_server.py process itself.
+    """
+    my_pid = subprocess.os.getpid()
+    try:
+        result = subprocess.run(
+            ["powershell", "-Command",
+             "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -match 'promaia' -and $_.Name -eq 'python.exe' } | Select-Object -ExpandProperty ProcessId"],
+            capture_output=True, text=True, timeout=10
+        )
+    except Exception as e:
+        print(f"  ❌ Process scan failed: {e}")
+        return set()
+    
+    pids = set()
+    for line in result.stdout.strip().splitlines():
+        line = line.strip()
+        if line.isdigit():
+            pid = int(line)
+            if pid != my_pid:
+                pids.add(pid)
+    return pids
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 
-    print(f"\n🔍 Scanning port {port}...")
+    # Phase 1: Kill port holders (web server)
+    print(f"\n🔍 Phase 1: Scanning port {port}...")
     pids = get_listening_pids(port)
 
-    if not pids:
-        print(f"  ✅ Port {port} is already free. Nothing to kill.")
-        return
+    if pids:
+        print(f"  Found {len(pids)} process(es) on port: {pids}")
+        for pid in pids:
+            kill_pid(pid)
+    else:
+        print(f"  ✅ Port {port} is already free.")
 
-    print(f"  Found {len(pids)} process(es): {pids}\n")
-    print("🧹 Cleaning up old processes...")
+    # Phase 2: Kill ALL promaia processes (orchestrator, scheduler, telegram)
+    # This prevents DB locks from lingering child processes
+    print(f"\n🔍 Phase 2: Scanning for ALL promaia processes...")
+    promaia_pids = get_promaia_pids()
+    
+    if promaia_pids:
+        print(f"  Found {len(promaia_pids)} promaia process(es): {promaia_pids}")
+        for pid in promaia_pids:
+            kill_pid(pid)
+    else:
+        print(f"  ✅ No lingering promaia processes found.")
 
-    for pid in pids:
-        kill_pid(pid)
-
-    # Wait for sockets to release
-    print("\n⏳ Waiting 2s for sockets to release...")
+    # Wait for sockets + file handles to release
+    print("\n⏳ Waiting 2s for sockets and DB locks to release...")
     time.sleep(2)
 
-    # Verify
+    # Verify port
     remaining = get_listening_pids(port)
     if not remaining:
         print(f"  ✅ Port {port} is free. Safe to start server.")
     else:
         print(f"  ⚠️  PIDs still showing in netstat: {remaining}")
         print(f"     (May be TIME_WAIT ghosts — usually safe to proceed)")
+    
+    # Verify no promaia processes remain
+    remaining_promaia = get_promaia_pids()
+    if not remaining_promaia:
+        print(f"  ✅ All promaia processes terminated.")
+    else:
+        print(f"  ⚠️  Lingering promaia PIDs: {remaining_promaia}")
 
 
 if __name__ == "__main__":

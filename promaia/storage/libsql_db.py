@@ -3,15 +3,28 @@ import contextlib
 import logging
 import json
 import time
-import libsql_experimental as libsql
+import sqlite3 as libsql
+import sqlite_vec
 from typing import Optional, Any, Tuple, Generator, List, Dict
-
 logger = logging.getLogger(__name__)
 
-def parse_smart_data(row: tuple, description: tuple) -> dict:
-    """Auto-deserialize JSON and coerce booleans based on string heuristics"""
+class SmartRow(dict):
+    """Dict-like row that also supports integer indexing (row[0]) for psycopg2 compat."""
+    
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._values = list(data.values())
+    
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+
+def parse_smart_data(row: tuple, description: tuple) -> 'SmartRow':
+    """Auto-deserialize JSON and coerce booleans. Returns SmartRow (dict + index access)."""
     if not row or not description:
-        return {}
+        return SmartRow({})
         
     result = {}
     for i, col in enumerate(description):
@@ -33,7 +46,7 @@ def parse_smart_data(row: tuple, description: tuple) -> dict:
                     pass # Not valid JSON, keep as string
                     
         result[name] = val
-    return result
+    return SmartRow(result)
 
 class LibSQLCursorWrapper:
     def __init__(self, conn_wrapper):
@@ -61,12 +74,16 @@ class LibSQLCursorWrapper:
                 # libSQL returns tuples, set rowcount gracefully
                 self.rowcount = getattr(self._cursor, 'rowcount', 1) 
                 
-                # Auto-commit since that is typical for a cursor call outside an explicit transaction box in our wrap
-                try:
-                    self._conn_wrapper._conn.commit()
-                except ValueError as ve:
-                    if "SQL statements in progress" not in str(ve):
-                        raise
+                # Auto-commit only for write operations (SELECT doesn't need commit
+                # and will error with "SQL statements in progress" if cursor isn't consumed)
+                query_upper = query.strip().upper()
+                is_write = query_upper.startswith(('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'PRAGMA'))
+                if is_write:
+                    try:
+                        self._conn_wrapper._conn.commit()
+                    except (ValueError, Exception) as e:
+                        if "SQL statements in progress" not in str(e):
+                            raise
                 return self
             except Exception as e:
                 err_str = str(e).lower()
@@ -127,6 +144,9 @@ class LibSQLDB:
     def _init_connection(self):
         try:
             self._conn = libsql.connect(self.db_path)
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+            self._conn.enable_load_extension(False)
             self._conn.execute("PRAGMA journal_mode=WAL;")
             self._conn.execute("PRAGMA synchronous=NORMAL;")
             self._wrapped_conn = LibSQLConnectionWrapper(self._conn)

@@ -5,7 +5,7 @@ Determines WHAT to ask next based on current profile state. Does NOT
 conduct the conversation -- that's Claude's job using CLAUDE.md instructions.
 This module provides the NEXT question and tracks interview progress.
 
-The interview module queries brain.profile to find coverage gaps, then
+The interview module queries profile to find coverage gaps, then
 cross-references with the question bank to find unanswered questions,
 respecting the phase ordering (warm_up -> current_state ->
 gap_identification -> commitment).
@@ -40,14 +40,14 @@ def _get_db(db=None):
 
 
 def _get_populated_fields(db) -> Dict[str, set]:
-    """Query brain.profile for all populated fields, grouped by category.
+    """Query profile for all populated fields, grouped by category.
 
     Returns:
         Dict mapping category -> set of field names.
     """
     try:
         rows = db.fetch_all(
-            "SELECT category, field FROM brain.profile ORDER BY category, field"
+            "SELECT category, field FROM profile ORDER BY category, field"
         )
         populated: Dict[str, set] = {}
         for row in rows:
@@ -91,7 +91,7 @@ def _question_fields_populated(question: dict, populated: Dict[str, set]) -> boo
     """Check whether a question's target fields are already populated.
 
     A question is considered answered if ALL of its target fields exist
-    in brain.profile.
+    in profile.
     """
     for field_spec in question.get("fields", []):
         parts = field_spec.split(".", 1)
@@ -107,7 +107,7 @@ def _question_fields_populated(question: dict, populated: Dict[str, set]) -> boo
 def get_interview_state(db=None) -> dict:
     """Return the current interview state based on profile coverage.
 
-    Queries brain.profile to see which categories have fields populated,
+    Queries profile to see which categories have fields populated,
     then cross-references with QUESTION_BANK to find unanswered questions.
 
     Args:
@@ -267,7 +267,7 @@ def mark_question_answered(
 
     The actual profile update happens via the update_profile MCP tool.
     This function:
-    1. Logs a brain.events entry for the question
+    1. Logs a events entry for the question
     2. Updates onboarding_progress for the 'interview' channel
 
     Args:
@@ -281,7 +281,7 @@ def mark_question_answered(
         # Log event
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source)
+            INSERT INTO events (type, payload, source)
             VALUES ('interview_question', %s, 'onboarding')
             """,
             (
@@ -294,7 +294,7 @@ def mark_question_answered(
         session = db.fetch_one(
             """
             SELECT s.id
-            FROM brain.onboarding_sessions s
+            FROM onboarding_sessions s
             WHERE s.status = 'active'
             ORDER BY s.started_at DESC
             LIMIT 1
@@ -304,10 +304,10 @@ def mark_question_answered(
         if session:
             db.execute(
                 """
-                UPDATE brain.onboarding_progress
+                UPDATE onboarding_progress
                 SET fields_populated = fields_populated + %s,
                     status = 'in_progress',
-                    started_at = COALESCE(started_at, NOW())
+                    started_at = COALESCE(started_at, datetime('now'))
                 WHERE session_id = %s AND channel = 'interview'
                 """,
                 (len(fields_populated), session["id"]),

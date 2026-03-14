@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 def _get_or_create_domain_id(db: PostgresDB, domain_name: str) -> int:
     """Return the domain.id for domain_name, creating it if absent."""
     existing = db.fetch_one(
-        "SELECT id FROM brain.domains WHERE name = %s",
+        "SELECT id FROM domains WHERE name = %s",
         (domain_name,),
     )
     if existing:
         return existing['id']
 
     return db.insert_returning(
-        "INSERT INTO brain.domains (name) VALUES (%s) RETURNING id",
+        "INSERT INTO domains (name) VALUES (%s) RETURNING id",
         (domain_name,),
     )
 
@@ -72,7 +72,7 @@ async def capture_memory(
     # 1. Insert memory row (without embedding first)
     memory_id = db.insert_returning(
         """
-        INSERT INTO brain.memories (content, domain, source, source_id, asset_paths)
+        INSERT INTO memories (content, domain, source, source_id, asset_paths)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id
         """,
@@ -93,7 +93,7 @@ async def capture_memory(
             
         embedding_array = json.dumps(embedding)
         db.execute(
-                    "UPDATE brain.memories SET embedding = %s WHERE id = %s",
+                    "UPDATE memories SET embedding = %s WHERE id = %s",
                     (embedding_array, memory_id),
                 )
     except Exception as e:
@@ -111,7 +111,7 @@ async def capture_memory(
             for action in extraction_result.actions:
                 db.execute(
                     """
-                    INSERT INTO brain.actions (memory_id, domain_id, description)
+                    INSERT INTO actions (memory_id, domain_id, description)
                     VALUES (%s, %s, %s)
                     """,
                     (memory_id, domain_id, action.description),
@@ -164,7 +164,7 @@ async def capture_memory(
                 try:
                     sub_id = db.insert_returning(
                         """
-                        INSERT INTO brain.memories (content, domain, source, source_id)
+                        INSERT INTO memories (content, domain, source, source_id)
                         VALUES (%s, %s, 'intelligence', %s)
                         RETURNING id
                         """,
@@ -174,7 +174,7 @@ async def capture_memory(
                         sub_embedding = vector_mgr.generate_embedding(sub_content)
                         sub_array = json.dumps(sub_embedding)
                         db.execute(
-                                    "UPDATE brain.memories SET embedding = %s WHERE id = %s",
+                                    "UPDATE memories SET embedding = %s WHERE id = %s",
                                     (sub_array, sub_id),
                                 )
                     except Exception:
@@ -202,7 +202,7 @@ async def capture_memory(
     try:
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
+            INSERT INTO events (type, payload, source, session_id)
             VALUES ('capture', %s, %s, %s)
             """,
             (json.dumps({

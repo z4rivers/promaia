@@ -1,7 +1,7 @@
 """
 Sliding-window rate limiter for notification channels.
 
-Uses SQL count queries against brain.events as source of truth
+Uses SQL count queries against events as source of truth
 (no in-memory state), so limits survive scheduler restarts (07-02).
 """
 import logging
@@ -30,9 +30,9 @@ class RateLimiter:
         """Check if daily notification cap has been reached across all channels."""
         db = get_db()
         row = db.fetch_one(
-            "SELECT COUNT(DISTINCT id) AS cnt FROM brain.events "
+            "SELECT COUNT(DISTINCT id) AS cnt FROM events "
             "WHERE routed_at IS NOT NULL "
-            "AND routed_at::date = CURRENT_DATE "
+            "AND date(routed_at) = date('now') "
             "AND urgency != 'archive'",
         )
         daily_count = row["cnt"] if row else 0
@@ -64,9 +64,9 @@ class RateLimiter:
 
             # Check hourly cap (cross-channel dedup: count unique events, not deliveries)
             row = db.fetch_one(
-                "SELECT COUNT(DISTINCT id) AS cnt FROM brain.events "
+                "SELECT COUNT(DISTINCT id) AS cnt FROM events "
                 "WHERE routed_at IS NOT NULL "
-                "AND routed_at > NOW() - INTERVAL '1 hour' "
+                "AND routed_at > datetime('now', '-1 hour') "
                 "AND urgency != 'archive'",
             )
             hourly_count = row["cnt"] if row else 0
@@ -79,8 +79,8 @@ class RateLimiter:
 
             # Check cooldown between non-urgent pushes
             row = db.fetch_one(
-                "SELECT MAX(routed_at) AS last_routed FROM brain.events "
-                "WHERE routed_at IS NOT NULL AND channel = %s "
+                "SELECT MAX(routed_at) AS last_routed FROM events "
+                "WHERE routed_at IS NOT NULL AND channel = ? "
                 "AND urgency != 'interrupt'",
                 (channel_name,),
             )

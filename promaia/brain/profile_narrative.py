@@ -2,7 +2,7 @@
 Profile narrative synthesis — Gemini generates a natural-language
 portrait from structured profile rows.
 
-The narrative is cached in brain.profile_narrative with a hash of
+The narrative is cached in profile_narrative with a hash of
 the current profile state. Regenerated only when the profile changes.
 """
 import hashlib
@@ -76,7 +76,7 @@ def get_cached_narrative(db=None) -> dict | None:
 
     rows = db.fetch_all(
         "SELECT narrative, profile_hash, field_count, generated_at "
-        "FROM brain.profile_narrative ORDER BY generated_at DESC LIMIT 1"
+        "FROM profile_narrative ORDER BY generated_at DESC LIMIT 1"
     )
     if not rows:
         return None
@@ -89,7 +89,7 @@ def get_current_profile_hash(db=None) -> tuple[str, int, list[dict]]:
         db = get_db()
 
     rows = db.fetch_all(
-        "SELECT category, field, value FROM brain.profile ORDER BY category, field"
+        "SELECT category, field, value FROM profile ORDER BY category, field"
     )
     return _compute_profile_hash(rows), len(rows), rows
 
@@ -123,7 +123,7 @@ async def generate_narrative(db=None) -> str:
     try:
         db.execute(
             """
-            INSERT INTO brain.profile_narrative (narrative, field_count, profile_hash)
+            INSERT INTO profile_narrative (narrative, field_count, profile_hash)
             VALUES (%s, %s, %s)
             """,
             (narrative, field_count, profile_hash),
@@ -135,9 +135,9 @@ async def generate_narrative(db=None) -> str:
     try:
         db.execute(
             """
-            DELETE FROM brain.profile_narrative
+            DELETE FROM profile_narrative
             WHERE id NOT IN (
-                SELECT id FROM brain.profile_narrative
+                SELECT id FROM profile_narrative
                 ORDER BY generated_at DESC LIMIT 1
             )
             """

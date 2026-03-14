@@ -62,7 +62,7 @@ def _run_subconscious_cycle():
         domain_rows = db.fetch_all(
             """
             SELECT d.name, c.directive, c.current_state, c.last_updated,
-                   d.priority, c.stale_threshold_days
+                   c.priority, c.stale_threshold_days
             FROM contexts c
             JOIN domains d ON d.id = c.domain_id
             """

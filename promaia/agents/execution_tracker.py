@@ -54,7 +54,7 @@ class ExecutionTracker:
                 # Agent executions table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS agent_executions (
-                        id SERIAL PRIMARY KEY,
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         agent_name TEXT NOT NULL,
                         started_at TEXT NOT NULL,
                         completed_at TEXT,
@@ -114,8 +114,7 @@ class ExecutionTracker:
                 cursor.execute("""
                     INSERT INTO agent_executions (
                         agent_name, started_at, status, created_at
-                    ) VALUES (%s, %s, %s, %s)
-                    RETURNING id
+                    ) VALUES (?, ?, ?, ?)
                 """, (
                     agent_name,
                     now,
@@ -123,7 +122,9 @@ class ExecutionTracker:
                     now
                 ))
 
-                execution_id = cursor.fetchone()[0]
+                # Get the ID of the just-inserted row (sqlite3 compatible)
+                last_id = cursor.execute("SELECT last_insert_rowid()").fetchone()
+                execution_id = last_id[0] if last_id else 0
                 conn.commit()
                 logger.info(f"Started execution {execution_id} for agent '{agent_name}'")
                 return execution_id

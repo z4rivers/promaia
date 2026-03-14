@@ -1,7 +1,7 @@
 """
 Event emitter -- converts agent output into routable events.
 
-Maps each agent's output to one or more brain.events rows with
+Maps each agent's output to one or more events rows with
 the appropriate urgency level. Called by the executor after every
 successful agent run (07-01).
 
@@ -74,7 +74,7 @@ def emit_agent_events(
     execution_id: int,
     pushed_to_channel: str | None = None,
 ) -> int:
-    """Convert agent output into routable brain.events rows.
+    """Convert agent output into routable events rows.
 
     Args:
         agent_name: Name of the agent (e.g. ``morning-briefing``).
@@ -179,7 +179,7 @@ def _insert_event(
     summary: str,
     pushed_to_channel: str | None = None,
 ) -> Optional[int]:
-    """Insert a single event row into brain.events.
+    """Insert a single event row into events.
 
     When ``pushed_to_channel`` is set, ``routed_at`` and ``channel`` are
     included in the INSERT itself (not a separate UPDATE). This ensures
@@ -194,15 +194,15 @@ def _insert_event(
 
     if pushed_to_channel:
         return db.insert_returning(
-            """INSERT INTO brain.events (type, payload, source, urgency, routed_at, channel)
-               VALUES (%s, %s, %s, %s, NOW(), %s)
+            """INSERT INTO events (type, payload, source, urgency, routed_at, channel)
+               VALUES (?, ?, ?, ?, datetime('now'), ?)
                RETURNING id""",
             (event_type, payload, source, urgency, pushed_to_channel),
         )
     else:
         return db.insert_returning(
-            """INSERT INTO brain.events (type, payload, source, urgency)
-               VALUES (%s, %s, %s, %s)
+            """INSERT INTO events (type, payload, source, urgency)
+               VALUES (?, ?, ?, ?)
                RETURNING id""",
             (event_type, payload, source, urgency),
         )

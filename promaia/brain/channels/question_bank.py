@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 # ---------------------------------------------------------------------------
 # Each question has:
 #   text          - The question to ask (conversational tone)
-#   fields        - Which brain.profile fields this populates (category.field)
+#   fields        - Which profile fields this populates (category.field)
 #   phase         - Interview arc phase: warm_up -> current_state -> gap_identification -> commitment
 #   technique     - OARS technique: open, narrative, scaling, values_elicitation, two_word_checkin
 #   follow_ups    - Follow-up question templates (may use {answer} placeholder)

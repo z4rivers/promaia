@@ -1,0 +1,99 @@
+============================================================
+  FULL SCHEMA AUDIT
+============================================================
+
+  domains:
+    id | INTEGER | 
+    name | TEXT | NOT NULL
+    priority | INTEGER | 
+    created_at | TEXT | 
+
+  contexts:
+    id | INTEGER | 
+    domain_id | INTEGER | NOT NULL
+    directive | TEXT | 
+    current_state | TEXT | 
+    stale_threshold_days | INTEGER | 
+    last_updated | TEXT | 
+    created_at | TEXT | 
+
+  actions:
+    id | INTEGER | 
+    domain | TEXT | 
+    content | TEXT | NOT NULL
+    priority | TEXT | 
+    status | TEXT | 
+    created_at | TEXT | 
+    completed_at | TEXT | 
+
+  memories:
+    id | INTEGER | 
+    content | TEXT | NOT NULL
+    domain | TEXT | 
+    tags | TEXT | 
+    memory_type | TEXT | 
+    importance | REAL | 
+    embedding | TEXT | 
+    created_at | TEXT | 
+
+  events:
+    id | INTEGER | 
+    type | TEXT | NOT NULL
+    payload | TEXT | 
+    source | TEXT | 
+    session_id | TEXT | 
+    created_at | TEXT | 
+
+  profile:
+    id | INTEGER | 
+    category | TEXT | NOT NULL
+    field | TEXT | NOT NULL
+    value | TEXT | NOT NULL
+    confidence | REAL | 
+    source | TEXT | 
+    created_at | TEXT | 
+    updated_at | TEXT | 
+
+  conversations:
+    id | INTEGER | 
+    session_id | TEXT | NOT NULL
+    channel | TEXT | 
+    messages | TEXT | 
+    created_at | TEXT | 
+    updated_at | TEXT | 
+
+  agent_costs:
+    id | INTEGER | 
+    execution_id | INTEGER | 
+    agent_name | TEXT | NOT NULL
+    model_id | TEXT | NOT NULL
+    task_type | TEXT | 
+    input_tokens | INTEGER | 
+    output_tokens | INTEGER | 
+    cached_tokens | INTEGER | 
+    thinking_tokens | INTEGER | 
+    cost_usd | REAL | NOT NULL
+    created_at | TEXT | 
+
+============================================================
+  JOIN TESTS
+============================================================
+  JOIN domains ON id = domain_id: OK
+    zBrain: Platform activated: web server, chat, MCP, dashboard all wir
+    Catpool: Dashboard live with 6 skins, real Postgres data wired. Gmail
+    Heatpup: Resting. 775 commits, solid foundation. Waiting for Zack to 
+
+  actions sample:
+    [pending] Promaia: Deploy web server externally for iPhone access
+    [pending] Promaia: Wire agent scheduler with real data — Morning Briefing, Emai
+    [pending] Heatpup: Review Heatpup when energy returns — 775 commits, needs atte
+  Total pending actions: 405
+
+  memories sample (latest 3):
+    [infrastructure] [ASIDE] The system migration to a faster location is perceiv
+    [promaia] [PREFERENCE] Prefers silent background logging for system fe
+    [promaia] [PREFERENCE] Prefers not to have technical issues or backgro
+
+  events sample (latest 2):
+    type=suggest_next_eval source=heartbeat at=2026-03-14T16:49:39.578305+00:00
+    type=domain_staleness_check source=heartbeat at=2026-03-14T16:49:39.204566+00:00

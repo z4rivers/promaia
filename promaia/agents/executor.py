@@ -390,8 +390,8 @@ class AgentExecutor:
             actions = db.fetch_all(
                 """
                 SELECT a.description, a.status, d.name AS domain
-                FROM brain.actions a
-                LEFT JOIN brain.domains d ON d.id = a.domain_id
+                FROM actions a
+                LEFT JOIN domains d ON d.id = a.domain_id
                 WHERE a.status = 'pending'
                 ORDER BY a.extracted_at DESC LIMIT 20
                 """
@@ -412,8 +412,8 @@ class AgentExecutor:
             contexts = db.fetch_all(
                 """
                 SELECT d.name, c.directive, c.current_state, c.priority
-                FROM brain.contexts c
-                JOIN brain.domains d ON d.id = c.domain_id
+                FROM contexts c
+                JOIN domains d ON d.id = c.domain_id
                 ORDER BY c.priority ASC
                 """
             )
@@ -436,8 +436,8 @@ class AgentExecutor:
             memories = db.fetch_all(
                 """
                 SELECT content, domain, created_at
-                FROM brain.memories
-                WHERE created_at > NOW() - INTERVAL '7 days'
+                FROM memories
+                WHERE created_at > datetime('now', '-7 days')
                 ORDER BY created_at DESC LIMIT 20
                 """
             )

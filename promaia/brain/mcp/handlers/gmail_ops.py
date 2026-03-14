@@ -66,7 +66,7 @@ async def _handle_gmail_scan(args: dict) -> list[TextContentManager]:
     known_contacts = {}
     try:
         rows = db.fetch_all(
-            "SELECT field, value FROM brain.profile WHERE category = 'relationships'"
+            "SELECT field, value FROM profile WHERE category = 'relationships'"
         )
         for row in rows:
             val = row[1] if isinstance(row[1], dict) else {}

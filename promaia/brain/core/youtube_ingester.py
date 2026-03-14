@@ -158,7 +158,7 @@ class YouTubeIngester:
     def is_already_processed(self, video_id: str) -> bool:
         """Check if we've already ingested this video."""
         result = self.db.fetch_one(
-            "SELECT id FROM brain.memories WHERE source = 'youtube' AND source_id = %s",
+            "SELECT id FROM memories WHERE source = 'youtube' AND source_id = %s",
             (video_id,)
         )
         return result is not None

@@ -171,7 +171,7 @@ def track_time(session_id: str, domain_id: int, db=None) -> float:
         row = db.fetch_one(
             """
             SELECT MIN(created_at) AS earliest
-            FROM brain.events
+            FROM events
             WHERE session_id = %s
               AND (payload->>'domain_id')::int = %s
             """,
@@ -195,7 +195,7 @@ def track_time(session_id: str, domain_id: int, db=None) -> float:
 def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
     """Check API call budget for a heartbeat cycle.
 
-    Queries brain.events where source='heartbeat' and session_id=cycle_id,
+    Queries events where source='heartbeat' and session_id=cycle_id,
     counts rows with type='api_call', sums payload->>'cost'.
 
     Args:
@@ -216,7 +216,7 @@ def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
             SELECT
                 COUNT(*) AS calls,
                 COALESCE(SUM((payload->>'cost')::float), 0.0) AS total_cost
-            FROM brain.events
+            FROM events
             WHERE source = 'heartbeat'
               AND session_id = %s
               AND type = 'api_call'
@@ -237,7 +237,7 @@ def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
 
 
 def save_context(session_id: str, domain_id: int, db=None) -> dict:
-    """Snapshot the current brain.contexts row for this domain into brain.events.
+    """Snapshot the current contexts row for this domain into events.
 
     Inserts an event with type='context_save'. Returns the snapshot dict.
 
@@ -259,7 +259,7 @@ def save_context(session_id: str, domain_id: int, db=None) -> dict:
             """
             SELECT id, domain_id, directive, current_state,
                    last_updated, priority, stale_threshold_days
-            FROM brain.contexts
+            FROM contexts
             WHERE domain_id = %s
             ORDER BY last_updated DESC
             LIMIT 1
@@ -281,7 +281,7 @@ def save_context(session_id: str, domain_id: int, db=None) -> dict:
 
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
+            INSERT INTO events (type, payload, source, session_id)
             VALUES ('context_save', %s, 'session', %s)
             """,
             (json.dumps(snapshot), session_id),
@@ -313,7 +313,7 @@ def restore_context(session_id: str, db=None) -> dict:
         row = db.fetch_one(
             """
             SELECT payload
-            FROM brain.events
+            FROM events
             WHERE type = 'context_save'
               AND session_id = %s
             ORDER BY created_at DESC

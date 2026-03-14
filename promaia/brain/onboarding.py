@@ -153,7 +153,7 @@ def start_onboarding(user_id: str = 'default', db=None) -> dict:
         existing = db.fetch_one(
             """
             SELECT id, status, started_at, last_activity
-            FROM brain.onboarding_sessions
+            FROM onboarding_sessions
             WHERE user_id = %s AND status IN ('active', 'paused')
             ORDER BY started_at DESC
             LIMIT 1
@@ -165,20 +165,20 @@ def start_onboarding(user_id: str = 'default', db=None) -> dict:
             session_id = existing['id']
             # Update last_activity
             db.execute(
-                "UPDATE brain.onboarding_sessions SET last_activity = NOW() WHERE id = %s",
+                "UPDATE onboarding_sessions SET last_activity = datetime('now') WHERE id = %s",
                 (session_id,),
             )
             # If paused, reactivate
             if existing['status'] == 'paused':
                 db.execute(
-                    "UPDATE brain.onboarding_sessions SET status = 'active' WHERE id = %s",
+                    "UPDATE onboarding_sessions SET status = 'active' WHERE id = %s",
                     (session_id,),
                 )
         else:
             # Create new session
             session_id = db.insert_returning(
                 """
-                INSERT INTO brain.onboarding_sessions (user_id)
+                INSERT INTO onboarding_sessions (user_id)
                 VALUES (%s)
                 RETURNING id
                 """,
@@ -189,7 +189,7 @@ def start_onboarding(user_id: str = 'default', db=None) -> dict:
             for channel in CHANNELS:
                 db.execute(
                     """
-                    INSERT INTO brain.onboarding_progress (session_id, channel)
+                    INSERT INTO onboarding_progress (session_id, channel)
                     VALUES (%s, %s)
                     ON CONFLICT (session_id, channel) DO NOTHING
                     """,
@@ -200,7 +200,7 @@ def start_onboarding(user_id: str = 'default', db=None) -> dict:
         channels = db.fetch_all(
             """
             SELECT channel, status
-            FROM brain.onboarding_progress
+            FROM onboarding_progress
             WHERE session_id = %s
             ORDER BY channel
             """,
@@ -233,7 +233,7 @@ def get_onboarding_status(user_id: str = 'default', db=None) -> Optional[dict]:
         session = db.fetch_one(
             """
             SELECT id, status, started_at, last_activity
-            FROM brain.onboarding_sessions
+            FROM onboarding_sessions
             WHERE user_id = %s AND status IN ('active', 'paused')
             ORDER BY started_at DESC
             LIMIT 1
@@ -250,7 +250,7 @@ def get_onboarding_status(user_id: str = 'default', db=None) -> Optional[dict]:
         channels = db.fetch_all(
             """
             SELECT channel, status, fields_populated
-            FROM brain.onboarding_progress
+            FROM onboarding_progress
             WHERE session_id = %s
             ORDER BY channel
             """,
@@ -299,8 +299,8 @@ def mark_channel_progress(
 ) -> bool:
     """Update a channel's progress within an onboarding session.
 
-    When status='complete', sets completed_at=NOW().
-    When status='in_progress' and started_at is null, sets started_at=NOW().
+    When status='complete', sets completed_at=datetime('now').
+    When status='in_progress' and started_at is null, sets started_at=datetime('now').
     Also updates session last_activity.
 
     Returns:
@@ -323,9 +323,9 @@ def mark_channel_progress(
         params = [status]
 
         if status == 'in_progress':
-            set_parts.append("started_at = COALESCE(started_at, NOW())")
+            set_parts.append("started_at = COALESCE(started_at, datetime('now'))")
         elif status in ('complete', 'skipped'):
-            set_parts.append("completed_at = NOW()")
+            set_parts.append("completed_at = datetime('now')")
 
         if fields_populated is not None:
             set_parts.append("fields_populated = %s")
@@ -339,7 +339,7 @@ def mark_channel_progress(
 
         db.execute(
             f"""
-            UPDATE brain.onboarding_progress
+            UPDATE onboarding_progress
             SET {', '.join(set_parts)}
             WHERE session_id = %s AND channel = %s
             """,
@@ -348,7 +348,7 @@ def mark_channel_progress(
 
         # Update session last_activity
         db.execute(
-            "UPDATE brain.onboarding_sessions SET last_activity = NOW() WHERE id = %s",
+            "UPDATE onboarding_sessions SET last_activity = datetime('now') WHERE id = %s",
             (session_id,),
         )
 
@@ -362,7 +362,7 @@ def mark_channel_progress(
 def get_profile_coverage(db=None) -> dict:
     """Analyze profile coverage against EXPECTED_FIELDS.
 
-    Queries brain.profile for populated fields by category and compares
+    Queries profile for populated fields by category and compares
     against expected fields to show gaps.
 
     Returns:
@@ -375,7 +375,7 @@ def get_profile_coverage(db=None) -> dict:
         rows = db.fetch_all(
             """
             SELECT category, field
-            FROM brain.profile
+            FROM profile
             ORDER BY category, field
             """
         )
@@ -413,7 +413,7 @@ def get_profile_coverage(db=None) -> dict:
 def complete_onboarding(session_id: int, db=None) -> bool:
     """Finalize an onboarding session.
 
-    Sets session status='complete' and completed_at=NOW().
+    Sets session status='complete' and completed_at=datetime('now').
 
     Returns:
         True on success, False on failure.
@@ -423,8 +423,8 @@ def complete_onboarding(session_id: int, db=None) -> bool:
     try:
         db.execute(
             """
-            UPDATE brain.onboarding_sessions
-            SET status = 'complete', completed_at = NOW(), last_activity = NOW()
+            UPDATE onboarding_sessions
+            SET status = 'complete', completed_at = datetime('now'), last_activity = datetime('now')
             WHERE id = %s
             """,
             (session_id,),

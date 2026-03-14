@@ -114,7 +114,7 @@ class GeminiExecutor:
         }
         cost_usd = self.cost_tracker.compute_cost(model_config, usage_dict)
 
-        # Log cost to brain.agent_costs
+        # Log cost to agent_costs
         record = CostRecord(
             agent_name=agent_name,
             model_id=model_config.model_id,
