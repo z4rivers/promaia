@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.events.channels import DashboardChannel, NotificationChannel
 from promaia.events.rate_limiter import RateLimiter
 
@@ -79,7 +79,7 @@ class EventRouter:
 
     def _fetch_unrouted_events(self) -> list[dict]:
         """Query brain.events for unrouted events ready to be dispatched."""
-        db = get_postgres_db()
+        db = get_db()
         return db.fetch_all(
             """
             SELECT id, type, payload, source, urgency, created_at, held_until
@@ -161,7 +161,7 @@ class EventRouter:
                 hour=6, minute=0, second=0, microsecond=0
             )
 
-        db = get_postgres_db()
+        db = get_db()
         db.execute(
             "UPDATE brain.events SET held_until = %s WHERE id = %s",
             (next_morning, event_id),
@@ -170,7 +170,7 @@ class EventRouter:
 
     def _mark_archive(self, event_id: int):
         """Mark an archive event as routed without channel delivery."""
-        db = get_postgres_db()
+        db = get_db()
         db.execute(
             "UPDATE brain.events SET routed_at = NOW(), channel = 'archive' WHERE id = %s",
             (event_id,),

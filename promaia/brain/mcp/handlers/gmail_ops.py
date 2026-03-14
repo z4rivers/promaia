@@ -2,11 +2,10 @@ import json
 import logging
 import uuid
 import numpy as np
-import psycopg2.extras
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Any, Optional
 from mcp.types import TextContent
-from datetime import datetime, timezone
-from promaia.storage.postgres_db import PostgresDB
-from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
 from promaia.brain.core.memory_pipeline import capture_memory
@@ -20,15 +19,14 @@ from promaia.brain.channels.interview import (
     get_next_question,
     mark_question_answered,
 )
-from promaia.brain.mcp.core_context import SESSION_ID, get_db, get_vector_mgr, get_muninn_client
-from promaia.brain.mcp.handlers.common import _get_or_create_domain_id, _days_ago, _fmt_ts, _today_str
+from promaia.brain.mcp.core_context import get_db, get_vector_mgr, get_muninn_client
 
 logger = logging.getLogger(__name__)
 
 
 
 
-async def _handle_gmail_scan(args: dict) -> list[TextContent]:
+async def _handle_gmail_scan(args: dict) -> list[TextContentManager]:
     """Scan Gmail inbox for cleanup, triage, and intelligence."""
     db = get_db()
     account = args.get("account")
@@ -121,8 +119,8 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
             lines.append(f"\n**Top Unsubscribe Candidates** ({len(unsubs)} senders):")
             for u in unsubs[:10]:
                 relation = known_contacts.get(u['email'].lower(), '')
-            tag = f" (KNOWN: {relation})" if relation else ""
-            lines.append(f"  - {u['email']}{tag} ({u['count']} emails)")
+                tag = f" (KNOWN: {relation})" if relation else ""
+                lines.append(f"  - {u['email']}{tag} ({u['count']} emails)")
 
         # Layer 2: Attention items
         attention = acct.get("attention_needed", [])
@@ -131,9 +129,9 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
             for a in attention[:10]:
                 status = "[unread]" if a.get("unread") else "[read]"
                 sender = a['from'] or ''
-            relation = known_contacts.get(sender.lower(), '')
-            tag = f" (KNOWN: {relation})" if relation else ""
-            lines.append(f"  - {status} {sender}{tag}: {a['subject']}")
+                relation = known_contacts.get(sender.lower(), '')
+                tag = f" (KNOWN: {relation})" if relation else ""
+                lines.append(f"  - {status} {sender}{tag}: {a['subject']}")
 
         # Layer 3: Intelligence
         if acct.get("contacts_found"):
@@ -145,8 +143,8 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
     try:
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('gmail_scan', %s::jsonb, 'onboarding', %s)
+            INSERT INTO events (type, payload, source)
+            VALUES ('gmail_scan', ?, 'background')
             """,
             (
                 json.dumps({
@@ -155,7 +153,6 @@ async def _handle_gmail_scan(args: dict) -> list[TextContent]:
                     "total_emails_scanned": summary.get("total_emails_scanned", 0),
                     "total_junk_identified": summary.get("total_junk_identified", 0),
                 }),
-                SESSION_ID,
             ),
         )
     except Exception as e:
@@ -171,35 +168,26 @@ async def _handle_gmail_query(args: dict) -> list[TextContent]:
     days_back = args.get("days_back", 30)
     limit = min(args.get("limit", 20), 50)
 
+    sql = """
+        SELECT payload
+        FROM events
+        WHERE type = 'gmail_email_processed'
+    """
     conditions = []
     params = []
 
     if query_text:
-        conditions.append(
-            "(subject ILIKE %s OR message_content ILIKE %s OR body_snippet ILIKE %s)"
-        )
-        like = f"%{query_text}%"
-        params.extend([like, like, like])
+        # In libSQL JSON extracting, we can just do basic string search for now
+        # since fulltext on json is tricky without virtual tables.
+        conditions.append("(json_extract(payload, '$.subject') LIKE ? OR json_extract(payload, '$.snippet') LIKE ?)")
+        params.extend([f"%{query_text}%", f"%{query_text}%"])
 
     if sender:
-        conditions.append("sender_email ILIKE %s")
+        conditions.append("json_extract(payload, '$.sender') LIKE ?")
         params.append(f"%{sender}%")
 
-    if days_back:
-        conditions.append(
-            "email_date >= (NOW() - INTERVAL '%s days')::text"
-        )
-        params.append(days_back)
-
     where = " AND ".join(conditions) if conditions else "TRUE"
-    sql = f"""
-        SELECT subject, sender_email, sender_name, email_date,
-               body_snippet, thread_id, is_unread, gmail_labels
-        FROM gmail_content
-        WHERE {where}
-        ORDER BY email_date DESC
-        LIMIT %s
-    """
+    sql += f" AND {where} ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
 
     try:
@@ -220,11 +208,11 @@ async def _handle_gmail_query(args: dict) -> list[TextContent]:
 
     lines = [f"**Gmail Query Results** ({len(rows)} emails)\n"]
     for r in rows:
-        date = r.get("email_date", "")[:10] if r.get("email_date") else "?"
-        sender_display = r.get("sender_name") or r.get("sender_email", "?")
-        unread = " [unread]" if r.get("is_unread") else ""
-        snippet = (r.get("body_snippet") or "")[:120]
-        lines.append(f"- **{r.get('subject', '(no subject)')}**{unread}")
+        payload = json.loads(r.get("payload", "{}")) if isinstance(r.get("payload"), str) else r.get("payload", {})
+        date = payload.get("date", "")[:10] if payload.get("date") else "?"
+        sender_display = payload.get("sender", "?")
+        snippet = (payload.get("snippet") or "")[:120]
+        lines.append(f"- **{payload.get('subject', '(no subject)')}**")
         lines.append(f"  From: {sender_display} | {date}")
         if snippet:
             lines.append(f"  > {snippet}")

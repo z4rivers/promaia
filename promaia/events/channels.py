@@ -8,7 +8,7 @@ without modifying the router (07-02).
 from abc import ABC, abstractmethod
 import logging
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class DashboardChannel(NotificationChannel):
     async def deliver(self, event: dict) -> bool:
         """Mark the event as routed to the dashboard channel."""
         try:
-            db = get_postgres_db()
+            db = get_db()
             db.execute(
                 "UPDATE brain.events SET routed_at = NOW(), channel = 'dashboard' WHERE id = %s",
                 (event["id"],),

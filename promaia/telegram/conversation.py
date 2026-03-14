@@ -15,10 +15,9 @@ import numpy as np
 import psycopg2.extras
 from google import genai
 from google.genai import types
-from pgvector.psycopg2 import register_vector
 
 from promaia.ai.models import GOOGLE_MODELS
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.telegram.brain_ops import (
     capture_memory,
@@ -88,7 +87,7 @@ def _get_genai_client():
 def _get_db():
     global _db
     if _db is None:
-        _db = get_postgres_db()
+        _db = get_db()
     return _db
 
 

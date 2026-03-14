@@ -1,6 +1,6 @@
 import logging
 from google.genai import types
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.core.memory_pipeline import capture_memory
 
@@ -51,7 +51,7 @@ async def handle(ft, websocket) -> types.FunctionResponse:
         logger.info(f"USER SUBMITTED SYSTEM FEEDBACK: {feedback}")
         
         try:
-            db = get_postgres_db()
+            db = get_db()
             vector_mgr = VectorDBManager()
             await capture_memory(
                 db=db,
@@ -78,7 +78,7 @@ async def handle(ft, websocket) -> types.FunctionResponse:
     elif ft.name == "create_action":
         args = ft.args
         try:
-            db = get_postgres_db()
+            db = get_db()
             db.execute(
                 """
                 INSERT INTO brain.actions (description, due_date, domain, status, created_at)

@@ -54,8 +54,8 @@ def run_pc_scan(
         home_dir = os.path.expanduser("~")
 
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
     result = {
         "fields_updated": 0,
@@ -458,7 +458,7 @@ def _upsert_profile(
         db.execute(
             """
             INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
-            VALUES (%s, %s, %s::jsonb, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT (category, field) DO UPDATE SET
                 value = EXCLUDED.value,
                 confidence = EXCLUDED.confidence,
@@ -476,13 +476,9 @@ def _upsert_profile(
         embed_text = f"{category} {field}: {value_json}"
         vector_mgr = VectorDBManager()
         embedding = vector_mgr.generate_embedding(embed_text)
-        embedding_array = np.array(embedding)
+        embedding_array = json.dumps(embedding)
 
-        from pgvector.psycopg2 import register_vector
-        with db.get_connection() as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(
+                db.execute(
                     """
                     UPDATE brain.profile SET embedding = %s
                     WHERE category = %s AND field = %s

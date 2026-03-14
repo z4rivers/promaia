@@ -771,7 +771,7 @@ def _upsert_profile(db, category: str, field: str, value: Any, confidence: float
         db.execute(
             """
             INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
-            VALUES (%s, %s, %s::jsonb, %s, 'inferred', NOW())
+            VALUES (%s, %s, %s, %s, 'inferred', NOW())
             ON CONFLICT (category, field) DO UPDATE SET
                 value = EXCLUDED.value,
                 confidence = EXCLUDED.confidence,

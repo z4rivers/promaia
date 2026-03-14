@@ -10,7 +10,7 @@ Usage:
 import logging
 import sys
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ def main():
     )
 
     logger.info("Starting zBrain seed data population...")
-    db = get_postgres_db()
+    db = get_db()
 
     # Seed domains
     logger.info(f"Seeding {len(DOMAINS)} domains...")

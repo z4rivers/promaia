@@ -2,7 +2,7 @@
 Schema-aware SQL generation for pattern-based natural language queries.
 Replaces Vanna.ai's complex training with focused, predictable SQL generation.
 """
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from .pattern_based_nl import QueryIntent, QueryType
@@ -18,7 +18,7 @@ class SchemaAwareSQLGenerator:
     def _load_schema_info(self):
         """Load schema information for intelligent SQL generation."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Get available tables
@@ -165,26 +165,26 @@ class SchemaAwareSQLGenerator:
             if self.has_gmail_tables and "gmail_content" in self.available_tables:
                 joins.append("LEFT JOIN gmail_content g ON u.page_id = g.page_id")
                 base_fields.extend(["g.sender_email", "g.subject", "g.message_content"])
-                content_search_conditions.append(f"g.message_content ILIKE '%{search_term}%'")
-                content_search_conditions.append(f"g.subject ILIKE '%{search_term}%'")
+                content_search_conditions.append(f"g.message_content LIKE '%{search_term}%'")
+                content_search_conditions.append(f"g.subject LIKE '%{search_term}%'")
         
         # Notion content search
         if not intent.sources or "notion" in intent.sources:
             if self.has_notion_tables and "notion_page_content" in self.available_tables:
                 joins.append("LEFT JOIN notion_page_content n ON u.page_id = n.page_id")
-                content_search_conditions.append(f"n.content ILIKE '%{search_term}%'")
+                content_search_conditions.append(f"n.content LIKE '%{search_term}%'")
         
         # Discord content search
         if not intent.sources or "discord" in intent.sources:
             if self.has_discord_tables and "discord_messages" in self.available_tables:
                 joins.append("LEFT JOIN discord_messages d ON u.page_id = d.page_id")
                 base_fields.extend(["d.author_name", "d.message_content"])
-                content_search_conditions.append(f"d.message_content ILIKE '%{search_term}%'")
+                content_search_conditions.append(f"d.message_content LIKE '%{search_term}%'")
         
         # Fallback to title and metadata search if no specific content tables
         if not content_search_conditions:
-            content_search_conditions.append(f"u.title ILIKE '%{search_term}%'")
-            content_search_conditions.append(f"u.metadata ILIKE '%{search_term}%'")
+            content_search_conditions.append(f"u.title LIKE '%{search_term}%'")
+            content_search_conditions.append(f"u.metadata LIKE '%{search_term}%'")
         
         # Combine content search conditions with OR
         if content_search_conditions:
@@ -224,7 +224,7 @@ class SchemaAwareSQLGenerator:
                 joins.append("JOIN gmail_content g ON u.page_id = g.page_id")
                 base_fields.extend(["g.sender_name", "g.sender_email", "g.subject"])
                 # Note: deliberately exclude g.body_text for performance
-                where_conditions.append(f"(g.sender_name ILIKE '%{intent.person_filter}%' OR g.sender_email ILIKE '%{intent.person_filter}%')")
+                where_conditions.append(f"(g.sender_name LIKE '%{intent.person_filter}%' OR g.sender_email LIKE '%{intent.person_filter}%')")
         
         # Build query
         join_clause = " ".join(joins)
@@ -260,8 +260,8 @@ class SchemaAwareSQLGenerator:
             base_fields.extend(["np.property_name", "nsv.select_value"])
             
             for prop_name, prop_value in intent.property_filters.items():
-                where_conditions.append(f"np.property_name ILIKE '%{prop_name}%'")
-                where_conditions.append(f"nsv.select_value ILIKE '%{prop_value}%'")
+                where_conditions.append(f"np.property_name LIKE '%{prop_name}%'")
+                where_conditions.append(f"nsv.select_value LIKE '%{prop_value}%'")
         
         # Build query
         join_clause = " ".join(joins)
@@ -297,7 +297,7 @@ class SchemaAwareSQLGenerator:
             FROM unified_content u
             JOIN gmail_content g ON u.page_id = g.page_id
             WHERE u.database_name = 'gmail'
-            AND (g.subject ILIKE '%{search_term}%' OR g.message_content ILIKE '%{search_term}%')
+            AND (g.subject LIKE '%{search_term}%' OR g.message_content LIKE '%{search_term}%')
             """
             subqueries.append(gmail_query)
         
@@ -309,7 +309,7 @@ class SchemaAwareSQLGenerator:
                    'journal' as source_type
             FROM unified_content u
             WHERE u.database_name IN ('journal', 'notion')
-            AND u.title ILIKE '%{search_term}%'
+            AND u.title LIKE '%{search_term}%'
             """
             subqueries.append(journal_query)
         
@@ -321,7 +321,7 @@ class SchemaAwareSQLGenerator:
             sql = f"""
             SELECT u.page_id, u.title, u.created_time, u.workspace, u.database_name
             FROM unified_content u
-            WHERE u.title ILIKE '%{search_term}%'
+            WHERE u.title LIKE '%{search_term}%'
             ORDER BY u.created_time DESC
             LIMIT 100
             """
@@ -340,7 +340,7 @@ class SchemaAwareSQLGenerator:
             where_conditions.append(f"u.database_name IN ({db_placeholders})")
         
         if search_term:
-            where_conditions.append(f"u.title ILIKE '%{search_term}%'")
+            where_conditions.append(f"u.title LIKE '%{search_term}%'")
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         

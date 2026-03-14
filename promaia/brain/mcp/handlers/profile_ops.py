@@ -2,10 +2,8 @@ import json
 import logging
 import uuid
 import numpy as np
-import psycopg2.extras
 from mcp.types import TextContent
 from datetime import datetime, timezone
-from promaia.storage.postgres_db import PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
@@ -47,24 +45,19 @@ async def _handle_profile(args: dict) -> list[TextContent]:
         try:
             vector_mgr = get_vector_mgr()
             query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
-            query_array = np.array(query_embedding)
+            query_array = json.dumps(query_embedding)
 
-            with db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(
-                        """
-                        SELECT category, field, value, confidence, source, updated_at,
-                               embedding <=> %s::vector AS distance
-                        FROM brain.profile
-                        WHERE embedding IS NOT NULL
-                        ORDER BY distance ASC
-                        LIMIT 10
-                        """,
-                        (query_array,),
-                    )
-                    rows = [dict(r) for r in cur.fetchall()]
-
+            rows = db.fetch_all(
+                """
+                SELECT category, field, value, confidence, source, updated_at,
+                       vector_distance_cos(embedding, ?) AS distance
+                FROM profile
+                WHERE embedding IS NOT NULL
+                ORDER BY distance ASC
+                LIMIT 10
+                """,
+                (query_array,),
+            )
             if not rows:
                 return [TextContent(type="text", text="No profile data found.")]
 
@@ -89,8 +82,8 @@ async def _handle_profile(args: dict) -> list[TextContent]:
             rows = db.fetch_all(
                 """
                 SELECT category, field, value, confidence, source, updated_at
-                FROM brain.profile
-                WHERE category = %s
+                FROM profile
+                WHERE category = ?
                 ORDER BY field
                 """,
                 (category,),
@@ -99,7 +92,7 @@ async def _handle_profile(args: dict) -> list[TextContent]:
             rows = db.fetch_all(
                 """
                 SELECT category, field, value, confidence, source, updated_at
-                FROM brain.profile
+                FROM profile
                 ORDER BY category, field
                 """
             )
@@ -153,13 +146,13 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
         # Upsert the profile field
         db.execute(
             """
-            INSERT INTO brain.profile (category, field, value, confidence, source, updated_at)
-            VALUES (%s, %s, %s::jsonb, %s, %s, NOW())
+            INSERT INTO profile (category, field, value, confidence, source, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT (category, field) DO UPDATE SET
                 value = EXCLUDED.value,
                 confidence = EXCLUDED.confidence,
                 source = EXCLUDED.source,
-                updated_at = NOW()
+                updated_at = CURRENT_TIMESTAMP
             """,
             (category, field, value_json, confidence, source),
         )
@@ -169,15 +162,12 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
             embed_text = f"{category} {field}: {value_json}"
             vector_mgr = get_vector_mgr()
             embedding = vector_mgr.generate_embedding(embed_text)
-            embedding_array = np.array(embedding)
+            embedding_array = json.dumps(embedding)
 
-            with db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor() as cur:
-                    cur.execute(
+            db.execute(
                         """
-                        UPDATE brain.profile SET embedding = %s
-                        WHERE category = %s AND field = %s
+                        UPDATE profile SET embedding = ?
+                        WHERE category = ? AND field = ?
                         """,
                         (embedding_array, category, field),
                     )
@@ -188,8 +178,8 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
         try:
             db.execute(
                 """
-                INSERT INTO brain.events (type, payload, source, session_id)
-                VALUES ('profile_update', %s::jsonb, 'session', %s)
+                INSERT INTO events (type, payload, source, session_id)
+                VALUES ('profile_update', ?, 'session', ?)
                 """,
                 (json.dumps({"category": category, "field": field}), SESSION_ID),
             )
@@ -378,8 +368,8 @@ async def _handle_pc_scan(args: dict) -> list[TextContent]:
     try:
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('pc_scan', %s::jsonb, 'onboarding', %s)
+            INSERT INTO events (type, payload, source, session_id)
+            VALUES ('pc_scan', ?, 'onboarding', ?)
             """,
             (
                 json.dumps({
@@ -425,10 +415,10 @@ async def _handle_timeline(args: dict) -> list[TextContent]:
 
         db.execute(
             """
-            INSERT INTO brain.timeline (event_date, date_precision, title, description, category, significance, domain, tags)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO timeline (event_date, date_precision, title, description, category, significance, domain, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, coalesce(json(?), '[]'))
             """,
-            (event_date, precision, title, description, category, significance, domain, tags),
+            (event_date, precision, title, description, category, significance, domain, json.dumps(tags)),
         )
         return [TextContent(type="text", text=f"Added to timeline: {title} ({event_date}, {category})")]
 
@@ -438,12 +428,12 @@ async def _handle_timeline(args: dict) -> list[TextContent]:
 
         if category:
             rows = db.fetch_all(
-                "SELECT * FROM brain.timeline WHERE category = %s ORDER BY event_date",
+                "SELECT * FROM timeline WHERE category = ? ORDER BY event_date",
                 (category,),
             )
         else:
             rows = db.fetch_all(
-                "SELECT * FROM brain.timeline ORDER BY event_date LIMIT %s",
+                "SELECT * FROM timeline ORDER BY event_date LIMIT ?",
                 (limit,),
             )
 
@@ -483,11 +473,11 @@ async def _handle_timeline(args: dict) -> list[TextContent]:
 
         rows = db.fetch_all(
             """
-            SELECT *, ABS(event_date - %s::date) AS days_away
-            FROM brain.timeline
-            WHERE event_date BETWEEN %s::date - %s AND %s::date + %s
-            ORDER BY ABS(event_date - %s::date)
-            LIMIT %s
+            SELECT *, ABS(julianday(event_date) - julianday(date(?))) AS days_away
+            FROM timeline
+            WHERE date(event_date) BETWEEN date(?, '-' || ? || ' days') AND date(?, '+' || ? || ' days')
+            ORDER BY ABS(julianday(event_date) - julianday(date(?)))
+            LIMIT ?
             """,
             (center, center, range_days, center, range_days, center, limit),
         )

@@ -1,5 +1,5 @@
 import uuid
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db as _get_db_factory
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.muninn import get_muninn
 
@@ -11,7 +11,7 @@ _vector_manager = None
 def get_db():
     global _db
     if _db is None:
-        _db = get_postgres_db()
+        _db = _get_db_factory()
     return _db
 
 def get_vector_mgr():

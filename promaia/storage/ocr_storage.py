@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from psycopg2 import extras
-from promaia.storage.postgres_db import pg_connect, get_postgres_db
+from promaia.storage.db_factory import db_connect, get_postgres_db
 
 # Avoid circular import - ProcessedDocument will be passed as parameter
 
@@ -31,7 +31,7 @@ class OCRStorage:
             db_path: Deprecated - kept for backward compatibility.
         """
         self.db_path = db_path
-        self.db = get_postgres_db()
+        self.db = get_db()
         self._ensure_table_exists()
 
     def _ensure_table_exists(self):
@@ -59,7 +59,7 @@ class OCRStorage:
             True if successful
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # Prepare data
@@ -141,7 +141,7 @@ class OCRStorage:
             True if successful
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute("""
@@ -167,7 +167,7 @@ class OCRStorage:
             Upload record dict or None
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
 
                 cursor.execute("""
@@ -198,7 +198,7 @@ class OCRStorage:
             List of upload records
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
 
                 if status:
@@ -232,7 +232,7 @@ class OCRStorage:
             Dict with statistics
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 where_clause = "WHERE workspace = %s" if workspace else ""
@@ -290,7 +290,7 @@ class OCRStorage:
             True if successful
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute("""

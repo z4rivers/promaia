@@ -23,12 +23,12 @@ def get_schema_path() -> Path:
 
 def init_database():
     """Initialize the PostgreSQL database with all required tables."""
-    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.db_factory import get_db
     
     logger.info("🐘 Initializing PostgreSQL database...")
     
     try:
-        db = get_postgres_db()
+        db = get_db()
         
         # Read and execute schema
         schema_path = get_schema_path()
@@ -83,12 +83,12 @@ def init_database():
 
 def check_status():
     """Check database connection and table status."""
-    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.db_factory import get_db
     
     logger.info("🔍 Checking PostgreSQL connection...")
     
     try:
-        db = get_postgres_db()
+        db = get_db()
         
         # Test connection
         result = db.fetch_one("SELECT version()")
@@ -119,7 +119,7 @@ def check_status():
 
 def reset_database():
     """Drop and recreate all tables. DANGER: This will delete all data!"""
-    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.db_factory import get_db
     
     logger.warning("This will DELETE ALL DATA in the database!")
     confirm = input("Type 'RESET' to confirm: ")
@@ -129,7 +129,7 @@ def reset_database():
         return False
     
     try:
-        db = get_postgres_db()
+        db = get_db()
         
         # Get all tables
         tables_query = """
@@ -222,12 +222,12 @@ def apply_brain_schema():
 
     Returns True on success, False on failure.
     """
-    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.db_factory import get_db
 
     logger.info("Applying brain schema...")
 
     try:
-        db = get_postgres_db()
+        db = get_db()
 
         schema_path = get_brain_schema_path()
         if not schema_path.exists():

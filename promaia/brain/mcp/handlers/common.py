@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 def _get_or_create_domain_id(db, domain_name: str) -> int:
-    existing = db.fetch_one("SELECT id FROM brain.domains WHERE name = %s", (domain_name,))
+    existing = db.fetch_one("SELECT id FROM domains WHERE name = ?", (domain_name,))
     if existing: return existing['id']
-    return db.insert_returning("INSERT INTO brain.domains (name) VALUES (%s) RETURNING id", (domain_name,))
+    return db.insert_returning("INSERT INTO domains (name) VALUES (?) RETURNING id", (domain_name,))
 
 def _days_ago(ts) -> float:
     if ts is None: return 0.0

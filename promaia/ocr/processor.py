@@ -48,7 +48,7 @@ except ImportError:
 
 # Try to import Brain connection
 try:
-    from promaia.storage.postgres_db import get_postgres_db
+    from promaia.storage.db_factory import get_db
     from promaia.storage.vector_db import VectorDBManager
     from promaia.brain.core.memory_pipeline import capture_memory
     brain_integration_available = True
@@ -250,7 +250,7 @@ class OCRProcessor:
             # Dual-write to MuninnDB if available
             if brain_integration_available and status == "completed":
                 try:
-                    db = get_postgres_db()
+                    db = get_db()
                     vector_mgr = VectorDBManager()
 
                     brain_content = ""

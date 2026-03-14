@@ -135,9 +135,9 @@ class AgentContext:
         Returns:
             Populated AgentContext instance.
         """
-        from promaia.storage.postgres_db import get_postgres_db
+        from promaia.storage.db_factory import get_db
 
-        db = get_postgres_db()
+        db = get_db()
 
         # Load user name
         user_name = "Zack"  # default

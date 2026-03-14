@@ -2,10 +2,8 @@ import json
 import logging
 import uuid
 import numpy as np
-import psycopg2.extras
 from mcp.types import TextContent
 from datetime import datetime, timezone
-from promaia.storage.postgres_db import PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights

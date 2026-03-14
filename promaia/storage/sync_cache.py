@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import os
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class SyncCache:
             db_path: Deprecated parameter, kept for backward compatibility.
                     All data is now stored in PostgreSQL.
         """
-        self.db = get_postgres_db()
+        self.db = get_db()
         self._ensure_table()
         logger.debug("SyncCache initialized with PostgreSQL backend")
 

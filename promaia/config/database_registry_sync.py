@@ -26,10 +26,10 @@ class DatabaseRegistrySync:
         orphaned_entries = {}
         
         try:
-            from promaia.storage.postgres_db import pg_connect
+            from promaia.storage.db_factory import db_connect
             import psycopg2
             
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Get all unique database names from the unified view
@@ -114,10 +114,10 @@ class DatabaseRegistrySync:
         }
         
         try:
-            from promaia.storage.postgres_db import pg_connect
+            from promaia.storage.db_factory import db_connect
             import psycopg2
             
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 # The hybrid registry uses separate tables, so we need to update each one
@@ -188,9 +188,9 @@ class DatabaseRegistrySync:
             if dry_run:
                 # Just count what would be updated
                 try:
-                    from promaia.storage.postgres_db import pg_connect
+                    from promaia.storage.db_factory import db_connect
                     
-                    with pg_connect() as conn:
+                    with db_connect() as conn:
                         cursor = conn.cursor()
                         count_query = "SELECT COUNT(*) FROM unified_content WHERE database_name = %s"
                         cursor.execute(count_query, (old_name,))

@@ -10,7 +10,7 @@ Enhancements over the basic NL system:
 """
 import os
 import json
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -40,7 +40,7 @@ class SchemaExplorer:
         }
         
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 # Reset any aborted transaction state
                 conn.rollback()
                 cursor = conn.cursor()
@@ -507,7 +507,7 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
     
     # Fetch type-specific display text
     try:
-        with pg_connect() as conn:
+        with db_connect() as conn:
             cursor = conn.cursor()
             
             if content_type == 'gmail' or database_name == 'gmail':

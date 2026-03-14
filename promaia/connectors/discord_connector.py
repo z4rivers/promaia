@@ -1235,10 +1235,10 @@ class DiscordConnector(BaseConnector):
         
         try:
             from promaia.brain.core.memory_pipeline import capture_memory
-            from promaia.storage.postgres_db import get_postgres_db
+            from promaia.storage.db_factory import get_db
             from promaia.storage.vector_db import VectorDBManager
             
-            db = get_postgres_db()
+            db = get_db()
             vector_mgr = VectorDBManager(db)
             
             await capture_memory(

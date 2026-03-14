@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.brain import engine
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ _scheduler = None
 def _run_subconscious_cycle():
     """Execute the background heartbeat tasks."""
     logger.info("Running Subconscious heartbeat cycle...")
-    db = get_postgres_db()
+    db = get_db()
     cycle_id = str(uuid.uuid4())
     
     try:
@@ -28,8 +28,8 @@ def _run_subconscious_cycle():
         # Log the budget check
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('daily_budget_check', %s::jsonb, 'heartbeat', %s)
+            INSERT INTO events (type, payload, source, session_id)
+            VALUES ('daily_budget_check', ?, 'heartbeat', ?)
             """,
             (json.dumps({"today_spend": today_spend}), cycle_id),
         )
@@ -39,9 +39,9 @@ def _run_subconscious_cycle():
         rows = db.fetch_all(
             """
             SELECT d.name, c.last_updated, c.stale_threshold_days
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
-            WHERE NOW() - c.last_updated > c.stale_threshold_days * INTERVAL '1 day'
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
+            WHERE julianday('now') - julianday(c.last_updated) > c.stale_threshold_days
             """
         )
         if rows:
@@ -49,8 +49,8 @@ def _run_subconscious_cycle():
             
         db.execute(
             """
-            INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('domain_staleness_check', %s::jsonb, 'heartbeat', %s)
+            INSERT INTO events (type, payload, source, session_id)
+            VALUES ('domain_staleness_check', ?, 'heartbeat', ?)
             """,
             (json.dumps({
                 "status": "stale_found" if stale_domains else "ok",
@@ -62,9 +62,9 @@ def _run_subconscious_cycle():
         domain_rows = db.fetch_all(
             """
             SELECT d.name, c.directive, c.current_state, c.last_updated,
-                   c.priority, c.stale_threshold_days
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
+                   d.priority, c.stale_threshold_days
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
             """
         )
         if domain_rows:
@@ -72,8 +72,8 @@ def _run_subconscious_cycle():
             if suggestion:
                 db.execute(
                     """
-                    INSERT INTO brain.events (type, payload, source, session_id)
-                    VALUES ('suggest_next_eval', %s::jsonb, 'heartbeat', %s)
+                    INSERT INTO events (type, payload, source, session_id)
+                    VALUES ('suggest_next_eval', ?, 'heartbeat', ?)
                     """,
                     (json.dumps({
                         "domain": suggestion.get("domain"),

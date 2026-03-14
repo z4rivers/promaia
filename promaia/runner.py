@@ -99,8 +99,8 @@ async def run_all():
         
         # Explicit Postgres pool cleanup
         try:
-            from promaia.storage.postgres_db import get_postgres_db
-            db = get_postgres_db()
+            from promaia.storage.db_factory import get_db
+            db = get_db()
             db.close_pool()
         except Exception as e:
             logger.error(f"Failed to close Postgres connection pool: {e}")

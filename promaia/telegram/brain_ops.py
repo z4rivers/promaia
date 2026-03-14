@@ -16,9 +16,8 @@ from typing import Optional
 
 import numpy as np
 import psycopg2.extras
-from pgvector.psycopg2 import register_vector
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.extraction import extract_actions
 
@@ -32,7 +31,7 @@ _vector_manager = None
 def _get_db():
     global _db
     if _db is None:
-        _db = get_postgres_db()
+        _db = get_db()
     return _db
 
 
@@ -208,11 +207,8 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
         try:
             vector_mgr = _get_vector_mgr()
             embedding = vector_mgr.generate_embedding(content)
-            embedding_array = np.array(embedding)
-            with db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor() as cur:
-                    cur.execute(
+            embedding_array = json.dumps(embedding)
+            db.execute(
                         "UPDATE brain.memories SET embedding = %s WHERE id = %s",
                         (embedding_array, memory_id),
                     )
@@ -275,7 +271,6 @@ async def search_brain(query: str, limit: int = 5) -> str:
             query_array = np.array(query_embedding)
 
             with db.get_connection() as conn:
-                register_vector(conn)
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     cur.execute(
                         """
@@ -562,11 +557,8 @@ async def promote_message_to_memory(
         try:
             vector_mgr = _get_vector_mgr()
             embedding = vector_mgr.generate_embedding(content)
-            embedding_array = np.array(embedding)
-            with db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor() as cur:
-                    cur.execute(
+            embedding_array = json.dumps(embedding)
+            db.execute(
                         "UPDATE brain.memories SET embedding = %s WHERE id = %s",
                         (embedding_array, memory_id),
                     )

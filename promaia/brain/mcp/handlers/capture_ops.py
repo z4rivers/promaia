@@ -2,10 +2,8 @@ import json
 import logging
 import uuid
 import numpy as np
-import psycopg2.extras
 from mcp.types import TextContent
 from datetime import datetime, timezone
-from promaia.storage.postgres_db import PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
@@ -86,23 +84,20 @@ async def _handle_search(args: dict) -> list[TextContent]:
     try:
         vector_mgr = get_vector_mgr()
         query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
-        query_array = np.array(query_embedding)
+        query_array = json.dumps(query_embedding)
 
-        with db.get_connection() as conn:
-            register_vector(conn)
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    SELECT id, content, domain, created_at,
-                           embedding <=> %s::vector AS distance
-                    FROM brain.memories
-                    WHERE embedding IS NOT NULL
-                    ORDER BY distance ASC
-                    LIMIT %s
-                    """,
-                    (query_array, limit),
-                )
-                pg_rows = [dict(r) for r in cur.fetchall()]
+        rows = db.fetch_all(
+            """
+            SELECT id, content, domain, created_at,
+                   vector_distance_cos(embedding, ?) AS distance
+            FROM memories
+            WHERE embedding IS NOT NULL
+            ORDER BY distance ASC
+            LIMIT ?
+            """,
+            (query_array, limit),
+        )
+        pg_rows = [dict(r) for r in rows]
     except Exception as e:
         logger.error(f"pgvector search failed: {e}", exc_info=True)
 
@@ -165,19 +160,19 @@ async def _handle_recall(args: dict) -> list[TextContent]:
     try:
         query = """
             SELECT id, content, domain, created_at, asset_paths
-            FROM brain.memories
-            WHERE created_at > NOW() - %s * INTERVAL '1 day'
+            FROM memories
+            WHERE created_at > datetime('now', '-' || ? || ' days')
         """
         params: list = [days]
 
         if domain_name:
-            query += " AND domain = %s"
+            query += " AND domain = ?"
             params.append(domain_name)
             
         if has_media:
-            query += " AND jsonb_array_length(asset_paths) > 0"
+            query += " AND json_array_length(asset_paths) > 0"
 
-        query += " ORDER BY created_at DESC LIMIT %s"
+        query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
 
         rows = db.fetch_all(query, tuple(params))

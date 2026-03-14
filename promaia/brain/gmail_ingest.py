@@ -26,7 +26,7 @@ from promaia.brain.channels.gmail_read import (
     _get_gmail_service,
     discover_accounts,
 )
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def run_gmail_ingest(
             return {"error": f"No account matching '{account}'. Available: {list(accounts.keys())}"}
         accounts = matched
 
-    db = get_postgres_db()
+    db = get_db()
     results = {"accounts": {}, "total_synced": 0, "total_skipped": 0}
 
     for label, token_path in accounts.items():
@@ -95,7 +95,7 @@ def run_gmail_ingest(
 def _get_last_sync(db, email: str) -> Optional[datetime]:
     """Get the most recent synced_time for an account."""
     row = db.fetch_one(
-        "SELECT MAX(synced_time) as last_sync FROM gmail_content WHERE sender_email = %s OR recipient_emails::text ILIKE %s",
+        "SELECT MAX(synced_time) as last_sync FROM gmail_content WHERE sender_email = %s OR recipient_emails LIKE %s",
         (email, f"%{email}%"),
     )
     if row and row.get("last_sync"):
@@ -403,7 +403,7 @@ def _insert_message(db, row: dict):
 
 def resync_missing_bodies(workspace: str = "zbrain", max_messages: int = 200) -> Dict[str, Any]:
     """Re-fetch full bodies for gmail_content rows where message_content is NULL."""
-    db = get_postgres_db()
+    db = get_db()
     rows = db.fetch_all(
         "SELECT message_id, database_id FROM gmail_content WHERE message_content IS NULL OR message_content = '' LIMIT %s",
         (max_messages,)

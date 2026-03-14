@@ -5,7 +5,7 @@ This module provides a query interface for the hybrid storage architecture with
 separate optimized tables for each content type (Gmail, Notion databases, etc.)
 unified through the unified_content view.
 """
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 import os
 import json
 import logging
@@ -29,7 +29,7 @@ class HybridQueryInterface:
                              days: int = None, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Query content for chat interface."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # --- Gmail Thread Logic ---
@@ -194,7 +194,7 @@ class HybridQueryInterface:
     def get_content_by_id(self, page_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific content item by page ID."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT page_id, workspace, database_name, content_type, file_path, title,
@@ -226,10 +226,10 @@ class HybridQueryInterface:
     def search_content(self, query: str, workspace: str = None, sources: List[str] = None) -> List[Dict[str, Any]]:
         """Search content by title or metadata."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
-                where_conditions = ["(title LIKE %s OR metadata::text LIKE %s)"]
+                where_conditions = ["(title LIKE %s OR metadata LIKE %s)"]
                 params = [f"%{query}%", f"%{query}%"]
                 
                 if workspace:
@@ -295,7 +295,7 @@ class HybridQueryInterface:
     def get_database_context(self, workspace: str) -> Dict[str, Any]:
         """Get available databases for a workspace."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT database_name, COUNT(*) as count

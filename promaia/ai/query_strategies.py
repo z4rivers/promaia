@@ -6,7 +6,7 @@ while keeping the shared orchestration pipeline clean.
 """
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 import json
 
 from promaia.utils.display import print_text
@@ -179,7 +179,7 @@ Return a PostgreSQL query that:
   - Join pattern: JOIN notion_WORKSPACE_DATABASE n ON u.page_id = n.page_id
   - Example: JOIN notion_koii_stories n ON u.page_id = n.page_id
 - Also JOINs specialized tables (gmail_content, generic_content) if needed
-- Uses ILIKE '%term%' on ALL text-heavy fields (check sample data above)
+- Uses LIKE '%term%' on ALL text-heavy fields (check sample data above)
 - Filters database_name using ONLY the nickname (no workspace prefix)
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
 - Applies date filters using the rules below - CRITICAL: distinguish between content dates vs sync dates
@@ -204,14 +204,14 @@ For CONTENT dates (sprints, deadlines, business dates):
 - First JOIN the workspace-specific table to access properties
 - Then use the direct date column: n.date, n.due_date, n.publish_date, etc.
 - Check the sample rows above to see which date columns exist for each database
-- If days_back provided: "AND n.date >= CURRENT_DATE - INTERVAL 'N days'"
+- If days_back provided: "AND n.date >= CURRENT_DATE - '-N days'"
 - If start_date/end_date provided:
-  - start: "AND n.date >= 'YYYY-MM-DD'" or "AND n.date >= CURRENT_DATE - INTERVAL 'N days'"
+  - start: "AND n.date >= 'YYYY-MM-DD'" or "AND n.date >= CURRENT_DATE - '-N days'"
   - end: "AND n.date <= 'YYYY-MM-DD'"
 
 For SYNC dates (when content was added/created):
 - Use: u.created_time (no need to join workspace table)
-- If days_back provided: "AND u.created_time >= (NOW() - INTERVAL 'N days')::text"
+- If days_back provided: "AND u.created_time >= (NOW() - '-N days')"
 - If start_date/end_date provided:
   - start: "AND u.created_time >= 'YYYY-MM-DD'"
   - end: "AND u.created_time <= 'YYYY-MM-DD'"
@@ -240,15 +240,15 @@ CONTENT DATE FILTERING (use workspace-specific table date column):
   FROM unified_content u
   JOIN notion_koii_stories n ON u.page_id = n.page_id
   WHERE u.database_name = 'stories'
-    AND n._epics ILIKE '%angl%'
+    AND n._epics LIKE '%angl%'
     AND n.date <= '2026-04-30'
   ```
 
 SYNC DATE FILTERING (use created_time, no workspace join needed):
 - "pages created last 7 days" →
-  SQL: "SELECT * FROM unified_content u WHERE u.created_time >= (NOW() - INTERVAL '7 days')::text"
+  SQL: "SELECT * FROM unified_content u WHERE u.created_time >= datetime('now', '-7 days')"
 - "recently synced stories" →
-  SQL: "SELECT * FROM unified_content u WHERE u.database_name = 'stories' AND u.created_time >= (NOW() - INTERVAL '7 days')::text"
+  SQL: "SELECT * FROM unified_content u WHERE u.database_name = 'stories' AND u.created_time >= datetime('now', '-7 days')"
 
 DEFAULT RULE: If the query mentions sprints, deadlines, "in X period", story properties, or business date ranges → use CONTENT dates from workspace table. If it mentions "created", "synced", "added" → use created_time.
 
@@ -317,7 +317,7 @@ SQL only (no markdown, no triple backticks):"""
             print_text(f"\n🔍 Executing query against: {self.db_path}", style="cyan")
         
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 conn.rollback()  # Reset any prior aborted transaction
                 cursor = conn.cursor()
                 cursor.execute(query)
@@ -844,7 +844,7 @@ Return ONLY the JSON object:"""
             elif operator == 'equals':
                 where_clause = f"{property_name} = %s"
             elif operator == 'contains':
-                where_clause = f"{property_name} ILIKE %s"
+                where_clause = f"{property_name} LIKE %s"
                 value = f"%{value}%"
             elif operator == 'greater_than':
                 where_clause = f"{property_name} > %s"

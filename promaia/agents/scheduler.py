@@ -675,10 +675,10 @@ class AgentScheduler:
                 break
 
             try:
-                from promaia.storage.postgres_db import get_postgres_db
+                from promaia.storage.db_factory import get_db
                 import json
 
-                db = get_postgres_db()
+                db = get_db()
                 active_tasks = [
                     name for name, t in self.tasks.items()
                     if not name.startswith("__") and not t.done()

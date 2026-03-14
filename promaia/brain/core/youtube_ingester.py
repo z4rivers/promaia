@@ -11,7 +11,7 @@ from youtube_transcript_api.formatters import TextFormatter
 
 from promaia.config.youtube_channels import YOUTUBE_CHANNELS
 from promaia.ai.nl_orchestrator import PromaiLLMAdapter
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.core.memory_pipeline import capture_memory
 
@@ -30,7 +30,7 @@ class YouTubeIngester:
             
         self.youtube = build('youtube', 'v3', developerKey=self.api_key) if self.api_key else None
         self.llm = PromaiLLMAdapter()
-        self.db = get_postgres_db()
+        self.db = get_db()
         self.vector_mgr = VectorDBManager()
 
     def get_channel_id(self, handle: str) -> str:

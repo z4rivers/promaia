@@ -44,8 +44,6 @@ _project_root = Path(__file__).resolve().parents[2]
 load_dotenv(_project_root / ".env")
 
 import numpy as np
-import psycopg2.extras
-from pgvector.psycopg2 import register_vector
 
 try:
     from mcp.server import Server
@@ -55,7 +53,7 @@ except ImportError:
     print("ERROR: mcp package not installed. Install with: pip install 'mcp>=1.26.0'", file=sys.stderr)
     sys.exit(1)
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
@@ -737,8 +735,8 @@ def run_selftest():
     
     # 1. Postgres Check
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
         db.execute("SELECT 1")
         print("✅ PostgreSQL Connection: OK")
     except Exception as e:
@@ -795,7 +793,7 @@ if __name__ == "__main__":
             sys.exit(1)
         finally:
             try:
-                from promaia.storage.postgres_db import get_postgres_db
-                get_postgres_db().close_pool()
+                from promaia.storage.db_factory import get_db
+                get_db().close_pool()
             except Exception as e:
                 logger.error(f"Failed to close Postgres connection pool: {e}")

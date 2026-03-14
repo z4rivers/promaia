@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 from .base import BaseConnector, QueryFilter, DateRangeFilter, SyncResult
 from promaia.notion.client import notion_client
 from promaia.notion.pages import (
@@ -118,7 +118,7 @@ class NotionConnector(BaseConnector):
 
             current_time = datetime.now(timezone.utc).isoformat()
 
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 for prop_name, prop_config in properties.items():
@@ -1404,10 +1404,10 @@ class NotionConnector(BaseConnector):
 
         try:
             from promaia.brain.core.memory_pipeline import capture_memory
-            from promaia.storage.postgres_db import get_postgres_db
+            from promaia.storage.db_factory import get_db
             from promaia.storage.vector_db import VectorDBManager
 
-            db = get_postgres_db()
+            db = get_db()
             vector_mgr = VectorDBManager(db)
 
             workspace = self.config.get("workspace", "default")

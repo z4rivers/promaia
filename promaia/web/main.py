@@ -222,8 +222,8 @@ async def graceful_shutdown():
 
     # 2. Close Postgres connection pool
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        get_postgres_db().close_pool()
+        from promaia.storage.db_factory import get_db
+        get_db().close_pool()
         logger.info("  ✅ Postgres pool closed")
     except Exception as e:
         logger.warning(f"  ⚠️ Postgres pool close failed: {e}")
@@ -249,13 +249,14 @@ async def health_check():
     
     # 1. Check PostgreSQL Database
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
         db.execute("SELECT 1")
         health_status["components"]["database"] = "connected"
     except Exception as e:
+        import traceback
         health_status["status"] = "degraded"
-        health_status["components"]["database"] = f"error: {str(e)}"
+        health_status["components"]["database"] = f"error: {str(e)} - {traceback.format_exc()}"
         
     # 2. Check MCP Configuration
     try:

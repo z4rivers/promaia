@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Any, Union
 from pathlib import Path
 from contextlib import contextmanager
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class HybridContentRegistry:
                     All data is now stored in PostgreSQL.
         """
         self.db_path = db_path  # Keep for backward compatibility
-        self.db = get_postgres_db()
+        self.db = get_db()
         self.init_database()
 
     def init_database(self):
@@ -41,7 +41,7 @@ class HybridContentRegistry:
             with self.db.get_cursor() as cursor:
                 # Check if tables exist, if not log a message
                 cursor.execute("""
-                    SELECT COUNT(*) FROM information_schema.tables 
+                    SELECT COUNT(*) FROM sqlite_master WHERE type='table' 
                     WHERE table_schema = 'public' AND table_name = 'gmail_content'
                 """)
                 if cursor.fetchone()[0] == 0:
@@ -108,7 +108,7 @@ class HybridContentRegistry:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_date ON gmail_content (email_date)")
         # Drop old B-tree index on JSONB column if it exists, replace with GIN
         cursor.execute("DROP INDEX IF EXISTS idx_gmail_labels")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels_gin ON gmail_content USING GIN (gmail_labels)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels_gin ON gmail_content")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_id ON gmail_content (thread_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_message_id ON gmail_content (message_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_position ON gmail_content (thread_id, thread_position)")
@@ -162,8 +162,8 @@ class HybridContentRegistry:
             with self.db.get_cursor() as cursor:
                 # Find all workspace-specific Notion tables
                 cursor.execute("""
-                    SELECT table_name FROM information_schema.tables
-                    WHERE table_schema = 'public' AND table_name LIKE 'notion_%%'
+                    SELECT name FROM sqlite_master
+                    WHERE type = 'table' AND name LIKE 'notion_%%'
                     AND table_name NOT IN ('notion_page_chunks', 'notion_property_schema', 'notion_select_options', 'notion_relations')
                     ORDER BY table_name
                 """)
@@ -189,16 +189,16 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    NULL::text as status,
+                    NULL as status,
                     sender_email,
                     sender_name,
                     has_attachments,
                     is_unread,
-                    NULL::boolean as featured,
-                    NULL::text as priority,
-                    NULL::text as category,
+                    NULL as featured,
+                    NULL as priority,
+                    NULL as category,
                     email_date,
-                    jsonb_build_object(
+                    json_object(
                         'subject', subject,
                         'sender_email', sender_email,
                         'sender_name', sender_name,
@@ -208,7 +208,7 @@ class HybridContentRegistry:
                         'has_attachments', has_attachments,
                         'is_unread', is_unread,
                         'email_date', email_date
-                    )::text as metadata
+                    ) as metadata
                 FROM gmail_content
                 """)
 
@@ -227,34 +227,30 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    NULL::text as status,
-                    NULL::text as sender_email,
-                    NULL::text as sender_name,
-                    NULL::boolean as has_attachments,
-                    NULL::boolean as is_unread,
-                    NULL::boolean as featured,
-                    NULL::text as priority,
-                    NULL::text as category,
-                    NULL::text as email_date,
-                    jsonb_build_object(
+                    NULL as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    NULL as featured,
+                    NULL as priority,
+                    NULL as category,
+                    NULL as email_date,
+                    json_object(
                         'thread_id', thread_id,
                         'thread_name', thread_name,
                         'message_count', message_count,
                         'context_type', context_type,
                         'sql_query_prompt', sql_query_prompt
-                    )::text as metadata
+                    ) as metadata
                 FROM conversation_content
                 """)
 
                 # 3. Add all Notion tables (workspace-specific and legacy)
                 for table_name in notion_tables:
                     # Get the table schema to determine available columns
-                    cursor.execute("""
-                        SELECT column_name, data_type 
-                        FROM information_schema.columns 
-                        WHERE table_schema = 'public' AND table_name = %s
-                    """, (table_name,))
-                    columns = {row[0]: row[1] for row in cursor.fetchall()}  # column_name: type
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = {row[1]: row[2] for row in cursor.fetchall()}  # column_name: type
 
                     # Build metadata JSON based on available columns
                     metadata_fields = []
@@ -273,7 +269,7 @@ class HybridContentRegistry:
                                           'synced_time', 'file_size', 'checksum'] + common_property_columns:
                             metadata_fields.append(f"'{col_name}', {col_name}")
 
-                    metadata_json = f"jsonb_build_object({', '.join(metadata_fields)})::text" if metadata_fields else "NULL::text"
+                    metadata_json = f"json_object({', '.join(metadata_fields)})" if metadata_fields else "NULL"
 
                     # Determine content_type (use table name without notion_ prefix)
                     content_type = table_name.replace('notion_', 'notion_')
@@ -293,15 +289,15 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    {'status' if 'status' in columns else "NULL::text"} as status,
-                    NULL::text as sender_email,
-                    NULL::text as sender_name,
-                    NULL::boolean as has_attachments,
-                    NULL::boolean as is_unread,
-                    {'featured' if 'featured' in columns else 'NULL::boolean'} as featured,
-                    {'priority' if 'priority' in columns else "NULL::text"} as priority,
-                    {'category' if 'category' in columns else "NULL::text"} as category,
-                    NULL::text as email_date,
+                    {'status' if 'status' in columns else "NULL"} as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    {'featured' if 'featured' in columns else 'NULL'} as featured,
+                    {'priority' if 'priority' in columns else "NULL"} as priority,
+                    {'category' if 'category' in columns else "NULL"} as category,
+                    NULL as email_date,
                     {metadata_json} as metadata
                 FROM {table_name}
                     """
@@ -323,21 +319,21 @@ class HybridContentRegistry:
                     synced_time,
                     file_size,
                     checksum,
-                    metadata::jsonb->>'status' as status,
-                    NULL::text as sender_email,
-                    NULL::text as sender_name,
-                    NULL::boolean as has_attachments,
-                    NULL::boolean as is_unread,
-                    (metadata::jsonb->>'featured')::boolean as featured,
-                    metadata::jsonb->>'priority' as priority,
-                    metadata::jsonb->>'category' as category,
-                    NULL::text as email_date,
-                    metadata::text as metadata
+                    json_extract(metadata, '$.status') as status,
+                    NULL as sender_email,
+                    NULL as sender_name,
+                    NULL as has_attachments,
+                    NULL as is_unread,
+                    json_extract(metadata, '$.featured') as featured,
+                    json_extract(metadata, '$.priority') as priority,
+                    json_extract(metadata, '$.category') as category,
+                    NULL as email_date,
+                    metadata
                 FROM generic_content
                 """)
 
                 # Combine all parts with UNION ALL
-                full_view_sql = "CREATE OR REPLACE VIEW unified_content AS\n" + "\nUNION ALL\n".join(view_parts)
+                full_view_sql = "CREATE VIEW unified_content AS\n" + "\nUNION ALL\n".join(view_parts)
 
                 # Drop and recreate the view
                 cursor.execute("DROP VIEW IF EXISTS unified_content")
@@ -624,7 +620,7 @@ class HybridContentRegistry:
                 # Create table with base schema (PostgreSQL syntax)
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
-                        id SERIAL PRIMARY KEY,
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         page_id TEXT UNIQUE NOT NULL,
                         workspace TEXT NOT NULL,
                         database_id TEXT,
@@ -1276,7 +1272,7 @@ class HybridContentRegistry:
                     for key, value in filters.items():
                         if key in ['status', 'featured', 'priority', 'category']:
                             # These can be searched in metadata JSON (PostgreSQL syntax)
-                            where_conditions.append(f"metadata::jsonb->>'{key}' = %s")
+                            where_conditions.append(f"metadata->>'{key}' = %s")
                             params.append(value)
                         elif key.endswith('_date') or key.endswith('_time'):
                             where_conditions.append(f"{key} >= %s")

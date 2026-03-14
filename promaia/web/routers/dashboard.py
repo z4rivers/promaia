@@ -29,50 +29,69 @@ def _format_day(dt: datetime) -> str:
         return dt.strftime("%A, %B %#d")
 
 
-def _get_brain_data() -> dict:
-    """Query live brain data from Postgres. Returns dashboard-ready dicts."""
+def _parse_iso_age(iso_str: str) -> str:
+    """Parse an ISO timestamp string and return a human-friendly age like 'today' or '3 days ago'."""
+    if not iso_str:
+        return ""
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        created = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        if created.tzinfo is None:
+            now = datetime.now()
+        delta = (now - created).days
+        if delta == 0:
+            return "today"
+        elif delta == 1:
+            return "yesterday"
+        else:
+            return f"{delta} days ago"
+    except (ValueError, TypeError):
+        return ""
 
-        # Counts (single roundtrip)
+
+def _get_brain_data() -> dict:
+    """Query live brain data from libSQL. Returns dashboard-ready dicts."""
+    try:
+        from promaia.storage.db_factory import get_db
+        db = get_db()
+
+        # Counts
         counts = db.fetch_one(
             """
             SELECT
-                (SELECT COUNT(*) FROM brain.memories) as memory_count,
-                (SELECT COUNT(*) FROM brain.actions WHERE status = 'pending') as action_count,
-                (SELECT COUNT(*) FROM brain.contexts) as context_count
+                (SELECT COUNT(*) FROM memories) as memory_count,
+                (SELECT COUNT(*) FROM actions WHERE status = 'pending') as action_count,
+                (SELECT COUNT(*) FROM contexts) as context_count
             """
         ) or {"memory_count": 0, "action_count": 0, "context_count": 0}
 
-        # Pending/active actions
+        # Pending/active actions  (actions.domain is flat TEXT, no FK)
         actions_rows = db.fetch_all(
             """
-            SELECT a.description, a.status, d.name AS domain_name
-            FROM brain.actions a
-            LEFT JOIN brain.domains d ON d.id = a.domain_id
-            WHERE a.status IN ('pending', 'active')
-            ORDER BY a.extracted_at DESC
+            SELECT content, status, domain
+            FROM actions
+            WHERE status IN ('pending', 'active')
+            ORDER BY created_at DESC
             LIMIT 10
             """
         )
         actions = [
             {
-                "text": row["description"],
-                "domain": row.get("domain_name") or "general",
+                "text": row["content"],
+                "domain": row.get("domain") or "general",
                 "status": row["status"],
             }
             for row in actions_rows
         ]
 
-        # Projects from contexts
+        # Projects from contexts  (contexts.domain_id FK → domains.id, priority is on domains)
         project_rows = db.fetch_all(
             """
-            SELECT d.name, c.current_state, c.last_updated, c.priority,
-                   EXTRACT(DAY FROM NOW() - c.last_updated)::int as days_stale
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
-            ORDER BY c.priority ASC, c.last_updated DESC
+            SELECT d.name, c.current_state, c.last_updated, d.priority,
+                   CAST(julianday('now') - julianday(c.last_updated) AS INTEGER) as days_stale
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
+            ORDER BY d.priority ASC, c.last_updated DESC
             """
         )
         projects = []
@@ -91,29 +110,18 @@ def _get_brain_data() -> dict:
                 "detail": detail,
             })
 
-        # Recent memories
+        # Recent memories  (memories.domain is flat TEXT)
         memory_rows = db.fetch_all(
             """
             SELECT content, domain, created_at
-            FROM brain.memories
+            FROM memories
             ORDER BY created_at DESC
             LIMIT 10
             """
         )
         recent_memories = []
         for row in memory_rows:
-            created = row.get("created_at")
-            if created:
-                now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now()
-                delta = (now - created).days
-                if delta == 0:
-                    time_str = "today"
-                elif delta == 1:
-                    time_str = "yesterday"
-                else:
-                    time_str = f"{delta} days ago"
-            else:
-                time_str = ""
+            time_str = _parse_iso_age(row.get("created_at") or "")
             content = row.get("content") or ""
             if len(content) > 120:
                 content = content[:117] + "..."
@@ -250,18 +258,21 @@ async def talk_page(request: Request):
     # Last assistant message for continuity
     last_message = None
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
         row = db.fetch_one(
             """
-            SELECT content FROM brain.conversations
-            WHERE role = 'assistant'
+            SELECT messages FROM conversations
             ORDER BY created_at DESC LIMIT 1
             """
         )
-        if row:
-            content = row["content"] or ""
-            last_message = content[:200] + ("..." if len(content) > 200 else "")
+        if row and row["messages"]:
+            import json
+            msgs = json.loads(row["messages"])
+            assistant_msgs = [m for m in msgs if m.get("role") == "assistant"]
+            if assistant_msgs:
+                content = assistant_msgs[-1].get("content", "")
+                last_message = content[:200] + ("..." if len(content) > 200 else "")
     except Exception as e:
         logger.warning(f"Last message unavailable: {e}")
 
@@ -275,42 +286,33 @@ async def talk_page(request: Request):
 @router.get("/projects", response_class=HTMLResponse)
 async def projects_page(request: Request):
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
         project_rows = db.fetch_all(
             """
-            SELECT d.name, c.directive, c.current_state, c.last_updated, c.priority,
-                   EXTRACT(DAY FROM NOW() - c.last_updated)::int as days_stale
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
-            ORDER BY c.priority ASC
+            SELECT d.name, c.directive, c.current_state, c.last_updated, d.priority,
+                   CAST(julianday('now') - julianday(c.last_updated) AS INTEGER) as days_stale
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
+            ORDER BY d.priority ASC
             """
         )
 
         projects = []
         for row in project_rows:
-            # Get actions for this project
+            # Get actions for this project (actions.domain is flat TEXT)
             action_rows = db.fetch_all(
                 """
-                SELECT a.description FROM brain.actions a
-                JOIN brain.domains d ON d.id = a.domain_id
-                WHERE d.name = %s AND a.status = 'pending'
-                ORDER BY a.extracted_at DESC LIMIT 5
+                SELECT content as description FROM actions
+                WHERE domain = ? AND status = 'pending'
+                ORDER BY created_at DESC LIMIT 5
                 """,
-                (row["name"],),
+                (row["name"],)
             )
 
-            last_updated = row.get("last_updated")
-            if last_updated:
-                delta = (datetime.now(last_updated.tzinfo) - last_updated).days
-                if delta == 0:
-                    updated_str = "today"
-                elif delta == 1:
-                    updated_str = "yesterday"
-                else:
-                    updated_str = f"{delta} days ago"
-            else:
+            updated_str = _parse_iso_age(row.get("last_updated") or "")
+            if not updated_str:
                 updated_str = "unknown"
 
             projects.append({
@@ -339,27 +341,27 @@ async def email_page(request: Request):
     email_account = "zachary4rivers@gmail.com"
 
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
-        # Stats — email_date is RFC 2822 text, use synced_time for "today"
+        # Stats — SQLite doesn't have FILTER, use SUM+CASE
         stat_row = db.fetch_one(
             """
             SELECT
                 COUNT(*) as total,
-                COUNT(*) FILTER (WHERE is_unread) as unread,
-                COUNT(*) FILTER (WHERE synced_time::date = CURRENT_DATE) as today
+                SUM(CASE WHEN is_unread = 1 THEN 1 ELSE 0 END) as unread,
+                SUM(CASE WHEN DATE(synced_time) = DATE('now') THEN 1 ELSE 0 END) as today
             FROM gmail_content
             """
         )
         if stat_row:
             stats = {
-                "total": stat_row["total"],
-                "unread": stat_row["unread"],
-                "today": stat_row["today"],
+                "total": stat_row["total"] or 0,
+                "unread": stat_row["unread"] or 0,
+                "today": stat_row["today"] or 0,
             }
 
-        # Recent emails — order by created_time parsed as timestamp
+        # Recent emails
         email_rows = db.fetch_all(
             """
             SELECT sender_name, sender_email, subject, body_snippet,
@@ -400,13 +402,13 @@ async def profile_page(request: Request):
     inferred_count = 0
 
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
         rows = db.fetch_all(
             """
             SELECT category, field, value, confidence, source
-            FROM brain.profile
+            FROM profile
             ORDER BY category, field
             """
         )
@@ -459,49 +461,40 @@ async def profile_page(request: Request):
 
 @router.get("/api/notifications/unread")
 async def notifications_unread():
-    """Return count of unrouted events for dashboard badge."""
-    try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
-        row = db.fetch_one(
-            """
-            SELECT COUNT(*) as count
-            FROM brain.events
-            WHERE urgency IS NOT NULL
-              AND routed_at IS NULL
-              AND (held_until IS NULL OR held_until <= NOW())
-            """
-        )
-        return {"unread": row["count"] if row else 0}
-    except Exception as e:
-        logger.warning(f"Notification count unavailable: {e}")
-        return {"unread": 0}
+    """Return count of unrouted events for dashboard badge.
+    Note: events table in libSQL has no urgency/routed_at columns.
+    Return 0 until notification routing is implemented."""
+    return {"unread": 0}
 
 
 @router.get("/api/scheduler/health")
 async def scheduler_health():
     """Return scheduler heartbeat status for dashboard health indicator."""
     try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
         row = db.fetch_one(
             """
             SELECT created_at, payload
-            FROM brain.events
+            FROM events
             WHERE source = 'heartbeat' AND type = 'scheduler_heartbeat'
             ORDER BY created_at DESC
             LIMIT 1
             """
         )
         if row:
-            created = row["created_at"]
-            now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now(timezone.utc)
-            minutes_ago = (now - created).total_seconds() / 60
-            return {
-                "status": "online" if minutes_ago < 10 else "stale",
-                "last_seen_minutes": round(minutes_ago, 1),
-                "last_seen": created.isoformat(),
-            }
+            created_str = row["created_at"]
+            try:
+                created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                minutes_ago = (now - created).total_seconds() / 60
+                return {
+                    "status": "online" if minutes_ago < 10 else "stale",
+                    "last_seen_minutes": round(minutes_ago, 1),
+                    "last_seen": created_str,
+                }
+            except (ValueError, TypeError):
+                return {"status": "unknown", "last_seen_minutes": None}
         return {"status": "unknown", "last_seen_minutes": None}
     except Exception as e:
         logger.warning(f"Scheduler health check failed: {e}")
@@ -510,20 +503,7 @@ async def scheduler_health():
 
 @router.post("/api/notifications/read")
 async def notifications_mark_read():
-    """Mark all unrouted events as read via dashboard channel."""
-    try:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
-        count = db.execute(
-            """
-            UPDATE brain.events
-            SET routed_at = NOW(), channel = 'dashboard'
-            WHERE urgency IS NOT NULL
-              AND routed_at IS NULL
-              AND (held_until IS NULL OR held_until <= NOW())
-            """
-        )
-        return {"status": "ok", "marked": count}
-    except Exception as e:
-        logger.warning(f"Mark read failed: {e}")
-        return {"status": "error", "marked": 0}
+    """Mark all unrouted events as read via dashboard channel.
+    Note: events table in libSQL has no routed_at/urgency columns.
+    No-op until notification routing is implemented."""
+    return {"status": "ok", "marked": 0}

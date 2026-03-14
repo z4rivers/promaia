@@ -7,7 +7,7 @@ Uses SQL count queries against brain.events as source of truth
 import logging
 from datetime import datetime, timedelta
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RateLimiter:
 
     def _check_daily_cap(self) -> bool:
         """Check if daily notification cap has been reached across all channels."""
-        db = get_postgres_db()
+        db = get_db()
         row = db.fetch_one(
             "SELECT COUNT(DISTINCT id) AS cnt FROM brain.events "
             "WHERE routed_at IS NOT NULL "
@@ -56,7 +56,7 @@ class RateLimiter:
             return True
 
         try:
-            db = get_postgres_db()
+            db = get_db()
 
             # Check daily cap across all channels
             if not self._check_daily_cap():

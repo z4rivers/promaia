@@ -73,7 +73,7 @@ def update_draft_with_artifact_metadata(draft_manager, draft_id: str, metadata: 
         return
 
     try:
-        from promaia.storage.postgres_db import pg_connect
+        from promaia.storage.db_factory import db_connect
 
         # Build update query based on what metadata we have
         updates = []
@@ -99,7 +99,7 @@ def update_draft_with_artifact_metadata(draft_manager, draft_id: str, metadata: 
         params.append(draft_id)
 
         # Execute update
-        with pg_connect() as conn:
+        with db_connect() as conn:
             cursor = conn.cursor()
             query = f"UPDATE email_drafts SET {', '.join(updates)} WHERE draft_id = %s"
             cursor.execute(query, params)

@@ -2,7 +2,7 @@ import logging
 from google.genai import types
 from promaia.brain.core.memory_pipeline import capture_memory
 from promaia.storage.vector_db import VectorDBManager
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ async def handle(ft, staged_memories) -> types.FunctionResponse:
                 m['confidence'] = min(1.0, m['confidence'] + 0.1)
             
             try:
-                db = get_postgres_db()
+                db = get_db()
                 vector_mgr = VectorDBManager()
                 for m in staged_memories:
                     await capture_memory(

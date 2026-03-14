@@ -217,11 +217,11 @@ Date: {date}
                 
                 # Try to read the markdown file
                 from promaia.storage.hybrid_storage import get_hybrid_registry
-                from promaia.storage.postgres_db import pg_connect
+                from promaia.storage.db_factory import db_connect
                 registry = get_hybrid_registry()
                 
                 # Get file path from registry
-                with pg_connect() as conn:
+                with db_connect() as conn:
                     cursor = conn.cursor()
                     cursor.execute(
                         "SELECT file_path, title, database_name FROM unified_content WHERE page_id = %s",

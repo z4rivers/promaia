@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 def _get_db(db=None):
     """Return db instance, creating one if not provided."""
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        return get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        return get_db()
     return db
 
 
@@ -282,7 +282,7 @@ def mark_question_answered(
         db.execute(
             """
             INSERT INTO brain.events (type, payload, source)
-            VALUES ('interview_question', %s::jsonb, 'onboarding')
+            VALUES ('interview_question', %s, 'onboarding')
             """,
             (
                 json.dumps({"category": category, "fields": fields_populated}),

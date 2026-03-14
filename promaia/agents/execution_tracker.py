@@ -1,7 +1,7 @@
 """
 Execution Tracker - Storage and monitoring for agent executions.
 """
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 import json
 import logging
 from datetime import datetime, timezone
@@ -43,7 +43,7 @@ class ExecutionTracker:
 
     def _get_connection(self):
         """Get PostgreSQL connection."""
-        return pg_connect()
+        return db_connect()
 
     def _ensure_tables(self):
         """Create agent_executions table if it doesn't exist."""

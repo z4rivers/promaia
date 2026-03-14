@@ -14,7 +14,7 @@ from google import genai
 from google.genai import types
 
 from promaia.ai.models import GOOGLE_MODELS
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def _format_rows_for_prompt(rows: list[dict]) -> str:
 def get_cached_narrative(db=None) -> dict | None:
     """Return cached narrative if it exists and is current, else None."""
     if db is None:
-        db = get_postgres_db()
+        db = get_db()
 
     rows = db.fetch_all(
         "SELECT narrative, profile_hash, field_count, generated_at "
@@ -86,7 +86,7 @@ def get_cached_narrative(db=None) -> dict | None:
 def get_current_profile_hash(db=None) -> tuple[str, int, list[dict]]:
     """Compute hash of current profile state. Returns (hash, count, rows)."""
     if db is None:
-        db = get_postgres_db()
+        db = get_db()
 
     rows = db.fetch_all(
         "SELECT category, field, value FROM brain.profile ORDER BY category, field"
@@ -97,7 +97,7 @@ def get_current_profile_hash(db=None) -> tuple[str, int, list[dict]]:
 async def generate_narrative(db=None) -> str:
     """Generate a fresh narrative from current profile via Gemini Flash."""
     if db is None:
-        db = get_postgres_db()
+        db = get_db()
 
     profile_hash, field_count, rows = get_current_profile_hash(db)
 
@@ -151,7 +151,7 @@ async def generate_narrative(db=None) -> str:
 async def get_or_generate_narrative(db=None) -> str:
     """Return cached narrative if current, otherwise regenerate."""
     if db is None:
-        db = get_postgres_db()
+        db = get_db()
 
     cached = get_cached_narrative(db)
     current_hash, field_count, _ = get_current_profile_hash(db)

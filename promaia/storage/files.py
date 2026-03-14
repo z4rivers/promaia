@@ -10,7 +10,7 @@ import re
 from promaia.utils.timezone_utils import now_utc
 from pathlib import Path
 import logging
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 import psycopg2.extras
 
 # Import the new centralized path function
@@ -656,7 +656,7 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
             return ""
 
         # Query the specialized table for this page
-        with pg_connect() as conn:
+        with db_connect() as conn:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Get property column names
@@ -741,7 +741,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
         project_root = get_project_root()
         
         # Step 1: Get registry entries for the requested page_ids
-        with pg_connect() as conn:
+        with db_connect() as conn:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             # Build query with placeholders for all page_ids
@@ -864,8 +864,8 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                 if not md_file:
                     # Postgres fallback for Gmail content (no .md files on disk)
                     if database_name == 'gmail' or 'gmail' in str(entry.get('content_type', '')):
-                        from promaia.storage.postgres_db import get_postgres_db
-                        pg_db = get_postgres_db()
+                        from promaia.storage.db_factory import get_db
+                        pg_db = get_db()
                         gmail_row = pg_db.fetch_one(
                             """SELECT subject, sender_email, sender_name, email_date,
                                       body_snippet, message_content, gmail_labels,
@@ -1145,7 +1145,7 @@ def load_database_pages_with_filters(
         # Step 1: Query registry for page_ids matching the database and date filters
         registry = get_hybrid_registry()
         
-        with pg_connect() as conn:
+        with db_connect() as conn:
             cursor = conn.cursor()
             
             # Determine which date property to use from config, default to last_edited_time

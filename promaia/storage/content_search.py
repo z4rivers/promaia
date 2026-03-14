@@ -11,7 +11,7 @@ import logging
 from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 import psycopg2.extras
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class ContentSearcher:
                        limit: int = 1000) -> List[Dict[str, Any]]:
         """Get file paths and metadata from database."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 # Build query

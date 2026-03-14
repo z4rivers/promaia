@@ -11,16 +11,14 @@ import logging
 from typing import List, Dict, Any, Optional
 
 import numpy as np
-import psycopg2
-import psycopg2.extras
-from pgvector.psycopg2 import register_vector
+import numpy as np
 
 # Load environment first
 from promaia.utils.config import load_environment
 load_environment()
 
 from promaia.ai.models import GOOGLE_MODELS
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +42,9 @@ class VectorDBManager:
 
         # Initialize pgvector via PostgresDB singleton
         try:
-            self.db = get_postgres_db()
+            self.db = get_db()
             # Register pgvector type on a connection to verify it works
-            self._register_vector_on_connection()
+            pass # Vector registry handled by generic DB schema in LibSQL
             logger.info("pgvector initialized via PostgresDB singleton")
         except Exception as e:
             import traceback
@@ -56,20 +54,6 @@ class VectorDBManager:
 
         # Initialize embedding function
         self._init_embedding_function()
-
-    def _register_vector_on_connection(self):
-        """Register pgvector type on a connection from the pool (verification only)."""
-        with self.db.get_connection() as conn:
-            register_vector(conn)
-
-    def _get_vector_connection(self):
-        """
-        Get a connection from the pool with pgvector type registered.
-
-        NOTE: The caller must use this within the db.get_connection() context manager.
-        This is a helper that registers vector on an already-obtained connection.
-        """
-        pass  # Registration is done inline where needed
 
     def _init_embedding_function(self):
         """Initialize embedding model (Google Gemini gemini-embedding-001)."""
@@ -302,12 +286,9 @@ class VectorDBManager:
             database_name = clean_metadata.pop('database_name', metadata.get('database_name'))
 
             # Upsert to content_embeddings via pgvector
-            embedding_array = np.array(embedding)
+            embedding_array = json.dumps(embedding)
             try:
-                with self.db.get_connection() as conn:
-                    register_vector(conn)
-                    with conn.cursor() as cur:
-                        cur.execute("""
+                self.db.execute("""
                             INSERT INTO content_embeddings
                                 (page_id, chunk_id, content, embedding, workspace, database_name, metadata)
                             VALUES (%s, NULL, %s, %s, %s, %s, %s)
@@ -369,9 +350,7 @@ class VectorDBManager:
             # First, remove any existing embeddings for this page
             # (including old chunks or non-chunked versions)
             try:
-                with self.db.get_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("DELETE FROM content_embeddings WHERE page_id = %s", [page_id])
+                self.db.execute("DELETE FROM content_embeddings WHERE page_id = %s", [page_id])
             except Exception:
                 pass  # May not exist, that's okay
 
@@ -388,7 +367,7 @@ class VectorDBManager:
 
                     # Generate embedding for this chunk
                     embedding = self.generate_embedding(chunk_content)
-                    embedding_array = np.array(embedding)
+                    embedding_array = json.dumps(embedding)
 
                     # Prepare chunk-specific metadata
                     chunk_metadata = {
@@ -402,10 +381,7 @@ class VectorDBManager:
                     chunk_metadata['is_chunk'] = True
                     chunk_metadata['estimated_tokens'] = chunk.get('estimated_tokens', 0)
 
-                    with self.db.get_connection() as conn:
-                        register_vector(conn)
-                        with conn.cursor() as cur:
-                            cur.execute("""
+                    self.db.execute("""
                                 INSERT INTO content_embeddings
                                     (page_id, chunk_id, content, embedding, workspace, database_name,
                                      metadata, is_chunk, chunk_index, total_chunks)
@@ -469,7 +445,7 @@ class VectorDBManager:
         try:
             # Generate embedding
             embedding = self.generate_embedding(property_value)
-            embedding_array = np.array(embedding)
+            embedding_array = json.dumps(embedding)
 
             # Extract indexed columns from metadata
             workspace = base_metadata.get('workspace')
@@ -484,10 +460,7 @@ class VectorDBManager:
             metadata['property_name'] = property_name
             metadata['property_type'] = property_type
 
-            with self.db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor() as cur:
-                    cur.execute("""
+            self.db.execute("""
                         INSERT INTO property_embeddings
                             (page_id, property_name, property_type, property_value,
                              embedding, workspace, database_name, metadata)
@@ -525,13 +498,8 @@ class VectorDBManager:
             True if deleted, False otherwise
         """
         try:
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "DELETE FROM property_embeddings WHERE page_id = %s AND property_name = %s",
-                        [page_id, property_name]
-                    )
-                    deleted = cur.rowcount > 0
+            cur = self.db.execute("DELETE FROM property_embeddings WHERE page_id = %s AND property_name = %s", [page_id, property_name])
+            deleted = cur.rowcount > 0
 
             if deleted:
                 logger.debug(f"Deleted property embedding: {page_id}_prop_{property_name}")
@@ -576,10 +544,8 @@ class VectorDBManager:
                 sql += " AND database_name = %s"
                 params.append(database_name)
 
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(sql, params)
-                    count = cur.rowcount
+            cur = self.db.execute(sql, params)
+            count = cur.rowcount
 
             if count > 0:
                 logger.info(f"Deleted {count} property embeddings for {property_name}")
@@ -619,7 +585,7 @@ class VectorDBManager:
 
             sql = """
                 SELECT id, page_id, property_value,
-                       1 - (embedding <=> %s::vector) AS similarity_score,
+                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
                        metadata, property_name, property_type
                 FROM property_embeddings
                 WHERE property_name = %s
@@ -641,14 +607,11 @@ class VectorDBManager:
                         sql += " AND metadata->>%s = %s"
                         params.extend([key, str(value)])
 
-            sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
+            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
             params.extend([query_array, n_results])
 
-            with self.db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(sql, params)
-                    rows = cur.fetchall()
+            cur = self.db.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()]
 
             # Format results
             formatted_results = []
@@ -696,7 +659,7 @@ class VectorDBManager:
 
             sql = """
                 SELECT page_id, content,
-                       1 - (embedding <=> %s::vector) AS similarity_score,
+                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
                        metadata, workspace, database_name
                 FROM content_embeddings
                 WHERE 1=1
@@ -720,14 +683,11 @@ class VectorDBManager:
                         sql += " AND database_name = %s"
                         params.append(db_filter)
 
-            sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
+            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
             params.extend([query_array, n_results])
 
-            with self.db.get_connection() as conn:
-                register_vector(conn)
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(sql, params)
-                    rows = cur.fetchall()
+            cur = self.db.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()]
 
             # Format results
             formatted_results = []
@@ -762,10 +722,8 @@ class VectorDBManager:
             True if exists, False otherwise
         """
         try:
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT 1 FROM content_embeddings WHERE page_id = %s LIMIT 1", [page_id])
-                    return cur.fetchone() is not None
+            cur = self.db.execute("SELECT 1 FROM content_embeddings WHERE page_id = %s LIMIT 1", [page_id])
+            return cur.fetchone() is not None
         except Exception as e:
             logger.debug(f"Check exists failed for {page_id}: {e}")
             return False
@@ -778,13 +736,11 @@ class VectorDBManager:
             Dict with collection stats
         """
         try:
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) FROM content_embeddings")
-                    content_count = cur.fetchone()[0]
+            cur = self.db.execute("SELECT COUNT(*) FROM content_embeddings")
+            content_count = cur.fetchone()[0]
 
-                    cur.execute("SELECT COUNT(*) FROM property_embeddings")
-                    property_count = cur.fetchone()[0]
+            cur = self.db.execute("SELECT COUNT(*) FROM property_embeddings")
+            property_count = cur.fetchone()[0]
 
             return {
                 "collection_name": self.collection_name,

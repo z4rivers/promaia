@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from promaia.storage.postgres_db import get_postgres_db, pg_connect
+from promaia.storage.db_factory import get_db, db_connect
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class DraftManager:
             db_path: Deprecated - kept for backward compatibility.
         """
         self.db_path = db_path  # Keep for compatibility
-        self.db = get_postgres_db()
+        self.db = get_db()
         self._ensure_table()
     
     def _ensure_table(self):
@@ -101,7 +101,7 @@ class DraftManager:
         draft_history = json.dumps(initial_history)
         
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
@@ -159,7 +159,7 @@ class DraftManager:
     def get_draft(self, draft_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific draft by ID."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("SELECT * FROM email_drafts WHERE draft_id = %s", (draft_id,))
@@ -177,7 +177,7 @@ class DraftManager:
     def get_pending_drafts(self, workspace: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get drafts with status='pending'."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 if workspace:
@@ -221,7 +221,7 @@ class DraftManager:
                  - If None, no date filtering is applied
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # Build base query based on include_resolved
@@ -282,7 +282,7 @@ class DraftManager:
             List of completed drafts ordered by completed_time DESC
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute(
@@ -303,7 +303,7 @@ class DraftManager:
     def update_draft_status(self, draft_id: str, status: str):
         """Update draft status and set completed_time for final states."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 now = datetime.now(timezone.utc).isoformat()
@@ -329,7 +329,7 @@ class DraftManager:
     def update_draft_body(self, draft_id: str, new_body: str, version: int = 1):
         """Update the body of a draft."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "UPDATE email_drafts SET draft_body = %s, version = %s WHERE draft_id = %s",
@@ -341,7 +341,7 @@ class DraftManager:
     def update_draft_body_and_subject(self, draft_id: str, draft_body: str, draft_subject: Optional[str] = None):
         """Update the body and subject of a draft."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 if draft_subject is not None:
                     cursor.execute(
@@ -359,7 +359,7 @@ class DraftManager:
     def update_inbound_body(self, draft_id: str, new_body: str):
         """Update the inbound_body of a draft."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "UPDATE email_drafts SET inbound_body = %s WHERE draft_id = %s",
@@ -371,7 +371,7 @@ class DraftManager:
     def mark_sent(self, draft_id: str):
         """Mark a draft as sent and record sent_time."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 now = datetime.now(timezone.utc).isoformat()
 
@@ -398,7 +398,7 @@ class DraftManager:
             raise TypeError(f"messages must be a list, got {type(messages)}")
         
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 messages_json = json.dumps(messages)
 
@@ -422,7 +422,7 @@ class DraftManager:
     def load_chat_messages(self, draft_id: str) -> List[Dict[str, Any]]:
         """Load chat conversation history for a draft."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
@@ -450,7 +450,7 @@ class DraftManager:
         This method kept for backward compatibility.
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
@@ -484,7 +484,7 @@ class DraftManager:
             True if this exact message already has a draft (prevents duplicates)
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # Check for ANY draft with this exact message_id
@@ -510,7 +510,7 @@ class DraftManager:
     def get_draft_count_by_status(self, workspace: Optional[str] = None) -> Dict[str, int]:
         """Get count of drafts by status."""
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 if workspace:
@@ -541,7 +541,7 @@ class DraftManager:
             List of draft dictionaries
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Build query with dynamic status list
@@ -592,7 +592,7 @@ class DraftManager:
             ai_model: AI model used
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 
                 # Extract thread data
@@ -656,7 +656,7 @@ class DraftManager:
             Last sync time as datetime, or None if never synced
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 cursor.execute(
@@ -686,7 +686,7 @@ class DraftManager:
             sync_time = datetime.now(timezone.utc)
 
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # Use INSERT ... ON CONFLICT to handle both new and existing records
@@ -729,7 +729,7 @@ class DraftManager:
         try:
             cutoff_date = (datetime.now() - timedelta(days=days_threshold)).isoformat()
 
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
 
                 # Update skipped drafts older than threshold

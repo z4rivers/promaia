@@ -14,7 +14,7 @@ import json
 import logging
 from typing import Optional
 
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def emit_agent_events(
         Number of events inserted.
     """
     try:
-        db = get_postgres_db()
+        db = get_db()
         count = 0
 
         if agent_name == "morning-briefing":
@@ -195,14 +195,14 @@ def _insert_event(
     if pushed_to_channel:
         return db.insert_returning(
             """INSERT INTO brain.events (type, payload, source, urgency, routed_at, channel)
-               VALUES (%s, %s::jsonb, %s, %s, NOW(), %s)
+               VALUES (%s, %s, %s, %s, NOW(), %s)
                RETURNING id""",
             (event_type, payload, source, urgency, pushed_to_channel),
         )
     else:
         return db.insert_returning(
             """INSERT INTO brain.events (type, payload, source, urgency)
-               VALUES (%s, %s::jsonb, %s, %s)
+               VALUES (%s, %s, %s, %s)
                RETURNING id""",
             (event_type, payload, source, urgency),
         )

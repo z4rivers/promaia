@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from promaia.storage.postgres_db import get_postgres_db, pg_connect
+from promaia.storage.db_factory import get_db, db_connect
 import psycopg2.extras
 from .models import AgentTask, TaskResult, TaskStatus, TaskType
 
@@ -35,7 +35,7 @@ class TaskManager:
         """
         self.db_path = db_path
         self.timeout = timeout
-        self.db = get_postgres_db()
+        self.db = get_db()
         self._ensure_tables()
 
     @contextmanager

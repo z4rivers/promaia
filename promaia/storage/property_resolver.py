@@ -7,7 +7,7 @@ stable Notion IDs. This allows the system to be resilient to property renames.
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 
-from promaia.storage.postgres_db import pg_connect
+from promaia.storage.db_factory import db_connect
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class PropertyResolver:
             The property ID if found, None otherwise
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_id
@@ -60,7 +60,7 @@ class PropertyResolver:
             The property name if found, None otherwise
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_name
@@ -89,7 +89,7 @@ class PropertyResolver:
             The option ID if found, None otherwise
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_id
@@ -118,7 +118,7 @@ class PropertyResolver:
             The option name if found, None otherwise
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_name
@@ -145,7 +145,7 @@ class PropertyResolver:
             The notion_type if found, None otherwise
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT notion_type
@@ -290,7 +290,7 @@ class PropertyResolver:
             List of property dictionaries with id, name, and type
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT property_id, property_name, notion_type
@@ -323,7 +323,7 @@ class PropertyResolver:
             List of option dictionaries with id, name, and color
         """
         try:
-            with pg_connect() as conn:
+            with db_connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT option_id, option_name, option_color

@@ -8,7 +8,7 @@ from supabase_query.py. All functionality is now provided by PostgresQueryInterf
 import logging
 from typing import Optional
 
-from promaia.storage.postgres_db import (
+from promaia.storage.db_factory import (
     PostgresQueryInterface,
     get_postgres_query_interface as _get_postgres_query_interface
 )

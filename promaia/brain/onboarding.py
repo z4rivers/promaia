@@ -6,7 +6,7 @@ Tracks which channels (interview, pc_scan, gmail, photos) have been
 completed and what profile areas still need coverage.
 
 All functions accept an optional `db` parameter for testability
-(pass a mock or real PostgresDB instance; if None, uses get_postgres_db()).
+(pass a mock or real PostgresDB instance; if None, uses get_db()).
 
 Functions:
     start_onboarding(user_id, db)        -> dict  (session + channel status)
@@ -132,8 +132,8 @@ CHANNELS = ['interview', 'pc_scan', 'gmail', 'photos']
 def _get_db(db=None):
     """Return db instance, creating one if not provided."""
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        return get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        return get_db()
     return db
 
 

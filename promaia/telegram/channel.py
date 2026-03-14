@@ -12,7 +12,7 @@ import logging
 from aiogram import Bot
 
 from promaia.events.channels import NotificationChannel
-from promaia.storage.postgres_db import get_postgres_db
+from promaia.storage.db_factory import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class TelegramChannel(NotificationChannel):
             await self._bot.send_message(self._chat_id, text)
 
             # Mark event as routed
-            db = get_postgres_db()
+            db = get_db()
             db.execute(
                 "UPDATE brain.events SET routed_at = NOW(), channel = 'telegram' WHERE id = %s",
                 (event["id"],),

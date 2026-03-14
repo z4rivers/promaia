@@ -3,10 +3,8 @@ import logging
 import uuid
 import urllib.request
 import numpy as np
-import psycopg2.extras
 from mcp.types import TextContent
 from datetime import datetime, timezone
-from promaia.storage.postgres_db import PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain import engine
 from promaia.brain.extraction import extract_actions, extract_insights
@@ -60,9 +58,9 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
             """
             SELECT d.name, c.directive, c.current_state, c.last_updated,
                    c.stale_threshold_days, c.priority
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
-            WHERE NOW() - c.last_updated > c.stale_threshold_days * INTERVAL '1 day'
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
+            WHERE datetime('now') > datetime(c.last_updated, '+' || c.stale_threshold_days || ' days')
             ORDER BY c.priority ASC, c.last_updated ASC
             LIMIT 10
             """
@@ -88,8 +86,8 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
             """
             SELECT a.id, a.description, d.name AS domain_name,
                    a.extracted_at
-            FROM brain.actions a
-            LEFT JOIN brain.domains d ON d.id = a.domain_id
+            FROM actions a
+            LEFT JOIN domains d ON d.id = a.domain_id
             WHERE a.status = 'pending'
             ORDER BY a.extracted_at DESC
             LIMIT 10
@@ -112,9 +110,9 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         heartbeat_events = db.fetch_all(
             """
             SELECT type, payload, created_at
-            FROM brain.events
+            FROM events
             WHERE source = 'heartbeat'
-              AND created_at > NOW() - INTERVAL '24 hours'
+              AND created_at > datetime('now', '-24 hours')
             ORDER BY created_at DESC
             LIMIT 5
             """
@@ -187,10 +185,10 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         today = _today_str()
         existing = db.fetch_one(
             """
-            SELECT id FROM brain.events
+            SELECT id FROM events
             WHERE type = 'briefing'
-              AND session_id = %s
-              AND created_at::date = %s::date
+              AND session_id = ?
+              AND date(created_at) = date(?)
             LIMIT 1
             """,
             (SESSION_ID, today),
@@ -198,8 +196,8 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         if not existing:
             db.execute(
                 """
-                INSERT INTO brain.events (type, payload, source, session_id)
-                VALUES ('briefing', %s::jsonb, 'session', %s)
+                INSERT INTO events (type, payload, source, session_id)
+                VALUES ('briefing', ?, 'session', ?)
                 """,
                 (json.dumps({"session_id": SESSION_ID}), SESSION_ID),
             )
@@ -220,9 +218,9 @@ async def _handle_context(args: dict) -> list[TextContent]:
             """
             SELECT c.directive, c.current_state, c.last_updated,
                    c.priority, c.stale_threshold_days, d.name AS domain_name
-            FROM brain.contexts c
-            JOIN brain.domains d ON d.id = c.domain_id
-            WHERE d.name = %s
+            FROM contexts c
+            JOIN domains d ON d.id = c.domain_id
+            WHERE d.name = ?
             ORDER BY c.last_updated DESC
             LIMIT 1
             """,
@@ -270,35 +268,35 @@ async def _handle_update_context(args: dict) -> list[TextContent]:
 
         # Check if context row exists
         existing = db.fetch_one(
-            "SELECT id FROM brain.contexts WHERE domain_id = %s",
+            "SELECT id FROM contexts WHERE domain_id = ?",
             (domain_id,),
         )
 
         if existing:
             # Build partial update
-            set_parts = ["last_updated = NOW()"]
+            set_parts = ["last_updated = CURRENT_TIMESTAMP"]
             params: list = []
             if directive is not None:
-                set_parts.append("directive = %s")
+                set_parts.append("directive = ?")
                 params.append(directive)
             if current_state is not None:
-                set_parts.append("current_state = %s")
+                set_parts.append("current_state = ?")
                 params.append(current_state)
             if priority is not None:
-                set_parts.append("priority = %s")
+                set_parts.append("priority = ?")
                 params.append(int(priority))
 
             params.append(domain_id)
             db.execute(
-                f"UPDATE brain.contexts SET {', '.join(set_parts)} WHERE domain_id = %s",
+                f"UPDATE contexts SET {', '.join(set_parts)} WHERE domain_id = ?",
                 tuple(params),
             )
         else:
             # Insert new context
             db.execute(
                 """
-                INSERT INTO brain.contexts (domain_id, directive, current_state, priority)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO contexts (domain_id, directive, current_state, priority)
+                VALUES (?, ?, ?, ?)
                 """,
                 (domain_id, directive, current_state, int(priority) if priority else 5),
             )
@@ -307,8 +305,8 @@ async def _handle_update_context(args: dict) -> list[TextContent]:
         try:
             db.execute(
                 """
-                INSERT INTO brain.events (type, payload, source, session_id)
-                VALUES ('context_update', %s::jsonb, 'session', %s)
+                INSERT INTO events (type, payload, source, session_id)
+                VALUES ('context_update', ?, 'session', ?)
                 """,
                 (json.dumps({"domain": domain_name}), SESSION_ID),
             )
@@ -331,11 +329,11 @@ async def _handle_actions(args: dict) -> list[TextContent]:
         try:
             rowcount = db.execute(
                 """
-                UPDATE brain.actions
-                SET status = 'done', completed_at = NOW()
-                WHERE id = %s
+                UPDATE actions
+                SET status = 'done', completed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
                 """,
-                (int(mark_done),),
+                (int(mark_done,),),
             )
             if rowcount:
                 return [TextContent(type="text", text=f"Action {mark_done} marked done.")]
@@ -353,14 +351,14 @@ async def _handle_actions(args: dict) -> list[TextContent]:
         query = """
             SELECT a.id, a.description, a.status, a.extracted_at,
                    d.name AS domain_name
-            FROM brain.actions a
-            LEFT JOIN brain.domains d ON d.id = a.domain_id
-            WHERE a.status = %s
+            FROM actions a
+            LEFT JOIN domains d ON d.id = a.domain_id
+            WHERE a.status = ?
         """
         params: list = [status]
 
         if domain_name:
-            query += " AND d.name = %s"
+            query += " AND d.name = ?"
             params.append(domain_name)
 
         query += " ORDER BY a.extracted_at DESC LIMIT 50"

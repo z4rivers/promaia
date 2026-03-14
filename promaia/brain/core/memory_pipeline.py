@@ -9,7 +9,6 @@ import logging
 import numpy as np
 from typing import Optional, Dict, Any, List
 
-from pgvector.psycopg2 import register_vector
 from promaia.storage.postgres_db import PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.extraction import extract_actions, extract_insights
@@ -74,7 +73,7 @@ async def capture_memory(
     memory_id = db.insert_returning(
         """
         INSERT INTO brain.memories (content, domain, source, source_id, asset_paths)
-        VALUES (%s, %s, %s, %s, %s::jsonb)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING id
         """,
         (content, domain_name, source, session_id, asset_paths_json),
@@ -92,12 +91,8 @@ async def capture_memory(
         else:
             embedding = vector_mgr.generate_embedding(content)
             
-        embedding_array = np.array(embedding)
-        with db.get_connection() as conn:
-            from pgvector.psycopg2 import register_vector
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(
+        embedding_array = json.dumps(embedding)
+        db.execute(
                     "UPDATE brain.memories SET embedding = %s WHERE id = %s",
                     (embedding_array, memory_id),
                 )
@@ -177,11 +172,8 @@ async def capture_memory(
                     )
                     try:
                         sub_embedding = vector_mgr.generate_embedding(sub_content)
-                        sub_array = np.array(sub_embedding)
-                        with db.get_connection() as conn:
-                            register_vector(conn)
-                            with conn.cursor() as cur:
-                                cur.execute(
+                        sub_array = json.dumps(sub_embedding)
+                        db.execute(
                                     "UPDATE brain.memories SET embedding = %s WHERE id = %s",
                                     (sub_array, sub_id),
                                 )
@@ -211,7 +203,7 @@ async def capture_memory(
         db.execute(
             """
             INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('capture', %s::jsonb, %s, %s)
+            VALUES ('capture', %s, %s, %s)
             """,
             (json.dumps({
                 "memory_id": memory_id,

@@ -18,8 +18,8 @@ async def handle(ft) -> types.FunctionResponse:
             asyncio.create_task(run_ingestion())
             
             # Immediately pull the EXISTING cache to feed the agent now, but truncate to fit in WS payload bounds
-            from promaia.storage.postgres_db import get_postgres_db
-            db = get_postgres_db()
+            from promaia.storage.db_factory import get_db
+            db = get_db()
             recent = db.fetch_all("SELECT content FROM brain.memories WHERE source='youtube' ORDER BY created_at DESC LIMIT 5")
             
             summary_list = []

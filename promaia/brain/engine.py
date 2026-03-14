@@ -3,7 +3,7 @@ Brain engine — 8 deterministic functions for zBrain.
 
 CRITICAL: No LLM calls inside any function. Pure Python + SQL via PostgresDB.
 All DB-touching functions accept an optional `db` parameter for testability
-(pass a mock or real PostgresDB instance; if None, uses get_postgres_db()).
+(pass a mock or real PostgresDB instance; if None, uses get_db()).
 
 Functions:
     detect_mode(message)           -> {mode, confidence}
@@ -158,14 +158,14 @@ def track_time(session_id: str, domain_id: int, db=None) -> float:
     Args:
         session_id: current session identifier
         domain_id:  domain to scope the lookup
-        db:         PostgresDB instance (uses get_postgres_db() if None)
+        db:         PostgresDB instance (uses get_db() if None)
 
     Returns:
         Elapsed seconds as float. 0.0 if no events found.
     """
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
     try:
         row = db.fetch_one(
@@ -201,14 +201,14 @@ def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
     Args:
         cycle_id:   heartbeat cycle identifier (maps to session_id)
         max_budget: maximum allowed spend (default $1.00)
-        db:         PostgresDB instance (uses get_postgres_db() if None)
+        db:         PostgresDB instance (uses get_db() if None)
 
     Returns:
         dict: {remaining: float, exceeded: bool, calls: int}
     """
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
     try:
         row = db.fetch_one(
@@ -244,15 +244,15 @@ def save_context(session_id: str, domain_id: int, db=None) -> dict:
     Args:
         session_id: current session identifier
         domain_id:  domain to snapshot
-        db:         PostgresDB instance (uses get_postgres_db() if None)
+        db:         PostgresDB instance (uses get_db() if None)
 
     Returns:
         Snapshot dict with domain_id, timestamp, and context fields.
         Empty dict on failure.
     """
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
     try:
         context_row = db.fetch_one(
@@ -282,7 +282,7 @@ def save_context(session_id: str, domain_id: int, db=None) -> dict:
         db.execute(
             """
             INSERT INTO brain.events (type, payload, source, session_id)
-            VALUES ('context_save', %s::jsonb, 'session', %s)
+            VALUES ('context_save', %s, 'session', %s)
             """,
             (json.dumps(snapshot), session_id),
         )
@@ -299,15 +299,15 @@ def restore_context(session_id: str, db=None) -> dict:
 
     Args:
         session_id: session to restore context for
-        db:         PostgresDB instance (uses get_postgres_db() if None)
+        db:         PostgresDB instance (uses get_db() if None)
 
     Returns:
         Snapshot dict from the most recent context_save event.
         Empty dict if none found.
     """
     if db is None:
-        from promaia.storage.postgres_db import get_postgres_db
-        db = get_postgres_db()
+        from promaia.storage.db_factory import get_db
+        db = get_db()
 
     try:
         row = db.fetch_one(
