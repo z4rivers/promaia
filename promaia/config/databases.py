@@ -60,6 +60,9 @@ class DatabaseConfig:
         elif source_type == "discord":
             # For Discord, use data/md/discord/{workspace}/{nickname} structure to separate different servers
             default_md_dir = f"data/md/discord/{self.workspace}/{self.nickname}"
+        elif source_type == "slack":
+            # For Slack, use data/md/slack/{workspace}/{nickname} structure to separate different workspaces
+            default_md_dir = f"data/md/slack/{self.workspace}/{self.nickname}"
         else:
             # For other sources (Notion), use data/md/notion/{workspace}/
             default_md_dir = f"data/md/notion/{self.workspace}"
@@ -133,6 +136,8 @@ class DatabaseConfig:
         """Get a stable identifier for this database that doesn't change with nickname updates."""
         if self.source_type == "discord" and self.database_id:
             return f"discord_{self.database_id}"
+        if self.source_type == "slack" and self.database_id:
+            return f"slack_{self.database_id}"
         return f"{self.workspace}_{self.name}"
     
     def get_discord_server_id(self) -> Optional[str]:

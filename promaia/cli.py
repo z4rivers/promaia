@@ -360,6 +360,13 @@ def main():
     except ImportError:
         pass  # Discord commands not available
 
+    # Add Slack commands (optional)
+    try:
+        from promaia.cli.slack_commands import setup_slack_commands
+        setup_slack_commands(subparsers)
+    except ImportError:
+        pass  # Slack commands not available
+
     # Add edit command group
     edit_parser = subparsers.add_parser("edit", help="Commands for editing local JSON files and syncing with Notion")
     edit_subparsers = edit_parser.add_subparsers(dest="edit_action", required=True, help="Edit action to perform")
@@ -624,6 +631,15 @@ def main():
             asyncio.run(args.func(args))
         else:
             print_text("Discord bot command not properly configured", style="red")
+    elif args.command == "slack":
+        # Handle Slack commands
+        if hasattr(args, 'slack_command') and args.slack_command:
+            if hasattr(args, 'func'):
+                asyncio.run(args.func(args))
+            else:
+                print_text(f"No function assigned to slack command: {args.slack_command}", style="red")
+        else:
+            print_text("Slack command requires a subcommand. Use 'maia slack --help' for options.", style="red")
     else:
         parser.print_help()
 

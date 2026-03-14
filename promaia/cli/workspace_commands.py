@@ -339,3 +339,10 @@ def add_workspace_commands_to_existing_parser(parent_parser, subparsers):
         add_discord_workspace_commands(subparsers)
     except ImportError:
         pass  # Discord commands not available 
+        
+    # Slack setup (optional)
+    try:
+        from promaia.cli.slack_commands import add_slack_workspace_commands
+        add_slack_workspace_commands(subparsers)
+    except ImportError:
+        pass  # Slack commands not available 
