@@ -4,7 +4,7 @@ OCR-specific storage helpers for Promaia.
 Manages OCR uploads table and provides convenience functions 
 for storing and querying OCR results.
 
-Now uses PostgreSQL for centralized storage.
+Uses libSQL for centralized storage.
 """
 import json
 import logging
@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 from promaia.storage.db_factory import db_connect
 
 # Avoid circular import - ProcessedDocument will be passed as parameter
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class OCRStorage:
-    """Manages OCR uploads in PostgreSQL storage."""
+    """Manages OCR uploads in libSQL storage."""
 
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         """

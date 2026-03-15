@@ -1,9 +1,9 @@
 """
 Brain engine — 8 deterministic functions for zBrain.
 
-CRITICAL: No LLM calls inside any function. Pure Python + SQL via PostgresDB.
+CRITICAL: No LLM calls inside any function. Pure Python + SQL via the db layer.
 All DB-touching functions accept an optional `db` parameter for testability
-(pass a mock or real PostgresDB instance; if None, uses get_db()).
+(pass a mock or real db instance; if None, uses get_db()).
 
 Functions:
     detect_mode(message)           -> {mode, confidence}
@@ -158,7 +158,7 @@ def track_time(session_id: str, domain_id: int, db=None) -> float:
     Args:
         session_id: current session identifier
         domain_id:  domain to scope the lookup
-        db:         PostgresDB instance (uses get_db() if None)
+        db:         database instance (uses get_db() if None)
 
     Returns:
         Elapsed seconds as float. 0.0 if no events found.
@@ -201,7 +201,7 @@ def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
     Args:
         cycle_id:   heartbeat cycle identifier (maps to session_id)
         max_budget: maximum allowed spend (default $1.00)
-        db:         PostgresDB instance (uses get_db() if None)
+        db:         database instance (uses get_db() if None)
 
     Returns:
         dict: {remaining: float, exceeded: bool, calls: int}
@@ -244,7 +244,7 @@ def save_context(session_id: str, domain_id: int, db=None) -> dict:
     Args:
         session_id: current session identifier
         domain_id:  domain to snapshot
-        db:         PostgresDB instance (uses get_db() if None)
+        db:         database instance (uses get_db() if None)
 
     Returns:
         Snapshot dict with domain_id, timestamp, and context fields.
@@ -299,7 +299,7 @@ def restore_context(session_id: str, db=None) -> dict:
 
     Args:
         session_id: session to restore context for
-        db:         PostgresDB instance (uses get_db() if None)
+        db:         database instance (uses get_db() if None)
 
     Returns:
         Snapshot dict from the most recent context_save event.
@@ -325,7 +325,7 @@ def restore_context(session_id: str, db=None) -> dict:
             payload = row['payload']
             if isinstance(payload, str):
                 return json.loads(payload)
-            return payload  # psycopg2 may already parse JSONB as dict
+            return payload  # db layer may already parse JSON as dict
     except Exception as e:
         logger.warning(f"restore_context query failed: {e}")
 
@@ -346,7 +346,7 @@ def suggest_next(domains: list, energy: str = None, db=None) -> dict:
                  name, directive, current_state, last_updated,
                  priority, stale_threshold_days
         energy:  'low' | 'high' | None — adjusts scoring for user energy level
-        db:      PostgresDB instance (unused here; accepted for API consistency)
+        db:      database instance (unused here; accepted for API consistency)
 
     Returns:
         dict: {domain: str, action: str, score: float, reason: str}

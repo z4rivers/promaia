@@ -733,14 +733,14 @@ def run_selftest():
     print("Running zBrain MCP Server Self-Test...\n")
     success = True
     
-    # 1. Postgres Check
+    # 1. Database Check
     try:
         from promaia.storage.db_factory import get_db
         db = get_db()
         db.execute("SELECT 1")
-        print("✅ PostgreSQL Connection: OK")
+        print("✅ Database Connection: OK")
     except Exception as e:
-        print(f"❌ PostgreSQL Connection: FAILED ({e})")
+        print(f"❌ Database Connection: FAILED ({e})")
         success = False
         
     # 2. Vector DB Check
@@ -796,4 +796,4 @@ if __name__ == "__main__":
                 from promaia.storage.db_factory import get_db
                 get_db().close_pool()
             except Exception as e:
-                logger.error(f"Failed to close Postgres connection pool: {e}")
+                logger.error(f"Failed to close database connection pool: {e}")

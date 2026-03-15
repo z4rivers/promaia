@@ -41,7 +41,7 @@ PLANNING_DOCS = [
 # Codebase files to cross-reference claims against
 CODEBASE_FILES = [
     "promaia/brain/mcp_server.py",
-    "promaia/brain/schema.sql",
+    "scripts/create_brain_tables_windows.py",
     "promaia/telegram/bot.py",
     "promaia/telegram/conversation.py",
     "promaia/agents/scheduler.py",
@@ -61,7 +61,7 @@ Cross-reference every factual claim in the planning/memory docs against the code
 
 ### Category 1: WRONG — Claims that contradict the source code
 - Tool counts that don't match the actual tool registrations
-- Table lists that don't match schema.sql
+- Table lists that don't match the schema definitions
 - Function names or signatures that don't match the code
 - File paths that reference files that don't exist in the provided sources
 - Agent configurations (intervals, schedules, models) that don't match the config

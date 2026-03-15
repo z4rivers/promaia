@@ -144,7 +144,7 @@ def run_gmail_scan(
         days_back: How many days back to scan.
         max_emails: Max emails per account.
         mode: "cleanup" (Layer 1), "triage" (Layer 2), "intelligence" (Layer 3), or "full" (all).
-        db: PostgresDB instance for profile storage (Layer 3).
+        db: database instance for profile storage (Layer 3).
         before: Optional date string (YYYY/MM/DD) to scan only before this date.
 
     Returns:

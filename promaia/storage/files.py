@@ -11,7 +11,6 @@ from promaia.utils.timezone_utils import now_utc
 from pathlib import Path
 import logging
 from promaia.storage.db_factory import db_connect
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
 # Import the new centralized path function
 from promaia.config.paths import get_project_root
@@ -862,7 +861,7 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
                                 break
                 
                 if not md_file:
-                    # Postgres fallback for Gmail content (no .md files on disk)
+                    # Database fallback for Gmail content (no .md files on disk)
                     if database_name == 'gmail' or 'gmail' in str(entry.get('content_type', '')):
                         from promaia.storage.db_factory import get_db
                         pg_db = get_db()

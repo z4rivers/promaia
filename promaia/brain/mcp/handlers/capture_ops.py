@@ -79,7 +79,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
 
     limit = int(args.get("limit", 10))
 
-    # --- pgvector search (existing logic, unchanged) ---
+    # --- sqlite-vec search (existing logic, unchanged) ---
     pg_rows = []
     try:
         vector_mgr = get_vector_mgr()
@@ -88,10 +88,11 @@ async def _handle_search(args: dict) -> list[TextContent]:
 
         rows = db.fetch_all(
             """
-            SELECT id, content, domain, created_at,
-                   vector_distance_cos(embedding, ?) AS distance
-            FROM memories
-            WHERE embedding IS NOT NULL
+            SELECT m.id, m.content, m.domain, m.created_at,
+                   vec_distance_cosine(ce.embedding, ?) AS distance
+            FROM content_embeddings ce
+            JOIN memories m ON ce.page_id = 'memory:' || CAST(m.id AS TEXT)
+            WHERE ce.database_name = 'brain_memories'
             ORDER BY distance ASC
             LIMIT ?
             """,
@@ -99,7 +100,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
         )
         pg_rows = [dict(r) for r in rows]
     except Exception as e:
-        logger.error(f"pgvector search failed: {e}", exc_info=True)
+        logger.error(f"sqlite-vec search failed: {e}", exc_info=True)
 
     # --- MuninnDB ACTIVATE (best-effort, parallel trial) ---
     muninn_results = []
@@ -122,13 +123,13 @@ async def _handle_search(args: dict) -> list[TextContent]:
     lines = [f"# Search Results for: {query}\n"]
 
     if pg_rows:
-        lines.append("## pgvector Results")
+        lines.append("## sqlite-vec Results")
         for i, row in enumerate(pg_rows, 1):
             similarity = 1 - float(row['distance'])
             domain_label = f" [{row['domain']}]" if row.get('domain') else ""
             ts = _fmt_ts(row.get('created_at'))
             content_preview = row['content'][:200] + ("..." if len(row['content']) > 200 else "")
-            lines.append(f"**{i}.** [pgvector]{domain_label} (similarity: {similarity:.2f}, {ts})")
+            lines.append(f"**{i}.** [sqlite-vec]{domain_label} (similarity: {similarity:.2f}, {ts})")
             lines.append(f"{content_preview}\n")
 
     if muninn_results:

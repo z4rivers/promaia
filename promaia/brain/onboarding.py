@@ -6,7 +6,7 @@ Tracks which channels (interview, pc_scan, gmail, photos) have been
 completed and what profile areas still need coverage.
 
 All functions accept an optional `db` parameter for testability
-(pass a mock or real PostgresDB instance; if None, uses get_db()).
+(pass a mock or real db instance; if None, uses get_db()).
 
 Functions:
     start_onboarding(user_id, db)        -> dict  (session + channel status)

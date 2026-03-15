@@ -49,10 +49,11 @@ async def _handle_profile(args: dict) -> list[TextContent]:
 
             rows = db.fetch_all(
                 """
-                SELECT category, field, value, confidence, source, updated_at,
-                       vector_distance_cos(embedding, ?) AS distance
-                FROM profile
-                WHERE embedding IS NOT NULL
+                SELECT p.category, p.field, p.value, p.confidence, p.source, p.updated_at,
+                       vec_distance_cosine(ce.embedding, ?) AS distance
+                FROM content_embeddings ce
+                JOIN profile p ON ce.page_id = 'profile:' || p.category || ':' || p.field
+                WHERE ce.database_name = 'brain_profile'
                 ORDER BY distance ASC
                 LIMIT 10
                 """,
@@ -164,12 +165,15 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
             embedding = vector_mgr.generate_embedding(embed_text)
             embedding_array = json.dumps(embedding)
 
+            page_id = f"profile:{category}:{field}"
             db.execute(
-                        """
-                        UPDATE profile SET embedding = ?
-                        WHERE category = ? AND field = ?
-                        """,
-                        (embedding_array, category, field),
+                        "DELETE FROM content_embeddings WHERE page_id = %s AND chunk_id IS NULL",
+                        (page_id,),
+                    )
+            db.execute(
+                        """INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at)
+                           VALUES (%s, %s, %s, 'brain_profile', datetime('now'), datetime('now'))""",
+                        (page_id, embed_text, embedding_array),
                     )
         except Exception as e:
             logger.warning(f"Profile embedding failed for {category}.{field}: {e}")

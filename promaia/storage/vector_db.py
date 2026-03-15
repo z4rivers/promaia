@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class VectorDBManager:
     """
-    Manages pgvector operations and embedding generation.
+    Manages sqlite-vec operations and embedding generation.
 
     One-to-one mapping: 1 page_id = 1 markdown file = 1 vector embedding
     (or multiple chunks for chunked content).
@@ -33,22 +33,22 @@ class VectorDBManager:
 
     def __init__(self, chroma_path: str = None):
         """
-        Initialize pgvector client and embedding function.
+        Initialize sqlite-vec client and embedding function.
 
         Args:
             chroma_path: Deprecated parameter, ignored. Kept for backward compatibility.
         """
         self.collection_name = "promaia_content"
 
-        # Initialize pgvector via PostgresDB singleton
+        # Initialize sqlite-vec via LibSQLDB singleton
         try:
             self.db = get_db()
-            # Register pgvector type on a connection to verify it works
-            pass # Vector registry handled by generic DB schema in LibSQL
-            logger.info("pgvector initialized via PostgresDB singleton")
+            # Vector operations handled by sqlite-vec extension in LibSQL
+            pass
+            logger.info("sqlite-vec initialized via LibSQLDB singleton")
         except Exception as e:
             import traceback
-            logger.error(f"Failed to initialize pgvector: {e}")
+            logger.error(f"Failed to initialize sqlite-vec: {e}")
             logger.error(traceback.format_exc())
             raise
 
@@ -232,7 +232,7 @@ class VectorDBManager:
         metadata: Dict[str, Any]
     ) -> bool:
         """
-        Add content to pgvector with embedding.
+        Add content to sqlite-vec with embedding.
 
         Args:
             page_id: Unique identifier (from unified_content)
@@ -269,7 +269,7 @@ class VectorDBManager:
                 logger.warning(f"Invalid embedding values for {page_id}: {e}, skipping")
                 return False
 
-            # Clean metadata: store as JSONB
+            # Clean metadata: store as JSON text
             clean_metadata = {}
             for k, v in metadata.items():
                 if v is None:
@@ -277,7 +277,7 @@ class VectorDBManager:
                 if isinstance(v, (str, int, float, bool)):
                     clean_metadata[k] = v
                 elif isinstance(v, (list, dict)):
-                    clean_metadata[k] = v  # JSONB handles these natively
+                    clean_metadata[k] = v  # JSON handles these natively
                 else:
                     logger.debug(f"Skipping metadata key '{k}' with unsupported type {type(v)}")
 
@@ -285,7 +285,7 @@ class VectorDBManager:
             workspace = clean_metadata.pop('workspace', metadata.get('workspace'))
             database_name = clean_metadata.pop('database_name', metadata.get('database_name'))
 
-            # Upsert to content_embeddings via pgvector
+            # Upsert to content_embeddings via sqlite-vec
             embedding_array = json.dumps(embedding)
             try:
                 self.db.execute("""
@@ -303,7 +303,7 @@ class VectorDBManager:
                 logger.debug(f"Upserted embedding for page_id: {page_id}")
                 return True
             except Exception as db_error:
-                logger.error(f"pgvector error adding {page_id}: {db_error}")
+                logger.error(f"sqlite-vec error adding {page_id}: {db_error}")
                 logger.warning(f"Skipping vector embedding for {page_id} due to database error")
                 return False
 
@@ -332,7 +332,7 @@ class VectorDBManager:
         chunks: List[Dict[str, Any]]
     ) -> bool:
         """
-        Add content to pgvector with chunking support.
+        Add content to sqlite-vec with chunking support.
 
         Embeds each chunk separately with chunk-specific metadata.
 
@@ -451,7 +451,7 @@ class VectorDBManager:
             workspace = base_metadata.get('workspace')
             database_name = base_metadata.get('database_name')
 
-            # Build metadata JSONB (excluding indexed columns)
+            # Build metadata JSON (excluding indexed columns)
             metadata = {
                 k: v for k, v in base_metadata.items()
                 if v is not None and k not in ('workspace', 'database_name')

@@ -2,7 +2,7 @@
 Draft Manager - Database operations for email drafts.
 
 Manages the email_drafts table with CRUD operations.
-Now uses PostgreSQL for centralized storage.
+Uses libSQL for centralized storage.
 """
 import json
 import logging
@@ -51,7 +51,7 @@ def get_safety_string_from_recipient(recipient: str) -> str:
 
 
 class DraftManager:
-    """Database operations for email drafts using PostgreSQL."""
+    """Database operations for email drafts."""
     
     def __init__(self, db_path: str = "data/hybrid_metadata.db"):
         """

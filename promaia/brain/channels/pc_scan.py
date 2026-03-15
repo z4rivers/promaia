@@ -45,7 +45,7 @@ def run_pc_scan(
 
     Args:
         home_dir: Override home directory (default: os.path.expanduser('~')).
-        db: PostgresDB instance. If None, imports and creates one.
+        db: database instance. If None, imports and creates one.
 
     Returns:
         dict with {fields_updated, repos_scanned, apps_found, insights}
@@ -478,12 +478,15 @@ def _upsert_profile(
         embedding = vector_mgr.generate_embedding(embed_text)
         embedding_array = json.dumps(embedding)
 
-                db.execute(
-                    """
-                    UPDATE profile SET embedding = %s
-                    WHERE category = %s AND field = %s
-                    """,
-                    (embedding_array, category, field),
+        page_id = f"profile:{category}:{field}"
+        db.execute(
+                    "DELETE FROM content_embeddings WHERE page_id = %s AND chunk_id IS NULL",
+                    (page_id,),
+                )
+        db.execute(
+                    """INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at)
+                       VALUES (%s, %s, %s, 'brain_profile', datetime('now'), datetime('now'))""",
+                    (page_id, embed_text, embedding_array),
                 )
     except Exception as e:
         logger.warning(f"Profile embedding failed for {category}.{field}: {e}")

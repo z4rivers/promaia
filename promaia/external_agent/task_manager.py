@@ -1,7 +1,7 @@
 """
 Task Manager - Storage and lifecycle management for external agent tasks.
 
-Now uses PostgreSQL for centralized storage.
+Uses libSQL for centralized storage.
 """
 import json
 import logging
@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from promaia.storage.db_factory import get_db, db_connect
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 from .models import AgentTask, TaskResult, TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class TaskManager:
     """
-    Manages external agent tasks in PostgreSQL database.
+    Manages external agent tasks in the database.
 
     Handles task submission, status tracking, result storage,
     and querying of tasks and results.
@@ -31,7 +30,7 @@ class TaskManager:
         
         Args:
             db_path: Deprecated - kept for backward compatibility.
-            timeout: Not used with PostgreSQL pooling.
+            timeout: Not used with connection pooling.
         """
         self.db_path = db_path
         self.timeout = timeout
@@ -40,7 +39,7 @@ class TaskManager:
 
     @contextmanager
     def _get_connection(self):
-        """Get a PostgreSQL connection from the pool."""
+        """Get a database connection from the pool."""
         conn = None
         try:
             conn = self.db._pool.getconn()

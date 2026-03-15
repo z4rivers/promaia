@@ -30,7 +30,7 @@ class AgentExecution:
 
 class ExecutionTracker:
     """
-    Tracks agent executions in PostgreSQL database.
+    Tracks agent executions in the database.
 
     Handles execution logging, status tracking, and monitoring
     for scheduled agents.
@@ -42,7 +42,7 @@ class ExecutionTracker:
         self._ensure_tables()
 
     def _get_connection(self):
-        """Get PostgreSQL connection."""
+        """Get database connection."""
         return db_connect()
 
     def _ensure_tables(self):

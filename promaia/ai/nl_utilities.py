@@ -492,7 +492,7 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
     
     Args:
         result: Result dict with page_id, database_name, content_type, etc.
-        db_path: Path to the database (ignored for PostgreSQL, kept for API compatibility)
+        db_path: Path to the database (kept for API compatibility)
         
     Returns:
         Display text appropriate for the content type

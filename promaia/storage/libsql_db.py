@@ -10,7 +10,7 @@ from typing import Optional, Any, Tuple, Generator, List, Dict
 logger = logging.getLogger(__name__)
 
 class SmartRow(dict):
-    """Dict-like row that also supports integer indexing (row[0]) for psycopg2 compat."""
+    """Dict-like row that also supports integer indexing (row[0])."""
     
     def __init__(self, data: dict):
         super().__init__(data)
@@ -57,7 +57,7 @@ class LibSQLCursorWrapper:
         self.rowcount = -1
 
     def execute(self, query: str, params: Optional[Tuple] = None):
-        # Convert psycopg2 %s placeholders to sqlite ? placeholders
+        # Convert %s placeholders to sqlite ? placeholders
         query = query.replace('%s', '?')
         
         # Exponential backoff retry loop for SQLite locks

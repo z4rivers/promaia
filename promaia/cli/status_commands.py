@@ -44,7 +44,7 @@ async def handle_status(args: Any):
     # 1. Database
     db_status = components.get("database", "unknown")
     if db_status == "connected":
-        console.print("  [green]✅[/green] Database: OK (PostgreSQL connected)")
+        console.print("  [green]✅[/green] Database: OK (connected)")
     else:
         console.print(f"  [red]❌[/red] Database: FAILED ({db_status})")
         

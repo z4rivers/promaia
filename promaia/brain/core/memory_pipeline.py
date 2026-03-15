@@ -9,7 +9,7 @@ import logging
 import numpy as np
 from typing import Optional, Dict, Any, List
 
-# db object comes from db_factory.get_db() — works with both LibSQLDB and PostgresDB
+# db object comes from db_factory.get_db() — LibSQLDB backend
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.extraction import extract_actions, extract_insights
 from promaia.brain.muninn import get_muninn
@@ -92,9 +92,15 @@ async def capture_memory(
             embedding = vector_mgr.generate_embedding(content)
             
         embedding_array = json.dumps(embedding)
+        page_id = f"memory:{memory_id}"
         db.execute(
-                    "UPDATE memories SET embedding = %s WHERE id = %s",
-                    (embedding_array, memory_id),
+                    "DELETE FROM content_embeddings WHERE page_id = %s AND chunk_id IS NULL",
+                    (page_id,),
+                )
+        db.execute(
+                    """INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at)
+                       VALUES (%s, %s, %s, 'brain_memories', datetime('now'), datetime('now'))""",
+                    (page_id, content, embedding_array),
                 )
     except Exception as e:
         import logging
@@ -159,7 +165,7 @@ async def capture_memory(
                 ))
             intel_counts["asides"] = len(intel.asides)
 
-            # Write sub-captures to Postgres + MuninnDB
+            # Write sub-captures to db + MuninnDB
             for sub_content, sub_domain, sub_tags in sub_captures:
                 try:
                     sub_id = db.insert_returning(
@@ -173,9 +179,15 @@ async def capture_memory(
                     try:
                         sub_embedding = vector_mgr.generate_embedding(sub_content)
                         sub_array = json.dumps(sub_embedding)
+                        sub_page_id = f"memory:{sub_id}"
                         db.execute(
-                                    "UPDATE memories SET embedding = %s WHERE id = %s",
-                                    (sub_array, sub_id),
+                                    "DELETE FROM content_embeddings WHERE page_id = %s AND chunk_id IS NULL",
+                                    (sub_page_id,),
+                                )
+                        db.execute(
+                                    """INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at)
+                                       VALUES (%s, %s, %s, 'brain_memories', datetime('now'), datetime('now'))""",
+                                    (sub_page_id, sub_content, sub_array),
                                 )
                     except Exception:
                         pass

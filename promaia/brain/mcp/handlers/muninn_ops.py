@@ -39,7 +39,7 @@ async def _handle_activate(args: dict) -> list[TextContent]:
     if not muninn:
         return [TextContent(
             type="text",
-            text="MuninnDB is not available. Use 'search' for pgvector-based retrieval.",
+            text="MuninnDB is not available. Use 'search' for sqlite-vec-based retrieval.",
         )]
 
     try:

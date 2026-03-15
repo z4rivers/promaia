@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 
 from promaia.storage.db_factory import db_connect
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
 logger = logging.getLogger(__name__)
 

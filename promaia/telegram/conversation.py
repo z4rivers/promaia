@@ -12,7 +12,6 @@ import time
 from typing import Optional
 
 import numpy as np
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 from google import genai
 from google.genai import types
 
@@ -246,11 +245,11 @@ def _get_known_projects() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Postgres fallback when MuninnDB is offline
+# Database fallback when MuninnDB is offline
 # ---------------------------------------------------------------------------
 
-def _postgres_context_fallback() -> list[str]:
-    """Pull profile, recent memories, and projects from Postgres.
+def _db_context_fallback() -> list[str]:
+    """Pull profile, recent memories, and projects from the database.
 
     Used when MuninnDB is unreachable so Gemini still has real context
     instead of flying blind with just pending actions.
@@ -275,7 +274,7 @@ def _postgres_context_fallback() -> list[str]:
             )
             parts.append(f"## Zack's Profile\n{profile_text}")
     except Exception as e:
-        logger.warning(f"Postgres fallback: profile query failed: {e}")
+        logger.warning(f"DB fallback: profile query failed: {e}")
 
     # 2. Recent memories (most recent captures, skip YouTube bulk)
     try:
@@ -295,7 +294,7 @@ def _postgres_context_fallback() -> list[str]:
             )
             parts.append(f"## Recent Memories\n{mem_text}")
     except Exception as e:
-        logger.warning(f"Postgres fallback: memories query failed: {e}")
+        logger.warning(f"DB fallback: memories query failed: {e}")
 
     # 3. Active projects / contexts (join domains for names)
     try:
@@ -315,7 +314,7 @@ def _postgres_context_fallback() -> list[str]:
             )
             parts.append(f"## Active Projects\n{ctx_text}")
     except Exception as e:
-        logger.warning(f"Postgres fallback: contexts query failed: {e}")
+        logger.warning(f"DB fallback: contexts query failed: {e}")
 
     return parts
 
@@ -374,14 +373,14 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
     except Exception as e:
         logger.warning(f"Context assembly: history query failed: {e}")
 
-    # 3. Relevant memories + Profile + Projects (MuninnDB or Postgres fallback)
+    # 3. Relevant memories + Profile + Projects (MuninnDB or database fallback)
     try:
         from promaia.brain.muninn import get_muninn
         muninn = await get_muninn()
 
         if not muninn:
-            logger.warning("Context assembly: MuninnDB offline. Using Postgres fallback.")
-            fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
+            logger.warning("Context assembly: MuninnDB offline. Using database fallback.")
+            fallback_parts = await asyncio.to_thread(_db_context_fallback)
             parts.extend(fallback_parts)
         else:
             history_content = await get_conversation_history(chat_id, limit=3)
@@ -396,13 +395,13 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
                 insert_pos = min(2, len(parts))
                 parts.insert(insert_pos, f"## Cognitive Context (MuninnDB)\n{mem_text}")
             else:
-                logger.warning("Context assembly: MuninnDB returned empty activations. Using Postgres fallback.")
-                fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
+                logger.warning("Context assembly: MuninnDB returned empty activations. Using database fallback.")
+                fallback_parts = await asyncio.to_thread(_db_context_fallback)
                 parts.extend(fallback_parts)
 
     except Exception as e:
-        logger.warning(f"Context assembly: MuninnDB failed: {e}. Using Postgres fallback.")
-        fallback_parts = await asyncio.to_thread(_postgres_context_fallback)
+        logger.warning(f"Context assembly: MuninnDB failed: {e}. Using database fallback.")
+        fallback_parts = await asyncio.to_thread(_db_context_fallback)
         parts.extend(fallback_parts)
 
     return "\n\n".join(parts)

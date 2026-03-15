@@ -47,9 +47,9 @@ class HybridContentRegistry:
                 if cursor.fetchone()[0] == 0:
                     logger.warning("Database tables not found. Please run: python -m promaia db init")
                 else:
-                    logger.info(f"✅ Hybrid content registry connected to PostgreSQL")
+                    logger.info(f"✅ Hybrid content registry connected to database")
         except Exception as e:
-            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            logger.error(f"Failed to connect to database: {e}")
             raise
 
         # Build unified view dynamically
@@ -615,7 +615,7 @@ class HybridContentRegistry:
                 if cursor.fetchone()[0] > 0:
                     return True  # Table already exists
 
-                # Create table with base schema (PostgreSQL syntax)
+                # Create table with base schema (SQLite syntax)
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -894,7 +894,7 @@ class HybridContentRegistry:
 
             EMBEDDABLE_TYPES = {'title', 'text', 'rich_text', 'relation'}
 
-            # Query properties from PostgreSQL
+            # Query properties from database
             with self.db.get_dict_cursor() as cursor:
                 column_names = [prop['column_name'] for prop in property_schema]
                 if not column_names:
@@ -1269,7 +1269,7 @@ class HybridContentRegistry:
                 if filters:
                     for key, value in filters.items():
                         if key in ['status', 'featured', 'priority', 'category']:
-                            # These can be searched in metadata JSON (PostgreSQL syntax)
+                            # These can be searched in metadata JSON
                             where_conditions.append(f"metadata->>'{key}' = %s")
                             params.append(value)
                         elif key.endswith('_date') or key.endswith('_time'):
@@ -2178,7 +2178,7 @@ class HybridContentRegistry:
                         logger.warning(f"Column '{column_name}' already exists in {table_name}, skipping")
                         continue
 
-                    # Add the column (PostgreSQL supports ADD COLUMN)
+                    # Add the column (SQLite supports ADD COLUMN)
                     alter_query = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sqlite_type}"
                     logger.info(f"Adding column: {alter_query}")
 
@@ -2189,7 +2189,7 @@ class HybridContentRegistry:
                         continue
 
                 # Remove columns (if requested)
-                # PostgreSQL supports DROP COLUMN
+                # SQLite supports DROP COLUMN (3.35+)
                 if remove_columns and schema_changes.get('removed'):
                     logger.warning(f"Column removal requested for {table_name}")
                     

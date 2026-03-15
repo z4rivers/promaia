@@ -168,7 +168,7 @@ TARGET DATABASES: {', '.join(target_dbs)}{workspace_filter}
 
 IMPORTANT: The database_name column stores ONLY the nickname (e.g., "stories", not "trass.stories")
 
-Return a PostgreSQL query that:
+Return a SQL query that:
 - SELECTs: u.page_id, u.workspace, u.database_name, u.title, u.created_time (+ any other needed fields)
 - IMPORTANT: Always include u.workspace in SELECT to distinguish databases across workspaces
 - JOINs workspace-specific tables (e.g., notion_koii_stories, notion_koii_journal) to access Notion properties
@@ -184,7 +184,7 @@ Return a PostgreSQL query that:
 - If workspace filter specified above include it in your query like this: AND u.workspace IN (...)
 - Applies date filters using the rules below - CRITICAL: distinguish between content dates vs sync dates
 - LIMIT 1200
-- IMPORTANT: This is SQLite, NOT PostgreSQL. Use SQLite date functions (date(), datetime(), julianday()).
+- IMPORTANT: This is SQLite. Use SQLite date functions (date(), datetime(), julianday()).
 
 DATE FILTER RULES - CRITICAL DISTINCTION:
 
@@ -198,7 +198,7 @@ DATE FILTER RULES - CRITICAL DISTINCTION:
   → Use u.created_time
   → Example: "pages created last week", "recently synced content", "new entries"
 
-**How to apply date filters (PostgreSQL syntax):**
+**How to apply date filters (SQLite syntax):**
 
 For CONTENT dates (sprints, deadlines, business dates):
 - First JOIN the workspace-specific table to access properties

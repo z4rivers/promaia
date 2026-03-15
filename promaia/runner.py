@@ -97,13 +97,13 @@ async def run_all():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Explicit Postgres pool cleanup
+        # Explicit database pool cleanup
         try:
             from promaia.storage.db_factory import get_db
             db = get_db()
             db.close_pool()
         except Exception as e:
-            logger.error(f"Failed to close Postgres connection pool: {e}")
+            logger.error(f"Failed to close database connection pool: {e}")
             
         logger.info("All Promaia services shut down")
 

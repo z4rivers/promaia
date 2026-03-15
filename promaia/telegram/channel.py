@@ -38,7 +38,7 @@ class TelegramChannel(NotificationChannel):
         Returns True on success, False on failure. Never raises.
         """
         try:
-            # Extract summary from payload (JSONB -- may be dict or string)
+            # Extract summary from payload (JSON -- may be dict or string)
             payload = event.get("payload", {})
             if isinstance(payload, str):
                 try:

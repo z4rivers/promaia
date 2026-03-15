@@ -22,7 +22,7 @@ class SchemaAwareSQLGenerator:
                 cursor = conn.cursor()
                 
                 # Get available tables
-                cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 self.available_tables = [row[0] for row in cursor.fetchall()]
                 
                 # Check for data-type specific tables
@@ -397,7 +397,7 @@ class SchemaAwareSQLGenerator:
         SELECT {', '.join(base_fields)}
         FROM unified_content u
         WHERE {where_clause}
-        ORDER BY to_char(u.created_time::timestamp, 'IYYY-IW'), RANDOM()
+        ORDER BY strftime('%Y-%W', u.created_time), RANDOM()
         LIMIT {sample_per_week * 12}
         """
         

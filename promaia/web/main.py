@@ -220,13 +220,13 @@ async def graceful_shutdown():
     except Exception as e:
         logger.warning(f"  ⚠️ Heartbeat stop failed: {e}")
 
-    # 2. Close Postgres connection pool
+    # 2. Close database connection pool
     try:
         from promaia.storage.db_factory import get_db
         get_db().close_pool()
-        logger.info("  ✅ Postgres pool closed")
+        logger.info("  ✅ Database pool closed")
     except Exception as e:
-        logger.warning(f"  ⚠️ Postgres pool close failed: {e}")
+        logger.warning(f"  ⚠️ Database pool close failed: {e}")
 
     # 3. Signal uvicorn to shut down after this response is sent
     async def _delayed_exit():
@@ -247,7 +247,7 @@ async def health_check():
         "components": {}
     }
     
-    # 1. Check PostgreSQL Database
+    # 1. Check Database
     try:
         from promaia.storage.db_factory import get_db
         db = get_db()

@@ -1,7 +1,7 @@
 """
 Brain operations for Telegram bot.
 
-Plain async functions that call Postgres directly (NOT MCP protocol).
+Plain async functions that call the database directly (NOT MCP protocol).
 Each function returns a string suitable for sending as a Telegram message.
 All synchronous DB calls are wrapped in asyncio.to_thread() to avoid
 blocking the event loop.
@@ -17,7 +17,6 @@ from typing import Optional
 import struct
 
 import numpy as np
-# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
 from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
@@ -205,15 +204,17 @@ async def capture_memory(content: str, domain: Optional[str] = None) -> str:
             logger.error(f"capture insert failed: {e}")
             return f"Error storing memory: {e}"
 
-        # Generate embedding and update row
+        # Generate embedding and store in content_embeddings
         try:
             vector_mgr = _get_vector_mgr()
             embedding = vector_mgr.generate_embedding(content)
             embedding_array = json.dumps(embedding)
+            page_id = f"memory:{memory_id}"
+            db.execute("DELETE FROM content_embeddings WHERE page_id = %s AND database_name = 'brain_memories'", (page_id,))
             db.execute(
-                        "UPDATE memories SET embedding = %s WHERE id = %s",
-                        (embedding_array, memory_id),
-                    )
+                "INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at) VALUES (%s, %s, %s, 'brain_memories', datetime('now'), datetime('now'))",
+                (page_id, content[:500], embedding_array),
+            )
         except Exception as e:
             logger.warning(f"Embedding generation failed for memory {memory_id}: {e}")
 
@@ -552,15 +553,17 @@ async def promote_message_to_memory(
             (content, domain),
         )
 
-        # Generate embedding
+        # Generate embedding and store in content_embeddings
         try:
             vector_mgr = _get_vector_mgr()
             embedding = vector_mgr.generate_embedding(content)
             embedding_array = json.dumps(embedding)
+            page_id = f"memory:{memory_id}"
+            db.execute("DELETE FROM content_embeddings WHERE page_id = %s AND database_name = 'brain_memories'", (page_id,))
             db.execute(
-                        "UPDATE memories SET embedding = %s WHERE id = %s",
-                        (embedding_array, memory_id),
-                    )
+                "INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at) VALUES (%s, %s, %s, 'brain_memories', datetime('now'), datetime('now'))",
+                (page_id, content[:500], embedding_array),
+            )
         except Exception as e:
             logger.warning(f"Embedding generation failed for promoted memory {memory_id}: {e}")
 

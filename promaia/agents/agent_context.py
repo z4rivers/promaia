@@ -45,7 +45,7 @@ class AgentContext:
     """Standardized awareness context for all agents.
 
     Fields are populated either manually (for testing) or via the
-    load_from_brain() classmethod which queries Postgres brain tables.
+    load_from_brain() classmethod which queries brain tables.
     """
 
     # User identity
@@ -123,7 +123,7 @@ class AgentContext:
 
     @classmethod
     def load_from_brain(cls, domain_state: Optional[dict] = None) -> "AgentContext":
-        """Load context from brain Postgres tables.
+        """Load context from brain database tables.
 
         This is the smart batching mechanism: call once per scheduler cycle,
         pass the result to all 3 agents rather than each agent querying
@@ -147,7 +147,7 @@ class AgentContext:
             )
             if row and row.get("value"):
                 val = row["value"]
-                # value is JSONB, could be string or wrapped
+                # value is JSON, could be string or wrapped
                 if isinstance(val, str):
                     user_name = val
                 elif isinstance(val, dict):
