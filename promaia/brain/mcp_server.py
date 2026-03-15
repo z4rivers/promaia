@@ -1,7 +1,8 @@
 """
-Brain MCP Server — 16 tools for zBrain.
+Brain MCP Server — 17 tools for zBrain.
 
-Exposes Claude's persistent memory system as MCP tools over stdio.
+Exposes Claude's persistent memory system as MCP tools over Streamable HTTP.
+Runs as an always-on daemon (default: 127.0.0.1:8751) with bearer token auth.
 Claude calls these tools to get briefings, capture thoughts, search memories,
 manage project context, track actions, maintain a personal profile,
 manage the onboarding flow, run data ingestion channels, and perform
@@ -29,29 +30,39 @@ Usage:
     python -m promaia.brain.mcp_server
 """
 import asyncio
+import contextlib
 import json
 import logging
 import os
+import secrets
 import sys
-import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 # Load .env from the project root (walk up from this file to find it)
 _project_root = Path(__file__).resolve().parents[2]
-load_dotenv(_project_root / ".env")
+_env_path = _project_root / ".env"
+load_dotenv(_env_path)
 
 import numpy as np
 
 try:
     from mcp.server import Server
-    from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
 except ImportError:
     print("ERROR: mcp package not installed. Install with: pip install 'mcp>=1.26.0'", file=sys.stderr)
     sys.exit(1)
+
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Mount, Route
+from starlette.types import Receive, Scope, Send
 
 from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
@@ -79,7 +90,6 @@ logger = logging.getLogger(__name__)
 # Server + session state
 # ---------------------------------------------------------------------------
 server = Server("zbrain-brain")
-SESSION_ID = str(uuid.uuid4())
 
 from promaia.brain.mcp.core_context import get_db, get_vector_mgr
 
@@ -90,7 +100,7 @@ from promaia.brain.mcp.core_context import get_db, get_vector_mgr
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Enumerate all 16 brain tools."""
+    """Enumerate all 17 brain tools."""
     return [
         Tool(
             name="briefing",
@@ -683,99 +693,121 @@ from promaia.brain.mcp.handlers.muninn_ops import _handle_activate
 from promaia.brain.mcp.handlers.metrics_ops import _handle_brain_costs
 
 # ---------------------------------------------------------------------------
-# Heartbeat emitter — pings the web server so the dashboard knows we're alive
+# Auth + Health
 # ---------------------------------------------------------------------------
-_heartbeat_running = False
-
-async def _heartbeat_loop():
-    """POST to the web server every 30 seconds so the dashboard shows 🟢."""
-    global _heartbeat_running
-    _heartbeat_running = True
-    import httpx
-    url = "http://localhost:8000/api/brain/heartbeat"
-    payload = {"session_id": SESSION_ID[:8], "agent_name": "ide-mcp-stdio"}
-
-    while _heartbeat_running:
+def _get_token() -> str:
+    """Read BRAIN_MCP_TOKEN from env, auto-generate if missing."""
+    token = os.environ.get("BRAIN_MCP_TOKEN", "").strip()
+    if not token:
+        token = secrets.token_urlsafe(32)
+        # Persist to .env so it survives restarts
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(url, json=payload, timeout=3.0)
+            set_key(str(_env_path), "BRAIN_MCP_TOKEN", token)
         except Exception:
-            pass  # Web server might not be up yet — that's fine
-        await asyncio.sleep(30)
+            pass  # .env might not be writable — log and continue
+        os.environ["BRAIN_MCP_TOKEN"] = token
+        logger.info("Auto-generated BRAIN_MCP_TOKEN (saved to .env)")
+    return token
+
+
+async def _health_endpoint(request: Request) -> JSONResponse:
+    """Unauthenticated health check for dashboard polling."""
+    return JSONResponse({"status": "ok", "service": "zbrain-brain"})
+
+
+def _bearer_auth_middleware(app):
+    """Wrap an ASGI app with bearer token verification."""
+    async def middleware(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            request = Request(scope, receive)
+            auth_header = request.headers.get("authorization", "")
+            expected = f"Bearer {_get_token()}"
+            if auth_header != expected:
+                response = Response("Unauthorized", status_code=401)
+                await response(scope, receive, send)
+                return
+        await app(scope, receive, send)
+    return middleware
+
+
+# ---------------------------------------------------------------------------
+# Starlette app factory
+# ---------------------------------------------------------------------------
+def create_app() -> Starlette:
+    """Build the Starlette ASGI app with MCP session manager."""
+    session_manager = StreamableHTTPSessionManager(app=server)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with session_manager.run():
+            logger.info("Brain MCP daemon ready")
+            yield
+
+    app = Starlette(
+        routes=[
+            Route("/health", _health_endpoint),
+            Mount("/mcp", app=_bearer_auth_middleware(session_manager.handle_request)),
+        ],
+        lifespan=lifespan,
+    )
+    return app
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-async def main():
-    """Run the Brain MCP server over stdio."""
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    logger.info(f"Starting zBrain MCP server (session: {SESSION_ID[:8]}...)")
-
-    # Start the heartbeat emitter as a background task
-    heartbeat_task = asyncio.create_task(_heartbeat_loop())
-
-    try:
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
-    finally:
-        global _heartbeat_running
-        _heartbeat_running = False
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
-
-
 def run_selftest():
     """Run diagnostics to verify MCP server dependencies before launching."""
     print("Running zBrain MCP Server Self-Test...\n")
     success = True
-    
+
     # 1. Database Check
     try:
         from promaia.storage.db_factory import get_db
         db = get_db()
         db.execute("SELECT 1")
-        print("✅ Database Connection: OK")
+        print("  Database Connection: OK")
     except Exception as e:
-        print(f"❌ Database Connection: FAILED ({e})")
+        print(f"  Database Connection: FAILED ({e})")
         success = False
-        
+
     # 2. Vector DB Check
     try:
         from promaia.storage.vector_db import VectorDBManager
         mgr = VectorDBManager()
-        print("✅ Vector DB Manager: OK")
+        print("  Vector DB Manager: OK")
     except Exception as e:
-        print(f"❌ Vector DB Manager: FAILED ({e})")
+        print(f"  Vector DB Manager: FAILED ({e})")
         success = False
-        
+
     # 3. MuninnDB Check
     try:
         from promaia.brain.muninn import get_muninn
         import asyncio
         m = asyncio.run(get_muninn())
         if m is not None:
-            print("✅ MuninnDB Access: OK")
+            print("  MuninnDB Access: OK")
         else:
-            print("❌ MuninnDB Access: FAILED (Returned None - Server may be down)")
+            print("  MuninnDB Access: FAILED (Returned None - Server may be down)")
             success = False
     except Exception as e:
-        print(f"❌ MuninnDB Access: FAILED ({e})")
+        print(f"  MuninnDB Access: FAILED ({e})")
         success = False
-        
+
     # 4. LLM API Keys
     import os
     keys = {"ANTHROPIC": os.getenv("ANTHROPIC_API_KEY"), "OPENAI": os.getenv("OPENAI_API_KEY"), "GEMINI": os.getenv("GOOGLE_API_KEY")}
     found = [k for k, v in keys.items() if v]
     if found:
-        print(f"✅ LLM API Keys: OK ({', '.join(found)})")
+        print(f"  LLM API Keys: OK ({', '.join(found)})")
     else:
-        print("❌ LLM API Keys: FAILED (No core generation keys found)")
+        print("  LLM API Keys: FAILED (No core generation keys found)")
         success = False
-        
+
+    # 5. Bearer token check
+    token = _get_token()
+    print(f"  Bearer Token: OK (first 8 chars: {token[:8]}...)")
+
     print(f"\nSelf-Test {'PASSED' if success else 'FAILED'}")
     sys.exit(0 if success else 1)
 
@@ -784,10 +816,22 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         run_selftest()
     else:
+        import uvicorn
+
+        host = os.environ.get("BRAIN_MCP_HOST", "127.0.0.1")
+        port = int(os.environ.get("BRAIN_MCP_PORT", "8751"))
+        log_level = os.environ.get("BRAIN_LOG_LEVEL", "info").lower()
+
+        logger.info(f"Starting zBrain MCP daemon on {host}:{port}")
         try:
-            asyncio.run(main())
+            uvicorn.run(
+                create_app(),
+                host=host,
+                port=port,
+                log_level=log_level,
+            )
         except KeyboardInterrupt:
-            logger.info("Brain MCP server stopped")
+            logger.info("Brain MCP daemon stopped")
         except Exception as e:
             logger.error(f"Fatal error: {e}", exc_info=True)
             sys.exit(1)
