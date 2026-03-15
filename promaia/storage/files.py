@@ -11,7 +11,7 @@ from promaia.utils.timezone_utils import now_utc
 from pathlib import Path
 import logging
 from promaia.storage.db_factory import db_connect
-import psycopg2.extras
+# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
 # Import the new centralized path function
 from promaia.config.paths import get_project_root
@@ -657,7 +657,7 @@ def _get_properties_from_sqlite(page_id: str, database_id: str, database_name: s
 
         # Query the specialized table for this page
         with db_connect() as conn:
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor()
 
             # Get property column names
             property_columns = [prop['column_name'] for prop in property_schema]
@@ -742,18 +742,18 @@ def load_content_by_page_ids(page_ids: List[str], db_path: str = "data/hybrid_me
         
         # Step 1: Get registry entries for the requested page_ids
         with db_connect() as conn:
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor()
             
             # Build query with placeholders for all page_ids
-            # Use DISTINCT ON page_id to avoid duplicates from inconsistent database_name storage
+            # Use GROUP BY to deduplicate (SQLite doesn't support DISTINCT ON)
             placeholders = ','.join(['%s'] * len(page_ids))
             query = f"""
-                SELECT DISTINCT ON (page_id)
-                       page_id, workspace, database_name, database_id, content_type,
+                SELECT page_id, workspace, database_name, database_id, content_type,
                        title, created_time, last_edited_time, synced_time, file_path, metadata
                 FROM unified_content
                 WHERE page_id IN ({placeholders})
-                ORDER BY page_id, last_edited_time DESC
+                GROUP BY page_id
+                ORDER BY last_edited_time DESC
             """
             
             cursor.execute(query, page_ids)

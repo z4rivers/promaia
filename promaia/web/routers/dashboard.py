@@ -37,9 +37,9 @@ def _parse_iso_age(iso_str: str) -> str:
         created = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
         if created.tzinfo is None:
-            now = datetime.now()
+            created = created.replace(tzinfo=timezone.utc)
         delta = (now - created).days
-        if delta == 0:
+        if delta <= 0:
             return "today"
         elif delta == 1:
             return "yesterday"
@@ -65,13 +65,14 @@ def _get_brain_data() -> dict:
             """
         ) or {"memory_count": 0, "action_count": 0, "context_count": 0}
 
-        # Pending/active actions  (actions.domain is flat TEXT, no FK)
+        # Pending/active actions
         actions_rows = db.fetch_all(
             """
-            SELECT content, status, domain
-            FROM actions
-            WHERE status IN ('pending', 'active')
-            ORDER BY created_at DESC
+            SELECT a.description as content, a.status, d.name as domain
+            FROM actions a
+            LEFT JOIN domains d ON a.domain_id = d.id
+            WHERE a.status IN ('pending', 'active')
+            ORDER BY a.extracted_at DESC
             LIMIT 10
             """
         )
@@ -87,11 +88,11 @@ def _get_brain_data() -> dict:
         # Projects from contexts  (contexts.domain_id FK → domains.id, priority is on domains)
         project_rows = db.fetch_all(
             """
-            SELECT d.name, c.current_state, c.last_updated, d.priority,
+            SELECT d.name, c.current_state, c.last_updated, c.priority,
                    CAST(julianday('now') - julianday(c.last_updated) AS INTEGER) as days_stale
             FROM contexts c
             JOIN domains d ON d.id = c.domain_id
-            ORDER BY d.priority ASC, c.last_updated DESC
+            ORDER BY c.priority ASC, c.last_updated DESC
             """
         )
         projects = []
@@ -291,24 +292,23 @@ async def projects_page(request: Request):
 
         project_rows = db.fetch_all(
             """
-            SELECT d.name, c.directive, c.current_state, c.last_updated, d.priority,
+            SELECT d.id, d.name, c.directive, c.current_state, c.last_updated, c.priority,
                    CAST(julianday('now') - julianday(c.last_updated) AS INTEGER) as days_stale
             FROM contexts c
             JOIN domains d ON d.id = c.domain_id
-            ORDER BY d.priority ASC
+            ORDER BY c.priority ASC, c.last_updated DESC
             """
         )
 
         projects = []
         for row in project_rows:
-            # Get actions for this project (actions.domain is flat TEXT)
             action_rows = db.fetch_all(
                 """
-                SELECT content as description FROM actions
-                WHERE domain = ? AND status = 'pending'
-                ORDER BY created_at DESC LIMIT 5
+                SELECT description FROM actions
+                WHERE domain_id = ? AND status = 'pending'
+                ORDER BY extracted_at DESC LIMIT 5
                 """,
-                (row["name"],)
+                (row["id"],)
             )
 
             updated_str = _parse_iso_age(row.get("last_updated") or "")

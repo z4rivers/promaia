@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
-import psycopg2.extras
+# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
 from promaia.storage.db_factory import get_db
 from promaia.storage.vector_db import VectorDBManager
@@ -271,7 +271,7 @@ async def search_brain(query: str, limit: int = 5) -> str:
             query_array = np.array(query_embedding)
 
             with db.get_connection() as conn:
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                with conn.cursor() as cur:
                     cur.execute(
                         """
                         SELECT id, content, domain, created_at,

@@ -12,7 +12,7 @@ import time
 from typing import Optional
 
 import numpy as np
-import psycopg2.extras
+# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 from google import genai
 from google.genai import types
 

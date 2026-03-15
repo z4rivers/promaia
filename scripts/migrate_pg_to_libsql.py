@@ -7,21 +7,25 @@ Handles type conversion: datetime -> ISO string, dict/list -> JSON, Decimal -> f
 import os, sys, json
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
-sys.path.insert(0, "/home/zack/dev/promaia")
+
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 import psycopg2
 import psycopg2.extras
 
 # Load env
-env_path = "/home/zack/dev/promaia/.env"
-with open(env_path) as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, val = line.split("=", 1)
-            val = val.strip().strip("'\"")
-            if key.strip() not in os.environ:
-                os.environ[key.strip()] = val
+env_path = os.path.join(project_root, ".env")
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                val = val.strip().strip("'\"")
+                if key.strip() not in os.environ:
+                    os.environ[key.strip()] = val
 
 os.environ["STORE_BACKEND"] = "libsql"
 

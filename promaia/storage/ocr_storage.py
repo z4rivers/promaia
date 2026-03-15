@@ -12,8 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-from psycopg2 import extras
-from promaia.storage.db_factory import db_connect, get_postgres_db
+# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
+from promaia.storage.db_factory import db_connect
 
 # Avoid circular import - ProcessedDocument will be passed as parameter
 
@@ -168,7 +168,7 @@ class OCRStorage:
         """
         try:
             with db_connect() as conn:
-                cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 cursor.execute("""
                     SELECT * FROM ocr_uploads
@@ -199,7 +199,7 @@ class OCRStorage:
         """
         try:
             with db_connect() as conn:
-                cursor = conn.cursor(cursor_factory=extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 if status:
                     cursor.execute("""

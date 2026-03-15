@@ -143,7 +143,7 @@ class LibSQLDB:
 
     def _init_connection(self):
         try:
-            self._conn = libsql.connect(self.db_path)
+            self._conn = libsql.connect(self.db_path, check_same_thread=False)
             self._conn.enable_load_extension(True)
             sqlite_vec.load(self._conn)
             self._conn.enable_load_extension(False)

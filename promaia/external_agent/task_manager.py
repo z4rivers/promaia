@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from promaia.storage.db_factory import get_db, db_connect
-import psycopg2.extras
+# psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 from .models import AgentTask, TaskResult, TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ class TaskManager:
         """Get a specific task by ID."""
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 cursor.execute("SELECT * FROM agent_tasks WHERE task_id = %s", (task_id,))
                 row = cursor.fetchone()
@@ -161,7 +161,7 @@ class TaskManager:
         """
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 query = "SELECT * FROM agent_tasks WHERE 1=1"
                 params = []
@@ -300,7 +300,7 @@ class TaskManager:
         """Get the latest result for a task."""
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 cursor.execute("""
                     SELECT * FROM agent_results
@@ -323,7 +323,7 @@ class TaskManager:
         """Get all tasks related to a specific draft."""
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor = conn.cursor()
 
                 cursor.execute("""
                     SELECT * FROM agent_tasks
