@@ -2,6 +2,7 @@
 Promaia Unified Startup Manager.
 
 Supervises Promaia subprocesses:
+- Brain MCP Daemon (Streamable HTTP)
 - FastAPI Web Server (uvicorn)
 - Telegram Bot
 - Agent Scheduler
@@ -132,7 +133,8 @@ def cleanup_existing_processes():
     target_signatures = [
         "uvicorn promaia.web.main:app",
         "promaia.telegram_cli",
-        "promaia.agents.scheduler_cli"
+        "promaia.agents.scheduler_cli",
+        "promaia.brain.mcp_server",
     ]
     
     killed = 0
@@ -225,6 +227,7 @@ def main():
             subprocess.run(["muninn", "start"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         processes = [
+            ManagedProcess("Brain Daemon", [sys.executable, "-m", "promaia.brain.mcp_server"], "BRAIN"),
             ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", "8000"], "WEB"),
             ManagedProcess("Agent Scheduler", [sys.executable, "-m", "promaia.agents.scheduler_cli", "start"], "SCHED")
         ]
