@@ -501,6 +501,24 @@ async def scheduler_health():
         return {"status": "error"}
 
 
+@router.get("/api/brain/health")
+async def brain_daemon_health():
+    """Proxy to the brain MCP daemon's /health endpoint.
+    Dashboard JS polls this instead of hitting port 8751 directly (avoids CORS).
+    """
+    import httpx
+
+    port = int(os.environ.get("BRAIN_MCP_PORT", "8751"))
+    url = f"http://127.0.0.1:{port}/health"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=3.0)
+            data = resp.json()
+            return {"connected": True, "port": port, **data}
+    except Exception:
+        return {"connected": False, "port": port, "status": "unreachable"}
+
+
 @router.post("/api/notifications/read")
 async def notifications_mark_read():
     """Mark all unrouted events as read via dashboard channel.
