@@ -400,7 +400,7 @@
     <div class="brain-alert__inner">
         <span id="brain-alert-text">Brain disconnected — memories not being captured</span>
         <span class="brain-alert__sep">|</span>
-        <span class="brain-alert__fix" id="brain-alert-fix">Reload IDE window to reconnect</span>
+        <span class="brain-alert__fix" id="brain-alert-fix">Run: python -m promaia dev</span>
     </div>
 </div>
 
@@ -677,14 +677,13 @@ fetch('/api/notifications/read', { method: 'POST' })
     }
 
     function checkHeartbeat() {
-        fetch('/api/brain/heartbeat')
+        fetch('/api/brain/health')
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.connected) {
                     dot.className = 'brain-connection__dot brain-connection__dot--connected';
                     label.textContent = 'Brain: connected';
-                    var ago = data.last_seen_seconds_ago;
-                    wrapper.title = 'IDE MCP session ' + (data.session_id || '?') + ' — last ping ' + Math.round(ago) + 's ago';
+                    wrapper.title = 'Brain daemon running on port ' + (data.port || '8751');
 
                     initialGrace = false;
                     if (disconnectedSince) {
@@ -693,14 +692,12 @@ fetch('/api/notifications/read', { method: 'POST' })
                     disconnectedSince = null;
                     wasConnected = true;
                 } else {
-                    wrapper.title = data.last_seen_seconds_ago
-                        ? 'Last seen ' + Math.round(data.last_seen_seconds_ago) + 's ago'
-                        : 'No heartbeat ever received';
+                    wrapper.title = 'Brain daemon unreachable';
                     handleDisconnected(initialGrace ? 'Brain: connecting...' : 'Brain: disconnected');
                 }
             })
             .catch(function() {
-                wrapper.title = 'Could not reach heartbeat endpoint';
+                wrapper.title = 'Could not reach brain health endpoint';
                 handleDisconnected(initialGrace ? 'Brain: connecting...' : 'Brain: unreachable');
             });
     }
