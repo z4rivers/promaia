@@ -29,15 +29,11 @@ active_text_listeners = set()
 active_maia_listeners = set()
 
 # ---------------------------------------------------------------------------
-# MCP Brain Heartbeat Tracking
+# DEPRECATED: Old heartbeat push model — replaced by brain daemon /health
+# The brain is now an always-on daemon. Dashboard polls /api/brain/health
+# (proxy to daemon's /health endpoint) instead of these push-based endpoints.
+# Kept temporarily for backward compatibility — will be removed in v4.0.
 # ---------------------------------------------------------------------------
-_mcp_heartbeat: dict = {
-    "last_seen": 0.0,
-    "session_id": None,
-    "agent_name": None,
-}
-_MCP_HEARTBEAT_TIMEOUT_SECONDS = 90  # If no heartbeat in 90s, consider disconnected
-
 
 class HeartbeatRequest(BaseModel):
     session_id: str | None = None
@@ -46,27 +42,21 @@ class HeartbeatRequest(BaseModel):
 
 @router.post("/heartbeat")
 async def mcp_heartbeat(req: HeartbeatRequest = HeartbeatRequest()):
-    """Receive a heartbeat ping from an IDE MCP server."""
-    _mcp_heartbeat["last_seen"] = time.time()
-    if req.session_id:
-        _mcp_heartbeat["session_id"] = req.session_id
-    if req.agent_name:
-        _mcp_heartbeat["agent_name"] = req.agent_name
-    return {"status": "ok"}
+    """DEPRECATED: Brain is now an always-on daemon. This endpoint is a no-op."""
+    return {"status": "deprecated", "message": "Brain is now a daemon. Use /api/brain/health instead."}
 
 
 @router.get("/heartbeat")
 async def mcp_heartbeat_status():
-    """Return whether an MCP brain connection is alive."""
-    last = _mcp_heartbeat["last_seen"]
-    elapsed = time.time() - last if last > 0 else float("inf")
-    connected = elapsed < _MCP_HEARTBEAT_TIMEOUT_SECONDS
-    return {
-        "connected": connected,
-        "last_seen_seconds_ago": round(elapsed, 1) if last > 0 else None,
-        "session_id": _mcp_heartbeat["session_id"],
-        "agent_name": _mcp_heartbeat["agent_name"],
-    }
+    """DEPRECATED: Use /api/brain/health instead."""
+    import httpx
+    port = int(os.environ.get("BRAIN_MCP_PORT", "8751"))
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"http://127.0.0.1:{port}/health", timeout=3.0)
+            return {"connected": True, "deprecated": True, "message": "Use /api/brain/health"}
+    except Exception:
+        return {"connected": False, "deprecated": True, "message": "Use /api/brain/health"}
 
 # ---------------------------------------------------------------------------
 # Voice Context Cache — keeps calendar/Muninn/prompt ready so connect is instant
