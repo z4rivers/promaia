@@ -27,7 +27,6 @@ class DatabaseRegistrySync:
         
         try:
             from promaia.storage.db_factory import db_connect
-            import psycopg2
             
             with db_connect() as conn:
                 cursor = conn.cursor()
@@ -115,7 +114,6 @@ class DatabaseRegistrySync:
         
         try:
             from promaia.storage.db_factory import db_connect
-            import psycopg2
             
             with db_connect() as conn:
                 cursor = conn.cursor()
@@ -152,7 +150,7 @@ class DatabaseRegistrySync:
                             if updated_count > 0:
                                 logger.info(f"Updated {updated_count} entries in {table}")
                     
-                    except psycopg2.OperationalError:
+                    except Exception:
                         # Table might not exist or have database_name column, skip
                         continue
                 

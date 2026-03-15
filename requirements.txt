@@ -98,8 +98,7 @@ pgvector>=0.4.2
 google-cloud-vision==3.7.0
 opencv-python==4.9.0.80
 
-# PostgreSQL
-psycopg2-binary>=2.9.9
+# Database (libSQL/sqlite-vec)
 numpy==1.26.3
 
 # Action extraction (brain MCP)
