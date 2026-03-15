@@ -2,7 +2,7 @@
 Persistent caching system for CMS sync operations.
 Tracks content hashes to skip unchanged pages between sync runs.
 
-Now uses PostgreSQL for centralized storage.
+Now uses libSQL for centralized storage.
 """
 import hashlib
 import json
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class SyncCache:
     """
-    Manages persistent cache for sync operations using PostgreSQL.
+    Manages persistent cache for sync operations using libSQL.
     Stores content hashes to detect changes and avoid unnecessary processing.
     """
 
@@ -29,22 +29,22 @@ class SyncCache:
 
         Args:
             db_path: Deprecated parameter, kept for backward compatibility.
-                    All data is now stored in PostgreSQL.
+                    All data is now stored in libSQL.
         """
         self.db = get_db()
         self._ensure_table()
-        logger.debug("SyncCache initialized with PostgreSQL backend")
+        logger.debug("SyncCache initialized with libSQL backend")
 
     def _ensure_table(self):
         """Ensure the page_cache table exists."""
         if not self.db.table_exists('page_cache'):
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS page_cache (
-                    id SERIAL PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT UNIQUE NOT NULL,
                     content_hash TEXT NOT NULL,
                     last_edited_time TEXT,
-                    last_synced_at DOUBLE PRECISION NOT NULL,
+                    last_synced_at REAL NOT NULL,
                     webflow_id TEXT
                 )
             """)
@@ -199,7 +199,7 @@ class SyncCache:
         return {
             'total_entries': total_entries,
             'entries_synced_last_24h': recent_entries,
-            'backend': 'postgresql'
+            'backend': 'libsql'
         }
 
     def close(self):

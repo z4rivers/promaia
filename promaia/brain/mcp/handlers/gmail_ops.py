@@ -168,26 +168,30 @@ async def _handle_gmail_query(args: dict) -> list[TextContent]:
     days_back = args.get("days_back", 30)
     limit = min(args.get("limit", 20), 50)
 
-    sql = """
-        SELECT payload
-        FROM events
-        WHERE type = 'gmail_email_processed'
-    """
     conditions = []
     params = []
 
     if query_text:
-        # In libSQL JSON extracting, we can just do basic string search for now
-        # since fulltext on json is tricky without virtual tables.
-        conditions.append("(json_extract(payload, '$.subject') LIKE ? OR json_extract(payload, '$.snippet') LIKE ?)")
-        params.extend([f"%{query_text}%", f"%{query_text}%"])
+        conditions.append("(subject LIKE ? OR body_snippet LIKE ? OR sender_name LIKE ?)")
+        params.extend([f"%{query_text}%", f"%{query_text}%", f"%{query_text}%"])
 
     if sender:
-        conditions.append("json_extract(payload, '$.sender') LIKE ?")
-        params.append(f"%{sender}%")
+        conditions.append("(sender_email LIKE ? OR sender_name LIKE ?)")
+        params.extend([f"%{sender}%", f"%{sender}%"])
 
-    where = " AND ".join(conditions) if conditions else "TRUE"
-    sql += f" AND {where} ORDER BY created_at DESC LIMIT ?"
+    if days_back:
+        conditions.append("email_date >= datetime('now', ?)")
+        params.append(f"-{int(days_back)} days")
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    sql = f"""
+        SELECT subject, sender_email, sender_name, body_snippet,
+               email_date, is_unread
+        FROM gmail_content
+        WHERE {where_clause}
+        ORDER BY email_date DESC
+        LIMIT ?
+    """
     params.append(limit)
 
     try:
@@ -208,11 +212,13 @@ async def _handle_gmail_query(args: dict) -> list[TextContent]:
 
     lines = [f"**Gmail Query Results** ({len(rows)} emails)\n"]
     for r in rows:
-        payload = json.loads(r.get("payload", "{}")) if isinstance(r.get("payload"), str) else r.get("payload", {})
-        date = payload.get("date", "")[:10] if payload.get("date") else "?"
-        sender_display = payload.get("sender", "?")
-        snippet = (payload.get("snippet") or "")[:120]
-        lines.append(f"- **{payload.get('subject', '(no subject)')}**")
+        date = (r.get("email_date") or "")[:10] or "?"
+        sender_name = r.get("sender_name") or ""
+        sender_email = r.get("sender_email") or ""
+        sender_display = f"{sender_name} <{sender_email}>" if sender_name else sender_email or "?"
+        snippet = (r.get("body_snippet") or "")[:120]
+        unread_tag = " [unread]" if r.get("is_unread") else ""
+        lines.append(f"- **{r.get('subject') or '(no subject)'}**{unread_tag}")
         lines.append(f"  From: {sender_display} | {date}")
         if snippet:
             lines.append(f"  > {snippet}")

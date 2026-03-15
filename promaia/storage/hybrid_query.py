@@ -153,9 +153,9 @@ class HybridQueryInterface:
                     SELECT *
                     FROM unified_content 
                     WHERE {final_query_clause}
-                    ORDER BY last_edited_time DESC NULLS LAST, created_time DESC NULLS LAST
+                    ORDER BY last_edited_time IS NULL, last_edited_time DESC, created_time IS NULL, created_time DESC
                 """
-                
+
                 # Temporary fix for when no sources are provided, which would lead to an empty `other_sources` list and invalid SQL
                 if not sources:
                     # If no sources, we should query everything respecting the date filter if present
@@ -164,15 +164,15 @@ class HybridQueryInterface:
                     if cutoff_date:
                         base_conditions.append("(created_time >= %s OR last_edited_time >= %s)")
                         base_params.extend([cutoff_date, cutoff_date])
-                    
+
                     final_query_clause = ' AND '.join(base_conditions)
                     final_params = base_params
 
                     query = f"""
                         SELECT *
-                        FROM unified_content 
+                        FROM unified_content
                         WHERE {final_query_clause}
-                        ORDER BY last_edited_time DESC NULLS LAST, created_time DESC NULLS LAST
+                        ORDER BY last_edited_time IS NULL, last_edited_time DESC, created_time IS NULL, created_time DESC
                     """
 
 

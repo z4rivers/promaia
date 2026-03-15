@@ -5,7 +5,7 @@ This module implements a hybrid approach where different content types
 (Gmail, Notion databases, etc.) have their own optimized table schemas
 while maintaining a unified query interface.
 
-Now uses PostgreSQL for centralized storage.
+Now uses libSQL for centralized storage.
 """
 import os
 import json
@@ -28,7 +28,7 @@ class HybridContentRegistry:
         
         Args:
             db_path: Deprecated - kept for backward compatibility.
-                    All data is now stored in PostgreSQL.
+                    All data is now stored in libSQL.
         """
         self.db_path = db_path  # Keep for backward compatibility
         self.db = get_db()
@@ -58,57 +58,57 @@ class HybridContentRegistry:
     def _migrate_add_cc_recipients(self):
         """Migration: Add cc_recipients column to gmail_content table if it doesn't exist.
         
-        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        NOTE: Schema is managed via schema.sql - this is a no-op.
         """
-        # PostgreSQL migrations are handled by schema.sql
-        logger.debug("PostgreSQL migration: cc_recipients handled by schema.sql")
+        # Migrations are handled by schema.sql
+        logger.debug("Schema migration: cc_recipients handled by schema.sql")
 
     def _migrate_add_attachments(self):
         """Migration: Add attachments column to gmail_content table if it doesn't exist.
         
-        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        NOTE: Schema is managed via schema.sql - this is a no-op.
         """
-        # PostgreSQL migrations are handled by schema.sql
-        logger.debug("PostgreSQL migration: attachments handled by schema.sql")
+        # Migrations are handled by schema.sql
+        logger.debug("Schema migration: attachments handled by schema.sql")
 
     def _migrate_add_property_ids(self):
         """Migration: Add property_id column to notion_property_schema table.
         
-        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        NOTE: Schema is managed via schema.sql - this is a no-op.
         """
-        # PostgreSQL migrations are handled by schema.sql
-        logger.debug("PostgreSQL migration: property_id handled by schema.sql")
+        # Migrations are handled by schema.sql
+        logger.debug("Schema migration: property_id handled by schema.sql")
 
     def _migrate_add_select_options_table(self):
         """Migration: Create notion_select_options table for tracking select/multi-select/status options.
         
-        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        NOTE: Schema is managed via schema.sql - this is a no-op.
         """
-        # PostgreSQL migrations are handled by schema.sql
-        logger.debug("PostgreSQL migration: notion_select_options handled by schema.sql")
+        # Migrations are handled by schema.sql
+        logger.debug("Schema migration: notion_select_options handled by schema.sql")
 
     def _migrate_add_relations_table(self):
         """Migration: Create notion_relations table for tracking relation properties.
         
-        NOTE: PostgreSQL schema is managed via schema.sql - this is a no-op.
+        NOTE: Schema is managed via schema.sql - this is a no-op.
         """
-        # PostgreSQL migrations are handled by schema.sql
-        logger.debug("PostgreSQL migration: notion_relations handled by schema.sql")
+        # Migrations are handled by schema.sql
+        logger.debug("Schema migration: notion_relations handled by schema.sql")
 
     def _create_indexes(self, cursor):
         """Create indexes for better query performance."""
         # NOTE: gmail_content column types (from schema.sql):
-        #   gmail_labels: JSONB (use @> or ? operators, NOT ANY/ALL)
+        #   gmail_labels: TEXT (JSON string, use json_each() for queries)
         #   email_date: TEXT (ISO format string, not timestamp)
-        #   synced_time: TEXT (ISO format string, not timestamptz)
+        #   synced_time: TEXT (ISO format string)
 
         # Gmail indexes for message-level storage
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_workspace ON gmail_content (workspace)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_sender ON gmail_content (sender_email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_date ON gmail_content (email_date)")
-        # Drop old B-tree index on JSONB column if it exists, replace with GIN
+        # Index on gmail_labels for label-based filtering
         cursor.execute("DROP INDEX IF EXISTS idx_gmail_labels")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels_gin ON gmail_content")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_labels ON gmail_content(gmail_labels)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_id ON gmail_content (thread_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_message_id ON gmail_content (message_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gmail_thread_position ON gmail_content (thread_id, thread_position)")

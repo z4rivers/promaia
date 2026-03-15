@@ -2,7 +2,7 @@
 Persistent block cache for Notion content.
 Stores block content keyed by page_id and last_edited_time to avoid redundant API calls.
 
-Now uses PostgreSQL for centralized storage.
+Now uses libSQL for centralized storage.
 """
 import json
 import time
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class BlockCache:
     """
-    Manages persistent cache for Notion blocks using PostgreSQL.
+    Manages persistent cache for Notion blocks using libSQL.
     Caches block content to avoid repeated API calls for unchanged pages.
     """
 
@@ -27,22 +27,22 @@ class BlockCache:
 
         Args:
             db_path: Deprecated parameter, kept for backward compatibility.
-                    All data is now stored in PostgreSQL.
+                    All data is now stored in libSQL.
         """
         self.db = get_db()
         self._ensure_table()
-        logger.debug("BlockCache initialized with PostgreSQL backend")
+        logger.debug("BlockCache initialized with libSQL backend")
 
     def _ensure_table(self):
         """Ensure the block_cache table exists."""
         if not self.db.table_exists('block_cache'):
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS block_cache (
-                    id SERIAL PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     page_id TEXT NOT NULL,
                     last_edited_time TEXT NOT NULL,
-                    blocks JSONB NOT NULL,
-                    cached_at DOUBLE PRECISION NOT NULL,
+                    blocks TEXT NOT NULL,
+                    cached_at REAL NOT NULL,
                     UNIQUE(page_id, last_edited_time)
                 )
             """)
@@ -76,7 +76,7 @@ class BlockCache:
         
         if result:
             blocks = result['blocks']
-            # JSONB is automatically deserialized by psycopg2
+            # JSON is auto-deserialized by SmartRow
             if isinstance(blocks, str):
                 try:
                     return json.loads(blocks)
@@ -98,7 +98,7 @@ class BlockCache:
         """
         current_time = time.time()
         
-        # Convert blocks to JSON if not already JSONB compatible
+        # Convert blocks to JSON string for TEXT column
         blocks_json = json.dumps(blocks) if isinstance(blocks, list) else blocks
 
         self.db.execute(
@@ -172,7 +172,7 @@ class BlockCache:
             'total_entries': total_entries,
             'unique_pages': unique_pages,
             'entries_cached_last_24h': recent_entries,
-            'backend': 'postgresql'
+            'backend': 'libsql'
         }
 
     def close(self):

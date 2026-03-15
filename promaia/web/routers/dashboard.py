@@ -263,17 +263,14 @@ async def talk_page(request: Request):
         db = get_db()
         row = db.fetch_one(
             """
-            SELECT messages FROM conversations
+            SELECT content FROM conversations
+            WHERE role = 'assistant'
             ORDER BY created_at DESC LIMIT 1
             """
         )
-        if row and row["messages"]:
-            import json
-            msgs = json.loads(row["messages"])
-            assistant_msgs = [m for m in msgs if m.get("role") == "assistant"]
-            if assistant_msgs:
-                content = assistant_msgs[-1].get("content", "")
-                last_message = content[:200] + ("..." if len(content) > 200 else "")
+        if row and row["content"]:
+            content = row["content"]
+            last_message = content[:200] + ("..." if len(content) > 200 else "")
     except Exception as e:
         logger.warning(f"Last message unavailable: {e}")
 
@@ -475,7 +472,7 @@ async def scheduler_health():
         db = get_db()
         row = db.fetch_one(
             """
-            SELECT created_at, payload
+            SELECT created_at
             FROM events
             WHERE source = 'heartbeat' AND type = 'scheduler_heartbeat'
             ORDER BY created_at DESC
@@ -486,6 +483,9 @@ async def scheduler_health():
             created_str = row["created_at"]
             try:
                 created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                # SQLite datetime('now') stores UTC without tzinfo — treat as UTC
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
                 minutes_ago = (now - created).total_seconds() / 60
                 return {

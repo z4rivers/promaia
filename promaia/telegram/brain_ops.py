@@ -14,6 +14,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import struct
+
 import numpy as np
 # psycopg2 removed — libsql wrapper provides dict rows via SmartRow
 
@@ -264,34 +266,31 @@ async def search_brain(query: str, limit: int = 5) -> str:
 
     def _sync():
         db = _get_db()
-        pg_rows = []
+        rows = []
         try:
             vector_mgr = _get_vector_mgr()
             query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
-            query_array = np.array(query_embedding)
+            query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
 
-            with db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT id, content, domain, created_at,
-                               embedding <=> %s::vector AS distance
-                        FROM memories
-                        WHERE embedding IS NOT NULL
-                        ORDER BY distance ASC
-                        LIMIT %s
-                        """,
-                        (query_array, limit),
-                    )
-                    pg_rows = [dict(r) for r in cur.fetchall()]
+            rows = db.fetch_all(
+                """
+                SELECT id, content, domain, created_at,
+                       vec_distance_cosine(embedding, %s) AS distance
+                FROM memories
+                WHERE embedding IS NOT NULL
+                ORDER BY distance ASC
+                LIMIT %s
+                """,
+                (query_blob, limit),
+            )
         except Exception as e:
-            logger.error(f"pgvector search failed: {e}", exc_info=True)
+            logger.error(f"vector search failed: {e}", exc_info=True)
 
-        if not pg_rows:
+        if not rows:
             return "No results found."
 
         lines = [f"Search: {query}\n"]
-        for i, row in enumerate(pg_rows, 1):
+        for i, row in enumerate(rows, 1):
             similarity = 1 - float(row["distance"])
             domain_label = f" [{row['domain']}]" if row.get("domain") else ""
             ts = _fmt_ts(row.get("created_at"))

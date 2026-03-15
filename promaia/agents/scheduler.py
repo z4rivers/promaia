@@ -665,6 +665,9 @@ class AgentScheduler:
 
         Allows the dashboard to show "scheduler last seen: X min ago".
         """
+        # Write an initial heartbeat immediately so dashboard shows online
+        await self._write_heartbeat()
+
         while self.running:
             try:
                 await asyncio.sleep(300)  # 5 minutes
@@ -674,24 +677,28 @@ class AgentScheduler:
             if not self.running:
                 break
 
-            try:
-                from promaia.storage.db_factory import get_db
-                import json
+            await self._write_heartbeat()
 
-                db = get_db()
-                active_tasks = [
-                    name for name, t in self.tasks.items()
-                    if not name.startswith("__") and not t.done()
-                ]
-                db.execute(
-                    """
-                    INSERT INTO events (type, payload, source, created_at)
-                    VALUES ('scheduler_heartbeat', %s, 'heartbeat', datetime('now'))
-                    """,
-                    (json.dumps({"active_agents": active_tasks}),),
-                )
-            except Exception as e:
-                logger.warning(f"Heartbeat write failed (non-fatal): {e}")
+    async def _write_heartbeat(self):
+        """Write a single heartbeat event."""
+        try:
+            from promaia.storage.db_factory import get_db
+            import json
+
+            db = get_db()
+            active_tasks = [
+                name for name, t in self.tasks.items()
+                if not name.startswith("__") and not t.done()
+            ]
+            db.execute(
+                """
+                INSERT INTO events (type, payload, source, created_at)
+                VALUES ('scheduler_heartbeat', %s, 'heartbeat', datetime('now'))
+                """,
+                (json.dumps({"active_agents": active_tasks}),),
+            )
+        except Exception as e:
+            logger.warning(f"Heartbeat write failed (non-fatal): {e}")
 
     async def _youtube_check_loop(self):
         """Periodically fetch new technical videos from configured YouTube channels."""

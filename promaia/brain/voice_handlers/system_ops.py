@@ -79,12 +79,22 @@ async def handle(ft, websocket) -> types.FunctionResponse:
         args = ft.args
         try:
             db = get_db()
+            # Resolve domain name to domain_id if provided
+            domain_id = None
+            domain_name = args.get("domain")
+            if domain_name:
+                domain_row = db.fetch_one(
+                    "SELECT id FROM domains WHERE name = %s",
+                    (domain_name,),
+                )
+                if domain_row:
+                    domain_id = domain_row["id"]
             db.execute(
                 """
-                INSERT INTO actions (description, due_date, domain, status, created_at)
-                VALUES (%s, %s, %s, 'pending', datetime('now'))
+                INSERT INTO actions (description, domain_id, status, extracted_at)
+                VALUES (%s, %s, 'pending', datetime('now'))
                 """,
-                (args.get("description"), args.get("due_date"), args.get("domain"))
+                (args.get("description"), domain_id)
             )
             logger.info(f"Successfully created action item: {args.get('description')}")
             return types.FunctionResponse(

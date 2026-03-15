@@ -12,24 +12,43 @@ logger = logging.getLogger(__name__)
 # Global scheduler instance
 _scheduler = None
 
+
+def _write_scheduler_heartbeat():
+    """Write a scheduler_heartbeat event so the dashboard shows 'online'."""
+    try:
+        db = get_db()
+        db.execute(
+            """
+            INSERT INTO events (type, payload, source, created_at)
+            VALUES ('scheduler_heartbeat', ?, 'heartbeat', datetime('now'))
+            """,
+            (json.dumps({"source": "web_server"}),),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to write scheduler heartbeat: {e}")
+
+
 def _run_subconscious_cycle():
     """Execute the background heartbeat tasks."""
     logger.info("Running Subconscious heartbeat cycle...")
     db = get_db()
     cycle_id = str(uuid.uuid4())
-    
+
+    # Write scheduler_heartbeat so dashboard indicator stays green
+    _write_scheduler_heartbeat()
+
     try:
         # 1. Budget check
         # We'll use the CostTracker since it tracks actual agent costs
         from promaia.agents.cost_tracker import CostTracker
         tracker = CostTracker()
         today_spend = tracker.get_daily_spend()
-        
+
         # Log the budget check
         db.execute(
             """
-            INSERT INTO events (type, payload, source, session_id)
-            VALUES ('daily_budget_check', ?, 'heartbeat', ?)
+            INSERT INTO events (type, payload, source, session_id, created_at)
+            VALUES ('daily_budget_check', ?, 'heartbeat', ?, datetime('now'))
             """,
             (json.dumps({"today_spend": today_spend}), cycle_id),
         )
@@ -46,11 +65,11 @@ def _run_subconscious_cycle():
         )
         if rows:
             stale_domains = [r["name"] for r in rows]
-            
+
         db.execute(
             """
-            INSERT INTO events (type, payload, source, session_id)
-            VALUES ('domain_staleness_check', ?, 'heartbeat', ?)
+            INSERT INTO events (type, payload, source, session_id, created_at)
+            VALUES ('domain_staleness_check', ?, 'heartbeat', ?, datetime('now'))
             """,
             (json.dumps({
                 "status": "stale_found" if stale_domains else "ok",
@@ -72,8 +91,8 @@ def _run_subconscious_cycle():
             if suggestion:
                 db.execute(
                     """
-                    INSERT INTO events (type, payload, source, session_id)
-                    VALUES ('suggest_next_eval', ?, 'heartbeat', ?)
+                    INSERT INTO events (type, payload, source, session_id, created_at)
+                    VALUES ('suggest_next_eval', ?, 'heartbeat', ?, datetime('now'))
                     """,
                     (json.dumps({
                         "domain": suggestion.get("domain"),
@@ -105,7 +124,10 @@ def start_heartbeat(interval_minutes: int = 15):
     _scheduler.start()
     logger.info(f"Subconscious heartbeat scheduler started. Interval: {interval_minutes} minutes.")
 
-    # Run one immediately on startup in a separate thread/job
+    # Write scheduler_heartbeat immediately so dashboard shows 'online' on first poll
+    _write_scheduler_heartbeat()
+
+    # Run full subconscious cycle in background
     _scheduler.add_job(_run_subconscious_cycle, 'date', run_date=datetime.now())
 
 

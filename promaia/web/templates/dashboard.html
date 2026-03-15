@@ -336,6 +336,58 @@
     .ma { margin-bottom: var(--ma, 32px); }
     .ma-sm { margin-bottom: var(--ma-sm, 16px); }
     .ma-lg { margin-bottom: var(--ma-lg, 64px); }
+
+    /* === BRAIN STATUS BAR === */
+    .brain-alert {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        transform: translateY(-100%);
+        transition: transform 300ms ease;
+        font-family: var(--font-body, 'Outfit', sans-serif);
+    }
+
+    .brain-alert--visible {
+        transform: translateY(0);
+    }
+
+    .brain-alert__inner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 6px 16px;
+        background: #991b1b;
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+    }
+
+    .brain-alert--critical .brain-alert__inner {
+        background: #dc2626;
+    }
+
+    .brain-alert--reconnected .brain-alert__inner {
+        background: #15803d;
+    }
+
+    .brain-alert__fix {
+        opacity: 0.7;
+        margin-left: 4px;
+    }
+
+    .brain-alert__sep {
+        opacity: 0.4;
+        margin: 0 4px;
+    }
+
+    body.brain-alert-active,
+    body.brain-alert-critical {
+        padding-top: 32px;
+    }
 </style>
 
 <!-- Voice Overlay UI Styles -->
@@ -343,6 +395,15 @@
 {% endblock %}
 
 {% block content %}
+<!-- Brain Status Bar -->
+<div class="brain-alert" id="brain-alert" role="alert" aria-live="assertive">
+    <div class="brain-alert__inner">
+        <span id="brain-alert-text">Brain disconnected — memories not being captured</span>
+        <span class="brain-alert__sep">|</span>
+        <span class="brain-alert__fix" id="brain-alert-fix">Reload IDE window to reconnect</span>
+    </div>
+</div>
+
 <main class="dashboard" id="feeds">
 
     <!-- Header Zone -->
@@ -527,12 +588,93 @@ fetch('/api/notifications/read', { method: 'POST' })
     })
     .catch(function() {});
 
-// Brain connection heartbeat poller
+// Brain connection heartbeat poller + ALERT SYSTEM
 (function() {
     var dot = document.getElementById('brain-connection-dot');
     var label = document.getElementById('brain-connection-label');
     var wrapper = document.getElementById('brain-connection');
     if (!dot || !label) return;
+
+    // Alert system elements
+    var alert = document.getElementById('brain-alert');
+    var alertText = document.getElementById('brain-alert-text');
+    var alertFix = document.getElementById('brain-alert-fix');
+    var alertSep = document.querySelector('.brain-alert__sep');
+
+    // State tracking
+    var disconnectedSince = null;
+    var wasConnected = false;
+    var isAlertShowing = false;
+    var CRITICAL_THRESHOLD_MS = 2 * 60 * 1000;
+    var reconnectTimeout = null;
+    var initialGrace = true;  // Don't alert during first connection attempt
+    var graceChecks = 0;      // Count checks during grace period
+    var GRACE_CHECKS = 2;     // Allow 2 polls (~20s) before alerting
+
+    function showAlert(critical) {
+        if (!alert) return;
+        isAlertShowing = true;
+        alert.classList.add('brain-alert--visible');
+        alert.classList.remove('brain-alert--reconnected');
+        document.body.classList.add('brain-alert-active');
+        if (alertFix) alertFix.style.display = '';
+        if (alertSep) alertSep.style.display = '';
+
+        if (critical) {
+            alert.classList.add('brain-alert--critical');
+            document.body.classList.add('brain-alert-critical');
+            document.body.classList.remove('brain-alert-active');
+            alertText.textContent = 'Brain offline — memories being lost';
+            document.title = 'Brain Down — Promaia';
+        } else {
+            alert.classList.remove('brain-alert--critical');
+            document.body.classList.remove('brain-alert-critical');
+            alertText.textContent = 'Brain disconnected — memories not being captured';
+            document.title = 'Brain Disconnected — Promaia';
+        }
+    }
+
+    function hideAlert(reconnected) {
+        if (!alert || !isAlertShowing) return;
+        isAlertShowing = false;
+
+        if (reconnected) {
+            alert.classList.remove('brain-alert--critical');
+            alert.classList.add('brain-alert--reconnected');
+            document.body.classList.remove('brain-alert-critical');
+            alertText.textContent = 'Brain reconnected';
+            if (alertFix) alertFix.style.display = 'none';
+            if (alertSep) alertSep.style.display = 'none';
+            document.title = 'Promaia — Dashboard';
+
+            reconnectTimeout = setTimeout(function() {
+                alert.classList.remove('brain-alert--visible', 'brain-alert--reconnected');
+                document.body.classList.remove('brain-alert-active');
+            }, 3000);
+        } else {
+            alert.classList.remove('brain-alert--visible', 'brain-alert--critical', 'brain-alert--reconnected');
+            document.body.classList.remove('brain-alert-active', 'brain-alert-critical');
+            document.title = 'Promaia — Dashboard';
+        }
+    }
+
+    function handleDisconnected(titleText) {
+        dot.className = 'brain-connection__dot brain-connection__dot--disconnected';
+        label.textContent = titleText;
+
+        // During grace period, just count checks — don't alert
+        if (initialGrace) {
+            graceChecks++;
+            if (graceChecks < GRACE_CHECKS) return;
+            initialGrace = false;  // Grace expired
+        }
+
+        if (!disconnectedSince) {
+            disconnectedSince = Date.now();
+        }
+        var elapsed = Date.now() - disconnectedSince;
+        showAlert(elapsed > CRITICAL_THRESHOLD_MS);
+    }
 
     function checkHeartbeat() {
         fetch('/api/brain/heartbeat')
@@ -543,23 +685,28 @@ fetch('/api/notifications/read', { method: 'POST' })
                     label.textContent = 'Brain: connected';
                     var ago = data.last_seen_seconds_ago;
                     wrapper.title = 'IDE MCP session ' + (data.session_id || '?') + ' — last ping ' + Math.round(ago) + 's ago';
+
+                    initialGrace = false;
+                    if (disconnectedSince) {
+                        hideAlert(true);
+                    }
+                    disconnectedSince = null;
+                    wasConnected = true;
                 } else {
-                    dot.className = 'brain-connection__dot brain-connection__dot--disconnected';
-                    label.textContent = 'Brain: disconnected';
                     wrapper.title = data.last_seen_seconds_ago
                         ? 'Last seen ' + Math.round(data.last_seen_seconds_ago) + 's ago'
                         : 'No heartbeat ever received';
+                    handleDisconnected(initialGrace ? 'Brain: connecting...' : 'Brain: disconnected');
                 }
             })
             .catch(function() {
-                dot.className = 'brain-connection__dot brain-connection__dot--disconnected';
-                label.textContent = 'Brain: unreachable';
                 wrapper.title = 'Could not reach heartbeat endpoint';
+                handleDisconnected(initialGrace ? 'Brain: connecting...' : 'Brain: unreachable');
             });
     }
 
     checkHeartbeat();
-    setInterval(checkHeartbeat, 15000); // Poll every 15 seconds
+    setInterval(checkHeartbeat, 10000);
 })();
 
 </script>

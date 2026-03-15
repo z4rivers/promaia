@@ -55,8 +55,13 @@ class CostTracker:
         try:
             db = get_db()
 
+            # NOTE: Table was previously created as 'brain_agent_costs' (ghost table).
+            # Fixed 2026-03-14 to use correct 'agent_costs' name.
+            # Migrate any ghost data with:
+            #   INSERT INTO agent_costs SELECT * FROM brain_agent_costs;
+            #   DROP TABLE brain_agent_costs;
             db.execute("""
-                CREATE TABLE IF NOT EXISTS brain_agent_costs (
+                CREATE TABLE IF NOT EXISTS agent_costs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     execution_id INTEGER,
                     agent_name TEXT NOT NULL,
@@ -73,17 +78,17 @@ class CostTracker:
 
             db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_agent_costs_agent
-                ON brain_agent_costs (agent_name, created_at DESC)
+                ON agent_costs (agent_name, created_at DESC)
             """)
 
             db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_agent_costs_date
-                ON brain_agent_costs (created_at DESC)
+                ON agent_costs (created_at DESC)
             """)
 
             db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_agent_costs_execution
-                ON brain_agent_costs (execution_id)
+                ON agent_costs (execution_id)
             """)
             logger.info("agent_costs table initialized")
 
@@ -92,7 +97,7 @@ class CostTracker:
             raise
 
     def log_call(self, record: CostRecord) -> None:
-        """Insert a cost record into brain_agent_costs.
+        """Insert a cost record into agent_costs.
 
         Args:
             record: CostRecord with all fields populated.
@@ -100,7 +105,7 @@ class CostTracker:
         try:
             db = get_db()
             db.execute("""
-                INSERT INTO brain_agent_costs
+                INSERT INTO agent_costs
                 (agent_name, model_id, task_type, input_tokens, output_tokens,
                  cached_tokens, thinking_tokens, cost_usd, execution_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -167,7 +172,7 @@ class CostTracker:
             db = get_db()
             row = db.fetch_one("""
                 SELECT COALESCE(SUM(cost_usd), 0) as total
-                FROM brain_agent_costs
+                FROM agent_costs
                 WHERE created_at >= date('now')
             """)
             return float(row["total"]) if row else 0.0
@@ -188,7 +193,7 @@ class CostTracker:
             db = get_db()
             row = db.fetch_one("""
                 SELECT COALESCE(SUM(cost_usd), 0) as total
-                FROM brain_agent_costs
+                FROM agent_costs
                 WHERE execution_id = ?
             """, (execution_id,))
             return float(row["total"]) if row else 0.0
@@ -208,7 +213,7 @@ class CostTracker:
         """
         try:
             db = get_db()
-            rows = db.fetch_all(f"""
+            rows = db.fetch_all("""
                 SELECT
                     DATE(created_at) as day,
                     agent_name,
@@ -217,11 +222,11 @@ class CostTracker:
                     SUM(output_tokens) as output_tokens,
                     SUM(cached_tokens) as cached_tokens,
                     SUM(cost_usd) as cost
-                FROM brain_agent_costs
-                WHERE created_at >= date('now', '-{days} days')
+                FROM agent_costs
+                WHERE created_at >= date('now', '-' || ? || ' days')
                 GROUP BY DATE(created_at), agent_name
                 ORDER BY day DESC, cost DESC
-            """)
+            """, (days,))
             return rows
 
         except Exception as e:

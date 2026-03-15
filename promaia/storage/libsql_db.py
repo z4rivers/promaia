@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import contextlib
 import logging
 import json
@@ -242,17 +243,27 @@ class LibSQLDB:
     def close_pool(self):
         pass
 
+# ---------------------------------------------------------------------------
+# Resolve the canonical database path: always relative to the project root
+# (this file lives at promaia/storage/libsql_db.py → project root is 2 up)
+# This prevents the MCP server (spawned by the IDE with an unknown cwd)
+# from creating a ghost database in the wrong directory.
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_DB_PATH = str(_PROJECT_ROOT / "promaia.db")
+
 # Global instance
 _db_instance = None
 
-def get_libsql_db(db_path: str = "promaia.db") -> LibSQLDB:
+def get_libsql_db(db_path: str = None) -> LibSQLDB:
     global _db_instance
     if _db_instance is None:
-        _db_instance = LibSQLDB(db_path)
+        resolved = db_path or _DEFAULT_DB_PATH
+        _db_instance = LibSQLDB(resolved)
     return _db_instance
 
 @contextlib.contextmanager
-def libsql_connect(db_path: str = "promaia.db"):
+def libsql_connect(db_path: str = None):
     db = get_libsql_db(db_path)
     with db.get_connection() as conn:
         yield conn

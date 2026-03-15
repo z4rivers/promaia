@@ -173,7 +173,7 @@ def track_time(session_id: str, domain_id: int, db=None) -> float:
             SELECT MIN(created_at) AS earliest
             FROM events
             WHERE session_id = %s
-              AND (payload->>'domain_id')::int = %s
+              AND CAST(json_extract(payload, '$.domain_id') AS INTEGER) = %s
             """,
             (session_id, domain_id),
         )
@@ -215,7 +215,7 @@ def budget_check(cycle_id: str, max_budget: float = 1.0, db=None) -> dict:
             """
             SELECT
                 COUNT(*) AS calls,
-                COALESCE(SUM((payload->>'cost')::float), 0.0) AS total_cost
+                COALESCE(SUM(CAST(json_extract(payload, '$.cost') AS REAL)), 0.0) AS total_cost
             FROM events
             WHERE source = 'heartbeat'
               AND session_id = %s
