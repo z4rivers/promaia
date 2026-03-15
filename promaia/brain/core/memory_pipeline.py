@@ -4,6 +4,7 @@ Unified Capture Pipeline
 Provides the core logic for capturing a memory, extracting intelligence, and writing to the database and MuninnDB.
 Used by both the MCP server and the realtime Voice Agent.
 """
+import asyncio
 import json
 import logging
 import numpy as np
@@ -79,17 +80,18 @@ async def capture_memory(
         (content, domain_name, source, session_id, asset_paths_json),
     )
 
-    # 2. Generate embedding and update row
+    # 2. Generate embedding and update row (run off event loop to avoid blocking)
     try:
         if assets_combined:
-            embedding = vector_mgr.generate_multimodal_embedding(
-                text=content, 
-                image_paths=image_paths, 
+            embedding = await asyncio.to_thread(
+                vector_mgr.generate_multimodal_embedding,
+                text=content,
+                image_paths=image_paths,
                 audio_paths=audio_paths,
-                document_paths=document_paths
+                document_paths=document_paths,
             )
         else:
-            embedding = vector_mgr.generate_embedding(content)
+            embedding = await asyncio.to_thread(vector_mgr.generate_embedding, content)
             
         embedding_array = json.dumps(embedding)
         page_id = f"memory:{memory_id}"
@@ -108,10 +110,10 @@ async def capture_memory(
         logger.warning(f"Embedding generation failed for memory {memory_id}: {e}")
         # Non-fatal — memory is stored, just without embedding
 
-    # 3. Extract actions
+    # 3. Extract actions (Gemini API call — run off event loop)
     action_count = 0
     try:
-        extraction_result = extract_actions(content)
+        extraction_result = await asyncio.to_thread(extract_actions, content)
         if extraction_result.has_actions:
             domain_id = _get_or_create_domain_id(db, domain_name) if domain_name else None
             for action in extraction_result.actions:
@@ -126,10 +128,10 @@ async def capture_memory(
     except Exception as e:
         logger.warning(f"Action extraction/insert failed: {e}")
 
-    # 4. Conversation Intelligence extraction (the "Along For The Ride" engine)
+    # 4. Conversation Intelligence extraction (Gemini API — run off event loop)
     intel_counts = {"decisions": 0, "insights": 0, "preferences": 0, "asides": 0}
     try:
-        intel = extract_insights(content)
+        intel = await asyncio.to_thread(extract_insights, content)
         if intel.has_intelligence:
             sub_captures = []
 
@@ -177,7 +179,7 @@ async def capture_memory(
                         (sub_content, sub_domain, session_id),
                     )
                     try:
-                        sub_embedding = vector_mgr.generate_embedding(sub_content)
+                        sub_embedding = await asyncio.to_thread(vector_mgr.generate_embedding, sub_content)
                         sub_array = json.dumps(sub_embedding)
                         sub_page_id = f"memory:{sub_id}"
                         db.execute(

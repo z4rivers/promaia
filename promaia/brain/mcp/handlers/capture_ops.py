@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -83,7 +84,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
     pg_rows = []
     try:
         vector_mgr = get_vector_mgr()
-        query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
+        query_embedding = await asyncio.to_thread(vector_mgr.generate_embedding, query, task_type="RETRIEVAL_QUERY")
         query_array = json.dumps(query_embedding)
 
         rows = db.fetch_all(

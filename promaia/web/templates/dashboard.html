@@ -82,23 +82,16 @@
     .brain-connection__dot--connected {
         background: var(--accent-success, #4ade80);
         box-shadow: 0 0 6px color-mix(in srgb, var(--accent-success, #4ade80) 50%, transparent);
-        animation: pulse-connected 2s ease-in-out infinite;
+    }
+
+    .brain-connection__dot--active {
+        background: #fbbf24;
+        box-shadow: 0 0 6px color-mix(in srgb, #fbbf24 50%, transparent);
     }
 
     .brain-connection__dot--disconnected {
         background: var(--accent-danger, #f87171);
         box-shadow: 0 0 6px color-mix(in srgb, var(--accent-danger, #f87171) 50%, transparent);
-        animation: pulse-disconnected 1s ease-in-out infinite;
-    }
-
-    @keyframes pulse-connected {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
-    }
-
-    @keyframes pulse-disconnected {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
     }
 
     /* === Primary Zone: overridable grid === */
@@ -680,7 +673,18 @@ fetch('/api/notifications/read', { method: 'POST' })
         fetch('/api/brain/health')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.connected) {
+                if (data.connected && data.active) {
+                    dot.className = 'brain-connection__dot brain-connection__dot--active';
+                    label.textContent = 'Brain: active';
+                    wrapper.title = 'Processing: ' + (data.tools || []).join(', ');
+
+                    initialGrace = false;
+                    if (disconnectedSince) {
+                        hideAlert(true);
+                    }
+                    disconnectedSince = null;
+                    wasConnected = true;
+                } else if (data.connected) {
                     dot.className = 'brain-connection__dot brain-connection__dot--connected';
                     label.textContent = 'Brain: connected';
                     wrapper.title = 'Brain daemon running on port ' + (data.port || '8751');

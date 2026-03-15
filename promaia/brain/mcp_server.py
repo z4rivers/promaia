@@ -36,6 +36,7 @@ import logging
 import os
 import secrets
 import sys
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -624,6 +625,11 @@ async def list_tools() -> list[Tool]:
 
 
 # ---------------------------------------------------------------------------
+# Activity tracking — lets the health endpoint report what the brain is doing
+# ---------------------------------------------------------------------------
+_active_calls: list[str] = []
+
+# ---------------------------------------------------------------------------
 # Tool dispatcher
 # ---------------------------------------------------------------------------
 
@@ -631,6 +637,7 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Dispatch tool calls to handler functions."""
     logger.info(f"Brain tool call: {name}")
+    _active_calls.append(name)
     try:
         if name == "briefing":
             return await _handle_briefing(arguments)
@@ -677,6 +684,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     except Exception as e:
         logger.error(f"Tool {name} failed: {e}", exc_info=True)
         return [TextContent(type="text", text=f"Error in {name}: {str(e)}")]
+    finally:
+        try:
+            _active_calls.remove(name)
+        except ValueError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +724,13 @@ def _get_token() -> str:
 
 async def _health_endpoint(request: Request) -> JSONResponse:
     """Unauthenticated health check for dashboard polling."""
-    return JSONResponse({"status": "ok", "service": "zbrain-brain"})
+    return JSONResponse({
+        "status": "ok",
+        "service": "zbrain-brain",
+        "active": len(_active_calls) > 0,
+        "active_count": len(_active_calls),
+        "tools": list(_active_calls),
+    })
 
 
 def _bearer_auth_middleware(app):

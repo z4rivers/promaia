@@ -1,7 +1,6 @@
 import json
 import logging
 import uuid
-import urllib.request
 import numpy as np
 from mcp.types import TextContent
 from datetime import datetime, timezone
@@ -34,10 +33,11 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
 
     # --- Promaia server health check (always first) ---
     try:
+        import httpx
         promaia_url = "http://localhost:8000/api/health"
-        req = urllib.request.Request(promaia_url, headers={"User-Agent": "antigravity-briefing/1.0"})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            promaia_up = resp.status == 200
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(promaia_url, timeout=3.0, headers={"User-Agent": "antigravity-briefing/1.0"})
+            promaia_up = resp.status_code == 200
     except Exception:
         promaia_up = False
 

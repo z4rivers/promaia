@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -42,12 +43,13 @@ async def _handle_gmail_scan(args: dict) -> list[TextContentManager]:
         return [TextContent(type="text", text=f"Gmail scan error: {e}")]
 
     # Show available accounts if none connected
-    accounts = discover_accounts()
+    accounts = await asyncio.to_thread(discover_accounts)
     if not accounts:
         return [TextContent(type="text", text="No Gmail tokens found. Run OAuth setup first.")]
 
     try:
-        result = run_gmail_scan(
+        result = await asyncio.to_thread(
+            run_gmail_scan,
             account=account,
             days_back=days_back,
             max_emails=max_emails,

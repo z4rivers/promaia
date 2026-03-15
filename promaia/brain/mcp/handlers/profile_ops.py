@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -44,7 +45,7 @@ async def _handle_profile(args: dict) -> list[TextContent]:
     if query:
         try:
             vector_mgr = get_vector_mgr()
-            query_embedding = vector_mgr.generate_embedding(query, task_type="RETRIEVAL_QUERY")
+            query_embedding = await asyncio.to_thread(vector_mgr.generate_embedding, query, task_type="RETRIEVAL_QUERY")
             query_array = json.dumps(query_embedding)
 
             rows = db.fetch_all(
@@ -162,7 +163,7 @@ async def _handle_update_profile(args: dict) -> list[TextContent]:
         try:
             embed_text = f"{category} {field}: {value_json}"
             vector_mgr = get_vector_mgr()
-            embedding = vector_mgr.generate_embedding(embed_text)
+            embedding = await asyncio.to_thread(vector_mgr.generate_embedding, embed_text)
             embedding_array = json.dumps(embedding)
 
             page_id = f"profile:{category}:{field}"
@@ -351,7 +352,7 @@ async def _handle_pc_scan(args: dict) -> list[TextContent]:
 
     try:
         from promaia.brain.channels.pc_scan import run_pc_scan
-        result = run_pc_scan(db=db)
+        result = await asyncio.to_thread(run_pc_scan, db=db)
     except Exception as e:
         logger.error(f"PC scan failed: {e}", exc_info=True)
         return [TextContent(type="text", text=f"PC scan error: {e}")]
