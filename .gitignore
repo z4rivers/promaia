@@ -377,3 +377,4 @@ vulnerability-report.*
 
 data/*.json
 data/*.txt
+bin/
