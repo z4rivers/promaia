@@ -1,9 +1,11 @@
-import uuid
 from promaia.storage.db_factory import get_db as _get_db_factory
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.muninn import get_muninn
 
-SESSION_ID = str(uuid.uuid4())
+# Stable process-level identifier for event logging and memory capture.
+# Previously a random UUID per stdio session — now fixed because the daemon
+# is always-on. MCP transport manages per-client session IDs separately.
+SESSION_ID = "brain-daemon"
 
 _db = None
 _vector_manager = None
