@@ -1,9 +1,3 @@
 {
-  "mcpServers": {
-    "brain": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "promaia.brain.mcp_server"]
-    }
-  }
+  "mcpServers": {}
 }
