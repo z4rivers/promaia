@@ -722,7 +722,7 @@ def _bearer_auth_middleware(app):
             request = Request(scope, receive)
             auth_header = request.headers.get("authorization", "")
             expected = f"Bearer {_get_token()}"
-            if auth_header != expected:
+            if not secrets.compare_digest(auth_header, expected):
                 response = Response("Unauthorized", status_code=401)
                 await response(scope, receive, send)
                 return
