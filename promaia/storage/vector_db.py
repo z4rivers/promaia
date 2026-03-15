@@ -1,16 +1,16 @@
 """
-Vector Database Manager using pgvector for semantic search.
+Vector Database Manager using sqlite-vec for semantic search.
 
 Handles embedding generation (Google Gemini gemini-embedding-001)
-and pgvector operations for content storage and retrieval via Supabase PostgreSQL.
+and sqlite-vec operations for content storage and retrieval.
 """
 import os
 import json
 import math
 import logging
+import struct
 from typing import List, Dict, Any, Optional
 
-import numpy as np
 import numpy as np
 
 # Load environment first
@@ -535,7 +535,7 @@ class VectorDBManager:
             params = [property_name]
 
             if database_id:
-                sql += " AND metadata->>'database_id' = %s"
+                sql += " AND json_extract(metadata, '$.database_id') = %s"
                 params.append(database_id)
             if workspace:
                 sql += " AND workspace = %s"
@@ -581,16 +581,16 @@ class VectorDBManager:
         try:
             # Generate query embedding (asymmetric: queries use RETRIEVAL_QUERY)
             query_embedding = self.generate_embedding(query_text, task_type="RETRIEVAL_QUERY")
-            query_array = np.array(query_embedding)
+            query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
 
             sql = """
                 SELECT id, page_id, property_value,
-                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
+                       1 - vec_distance_cosine(embedding, %s) AS similarity_score,
                        metadata, property_name, property_type
                 FROM property_embeddings
                 WHERE property_name = %s
             """
-            params: list = [query_array, property_name]
+            params: list = [query_blob, property_name]
 
             # Add optional filters
             if filters:
@@ -604,11 +604,11 @@ class VectorDBManager:
                         sql += " AND database_name = %s"
                         params.append(value)
                     else:
-                        sql += " AND metadata->>%s = %s"
+                        sql += " AND json_extract(metadata, '$.' || %s) = %s"
                         params.extend([key, str(value)])
 
-            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
-            params.extend([query_array, n_results])
+            sql += " ORDER BY vec_distance_cosine(embedding, %s) LIMIT %s"
+            params.extend([query_blob, n_results])
 
             cur = self.db.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
@@ -655,16 +655,16 @@ class VectorDBManager:
         try:
             # Generate query embedding (asymmetric: queries use RETRIEVAL_QUERY)
             query_embedding = self.generate_embedding(query_text, task_type="RETRIEVAL_QUERY")
-            query_array = np.array(query_embedding)
+            query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
 
             sql = """
                 SELECT page_id, content,
-                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
+                       1 - vec_distance_cosine(embedding, %s) AS similarity_score,
                        metadata, workspace, database_name
                 FROM content_embeddings
                 WHERE 1=1
             """
-            params: list = [query_array]
+            params: list = [query_blob]
 
             # Add metadata filters if provided
             if filters:
@@ -683,8 +683,8 @@ class VectorDBManager:
                         sql += " AND database_name = %s"
                         params.append(db_filter)
 
-            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
-            params.extend([query_array, n_results])
+            sql += " ORDER BY vec_distance_cosine(embedding, %s) LIMIT %s"
+            params.extend([query_blob, n_results])
 
             cur = self.db.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
@@ -748,7 +748,7 @@ class VectorDBManager:
                 "total_property_embeddings": property_count,
                 "embedding_provider": self.embedding_provider,
                 "embedding_model": self.embedding_model,
-                "backend": "pgvector (Supabase PostgreSQL)"
+                "backend": "sqlite-vec (libSQL)"
             }
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")

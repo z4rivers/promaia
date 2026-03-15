@@ -1,7 +1,7 @@
 """
 Unified Capture Pipeline
 
-Provides the core logic for capturing a memory, extracting intelligence, and writing to Postgres and MuninnDB.
+Provides the core logic for capturing a memory, extracting intelligence, and writing to the database and MuninnDB.
 Used by both the MCP server and the realtime Voice Agent.
 """
 import json
@@ -9,14 +9,14 @@ import logging
 import numpy as np
 from typing import Optional, Dict, Any, List
 
-from promaia.storage.postgres_db import PostgresDB
+# db object comes from db_factory.get_db() — works with both LibSQLDB and PostgresDB
 from promaia.storage.vector_db import VectorDBManager
 from promaia.brain.extraction import extract_actions, extract_insights
 from promaia.brain.muninn import get_muninn
 
 logger = logging.getLogger(__name__)
 
-def _get_or_create_domain_id(db: PostgresDB, domain_name: str) -> int:
+def _get_or_create_domain_id(db, domain_name: str) -> int:
     """Return the domain.id for domain_name, creating it if absent."""
     existing = db.fetch_one(
         "SELECT id FROM domains WHERE name = %s",
@@ -32,7 +32,7 @@ def _get_or_create_domain_id(db: PostgresDB, domain_name: str) -> int:
 
 
 async def capture_memory(
-    db: PostgresDB,
+    db,
     vector_mgr: VectorDBManager,
     content: str,
     session_id: str,
