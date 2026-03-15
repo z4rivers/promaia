@@ -26,8 +26,8 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 os.environ.setdefault("PYTHONPATH", _project_root)
 
-# Create logs directory
-LOG_DIR = Path("logs")
+# Create logs directory (absolute, so it works from any cwd)
+LOG_DIR = Path(__file__).parent.parent.absolute() / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / "promaia.log"
 
