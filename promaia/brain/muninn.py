@@ -76,32 +76,27 @@ class MuninnClient:
             return None
 
     async def write_batch(self, engrams: list[dict]) -> list[dict]:
-        """Write multiple engrams. Returns list of result dicts.
+        """Write multiple engrams via batch endpoint. Returns list of result dicts.
 
-        Uses individual POST /api/engrams calls because the batch endpoint
-        (/api/engrams/batch) ignores the vault field and always writes to
-        the default vault (MuninnDB v0.3.6-alpha bug).
-
-        Each engram dict should have keys: concept, content, tags, confidence.
+        POST /api/engrams/batch. Each engram dict should have keys:
+        concept, content, tags, confidence.
         Raises on failure -- batch is used for seeding, not in hot path.
         """
-        results = []
-        for i, engram in enumerate(engrams):
-            r = await self._client.post("/api/engrams", json={
-                "vault": self._vault,
-                "concept": engram.get("concept", ""),
-                "content": engram.get("content", ""),
-                "tags": engram.get("tags", []),
-                "confidence": engram.get("confidence", 0.9),
-            })
-            r.raise_for_status()
-            data = r.json()
-            results.append({
-                "index": i,
-                "id": data.get("id", ""),
-                "status": "ok",
-            })
-        return results
+        payload = {
+            "vault": self._vault,
+            "engrams": [
+                {
+                    "concept": e.get("concept", ""),
+                    "content": e.get("content", ""),
+                    "tags": e.get("tags", []),
+                    "confidence": e.get("confidence", 0.9),
+                }
+                for e in engrams
+            ],
+        }
+        r = await self._client.post("/api/engrams/batch", json=payload)
+        r.raise_for_status()
+        return r.json().get("results", [])
 
     async def activate(
         self,
