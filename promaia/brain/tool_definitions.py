@@ -149,6 +149,18 @@ memory_tools = {
             }
         },
         {
+            "name": "read_file",
+            "description": "Read a file from the Promaia project repository. Use this to inspect source code, config files, docs, or any text file. Returns the file contents directly. Path is relative to the project root (e.g. 'promaia/web/maia_bridge.py').",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "path": { "type": "STRING", "description": "File path relative to project root (e.g. 'promaia/ai/nl_utilities.py', 'CLAUDE.md', 'docs/libsql-migration-audit.md')" },
+                    "max_lines": { "type": "INTEGER", "description": "Maximum lines to return (default 200). Use to avoid overwhelming context on large files." }
+                },
+                "required": ["path"]
+            }
+        },
+        {
             "name": "sync_youtube_context",
             "description": "Trigger a background sync to pull the newest technical YouTube videos and save the intelligence to MuninnDB. Provides a high level summary and the Video ID. If Zack asks for more depth on a video, you MUST use the `query_youtube_transcript` tool."
         },
