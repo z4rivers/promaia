@@ -174,9 +174,11 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                     func_res = await handle_tool_call(ft, None, staged_memories)
                     tool_responses.append(func_res)
 
-                    # If the tool errored, mark it so we don't retry
-                    if isinstance(func_res.response, dict) and func_res.response.get("result") in ("error", "no_results_found"):
-                        failed_tools.add(ft.name)
+                    # Only block tools that had internal/server errors, not routine misses
+                    if isinstance(func_res.response, dict):
+                        err_msg = str(func_res.response.get("error", ""))
+                        if func_res.response.get("result") == "error" and "Internal error" in err_msg:
+                            failed_tools.add(ft.name)
 
                 # Add function responses back to history
                 history.append(
