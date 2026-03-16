@@ -187,12 +187,15 @@ async def maia_stream_endpoint(websocket: WebSocket):
     finally:
         active_maia_listeners.remove(websocket)
 
-async def broadcast_maia_activity(text: str):
+async def broadcast_maia_activity(text: str, signal_data: dict = None):
     """Broadcast an activity message to all open Maia widget sessions."""
     dead_sockets = set()
     for ws in active_maia_listeners:
         try:
-            await ws.send_json({"type": "activity", "text": text})
+            if signal_data:
+                await ws.send_json(signal_data)
+            else:
+                await ws.send_json({"type": "activity", "text": text})
         except Exception:
             dead_sockets.add(ws)
     for ws in dead_sockets:
@@ -200,11 +203,12 @@ async def broadcast_maia_activity(text: str):
 
 class BroadcastRequest(BaseModel):
     text: str
+    signal_data: Optional[dict] = None
 
 @router.post("/broadcast")
 async def api_broadcast(req: BroadcastRequest):
     """Endpoint for IDEs and MCP servers to broadcast activity to the dashboard."""
-    await broadcast_maia_activity(req.text)
+    await broadcast_maia_activity(req.text, req.signal_data)
     return {"status": "broadcast_sent"}
 
 class CommitCaptureRequest(BaseModel):

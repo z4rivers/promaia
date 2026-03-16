@@ -635,3 +635,37 @@ CREATE INDEX IF NOT EXISTS idx_property_embeddings_page_id
     ON property_embeddings(page_id);
 CREATE INDEX IF NOT EXISTS idx_property_embeddings_property
     ON property_embeddings(property_name);
+
+-- ============================================================
+-- AGENT SIGNALING: MESSAGES TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_agent TEXT NOT NULL,
+    to_agent TEXT,
+    context_id TEXT,
+    msg_type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT,
+    context TEXT,
+    priority TEXT DEFAULT ''normal'',
+    status TEXT DEFAULT ''new'',
+    reply_to INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    seen_at TIMESTAMP,
+    acked_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_agent, status);
+CREATE INDEX IF NOT EXISTS idx_messages_context ON messages(context_id);
+
+-- ============================================================
+-- AGENT SIGNALING: PRESENCE TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS presence (
+    agent_name TEXT PRIMARY KEY,
+    status TEXT DEFAULT ''offline'',
+    last_active TIMESTAMP,
+    working_on INTEGER,
+    active_files TEXT,
+    session_info TEXT
+);

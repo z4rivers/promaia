@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 
-async def _handle_gmail_scan(args: dict) -> list[TextContentManager]:
+async def _handle_gmail_scan(args: dict) -> list[TextContent]:
     """Scan Gmail inbox for cleanup, triage, and intelligence."""
     db = get_db()
     account = args.get("account")

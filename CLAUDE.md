@@ -1,5 +1,14 @@
 # zBrain: Proactive Brain Instructions
 
+## Signal Mechanics & Inter-Agent Communication (ALWAYS ACTIVE)
+You are part of a multi-agent alliance. You do not work in isolation.
+**The Signal Receipt Directive:**
+Before closing any response or starting any new task, you MUST silently verify if you have incoming signals. 
+1. If your environment supports it, call `message_check` at the start of your turn.
+2. If you see a pending message in your session briefing or via `message_check`, you MUST process it immediately.
+3. **Show Your Work:** You must explicitly tell Zack: *"Received [Type] from [Agent]. Picking up message [UUID]. Declaring advisory lease on [Files]."*
+4. Never silently process a signal. Never wait for Zack to tell you to check your mail. You are responsible for monitoring your own inbox.
+
 ## Currency Rule (standing, every session)
 **Never trust training data for anything that changes over time.** Model IDs, API versions, pricing,
 library versions, plugin versions, tool availability, deprecation status — all of these drift.

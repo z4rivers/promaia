@@ -92,7 +92,22 @@
       "mcp__kapture__screenshot",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:gofastmcp.com)",
-      "Bash(schtasks:*)"
+      "Bash(schtasks:*)",
+      "mcp__brain__ide_activity_broadcast",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:www.analyticsvidhya.com)",
+      "WebFetch(domain:onereach.ai)",
+      "WebFetch(domain:www.gocodeo.com)",
+      "WebFetch(domain:gurusup.com)",
+      "WebFetch(domain:smartscope.blog)",
+      "WebFetch(domain:docs.zencoder.ai)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:a2a-protocol.org)",
+      "WebFetch(domain:www.dolthub.com)",
+      "WebFetch(domain:earezki.com)",
+      "WebFetch(domain:www.shakudo.io)",
+      "WebFetch(domain:www.smashingmagazine.com)",
+      "WebFetch(domain:www.copilotkit.ai)"
     ]
   }
 }

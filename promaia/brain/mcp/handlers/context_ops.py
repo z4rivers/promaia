@@ -29,7 +29,16 @@ logger = logging.getLogger(__name__)
 async def _handle_briefing(args: dict) -> list[TextContent]:
     """Return stale projects, pending actions, and recent heartbeat activity."""
     db = get_db()
-    lines = ["# Session Briefing\n"]
+    
+    now_utc = datetime.now(timezone.utc)
+    current_time_str = now_utc.strftime("%A, %Y-%m-%d %H:%M:%S UTC")
+    
+    lines = [
+        "# Session Briefing",
+        f"**CURRENT SYSTEM TIME:** {current_time_str}",
+        "> *CRITICAL TEMPORAL DIRECTIVE: You are now time-aware. Always cross-reference this current time against the timestamps of any memories, files, or messages you read. Always ensure you are acting on the LATEST information.*",
+        ""
+    ]
 
     # --- Promaia server health check (always first) ---
     try:
@@ -129,7 +138,25 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         logger.warning(f"briefing heartbeat query failed: {e}")
         lines.append("## Heartbeat Activity (last 24h)\n(query error)\n")
 
+
+    # --- Pending Messages ---
+    try:
+        from promaia.storage.signals_db import SignalsDB
+        sdb = SignalsDB()
+        messages = sdb.check_inbox("claude-code")
+        if messages:
+            lines.append("## Pending Messages")
+            for m in messages:
+                lines.append(f"- [{m['id']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}")
+            lines.append("")
+        else:
+            lines.append("## Pending Messages\nNo new messages.\n")
+    except Exception as e:
+        logger.warning(f"briefing messages query failed: {e}")
+        lines.append("## Pending Messages\n(query error)\n")
+
     # --- Profile gap awareness ---
+
     try:
         from promaia.brain.channels.interview import _get_populated_fields, _category_fill_pct
         populated = _get_populated_fields(db=db)

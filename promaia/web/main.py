@@ -26,6 +26,7 @@ from promaia.web.auth import (
 )
 from promaia.web.config import get_config
 from promaia.web.routers import brain as brain_router
+from promaia.web.routers import signals as signals_router
 from promaia.web.routers import chat as chat_router
 from promaia.web.routers import mcp as mcp_router
 from promaia.web.routers import capture as capture_router
@@ -183,6 +184,7 @@ async def logout():
 
 # Include routers
 app.include_router(brain_router.router, prefix="/api/brain", tags=["Brain"])
+app.include_router(signals_router.router, prefix="/api/brain/signals", tags=["Signals"])
 app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(mcp_router.router, prefix="/api", tags=["MCP"])
 app.include_router(capture_router.router, prefix="/api/capture", tags=["Capture"])

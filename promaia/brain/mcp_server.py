@@ -160,7 +160,8 @@ async def list_tools() -> list[Tool]:
             name="search",
             description=(
                 "Semantic vector search across all brain memories. "
-                "Returns the most relevant memories ranked by cosine similarity."
+                "Returns the most relevant memories ranked by cosine similarity. "
+                "CRITICAL: Always check the timestamp of returned results. If the data is old, verify it is still accurate before acting."
             ),
             inputSchema={
                 "type": "object",
@@ -182,7 +183,8 @@ async def list_tools() -> list[Tool]:
             name="recall",
             description=(
                 "Retrieve recent memories, optionally filtered by domain and time range. "
-                "Set has_media=true to ONLY return memories that contain attached files (images/audio/docs)."
+                "Set has_media=true to ONLY return memories that contain attached files (images/audio/docs). "
+                "CRITICAL: Always check the timestamp of returned results. If the data is old, verify it is still accurate before acting."
             ),
             inputSchema={
                 "type": "object",
@@ -214,7 +216,8 @@ async def list_tools() -> list[Tool]:
             name="context",
             description=(
                 "Read the standing directive and current state for a domain. "
-                "Use this to understand what's happening in a specific project."
+                "Use this to understand what's happening in a specific project. "
+                "CRITICAL: Look at the 'Last updated' field. If the context is stale, search for newer information before acting."
             ),
             inputSchema={
                 "type": "object",
@@ -604,6 +607,69 @@ async def list_tools() -> list[Tool]:
                 "required": []
             }
         ),
+
+        Tool(
+            name="message_send",
+            description="Send a message to an agent (or broadcast if to=null).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string"},
+                    "type": {"type": "string", "description": "request, response, correction, heads_up, handoff"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"},
+                    "context": {"type": "string", "description": "JSON payload of state (active_files, etc)"},
+                    "priority": {"type": "string", "description": "normal, high, urgent"}
+                },
+                "required": ["type", "subject"]
+            }
+        ),
+        Tool(
+            name="message_check",
+            description="Check for new messages addressed to me.",
+            inputSchema={"type": "object", "properties": {}, "required": []}
+        ),
+        Tool(
+            name="message_pickup",
+            description="Mark a message as in_progress and update presence. Pass active_files as JSON array to lock files.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "active_files": {"type": "string", "description": "JSON array of file paths"}
+                },
+                "required": ["id"]
+            }
+        ),
+        Tool(
+            name="message_respond",
+            description="Reply to a message (threads via reply_to).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "reply_to": {"type": "integer"},
+                    "body": {"type": "string"},
+                    "type": {"type": "string", "default": "response"},
+                    "context": {"type": "string"}
+                },
+                "required": ["reply_to", "body"]
+            }
+        ),
+        Tool(
+            name="message_thread",
+            description="View full conversation thread.",
+            inputSchema={"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}
+        ),
+        Tool(
+            name="message_done",
+            description="Mark a thread resolved.",
+            inputSchema={"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}
+        ),
+        Tool(
+            name="presence_who",
+            description="Who is online right now and what are they working on?",
+            inputSchema={"type": "object", "properties": {}, "required": []}
+        ),
         Tool(
             name="ide_activity_broadcast",
             description=(
@@ -671,6 +737,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_timeline(arguments)
         elif name == "brain_costs":
             return await _handle_brain_costs(arguments)
+
+        elif name == "message_send": return await _handle_message_send(arguments)
+        elif name == "message_check": return await _handle_message_check(arguments)
+        elif name == "message_pickup": return await _handle_message_pickup(arguments)
+        elif name == "message_respond": return await _handle_message_respond(arguments)
+        elif name == "message_thread": return await _handle_message_thread(arguments)
+        elif name == "message_done": return await _handle_message_done(arguments)
+        elif name == "presence_who": return await _handle_presence_who(arguments)
         elif name == "ide_activity_broadcast":
             import httpx
             async with httpx.AsyncClient() as client:
@@ -702,6 +776,8 @@ from promaia.brain.mcp.handlers.context_ops import _handle_briefing, _handle_con
 from promaia.brain.mcp.handlers.profile_ops import _handle_profile, _handle_update_profile, _handle_onboard, _handle_pc_scan, _handle_timeline
 from promaia.brain.mcp.handlers.gmail_ops import _handle_gmail_scan, _handle_gmail_query
 from promaia.brain.mcp.handlers.muninn_ops import _handle_activate
+from promaia.brain.mcp.handlers.signal_ops import _handle_message_send, _handle_message_check, _handle_message_pickup, _handle_message_respond, _handle_message_thread, _handle_message_done, _handle_presence_who
+
 from promaia.brain.mcp.handlers.metrics_ops import _handle_brain_costs
 
 # ---------------------------------------------------------------------------
