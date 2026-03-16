@@ -20,7 +20,7 @@ async def _handle_read_file(ft) -> types.FunctionResponse:
     """Read a file from the project repo and return its contents."""
     args = ft.args
     rel_path = args.get("path", "").strip()
-    max_lines = int(args.get("max_lines", 200))
+    max_lines = int(args.get("max_lines", 500))
 
     if not rel_path:
         return types.FunctionResponse(

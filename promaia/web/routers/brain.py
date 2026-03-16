@@ -335,7 +335,7 @@ async def api_capture_multimodal(
     document_paths = []
     
     if files:
-        asset_dir = r"E:\promaia_assets\media"
+        asset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "media")
         os.makedirs(asset_dir, exist_ok=True)
         
         for file in files:

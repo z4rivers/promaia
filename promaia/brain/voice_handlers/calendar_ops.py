@@ -117,5 +117,5 @@ async def handle(ft) -> types.FunctionResponse:
             return types.FunctionResponse(
                 name=ft.name,
                 id=ft.id,
-                response={"result": "error_creating_event", "error": str(e)}
+                response={"result": "error_deleting_event", "error": str(e)}
             )

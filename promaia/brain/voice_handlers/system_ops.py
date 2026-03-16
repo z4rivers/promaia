@@ -84,7 +84,7 @@ async def handle(ft, websocket) -> types.FunctionResponse:
             domain_name = args.get("domain")
             if domain_name:
                 domain_row = db.fetch_one(
-                    "SELECT id FROM domains WHERE name = %s",
+                    "SELECT id FROM domains WHERE name = ?",
                     (domain_name,),
                 )
                 if domain_row:
@@ -92,7 +92,7 @@ async def handle(ft, websocket) -> types.FunctionResponse:
             db.execute(
                 """
                 INSERT INTO actions (description, domain_id, status, extracted_at)
-                VALUES (%s, %s, 'pending', datetime('now'))
+                VALUES (?, ?, 'pending', datetime('now'))
                 """,
                 (args.get("description"), domain_id)
             )

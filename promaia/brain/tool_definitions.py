@@ -155,7 +155,7 @@ memory_tools = {
                 "type": "OBJECT",
                 "properties": {
                     "path": { "type": "STRING", "description": "File path relative to project root (e.g. 'promaia/ai/nl_utilities.py', 'CLAUDE.md', 'docs/libsql-migration-audit.md')" },
-                    "max_lines": { "type": "INTEGER", "description": "Maximum lines to return (default 200). Use to avoid overwhelming context on large files." }
+                    "max_lines": { "type": "INTEGER", "description": "Maximum lines to return (default 500). Use to avoid overwhelming context on large files." }
                 },
                 "required": ["path"]
             }
