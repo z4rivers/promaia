@@ -14,6 +14,12 @@ def main():
         run_dev()
         return
 
+    # Fast path: 'python -m promaia whisper ...'
+    if len(sys.argv) > 1 and sys.argv[1] == "whisper":
+        from promaia.cli_whisper import whisper_main
+        whisper_main(sys.argv[2:])
+        return
+
     # Full CLI — load cli.py (not cli/ package) via importlib
     import importlib.util
     import os

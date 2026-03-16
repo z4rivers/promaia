@@ -262,7 +262,8 @@ def apply_brain_schema():
                 message_count INTEGER DEFAULT 0,
                 synthesized INTEGER DEFAULT 0,
                 synthesized_at TEXT,
-                synthesis_memory_id INTEGER REFERENCES memories(id)
+                synthesis_memory_id INTEGER REFERENCES memories(id),
+                active_domain TEXT DEFAULT NULL
             )""",
             """CREATE TABLE IF NOT EXISTS onboarding_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -374,6 +375,11 @@ def apply_brain_schema():
             "CREATE INDEX IF NOT EXISTS idx_audio_review_status ON audio_session_reviews(status, created_at DESC)",
         ]
 
+        # Migrations for existing databases (safe to re-run)
+        migrations = [
+            "ALTER TABLE conversation_sessions ADD COLUMN active_domain TEXT DEFAULT NULL",
+        ]
+
         with db.get_connection() as conn:
             cursor = conn.cursor()
             for stmt in tables:
@@ -388,6 +394,12 @@ def apply_brain_schema():
                 except Exception as e:
                     if 'already exists' not in str(e).lower():
                         logger.warning(f"Brain index warning: {e}")
+            for migration in migrations:
+                try:
+                    cursor.execute(migration)
+                except Exception as e:
+                    if 'duplicate' not in str(e).lower() and 'already exists' not in str(e).lower():
+                        pass  # Column already exists — expected on re-run
             conn.commit()
 
         print("Brain schema applied successfully (libSQL).", file=sys.stderr)

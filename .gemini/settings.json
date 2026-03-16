@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "zbrain": {
+      "url": "http://127.0.0.1:8751/mcp/sse",
+      "type": "sse",
+      "headers": {},
+      "trust": true
+    }
+  }
+}

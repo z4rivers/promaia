@@ -7,7 +7,34 @@
     "enable_ai_editing": true,
     "ai_edit_safety_mode": true
   },
-  "default_workspace": "zbrain",
+  "databases": {
+    "zbrain.gmail_zachary4rivers": {
+      "source_type": "gmail",
+      "database_id": "zachary4rivers@gmail.com",
+      "nickname": "gmail_zachary4rivers",
+      "description": "Zack's primary Gmail account",
+      "workspace": "zbrain",
+      "workspace_scope": "single",
+      "sync_enabled": true,
+      "include_properties": true,
+      "sync_frequency": "daily",
+      "default_days": 3,
+      "default_include": false,
+      "browser_include": true,
+      "last_sync_time": "2026-03-16T15:01:53.805813+00:00",
+      "filters": {},
+      "property_filters": {},
+      "date_filters": {},
+      "markdown_directory": "data/md/gmail/zbrain",
+      "primary_format": "markdown",
+      "save_markdown": true,
+      "sync_subpages": false,
+      "property_mapping": {},
+      "required_properties": [],
+      "excluded_properties": [],
+      "auth": {}
+    }
+  },
   "workspaces": {
     "zbrain": {
       "api_key": "${NOTION_ZACK_API_KEY}",
@@ -23,144 +50,5 @@
       }
     }
   },
-  "databases": {
-    "zbrain.gmail_zachary4rivers": {
-      "source_type": "gmail",
-      "database_id": "zachary4rivers@gmail.com",
-      "nickname": "gmail_zachary4rivers",
-      "description": "Zack's primary Gmail account",
-      "workspace": "zbrain",
-      "sync_enabled": true,
-      "default_days": 3,
-      "markdown_directory": "data/md/gmail/zbrain"
-    }
-  },
-  "agents": [
-    {
-      "name": "morning-briefing",
-      "workspace": "zbrain",
-      "databases": [
-        "gmail_zachary4rivers:1"
-      ],
-      "prompt_file": "prompts/agent_morning_briefing.md",
-      "mcp_tools": [
-        "gmail",
-        "calendar",
-        "google-workspace"
-      ],
-      "max_iterations": 3,
-      "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
-      "enabled": true,
-      "schedule": [
-        [
-          "daily",
-          "06:00"
-        ]
-      ],
-      "interval_minutes": null,
-      "agent_id": "morning-briefing",
-      "notion_page_id": null,
-      "system_prompt_page_id": null,
-      "instructions_db_id": null,
-      "journal_db_id": null,
-      "description": "Daily morning briefing \u00e2\u20ac\u201d calendar, priority emails, brain state",
-      "created_at": null,
-      "last_run_at": "2026-03-15T14:07:28.156734+00:00",
-      "calendar_event_ids": null,
-      "calendar_id": null,
-      "source_access": null,
-      "sdk_enabled": true,
-      "sdk_permission_mode": "bypassPermissions",
-      "sdk_allowed_tools": null,
-      "model": null,
-      "messaging_platform": null,
-      "messaging_channel_id": null,
-      "messaging_enabled": false,
-      "initiate_conversation": false,
-      "conversation_timeout_minutes": 15,
-      "conversation_max_turns": null
-    },
-    {
-      "name": "email-triage",
-      "workspace": "zbrain",
-      "databases": [
-        "gmail_zachary4rivers:1"
-      ],
-      "prompt_file": "prompts/agent_email_triage.md",
-      "mcp_tools": [
-        "gmail",
-        "google-workspace"
-      ],
-      "max_iterations": 3,
-      "output_notion_page_id": "31b72180-6675-81ab-9da5-cbc2aabea6a0",
-      "enabled": true,
-      "schedule": null,
-      "interval_minutes": 480,
-      "agent_id": "email-triage",
-      "notion_page_id": null,
-      "system_prompt_page_id": null,
-      "instructions_db_id": null,
-      "journal_db_id": null,
-      "description": "Scan both Gmail accounts, classify and surface attention items",
-      "created_at": null,
-      "last_run_at": "2026-03-16T02:13:41.781691+00:00",
-      "calendar_event_ids": null,
-      "calendar_id": null,
-      "source_access": null,
-      "sdk_enabled": true,
-      "sdk_permission_mode": "bypassPermissions",
-      "sdk_allowed_tools": null,
-      "model": null,
-      "messaging_platform": null,
-      "messaging_channel_id": null,
-      "messaging_enabled": false,
-      "initiate_conversation": false,
-      "conversation_timeout_minutes": 15,
-      "conversation_max_turns": null
-    },
-    {
-      "name": "evening-digest",
-      "workspace": "zbrain",
-      "databases": [
-        "gmail_zachary4rivers:1"
-      ],
-      "prompt_file": "prompts/agent_evening_digest.md",
-      "mcp_tools": [
-        "gmail",
-        "calendar",
-        "google-workspace"
-      ],
-      "max_iterations": 3,
-      "output_notion_page_id": "31b72180-6675-8175-bd07-cfd6adf48f40",
-      "enabled": true,
-      "schedule": [
-        [
-          "daily",
-          "16:30"
-        ]
-      ],
-      "interval_minutes": null,
-      "agent_id": "evening-digest",
-      "notion_page_id": null,
-      "system_prompt_page_id": null,
-      "instructions_db_id": null,
-      "journal_db_id": null,
-      "description": "Evening summary \u00e2\u20ac\u201d day recap, project momentum, tonight's suggestions",
-      "created_at": null,
-      "last_run_at": "2026-03-15T23:30:19.025039+00:00",
-      "calendar_event_ids": null,
-      "calendar_id": null,
-      "source_access": null,
-      "sdk_enabled": true,
-      "sdk_permission_mode": "bypassPermissions",
-      "sdk_allowed_tools": null,
-      "model": null,
-      "messaging_platform": null,
-      "messaging_channel_id": null,
-      "messaging_enabled": false,
-      "initiate_conversation": false,
-      "conversation_timeout_minutes": 15,
-      "conversation_max_turns": null
-    }
-  ]
+  "default_workspace": "zbrain"
 }

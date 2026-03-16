@@ -107,7 +107,8 @@
       "WebFetch(domain:earezki.com)",
       "WebFetch(domain:www.shakudo.io)",
       "WebFetch(domain:www.smashingmagazine.com)",
-      "WebFetch(domain:www.copilotkit.ai)"
+      "WebFetch(domain:www.copilotkit.ai)",
+      "mcp__brain__gmail_query"
     ]
   }
 }

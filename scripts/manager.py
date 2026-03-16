@@ -242,17 +242,17 @@ def main():
 
         while True:
             time.sleep(2)
-            # If all processes exited cleanly, we should probably stop
             all_stopped = True
             for p in processes:
                 if not p.should_stop:
                     all_stopped = False
                 if not p.check_and_restart():
-                    print(f"FATAL: {p.name} failed to stabilize. Shutting down entire system.")
-                    sys.exit(1)
-                    
+                    # Process exceeded max restarts — mark it dead, but keep others alive
+                    print(f"WARNING: {p.name} failed to stabilize after {MAX_RESTARTS} restarts. Abandoning it.")
+                    p.should_stop = True
+
             if all_stopped:
-                print("All supervised processes have exited cleanly. Shutting down.")
+                print("All supervised processes have stopped. Shutting down.")
                 break
 
     except KeyboardInterrupt:

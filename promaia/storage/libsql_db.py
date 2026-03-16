@@ -150,6 +150,7 @@ class LibSQLDB:
             self._conn.enable_load_extension(False)
             self._conn.execute("PRAGMA journal_mode=WAL;")
             self._conn.execute("PRAGMA synchronous=NORMAL;")
+            self._wrapped_conn = LibSQLConnectionWrapper(self._conn)
             # Verify WAL mode (Phase 1D)
             try:
                 mode_row = self._conn.execute("PRAGMA journal_mode").fetchone()

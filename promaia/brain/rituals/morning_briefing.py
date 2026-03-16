@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from promaia.brain.campfire import get_latest_snapshots
 from promaia.telegram.conversation import _get_genai_client
+from promaia.ai.models import GOOGLE_MODELS
 from google.genai import types
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ async def generate_morning_briefing() -> str:
         )
         
         response = await client.aio.models.generate_content(
-            model="gemini-2.0-flash-lite-preview-02-05",
+            model=GOOGLE_MODELS["flash"],
             contents=prompt
         )
         
