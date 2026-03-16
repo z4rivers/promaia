@@ -456,7 +456,8 @@ async def _handle_timeline(args: dict) -> list[TextContent]:
             elif prec == "month":
                 d = d[:7]
             cat = r.get("category", "")
-            lines.append(f"- **{d}** [{cat}] {r['title']}{' ' + stars if stars else ''}")
+            eid = r.get("id", "?")
+            lines.append(f"- [#{eid}] **{d}** [{cat}] {r['title']}{' ' + stars if stars else ''}")
             if r.get("description"):
                 lines.append(f"  {r['description']}")
         return [TextContent(type="text", text="\n".join(lines))]
@@ -505,5 +506,15 @@ async def _handle_timeline(args: dict) -> list[TextContent]:
                 lines.append(f"  {r['description']}")
         return [TextContent(type="text", text="\n".join(lines))]
 
-    return [TextContent(type="text", text=f"Unknown timeline action: {action}. Use add/list/around.")]
+    elif action == "delete":
+        event_id = args.get("event_id")
+        if not event_id:
+            return [TextContent(type="text", text="Error: event_id is required for 'delete'. Use 'list' to find IDs.")]
+        row = db.fetch_one("SELECT id, title FROM timeline WHERE id = ?", (int(event_id),))
+        if not row:
+            return [TextContent(type="text", text=f"No timeline event with id {event_id}.")]
+        db.execute("DELETE FROM timeline WHERE id = ?", (int(event_id),))
+        return [TextContent(type="text", text=f"Deleted timeline event: {row['title']}")]
+
+    return [TextContent(type="text", text=f"Unknown timeline action: {action}. Use add/list/around/delete.")]
 
