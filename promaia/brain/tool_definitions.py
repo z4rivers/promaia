@@ -115,7 +115,7 @@ memory_tools = {
         },
         {
             "name": "query_workspace",
-            "description": "Query Zack's digital workspace (Notion, Discord, Gmail) to find information, read documents, check on project status, or search for past communications. Call this when Zack asks about a project, a message, a task, or a document. Keep the search query concise.",
+            "description": "Search Zack's stored Notion, Discord, and Gmail data. ONLY call this when Zack explicitly asks to find a specific document, email, message, or task — e.g. 'find my email about X' or 'what's the status of project Y'. Do NOT call this for general conversation, greetings, opinions, or questions you can answer from context. This tool is slow (~10s) so avoid unnecessary calls.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {

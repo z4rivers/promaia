@@ -129,6 +129,7 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
         max_turns = 5
         staged_memories = [] # Tool state
         response_text = None  # Ensure defined even if loop exhausts all turns on tool calls
+        failed_tools = set()  # Track tools that errored to prevent retry loops
 
         for turn in range(max_turns):
             response = await asyncio.wait_for(
@@ -139,31 +140,44 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                 ),
                 timeout=30.0,
             )
-            
+
             if response:
                 _log_cost(response, "maia-web-bridge")
-                
+
             if response.function_calls:
                 # Add the model's tool calls to History so Gemini knows what it asked for
                 history.append(response.candidates[0].content)
-                
+
                 tool_responses = []
                 for ft in response.function_calls:
+                    # Skip tools that already failed — tell Gemini to move on
+                    if ft.name in failed_tools:
+                        logger.warning(f"Skipping retry of failed tool: {ft.name}")
+                        tool_responses.append(types.FunctionResponse(
+                            name=ft.name, id=ft.id,
+                            response={"result": "skipped", "reason": "This tool already failed. Answer without it."}
+                        ))
+                        continue
+
                     if status_callback:
                         await status_callback(f"Executing tool {ft.name}...")
-                        
+
                     func_res = await handle_tool_call(ft, None, staged_memories)
                     tool_responses.append(func_res)
-                    
+
+                    # If the tool errored, mark it so we don't retry
+                    if isinstance(func_res.response, dict) and func_res.response.get("result") in ("error", "no_results_found"):
+                        failed_tools.add(ft.name)
+
                 # Add function responses back to history
                 history.append(
                     types.Content(
-                        role="user", # The tool response is sent as user role in this SDK version or function role
+                        role="user",
                         parts=[types.Part.from_function_response(name=tr.name, response=tr.response) for tr in tool_responses]
                     )
                 )
                 continue # Loop again to let Gemini see the tool result
-                
+
             # If no function calls, we have our final text!
             response_text = response.text if response and response.text else None
             break
