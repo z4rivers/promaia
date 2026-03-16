@@ -63,6 +63,27 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     else:
         lines.append("## Promaia: Online\n")
 
+    # --- Campfire Context (Phase 3 & 5) ---
+    try:
+        from promaia.brain.campfire import get_latest_snapshots
+        snapshots = await get_latest_snapshots(limit=5)
+        if snapshots:
+            # Check for Morning Briefing specifically
+            briefing_snap = next((s for s in snapshots if s['agent'] == 'morning-briefing'), None)
+            if briefing_snap:
+                lines.append("## \u2600\ufe0f Morning Briefing")
+                lines.append(briefing_snap['summary'])
+                lines.append("")
+            
+            lines.append("## \ud83d\udd25 Campfire (Recent Activity)")
+            for s in snapshots:
+                if s['agent'] == 'morning-briefing': continue
+                ts = _fmt_ts(s.get('created_at'))
+                lines.append(f"- **{s['agent'].upper()}** [{ts}]: {s['summary']}")
+            lines.append("")
+    except Exception as e:
+        logger.warning(f"Briefing: Campfire retrieval failed: {e}")
+
     if room_id:
         room = db.fetch_one("SELECT name, topic, artifact_ref FROM rooms WHERE id = ?", (int(room_id),))
         if room:

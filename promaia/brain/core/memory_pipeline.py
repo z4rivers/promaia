@@ -18,13 +18,24 @@ from promaia.brain.muninn import get_muninn
 logger = logging.getLogger(__name__)
 
 def _get_or_create_domain_id(db, domain_name: str) -> int:
-    """Return the domain.id for domain_name, creating it if absent."""
+    """Return the domain.id for domain_name, creating it if absent.
+    Performs case-insensitive check to prevent duplicates.
+    """
+    # Exact match first
     existing = db.fetch_one(
         "SELECT id FROM domains WHERE name = %s",
         (domain_name,),
     )
     if existing:
         return existing['id']
+    
+    # Case-insensitive fuzzy match
+    fuzzy = db.fetch_one(
+        "SELECT id FROM domains WHERE LOWER(name) = LOWER(%s)",
+        (domain_name,),
+    )
+    if fuzzy:
+        return fuzzy['id']
 
     return db.insert_returning(
         "INSERT INTO domains (name) VALUES (%s) RETURNING id",
@@ -58,6 +69,19 @@ async def capture_memory(
     content = content.strip()
     if not content:
         raise ValueError("content is required")
+
+    # Phase 4 Graph Hygiene: Enforce floor and ceiling
+    if len(content) < 80:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Capture dropped: {len(content)} chars is below 80-char floor.")
+        return {"error": "content_too_short", "length": len(content)}
+    
+    if len(content) > 20000:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Capture truncated: {len(content)} chars exceeds 20k ceiling.")
+        content = content[:19900] + "\n\n[TRUNCATED BY PRISM PIPELINE CEILING]"
 
     import json
     assets_combined = []

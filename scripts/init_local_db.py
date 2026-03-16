@@ -294,6 +294,41 @@ CREATE TABLE IF NOT EXISTS audio_session_reviews (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audio_review_status ON audio_session_reviews(status, created_at DESC);
+
+-- ============================================================
+-- staged_memories
+-- ============================================================
+CREATE TABLE IF NOT EXISTS staged_memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT DEFAULT 'zack',
+    surface TEXT NOT NULL,         -- 'voice', 'web', etc.
+    content TEXT NOT NULL,
+    domain TEXT,
+    confidence REAL DEFAULT 0.8,
+    status TEXT DEFAULT 'staged',  -- 'staged', 'committed', 'expired'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_staged_memories_user_status ON staged_memories(user_id, status);
+
+-- ============================================================
+-- session_snapshots (The Campfire)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS session_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent TEXT NOT NULL,           -- 'claude', 'maia', 'voice', 'morning-briefing'
+    session_id TEXT,
+    status TEXT DEFAULT 'complete' CHECK (status IN ('in_progress', 'complete', 'awaiting_review', 'handed_off')),
+    summary TEXT NOT NULL,
+    topics TEXT DEFAULT '[]',      -- JSON array
+    decisions TEXT DEFAULT '[]',   -- JSON array
+    next_steps TEXT DEFAULT '[]',  -- JSON array
+    active_files TEXT DEFAULT '[]',-- JSON array
+    branch TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_agent_recent ON session_snapshots(agent, created_at DESC);
 """
 
 def main():

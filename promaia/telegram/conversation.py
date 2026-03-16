@@ -324,87 +324,11 @@ def _db_context_fallback() -> list[str]:
 # ---------------------------------------------------------------------------
 
 async def _assemble_context(chat_id: int, user_message: str) -> str:
-    """Build maximalist context string from brain sources.
-
-    Order (most important first for Gemini attention):
-    1. User profile (top 15 by confidence)
-    2. Conversation history (last 10 messages)
-    3. Relevant memories (semantic search, top 5)
-    4. Active projects
-    5. Pending actions
+    """Build context string from brain sources.
+    Delegates to the shared brain/context_assembly.py for consistency.
     """
-
-    def _sync_fetch():
-        db = _get_db()
-        parts = []
-
-        # Pending actions (narrative, not a task list)
-        try:
-            actions = db.fetch_all(
-                """
-                SELECT description
-                FROM actions
-                WHERE status = 'pending'
-                ORDER BY extracted_at DESC
-                LIMIT 5
-                """
-            )
-            if actions:
-                action_summary = ". ".join(r['description'] for r in actions)
-                parts.append(f"## Things on his mind\n{action_summary}.")
-        except Exception as e:
-            logger.warning(f"Context assembly: actions query failed: {e}")
-
-        return parts
-
-    # Run sync DB queries in thread
-    parts = await asyncio.to_thread(_sync_fetch)
-
-    # 2. Conversation history (async via brain_ops)
-    try:
-        history = await get_conversation_history(chat_id, limit=10)
-        if history:
-            history_text = "\n".join(
-                f"{r['role'].title()}: {r['content']}" for r in history
-            )
-            # Insert after profile (position 1) for Gemini attention ordering
-            insert_pos = 1 if len(parts) > 0 else 0
-            parts.insert(insert_pos, f"## Recent Conversation\n{history_text}")
-    except Exception as e:
-        logger.warning(f"Context assembly: history query failed: {e}")
-
-    # 3. Relevant memories + Profile + Projects (MuninnDB or database fallback)
-    try:
-        from promaia.brain.muninn import get_muninn
-        muninn = await get_muninn()
-
-        if not muninn:
-            logger.warning("Context assembly: MuninnDB offline. Using database fallback.")
-            fallback_parts = await asyncio.to_thread(_db_context_fallback)
-            parts.extend(fallback_parts)
-        else:
-            history_content = await get_conversation_history(chat_id, limit=3)
-            context_list = [h['content'] for h in history_content] if history_content else []
-            context_list.append(user_message)
-
-            res = await muninn.activate(context=context_list, max_results=15)
-            activations = res.get("activations", [])
-
-            if activations:
-                mem_text = "\n".join(f"- {a['content']}" for a in activations)
-                insert_pos = min(2, len(parts))
-                parts.insert(insert_pos, f"## Cognitive Context (MuninnDB)\n{mem_text}")
-            else:
-                logger.warning("Context assembly: MuninnDB returned empty activations. Using database fallback.")
-                fallback_parts = await asyncio.to_thread(_db_context_fallback)
-                parts.extend(fallback_parts)
-
-    except Exception as e:
-        logger.warning(f"Context assembly: MuninnDB failed: {e}. Using database fallback.")
-        fallback_parts = await asyncio.to_thread(_db_context_fallback)
-        parts.extend(fallback_parts)
-
-    return "\n\n".join(parts)
+    from promaia.brain.context_assembly import assemble_brain_context
+    return await assemble_brain_context(user_message, chat_id=chat_id)
 
 
 # ---------------------------------------------------------------------------

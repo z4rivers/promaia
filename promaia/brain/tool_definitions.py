@@ -178,3 +178,23 @@ memory_tools = {
         }
     ]
 }
+
+# Subset of tools for the Maia Bridge (Output-Only Actions)
+# Restricted to Phase 2 'Context-First' architecture
+output_tools = {
+    "function_declarations": [
+        d for d in memory_tools["function_declarations"]
+        if d["name"] in [
+            "save_conversation_memory",
+            "commit_staged_memories",
+            "create_calendar_event",
+            "delete_calendar_event",
+            "send_email_draft",
+            "switch_cognitive_mode",
+            "hang_up_call",
+            "log_system_feedback",
+            "create_action",
+            "write_content"
+        ]
+    ]
+}

@@ -535,44 +535,31 @@ async def promote_message_to_memory(
 ) -> int:
     """Promote a conversation message to memories.
 
-    Inserts the content as a permanent memory with source='telegram-conversation',
-    generates an embedding, and marks the conversation row as promoted.
+    Uses the unified capture pipeline to extract actions, intelligence,
+    and dual-write to MuninnDB.
     Returns the new memory_id.
     """
+    from promaia.brain.core.memory_pipeline import capture_memory
 
-    def _sync():
+    # Call the unified pipeline
+    result = await capture_memory(
+        db=_get_db(),
+        vector_mgr=_get_vector_mgr(),
+        content=content,
+        session_id=f"promoted-{conversation_id}",
+        domain_name=domain,
+        source="telegram-conversation",
+        confidence=0.8,
+    )
+
+    # Mark conversation message as promoted
+    def _mark():
         db = _get_db()
-
-        # Insert into memories
-        memory_id = db.insert_returning(
-            """
-            INSERT INTO memories (content, domain, source, source_id)
-            VALUES (%s, %s, 'telegram-conversation', 'promoted')
-            RETURNING id
-            """,
-            (content, domain),
-        )
-
-        # Generate embedding and store in content_embeddings
-        try:
-            vector_mgr = _get_vector_mgr()
-            embedding = vector_mgr.generate_embedding(content)
-            embedding_array = json.dumps(embedding)
-            page_id = f"memory:{memory_id}"
-            db.execute("DELETE FROM content_embeddings WHERE page_id = %s AND database_name = 'brain_memories'", (page_id,))
-            db.execute(
-                "INSERT INTO content_embeddings (page_id, content, embedding, database_name, created_at, updated_at) VALUES (%s, %s, %s, 'brain_memories', datetime('now'), datetime('now'))",
-                (page_id, content[:500], embedding_array),
-            )
-        except Exception as e:
-            logger.warning(f"Embedding generation failed for promoted memory {memory_id}: {e}")
-
-        # Mark conversation message as promoted
         db.execute(
             "UPDATE conversations SET promoted = 1 WHERE id = %s",
             (conversation_id,),
         )
+    
+    await asyncio.to_thread(_mark)
 
-        return memory_id
-
-    return await asyncio.to_thread(_sync)
+    return result["memory_id"]

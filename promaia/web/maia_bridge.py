@@ -6,7 +6,6 @@ from google.genai import types
 
 from promaia.ai.models import GOOGLE_MODELS
 from promaia.telegram.conversation import (
-    _assemble_context,
     _get_genai_client,
     get_or_create_session,
     score_impact,
@@ -17,8 +16,9 @@ from promaia.telegram.conversation import (
     _get_known_projects,
     _log_cost
 )
-from promaia.brain.tool_definitions import memory_tools
+from promaia.brain.tool_definitions import output_tools
 from promaia.brain.tool_handlers import handle_tool_call
+from promaia.brain.context_assembly import assemble_brain_context
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +47,36 @@ PERSONALITY_SYSTEM_PROMPT = (
     "things before trying to fix them."
 )
 
+async def _check_escalation(response_text: str, user_message: str) -> Optional[str]:
+    """
+    If Maia is unsure or lacks context, perform a targeted search and return enriched context.
+    Phase 2 Search Escalation logic.
+    """
+    low_confidence_signals = ["not sure", "don't have context", "don't recall", "don't have info", "i don't know"]
+    if any(sig in response_text.lower() for sig in low_confidence_signals):
+        logger.info("Low confidence detected, escalating search...")
+        from promaia.brain.muninn import get_muninn
+        muninn = await get_muninn()
+        if muninn:
+            # Targeted search based on the user's message
+            res = await muninn.activate([user_message], max_results=5)
+            activations = res.get("activations", [])
+            if activations:
+                enriched = "\n\n### Additional Found Context\n"
+                enriched += "\n".join(f"- {a['content']}" for a in activations)
+                return enriched
+    return None
+
 async def generate_maia_response(user_message: str, status_callback=None, image_paths=None, audio_paths=None, document_paths=None) -> str:
     """
     Generate a conversational response for the web dashboard using Gemini.
-    status_callback is an async function that takes a string to update the UI "Active Session" feed.
+    Three-stage pipeline: GATHER -> GENERATE -> PERSIST.
     """
     chat_id = WEB_CHAT_ID
     
+    # 1. GATHER
     if status_callback:
-        await status_callback("Assembling brain context...")
+        await status_callback("GATHERING brain context...")
         
     session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
     known_projects = _get_known_projects()
@@ -65,19 +86,23 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
         chat_id, session_id, "user", user_message, impact_score=impact
     )
 
+    # Auto-promote if high-impact
     if impact >= IMPACT_PROMOTION_THRESHOLD:
         try:
             await promote_message_to_memory(msg_id, user_message)
         except Exception as e:
             logger.warning(f"Failed to promote message {msg_id} to memory: {e}")
 
-    context = await _assemble_context(chat_id, user_message)
+    # Unified context assembly
+    context = await assemble_brain_context(user_message, chat_id=chat_id)
 
+    # 2. GENERATE
     if status_callback:
-        await status_callback("Thinking...")
+        await status_callback("GENERATING response...")
 
     user_parts = [types.Part.from_text(text=f"{context}\n\nUser: {user_message}")]
     
+    # [Asset attachment logic remains same...]
     if image_paths:
         for img_path in image_paths:
             try:
@@ -118,16 +143,11 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
             except Exception as e:
                 logger.error(f"Failed to attach document {doc_path} to Maia context: {e}")
 
-    # We will maintain a conversation history for tool loops
-    history = [
-        types.Content(role="user", parts=user_parts)
-    ]
+    history = [types.Content(role="user", parts=user_parts)]
 
     try:
         client = _get_genai_client()
-        
-        # We need to map the dict schema to types.Tool objects for Gemini 2.0 API
-        gemini_tools = [{"function_declarations": memory_tools["function_declarations"]}]
+        gemini_tools = [{"function_declarations": output_tools["function_declarations"]}]
         
         config = types.GenerateContentConfig(
             system_instruction=PERSONALITY_SYSTEM_PROMPT,
@@ -135,10 +155,9 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
             tools=gemini_tools
         )
         
-        max_turns = 10
-        staged_memories = [] # Tool state
-        response_text = None  # Ensure defined even if loop exhausts all turns on tool calls
-        failed_tools = set()  # Track tools that errored to prevent retry loops
+        max_turns = 4 # Reduced turns as bridge pre-gathers context
+        response_text = None
+        failed_tools = set()
 
         for turn in range(max_turns):
             response = await asyncio.wait_for(
@@ -154,90 +173,91 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                 _log_cost(response, "maia-web-bridge")
 
             if response.function_calls:
-                # Add the model's tool calls to History so Gemini knows what it asked for
                 history.append(response.candidates[0].content)
-
                 tool_responses = []
                 for ft in response.function_calls:
-                    # Skip tools that already failed — tell Gemini to move on
                     if ft.name in failed_tools:
-                        logger.warning(f"Skipping retry of failed tool: {ft.name}")
                         tool_responses.append(types.FunctionResponse(
                             name=ft.name, id=ft.id,
-                            response={"result": "skipped", "reason": "This tool already failed. Answer without it."}
+                            response={"result": "skipped", "reason": "This tool already failed."}
                         ))
                         continue
 
                     if status_callback:
-                        await status_callback(f"Executing tool {ft.name}...")
+                        await status_callback(f"Executing {ft.name}...")
 
-                    func_res = await handle_tool_call(ft, None, staged_memories)
+                    # Staged memories table is now persistent, so we don't need to pass a list
+                    func_res = await handle_tool_call(ft, None, None)
                     tool_responses.append(func_res)
 
-                    # Only block tools that had internal/server errors, not routine misses
                     if isinstance(func_res.response, dict):
-                        err_msg = str(func_res.response.get("error", ""))
-                        if func_res.response.get("result") == "error" and "Internal error" in err_msg:
+                        if func_res.response.get("result") == "error":
                             failed_tools.add(ft.name)
 
-                # Add function responses back to history
                 history.append(
                     types.Content(
                         role="user",
                         parts=[types.Part.from_function_response(name=tr.name, response=tr.response) for tr in tool_responses]
                     )
                 )
-                continue # Loop again to let Gemini see the tool result
+                continue
 
-            # If no function calls, we have our final text!
             response_text = response.text if response and response.text else None
             break
-        else:
-            # Loop exhausted all turns on tool calls — force a text response
-            # by making one final call with tools disabled
-            logger.warning(f"Tool loop exhausted {max_turns} turns, forcing text response")
-            if status_callback:
-                await status_callback("Composing response...")
-            try:
-                no_tools_config = types.GenerateContentConfig(
-                    system_instruction=PERSONALITY_SYSTEM_PROMPT + "\n\nYou have already used your tools. Now respond to the user with what you've learned. Do NOT call any more tools.",
-                    temperature=0.7,
-                    tools=[],
-                    tool_config=types.ToolConfig(
-                        function_calling_config=types.FunctionCallingConfig(mode="NONE")
-                    ),
+        
+        # SEARCH ESCALATION
+        if response_text:
+            enriched_ctx = await _check_escalation(response_text, user_message)
+            if enriched_ctx:
+                if status_callback:
+                    await status_callback("ENRICHING context...")
+                
+                # Re-call Gemini with enriched context
+                history.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+                history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"{enriched_ctx}\n\nBased on this new info, please refine your response.")]))
+                
+                final_res = await client.aio.models.generate_content(
+                    model=GOOGLE_MODELS["flash"],
+                    contents=history,
+                    config=config
                 )
-                final_response = await asyncio.wait_for(
-                    client.aio.models.generate_content(
-                        model=GOOGLE_MODELS["flash"],
-                        contents=history,
-                        config=no_tools_config,
-                    ),
-                    timeout=30.0,
-                )
-                if final_response:
-                    _log_cost(final_response, "maia-web-bridge")
-                response_text = final_response.text if final_response and final_response.text else None
-            except Exception as e:
-                logger.error(f"Final text-only call failed: {e}", exc_info=True)
-                response_text = None
+                if final_res:
+                    _log_cost(final_res, "maia-web-bridge-escalation")
+                    response_text = final_res.text
 
-    except asyncio.TimeoutError:
-        logger.error("Gemini call timed out after 30 seconds")
-        response_text = None
     except Exception as e:
-        logger.error(f"Gemini call failed: {e}", exc_info=True)
-        response_text = None
+        logger.error(f"Maia Bridge GENERATE failed: {e}", exc_info=True)
+        response_text = "I'm having trouble thinking right now. Try again?"
 
+    # 3. PERSIST
     if not response_text:
         response_text = "I'm having trouble thinking right now. Try again?"
 
     try:
-        await save_conversation_message(
-            chat_id, session_id, "assistant", response_text, impact_score=0.0
+        # Score the response itself for impact (Phase 2 requirement)
+        res_impact = score_impact(response_text, known_projects)
+        res_id = await save_conversation_message(
+            chat_id, session_id, "assistant", response_text, impact_score=res_impact
         )
+        
+        # Auto-promote assistant response if high-impact
+        if res_impact >= IMPACT_PROMOTION_THRESHOLD:
+            try:
+                # Source as 'assistant' to allow retrieval penalty in context assembly
+                from promaia.brain.core.memory_pipeline import capture_memory
+                await capture_memory(
+                    db=get_db(),
+                    vector_mgr=VectorDBManager(),
+                    content=response_text,
+                    session_id=f"assistant-{res_id}",
+                    source="assistant",
+                    confidence=0.6 # Lower confidence for machine-generated
+                )
+            except Exception as e:
+                logger.warning(f"Assistant promotion failed: {e}")
+                
     except Exception as e:
-        logger.warning(f"Failed to save assistant response: {e}")
+        logger.warning(f"Failed to persist response: {e}")
 
     if status_callback:
         await status_callback("Idle")

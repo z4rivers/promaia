@@ -685,6 +685,41 @@ async def list_tools() -> list[Tool]:
                 "required": ["text"]
             }
         ),
+        Tool(
+            name="save_snapshot",
+            description="Save a session snapshot to the Campfire for cross-agent continuity. Call this when ending a complex task, finishing a sub-task, or handing off to another agent.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent": {"type": "string", "description": "The current agent (e.g., 'claude')"},
+                    "summary": {"type": "string", "description": "Concise summary of work done"},
+                    "session_id": {"type": "string", "description": "Optional unique session ID"},
+                    "status": {"type": "string", "enum": ["in_progress", "complete", "awaiting_review", "handed_off"], "default": "complete"},
+                    "topics": {"type": "array", "items": {"type": "string"}, "description": "Key topics discussed"},
+                    "decisions": {"type": "array", "items": {"type": "object"}, "description": "List of decisions made: [{decision, confidence}]"},
+                    "next_steps": {"type": "array", "items": {"type": "object"}, "description": "List of next steps: [{step, assigned_to}]"},
+                    "active_files": {"type": "array", "items": {"type": "string"}, "description": "Files modified or researched"},
+                    "branch": {"type": "string", "description": "Current git branch"}
+                },
+                "required": ["summary"]
+            },
+        ),
+        Tool(
+            name="get_snapshots",
+            description="Retrieve the latest session snapshots from the Campfire to see what other agents have been doing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max number of snapshots to return", "default": 5},
+                    "agent": {"type": "string", "description": "Optional: filter by agent name"}
+                }
+            },
+        ),
+        Tool(
+            name="morning_briefing",
+            description="Generate a fresh Morning Briefing by synthesizing snapshots from the last 24 hours.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 
@@ -735,6 +770,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _handle_timeline(arguments)
         elif name == "brain_costs":
             return await _handle_brain_costs(arguments)
+
+        elif name == "save_snapshot":
+            from promaia.brain.mcp.handlers.campfire_ops import handle_save_snapshot
+            res = await handle_save_snapshot(arguments)
+            return [TextContent(type="text", text=json.dumps(res, indent=2))]
+        elif name == "get_snapshots":
+            from promaia.brain.mcp.handlers.campfire_ops import handle_get_snapshots
+            res = await handle_get_snapshots(arguments)
+            return [TextContent(type="text", text=json.dumps(res, indent=2))]
 
         elif name == "message_send": return await _handle_message_send(arguments)
         elif name == "message_check": return await _handle_message_check(arguments)

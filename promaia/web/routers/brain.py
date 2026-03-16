@@ -767,8 +767,32 @@ async def brain_stream(websocket: WebSocket):
                             )
                 except WebSocketDisconnect:
                     logger.info("WebSocket disconnected by client.")
-                except Exception as e:
-                    logger.error(f"Client receive loop error: {e}", exc_info=True)
+                    # AUTO-SNAPSHOT (Phase 3 Campfire)
+                    if transcript_log:
+                        try:
+                            # Generate a quick summary of the session
+                            from promaia.telegram.conversation import _get_genai_client
+                            from google.genai import types
+                            client = _get_genai_client()
+                            
+                            transcript_text = "\n".join([f"{m['role']}: {m['text']}" for m in transcript_log])
+                            prompt = f"Summarize this web chat session for other agents. Include main topics, decisions, and any unresolved next steps. Keep it under 3 sentences.\n\nTRANSCRIPT:\n{transcript_text}"
+                            
+                            res = await client.aio.models.generate_content(
+                                model="gemini-2.0-flash-lite-preview-02-05",
+                                contents=prompt
+                            )
+                            summary = res.text if res and res.text else "Web session ended."
+                            
+                            from promaia.brain.campfire import save_snapshot
+                            await save_snapshot(
+                                agent="maia",
+                                summary=summary,
+                                session_id="web-stream",
+                                topics=[m['text'][:50] for m in transcript_log if m['role'] == 'user'][:5]
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to save auto-snapshot on disconnect: {e}")
 
             # Background task to receive from Gemini (Gemini -> Server -> Browser)
             async def receive_from_gemini():

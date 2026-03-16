@@ -150,8 +150,13 @@ class LibSQLDB:
             self._conn.enable_load_extension(False)
             self._conn.execute("PRAGMA journal_mode=WAL;")
             self._conn.execute("PRAGMA synchronous=NORMAL;")
-            self._wrapped_conn = LibSQLConnectionWrapper(self._conn)
-            logger.info(f"Connected to local libSQL database at {self.db_path}")
+            # Verify WAL mode (Phase 1D)
+            try:
+                mode_row = self._conn.execute("PRAGMA journal_mode").fetchone()
+                mode = mode_row[0] if mode_row else "unknown"
+                logger.info(f"Connected to local libSQL database at {self.db_path} (Journal mode: {mode})")
+            except Exception:
+                logger.info(f"Connected to local libSQL database at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to connect to libSQL database: {str(e)}")
             raise
