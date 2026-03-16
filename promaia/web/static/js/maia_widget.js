@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update Title UI
         const mainTitle = document.getElementById('main-room-title');
         if (mainTitle) {
-            mainTitle.innerHTML = `<span style="color:var(--text-muted); font-weight:normal; font-size:0.8em; cursor:pointer;" onclick="window.enterTopicRoom({id:1, name:'Main Room', topic:''})">← Main</span> &nbsp; ${escapeHtml(room.name)}`;
+            mainTitle.innerHTML = `<span style="color:var(--text-muted); font-weight:normal; font-size:0.8em; cursor:pointer;" onclick="window.enterTopicRoom({id:1, name:'Maia Chat', topic:''})">← Maia Chat</span> &nbsp; ${escapeHtml(room.name)}`;
         }
         
         // Members UI

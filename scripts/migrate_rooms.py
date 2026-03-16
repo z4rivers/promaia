@@ -31,7 +31,7 @@ def migrate_rooms():
     res = db.fetch_all("SELECT id FROM rooms WHERE id = 1")
     if not res:
         logger.info("Seeding Main room (id 1)...")
-        db.execute("INSERT INTO rooms (id, name, room_type, created_by) VALUES (1, 'Main', 'main', 'zack')")
+        db.execute("INSERT INTO rooms (id, name, room_type, created_by) VALUES (1, 'Maia Chat', 'main', 'zack')")
         
     # 3. Create room_members table
     logger.info("Creating room_members table...")
