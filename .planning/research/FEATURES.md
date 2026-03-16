@@ -14,16 +14,16 @@ These are the baseline behaviors that make the system feel like an AI brain rath
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Persistent cross-session memory | Core value prop — without this the system is just another chatbot | MEDIUM | Brain schema in Supabase. Memories, domains, contexts tables. Depends on Postgres migration completing first. |
+| Persistent cross-session memory | Core value prop — without this the system is just another chatbot | MEDIUM | Brain schema in Railway Volumes. Memories, domains, contexts tables. Depends on libSQL/MuninnDB migration completing first. |
 | Session startup briefing | Users expect an "AI assistant" to orient them, not require them to re-explain everything | MEDIUM | On `maia chat` start: query brain for open actions, recent domains, stale projects. Format as brief summary. Time-boxed to <5 seconds. |
 | Action extraction from conversations | Users assume the AI will notice when they say "I need to do X" and remember it | MEDIUM | Post-conversation pass (async, not blocking). LLM prompt over transcript to extract commitments. Store to `brain.actions`. |
-| Cloud access from any device | Any "personal brain" tool must work from phone — desktop-only feels broken | MEDIUM | Supabase REST API. No bespoke mobile app needed for v1 — claude.ai on iPhone hits brain via MCP or REST. |
+| Cloud access from any device | Any "personal brain" tool must work from phone — desktop-only feels broken | MEDIUM | Railway Volumes REST API. No bespoke mobile app needed for v1 — claude.ai on iPhone hits brain via MCP or REST. |
 | Stale project / dormant alert | Users expect the brain to proactively notice what's been neglected | LOW-MEDIUM | Simple: query `brain.domains` for last-touched timestamp > threshold. Alert on startup briefing or heartbeat. |
 | Standing directives per project | Users want to tell the AI once "always do X for project Y" and not repeat it | LOW | Static config per domain/project. Read at session start. Injected into system prompt for relevant context. |
 
 ### Differentiators (Competitive Advantage)
 
-These are what make zBrain meaningfully different from generic AI memory tools like MemSync, AI Context Flow, or a plain Postgres + Claude setup.
+These are what make zBrain meaningfully different from generic AI memory tools like MemSync, AI Context Flow, or a plain libSQL/MuninnDB + Claude setup.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
@@ -50,7 +50,7 @@ These are what make zBrain meaningfully different from generic AI memory tools l
 ## Feature Dependencies
 
 ```
-[Postgres + pgvector migration]
+[libSQL/MuninnDB + pgvector migration]
     └──required by──> [Brain schema creation]
                           └──required by──> [Session briefing]
                           └──required by──> [Action extraction]
@@ -83,7 +83,7 @@ These are what make zBrain meaningfully different from generic AI memory tools l
 
 ### Dependency Notes
 
-- **Postgres migration is the critical path blocker:** Every single new feature depends on the brain schema, which depends on Supabase being the target. Daughter's `postgres-sql-changeover` branch is 70% done — completing this unlocks everything else.
+- **libSQL/MuninnDB migration is the critical path blocker:** Every single new feature depends on the brain schema, which depends on Railway Volumes being the target. Daughter's `libsql-changeover` branch is 70% done — completing this unlocks everything else.
 - **Session briefing validates the schema before heartbeat:** Build and use session briefing first. It exercises the same queries heartbeat will use (open actions, stale domains, directives) but in a synchronous, inspectable way. Heartbeat adds autonomous execution on top of validated reads.
 - **Model routing is infrastructure, not a user feature:** It should be built alongside or just before brain ingestion, since ingestion has the most varied task types (embedding, summarization, classification). Routing can be a simple lookup table — don't over-engineer a classifier.
 - **Brain ingestion is independent of heartbeat timing:** Ingestion can be triggered manually (`maia ingest youtube [url]`) before the heartbeat loop is automated. This lets Zack build up memory content without waiting for full automation.
@@ -96,7 +96,7 @@ These are what make zBrain meaningfully different from generic AI memory tools l
 
 The goal is to eliminate the amnesia problem and have the brain actively working overnight. Every item below is blocking that.
 
-- [ ] **Postgres + pgvector on Supabase** — all other features are blocked without this. Complete daughter's migration branch, retarget to Supabase `brain` schema.
+- [ ] **libSQL/MuninnDB + pgvector on Railway Volumes** — all other features are blocked without this. Complete daughter's migration branch, retarget to Railway Volumes `brain` schema.
 - [ ] **Brain schema** — `memories`, `domains`, `contexts`, `actions`, `reviews`, `reports` tables. Schema is the data contract everything else reads/writes.
 - [ ] **Session startup briefing** — fires automatically on `maia chat`. Shows: open actions, stale domains, overnight report if present, active directives. Under 5 seconds.
 - [ ] **Action extraction** — post-session async pass. LLM reads transcript, extracts commitments, writes to `brain.actions`. Manual trigger: `maia reflect`.
@@ -106,7 +106,7 @@ The goal is to eliminate the amnesia problem and have the brain actively working
 - [ ] **Brain ingestion: YouTube** — `maia ingest youtube [url]`. Transcript → chunk → embed → store with source metadata.
 - [ ] **Brain ingestion: web** — `maia ingest web [url]`. Fetch → extract text → chunk → embed → store.
 - [ ] **Heartbeat agent** — Windows Task Scheduler + Python script. Scan open actions → pick one task → execute → write report. Runs 2 AM–6 AM window only. HEARTBEAT.md checklist for directives.
-- [ ] **iPhone access** — Supabase cloud means the brain is already accessible. Verify claude.ai + MCP or REST endpoint works from iPhone for day-1.
+- [ ] **iPhone access** — Railway Volumes cloud means the brain is already accessible. Verify claude.ai + MCP or REST endpoint works from iPhone for day-1.
 
 ### Add After Validation (v1.1)
 
@@ -115,7 +115,7 @@ Add these once v1.0 is stable and the schema has proven reliable.
 - [ ] **Google Calendar integration** — already flagged as v1.1 priority in PROJECT.md. Briefing includes today's schedule. Heartbeat can pre-research meeting topics.
 - [ ] **Email/message triage** — Gmail scanning in heartbeat. Flag urgent emails, draft replies. Needs brain foundation to be stable first.
 - [ ] **Brain ingestion: documents** — `maia ingest doc [path]`. PDF/text → chunk → embed. Needed for Zack's HVAC sales materials and research docs.
-- [ ] **Obsidian sync** — brain as Obsidian vault. Review layer on top of Postgres brain. Nice-to-have, not blocking.
+- [ ] **Obsidian sync** — brain as Obsidian vault. Review layer on top of libSQL/MuninnDB brain. Nice-to-have, not blocking.
 - [ ] **Heartbeat work queue** — priority-ranked backlog of things for the overnight agent to tackle. Currently heartbeat picks ad-hoc; queue makes it systematic.
 
 ### Future Consideration (v2+)
@@ -134,7 +134,7 @@ Defer until zBrain v1.0 is stable and the collaboration model with daughter's Pr
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Postgres + pgvector migration | HIGH (unblocks everything) | MEDIUM (70% done, retarget Supabase) | P1 |
+| libSQL/MuninnDB + pgvector migration | HIGH (unblocks everything) | MEDIUM (70% done, retarget Railway Volumes) | P1 |
 | Brain schema | HIGH (data contract) | LOW (design + SQL) | P1 |
 | Session startup briefing | HIGH (core value: no amnesia) | MEDIUM (query + format + inject) | P1 |
 | Action extraction | HIGH (captures commitments automatically) | MEDIUM (async LLM pass over transcript) | P1 |
@@ -143,7 +143,7 @@ Defer until zBrain v1.0 is stable and the collaboration model with daughter's Pr
 | Gemini model routing | MEDIUM (cost control, Gemini as specialist) | LOW (routing table in model adapter) | P1 |
 | Brain ingestion: YouTube | HIGH (Zack's primary research format) | MEDIUM (transcript API + chunking pipeline) | P1 |
 | Heartbeat agent | HIGH (works while sleeping) | HIGH (scheduler + loop + safety guards) | P1 |
-| iPhone access verification | HIGH (day-1 requirement) | LOW (Supabase cloud already provides this) | P1 |
+| iPhone access verification | HIGH (day-1 requirement) | LOW (Railway Volumes cloud already provides this) | P1 |
 | Brain ingestion: web | MEDIUM | MEDIUM | P2 |
 | Brain ingestion: documents | MEDIUM (HVAC research) | MEDIUM | P2 |
 | Google Calendar integration | MEDIUM | MEDIUM | P2 |
@@ -165,13 +165,13 @@ Defer until zBrain v1.0 is stable and the collaboration model with daughter's Pr
 | Feature | OpenClaw Heartbeat | Nate Jones Open Brain | zBrain Approach |
 |---------|--------------------|-----------------------|-----------------|
 | Proactive agent loop | HEARTBEAT.md checklist, every 30min | Not documented | Windows Task Scheduler + Python, HEARTBEAT.md pattern, overnight-only window |
-| Memory storage | File-based MEMORY.md | Postgres + pgvector | Supabase `brain` schema, pgvector, structured tables |
+| Memory storage | File-based MEMORY.md | libSQL/MuninnDB + pgvector | Railway Volumes `brain` schema, pgvector, structured tables |
 | Session briefing | Not native (external integration) | Not documented | Built-in: fires on `maia chat` start, pulls from brain schema |
 | Model routing | Single model (Claude) | Single model (Claude) | Task-based routing table: Gemini Flash for cheap tasks, Claude for reasoning |
 | Ingestion sources | Files, web via skills | Manual capture | YouTube transcript, web fetch, docs, existing Notion/Gmail/Discord (Promaia) |
 | Standing directives | HEARTBEAT.md global directives | Not documented | Per-domain directives in `brain.domains`, injected at session start |
 | Action extraction | Not automatic | Not documented | Async post-session LLM pass over transcript |
-| iPhone access | Via Telegram bot | Via claude.ai | Supabase cloud + claude.ai MCP on iPhone |
+| iPhone access | Via Telegram bot | Via claude.ai | Railway Volumes cloud + claude.ai MCP on iPhone |
 | Work reporting | Alert on condition | Not documented | Structured report written to `brain.reports`, surfaced in next briefing |
 
 ---
@@ -198,7 +198,7 @@ These existing Promaia features are directly reused or extended — no rebuild n
 - [OpenClaw Heartbeat Official Docs](https://docs.openclaw.ai/gateway/heartbeat)
 - [Autonomous AI Dev Teams: Heartbeats, Work Queues — Medium](https://medium.com/@chen.yang_50796/autonomous-ai-dev-teams-heartbeats-work-queues-and-self-managing-agents-0fad942580e9)
 - [Self-Evolving AI Agent 59 Overnight Rounds — DEV Community](https://dev.to/terryfyl/i-built-a-self-evolving-ai-agent-that-ran-59-exploration-rounds-overnight-4jcj)
-- [Supabase pgvector Docs](https://supabase.com/docs/guides/database/extensions/pgvector)
+- [Railway Volumes pgvector Docs](https://railway_volumes.com/docs/guides/database/extensions/pgvector)
 - [YouTube Transcripts to Knowledge Base — CustomGPT](https://customgpt.ai/ingest-youtube-video-data-ai-knowledge-base/)
 - [Gemini 2.5 Flash vs Claude 4.5 Haiku — Appaca](https://www.appaca.ai/resources/llm-comparison/gemini-2.5-flash-vs-claude-4.5-haiku)
 - [Proactive AI in 2026 — Alpha Sense](https://www.alpha-sense.com/resources/research-articles/proactive-ai/)

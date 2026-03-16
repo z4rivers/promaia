@@ -7,7 +7,7 @@ tags: [pgvector, google-genai, gemini-embedding-001, vector-search, chromadb-rem
 # Dependency graph
 requires:
   - phase: 01-postgres-foundation plan 01
-    provides: PostgresDB singleton, content_embeddings and property_embeddings tables with vector(768) columns and HNSW indexes
+    provides: libSQL/MuninnDBDB singleton, content_embeddings and property_embeddings tables with vector(768) columns and HNSW indexes
 provides:
   - pgvector-backed VectorDBManager with gemini-embedding-001 embeddings
   - Codebase-wide migration from google-generativeai to google-genai SDK
@@ -20,7 +20,7 @@ tech-stack:
   added: [google-genai>=1.65.0, pgvector>=0.4.2]
   removed: [chromadb==0.5.23, google-generativeai, sentence-transformers==3.3.1, posthog]
   patterns:
-    - "VectorDBManager uses pgvector SQL via PostgresDB singleton (no ChromaDB)"
+    - "VectorDBManager uses pgvector SQL via libSQL/MuninnDBDB singleton (no ChromaDB)"
     - "Embedding generation via google-genai Client with gemini-embedding-001 (768 dims)"
     - "register_vector(conn) called per-connection for pgvector type registration"
     - "GeminiModelAdapter wraps google-genai Client to provide old GenerativeModel interface"
@@ -70,7 +70,7 @@ completed: 2026-03-04
 - **Files modified:** 8
 
 ## Accomplishments
-- VectorDBManager fully rewritten to use pgvector SQL via PostgresDB singleton for all vector operations (search, add, delete, stats)
+- VectorDBManager fully rewritten to use pgvector SQL via libSQL/MuninnDBDB singleton for all vector operations (search, add, delete, stats)
 - All embedding generation now uses google-genai SDK with gemini-embedding-001 model (768-dim vectors)
 - 6 source files migrated from deprecated google-generativeai to google-genai SDK
 - GeminiModelAdapter compatibility class enables existing callers to work without rewriting deeply-nested code paths
@@ -84,7 +84,7 @@ Each task was committed atomically:
 2. **Task 2: Migrate google-generativeai to google-genai SDK, update requirements.txt** - `56c5006` (feat)
 
 ## Files Created/Modified
-- `promaia/storage/vector_db.py` - Complete rewrite: pgvector SQL via PostgresDB singleton, gemini-embedding-001 embeddings
+- `promaia/storage/vector_db.py` - Complete rewrite: pgvector SQL via libSQL/MuninnDBDB singleton, gemini-embedding-001 embeddings
 - `promaia/ai/nl_orchestrator.py` - google-genai SDK migration for PromaiLLMAdapter
 - `promaia/chat/interface.py` - google-genai SDK migration + GeminiModelAdapter class (8700+ line file, 4 call sites updated)
 - `promaia/write/interface.py` - google-genai SDK migration for Gemini blog writing path
@@ -120,7 +120,7 @@ Each task was committed atomically:
 - Windows cp1252 encoding issue in verification script when scanning Python files -- resolved by using `encoding='utf-8', errors='ignore'` for file reads
 
 ## User Setup Required
-None -- all changes are code-level. Supabase tables were already deployed in Plan 01.
+None -- all changes are code-level. Railway Volumes tables were already deployed in Plan 01.
 
 ## Next Phase Readiness
 - ChromaDB fully replaced with pgvector -- vector_db.py is ready for production use

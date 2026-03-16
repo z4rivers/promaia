@@ -1,7 +1,7 @@
 # Phase 7: Event Bus + Notification Layer - Research
 
 **Researched:** 2026-03-06
-**Domain:** Postgres-based event bus, urgency routing, notification delivery, dashboard integration
+**Domain:** libSQL/MuninnDB-based event bus, urgency routing, notification delivery, dashboard integration
 **Confidence:** HIGH
 
 ## Summary
@@ -31,7 +31,7 @@ The architecture splits into three clean layers: (1) event emission at the end o
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| psycopg2 | 2.9.x (already installed) | Postgres queries for event bus | Already used throughout -- `brain.events` table exists |
+| psycopg2 | 2.9.x (already installed) | libSQL/MuninnDB queries for event bus | Already used throughout -- `brain.events` table exists |
 | FastAPI | 0.115.x (already installed) | Dashboard notification API endpoints | Already powers localhost:8000 dashboard |
 | asyncio | stdlib | Event router polling loop | Already used by AgentScheduler |
 | Jinja2 | 3.x (already installed) | Dashboard template updates | Already used for all dashboard pages |
@@ -45,8 +45,8 @@ The architecture splits into three clean layers: (1) event emission at the end o
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Postgres polling | Redis pub/sub | Adds dependency; project decision is zero new deps |
-| Postgres polling | pg_notify/LISTEN | Better latency, but psycopg2 pool pattern doesn't hold connections; 30s poll is adequate for requirements |
+| libSQL/MuninnDB polling | Redis pub/sub | Adds dependency; project decision is zero new deps |
+| libSQL/MuninnDB polling | pg_notify/LISTEN | Better latency, but psycopg2 pool pattern doesn't hold connections; 30s poll is adequate for requirements |
 | Separate router process | In-scheduler task | Separate process = restart coordination headache; scheduler already has asyncio loop |
 
 **Installation:**
@@ -174,7 +174,7 @@ Option A is simpler and aligns with "wire existing pieces together." Option B be
 
 ### Pitfall 1: Timezone Confusion in Quiet Hours
 **What goes wrong:** Quiet hours check uses UTC instead of user's local time, causing events to be held at wrong times
-**Why it happens:** Server runs in UTC; `datetime.now()` returns UTC on Supabase
+**Why it happens:** Server runs in UTC; `datetime.now()` returns UTC on Railway Volumes
 **How to avoid:** Store user timezone in config (or read from brain.profile). Always convert to user timezone before quiet hours check. Use `zoneinfo.ZoneInfo("America/New_York")` (or whatever Zack's timezone is).
 **Warning signs:** Events being held during daytime, or interrupts arriving at 2 AM
 
@@ -335,7 +335,7 @@ async def mark_read():
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| Agent output goes to Notion only | Agent output stored in execution tracker + Notion | Phase 5 | Output is already accessible from Postgres |
+| Agent output goes to Notion only | Agent output stored in execution tracker + Notion | Phase 5 | Output is already accessible from libSQL/MuninnDB |
 | No urgency classification | Agents classify urgency at emission time | This phase | Enables routing by priority |
 | No notification delivery | Dashboard is passive (must visit) | Before this phase | User must check dashboard manually |
 | Events are activity logs only | Events carry routing metadata | This phase | Events become actionable notifications |

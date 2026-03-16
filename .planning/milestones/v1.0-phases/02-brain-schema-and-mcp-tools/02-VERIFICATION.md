@@ -11,12 +11,12 @@ human_verification:
   - test: "Say 'I need to update the calculator pricing' and observe the response"
     expected: "Claude calls mcp__brain__capture, response includes 'Captured. Extracted 1 action(s).' — confirms action extraction pipeline is live (Gemini Flash API call)"
     why_human: "Requires live GOOGLE_API_KEY, active Gemini Flash connection, and real extraction — cannot verify API round-trip from files alone"
-  - test: "Confirm brain schema tables exist in Supabase Dashboard"
+  - test: "Confirm brain schema tables exist in Railway Volumes Dashboard"
     expected: "7 tables visible in Table Editor: brain.memories, brain.domains, brain.contexts, brain.actions, brain.reviews, brain.events, brain.modes"
-    why_human: "Schema is applied at runtime via apply_brain_schema() — file existence and SQL content are verified but actual Supabase deployment requires human confirmation"
-  - test: "Run 'python -m promaia.brain.seed' and verify 10 domains and 5 contexts in Supabase"
-    expected: "seed.py runs without error, Supabase brain.domains shows 10 rows, brain.contexts shows 5 rows with directives"
-    why_human: "Requires live DATABASE_URL connection to Supabase — cannot verify actual row presence from files"
+    why_human: "Schema is applied at runtime via apply_brain_schema() — file existence and SQL content are verified but actual Railway Volumes deployment requires human confirmation"
+  - test: "Run 'python -m promaia.brain.seed' and verify 10 domains and 5 contexts in Railway Volumes"
+    expected: "seed.py runs without error, Railway Volumes brain.domains shows 10 rows, brain.contexts shows 5 rows with directives"
+    why_human: "Requires live DATABASE_URL connection to Railway Volumes — cannot verify actual row presence from files"
 ---
 
 # Phase 2: Brain Schema and MCP Tools Verification Report
@@ -80,8 +80,8 @@ human_verification:
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `promaia/storage/db_init.py` | `promaia/brain/schema.sql` | reads SQL file and executes against Postgres | WIRED | `get_brain_schema_path()` returns `Path(__file__).parent.parent / "brain" / "schema.sql"`, opened and split/executed in `apply_brain_schema()` |
-| `promaia/brain/engine.py` | `promaia/storage/postgres_db.py` | imports PostgresDB for SQL queries | WIRED | Lazy import `from promaia.storage.postgres_db import get_postgres_db` inside each DB-touching function (track_time, budget_check, save_context, restore_context) |
+| `promaia/storage/db_init.py` | `promaia/brain/schema.sql` | reads SQL file and executes against libSQL/MuninnDB | WIRED | `get_brain_schema_path()` returns `Path(__file__).parent.parent / "brain" / "schema.sql"`, opened and split/executed in `apply_brain_schema()` |
+| `promaia/brain/engine.py` | `promaia/storage/postgres_db.py` | imports libSQL/MuninnDBDB for SQL queries | WIRED | Lazy import `from promaia.storage.postgres_db import get_postgres_db` inside each DB-touching function (track_time, budget_check, save_context, restore_context) |
 
 ### Plan 02-02 Key Links
 
@@ -139,20 +139,20 @@ No blocker anti-patterns found.
 ### 2. Action Extraction Pipeline (Live API)
 
 **Test:** In a Claude Code session with brain connected, say "I need to update the Heatpup calculator pricing to include the new Mitsubishi rebates."
-**Expected:** Claude calls `mcp__brain__capture` with the content. Response is "Captured. Extracted 1 action(s)." The extracted action is stored in `brain.actions` in Supabase.
+**Expected:** Claude calls `mcp__brain__capture` with the content. Response is "Captured. Extracted 1 action(s)." The extracted action is stored in `brain.actions` in Railway Volumes.
 **Why human:** Requires live `GOOGLE_API_KEY`, active Gemini Flash API call, and successful instructor or raw-Gemini extraction. The code path is verified but the API round-trip cannot be tested from files.
 
-### 3. Brain Schema Deployed to Supabase
+### 3. Brain Schema Deployed to Railway Volumes
 
-**Test:** Run `python -m promaia.storage.db_init init-brain` from the repo root. Open Supabase Dashboard -> Table Editor.
+**Test:** Run `python -m promaia.storage.db_init init-brain` from the repo root. Open Railway Volumes Dashboard -> Table Editor.
 **Expected:** 7 tables visible in the `brain` schema: memories, domains, contexts, actions, reviews, events, modes. No error in terminal output.
-**Why human:** `apply_brain_schema()` is fully implemented and wired, but actual Supabase deployment requires a live DATABASE_URL connection. The schema SQL and the function are both verified in code.
+**Why human:** `apply_brain_schema()` is fully implemented and wired, but actual Railway Volumes deployment requires a live DATABASE_URL connection. The schema SQL and the function are both verified in code.
 
-### 4. Seed Data Populated in Supabase
+### 4. Seed Data Populated in Railway Volumes
 
-**Test:** Run `python -m promaia.brain.seed`. Check Supabase Dashboard -> brain.domains (should show 10 rows) and brain.contexts (should show 5 rows with directives).
+**Test:** Run `python -m promaia.brain.seed`. Check Railway Volumes Dashboard -> brain.domains (should show 10 rows) and brain.contexts (should show 5 rows with directives).
 **Expected:** 10 domains: Heatpup, HVAC Brand, PURRfoot, Promaia, zBrain, Catpool, Hopecookie, Maybecat, HVAC Work, Personal. 5 contexts with directives for the 5 project domains.
-**Why human:** Seed data and seed script are fully verified in code. Actual Supabase row presence requires live connection confirmation.
+**Why human:** Seed data and seed script are fully verified in code. Actual Railway Volumes row presence requires live connection confirmation.
 
 ---
 

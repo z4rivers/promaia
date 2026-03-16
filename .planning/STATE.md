@@ -42,7 +42,7 @@ Progress: [████████░░] 88%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01. Postgres Foundation | 3 | -- | -- |
+| 01. libSQL/MuninnDB Foundation | 3 | -- | -- |
 | 02. Brain Schema + MCP | 3 | -- | -- |
 | 03.1 Onboarding Module | 3 | -- | -- |
 | 04. Platform Activation | 1 | -- | -- |
@@ -73,7 +73,7 @@ Progress: [████████░░] 88%
 
 ## Known Issues (Phase 5 targets)
 
-- ~~Gmail context loads from .md files~~ FIXED: Postgres fallback in load_content_by_page_ids
+- ~~Gmail context loads from .md files~~ FIXED: libSQL/MuninnDB fallback in load_content_by_page_ids
 - ~~SQL dialect bugs: jsonb operators~~ FIXED: GIN index + type documentation
 - Agent token tracking shows $0.00 in legacy mode
 - MuninnDB embeddings broken (text-embedding-004 deprecated)
@@ -87,11 +87,11 @@ Recent decisions affecting current work:
 
 - v2.0: Linear phase dependency (5->6->7->8->9->10) -- each phase builds on prior
 - v2.0: Telegram over Twilio for mobile channel (free, excellent bot API)
-- v2.0: Postgres polling as event bus (zero new dependencies)
+- v2.0: libSQL/MuninnDB polling as event bus (zero new dependencies)
 - v2.0: Gemini for cheap agent tasks, Opus reserved for reasoning
 - 05-02: 480-min interval for email-triage (3x/day) rather than time-of-day scheduling
 - 05-02: Grounding Rules section placed before content instructions with override priority
-- 05-01: Gmail Postgres fallback activates only when md_file is None AND entry is Gmail
+- 05-01: Gmail libSQL/MuninnDB fallback activates only when md_file is None AND entry is Gmail
 - 05-01: GIN index replaces B-tree on gmail_labels for proper JSONB operator support
 - 05-03: Human-verified agent output quality -- all three agents approved with zero hallucination
 - 05-03: morning-briefing inferring "Office day" from profile data (not calendar) accepted as valid

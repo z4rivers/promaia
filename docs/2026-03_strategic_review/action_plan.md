@@ -18,7 +18,7 @@
 *Addressing the deepest fragilities before adding weight.*
 
 4. **Unify the Memory Pipeline (Fix: Split Brain)**
-   - **Action:** Refactor `brain.py`'s voice commit to use the same logic as MCP's `_handle_capture` (write to Postgres -> generate embeddings -> extract insights -> dual-write to MuninnDB).
+   - **Action:** Refactor `brain.py`'s voice commit to use the same logic as MCP's `_handle_capture` (write to libSQL/MuninnDB -> generate embeddings -> extract insights -> dual-write to MuninnDB).
 5. **Split the MCP Monolith**
    - **Opus Catch:** `mcp_server.py` is 2,188 lines. Break it down into modular tool handlers before it collapses under its own weight.
 6. **Implement the "Subconscious" Heartbeat**

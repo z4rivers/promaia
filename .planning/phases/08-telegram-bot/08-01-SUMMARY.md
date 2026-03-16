@@ -80,7 +80,7 @@ Each task was committed atomically:
 ## Files Created/Modified
 - `promaia/telegram/__init__.py` - Package init
 - `promaia/telegram/auth.py` - WhitelistMiddleware (loads chat IDs from TELEGRAM_WHITELIST env var)
-- `promaia/telegram/brain_ops.py` - 5 async brain ops wrapping Postgres queries in asyncio.to_thread()
+- `promaia/telegram/brain_ops.py` - 5 async brain ops wrapping libSQL/MuninnDB queries in asyncio.to_thread()
 - `promaia/telegram/formatting.py` - Message splitting at 4096-char limit with paragraph/line fallback
 - `promaia/telegram/bot.py` - Dispatcher setup, middleware + router registration, polling with BackoffConfig
 - `promaia/telegram/handlers/__init__.py` - Handlers package init

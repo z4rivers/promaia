@@ -30,7 +30,7 @@ All changes are on branch: `2025-10-19-1647-maia-mail-main`
 
 ### 2. `promaia/mail/draft_chat.py`
 
-**Artifact Rendering (render_artifact)**
+**Artifact Railwaying (render_artifact)**
 - **Before**: Complex box rendering with `╭─╮│╰╯` characters and manual line wrapping/padding
 - **After**: Simple format with draft number, separator lines, and clean content
 - **Result**: Draft artifacts are now minimal and copy cleanly

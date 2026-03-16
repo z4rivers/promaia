@@ -19,7 +19,7 @@ re_verification: false
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Sending a text message to the bot from a whitelisted Telegram account gets a brain-powered response | VERIFIED | WhitelistMiddleware in auth.py checks chat.id against TELEGRAM_WHITELIST env var; matching messages proceed to command/message handlers that call brain_ops functions querying Postgres directly |
+| 1 | Sending a text message to the bot from a whitelisted Telegram account gets a brain-powered response | VERIFIED | WhitelistMiddleware in auth.py checks chat.id against TELEGRAM_WHITELIST env var; matching messages proceed to command/message handlers that call brain_ops functions querying libSQL/MuninnDB directly |
 | 2 | Messages from unknown users are silently dropped (no error, no response) | VERIFIED | auth.py line 43-45: `if event.chat.id not in self.allowed: return` -- no log, no reply, bare return |
 | 3 | /briefing returns the current morning briefing; /search, /capture, /projects, /actions work against live brain data | VERIFIED | commands.py has handlers for all 5 commands, each calling the corresponding brain_ops async function (get_briefing, search_brain, capture_memory, get_actions, get_projects) which execute real SQL against brain.memories/actions/contexts/events via get_postgres_db() |
 | 4 | Sending a voice note produces a text transcription and a brain response based on that transcription | VERIFIED | voice.py downloads OGG via bot.get_file/download_file, transcribes via Deepgram AsyncDeepgramClient Nova-3, replies "Heard: {transcript}", then calls capture_memory(transcript). Graceful degradation when DEEPGRAM_API_KEY is missing. |
@@ -33,7 +33,7 @@ re_verification: false
 |----------|----------|--------|-------|-----|---------|
 | `promaia/telegram/bot.py` | Dispatcher setup, router registration, polling with BackoffConfig | VERIFIED | 54 | 40 | Creates Bot+Dispatcher, registers WhitelistMiddleware, includes 3 routers in correct order, starts polling with backoff |
 | `promaia/telegram/auth.py` | WhitelistMiddleware that silently drops non-whitelisted messages | VERIFIED | 46 | 15 | Loads comma-separated chat IDs from env, silent return for non-matching |
-| `promaia/telegram/brain_ops.py` | Extracted brain Postgres operations as importable async functions | VERIFIED | 359 | 60 | All 5 exports present: get_briefing, capture_memory, search_brain, get_actions, get_projects. Real SQL queries wrapped in asyncio.to_thread() |
+| `promaia/telegram/brain_ops.py` | Extracted brain libSQL/MuninnDB operations as importable async functions | VERIFIED | 359 | 60 | All 5 exports present: get_briefing, capture_memory, search_brain, get_actions, get_projects. Real SQL queries wrapped in asyncio.to_thread() |
 | `promaia/telegram/formatting.py` | Telegram-safe message splitting at 4096 char limit | VERIFIED | 85 | 25 | send_long_message and _split_message with paragraph/line/hard-cut fallback |
 | `promaia/telegram/handlers/commands.py` | Command handlers for /start, /briefing, /search, /capture, /projects, /actions | VERIFIED | 85 | 40 | All 6 commands implemented with real brain_ops calls |
 | `promaia/telegram/handlers/messages.py` | Catch-all free-text handler that auto-captures to brain | VERIFIED | 32 | 15 | Uses detect_mode() for domain detection, calls capture_memory() |
@@ -89,7 +89,7 @@ Human verification was already completed as part of Plan 02 (Task 2: checkpoint:
 
 **Test:** Send /briefing, /search, /capture, /projects, /actions from phone
 **Expected:** Each returns real brain data
-**Why human:** Requires live Telegram connection and Postgres with data
+**Why human:** Requires live Telegram connection and libSQL/MuninnDB with data
 
 ### 2. Voice Transcription
 

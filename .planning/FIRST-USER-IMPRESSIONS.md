@@ -45,7 +45,7 @@ The deep persistent memory layer IS the product's core value. It works. The prob
 
 ### 4. Notion Pages Also Empty
 - Not just a web display issue — the underlying data store has gaps.
-- Agents may be running but not writing meaningful output to Notion or Postgres.
+- Agents may be running but not writing meaningful output to Notion or libSQL/MuninnDB.
 - The whole pipeline from agent execution to data storage to display is hollow.
 
 ### 5. Startup is 3-4 Separate Processes

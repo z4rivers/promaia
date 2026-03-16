@@ -168,7 +168,7 @@ Handles various email formats:
 
 **`RecipientSelector`**:
 - Extracts recipients from email headers and thread
-- Renders interactive UI with three modes
+- Railways interactive UI with three modes
 - Handles keyboard navigation and selection
 - Returns confirmed recipient list
 

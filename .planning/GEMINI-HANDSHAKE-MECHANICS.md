@@ -58,7 +58,7 @@ I write an "Offer" file:
 `.promaia/handshakes/offer_gemini.md`
 ```markdown
 ## Insight from Gemini
-**Context:** I see Claude is designing the Postgres schema for MuninnDB.
+**Context:** I see Claude is designing the libSQL/MuninnDB schema for MuninnDB.
 **Observation:** I just ran a `grep` on the logs. The `text-embedding-004` dimensions have changed. If Claude proceeds with `vector(1536)`, it will crash.
 **Recommendation:** Switch to `vector(768)`.
 ```

@@ -37,7 +37,7 @@ Before mapping integration points, this is what Promaia already has on the `zbra
 ├──────────┴─────────────────────┴─────────────────────────┴──────────────┤
 │                     Storage Layer                                        │
 │  ┌──────────────────────┐  ┌─────────────────┐  ┌──────────────────┐   │
-│  │ storage/hybrid_      │  │ storage/vector_ │  │ storage/supabase_│   │
+│  │ storage/hybrid_      │  │ storage/vector_ │  │ storage/railway_volumes_│   │
 │  │ storage.py (SQLite)  │  │ db.py (ChromaDB)│  │ query.py (cloud) │   │
 │  │ HybridContentRegistry│  │ VectorDBManager │  │                  │   │
 │  └──────────────────────┘  └─────────────────┘  └──────────────────┘   │
@@ -45,8 +45,8 @@ Before mapping integration points, this is what Promaia already has on the `zbra
 │  │ storage/unified_query.py (HybridQueryInterface — SQL view)       │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  [postgres-sql-changeover branch] storage/postgres_db.py        │    │
-│  │  PostgresDB singleton + schema.sql (586 lines, no pgvector yet) │    │
+│  │  [libsql-changeover branch] storage/postgres_db.py        │    │
+│  │  libSQL/MuninnDBDB singleton + schema.sql (586 lines, no pgvector yet) │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -85,12 +85,12 @@ Before mapping integration points, this is what Promaia already has on the `zbra
 ├─────────────────────────────────────────────────────────────────────────┤
 │                     Storage Layer (replaced + extended)                  │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  storage/postgres_db.py [MODIFIED: point to Supabase, not local] │   │
-│  │  PostgresDB singleton — connection string → Supabase cloud       │   │
+│  │  storage/postgres_db.py [MODIFIED: point to Railway Volumes, not local] │   │
+│  │  libSQL/MuninnDBDB singleton — connection string → Railway Volumes cloud       │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │  storage/vector_db.py [REPLACED: pgvector backend]               │   │
-│  │  VectorDBManager — drop ChromaDB, write to Supabase pgvector     │   │
+│  │  VectorDBManager — drop ChromaDB, write to Railway Volumes pgvector     │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │  storage/brain_schema.sql [NEW] — brain.* schema                 │   │
@@ -109,7 +109,7 @@ Before mapping integration points, this is what Promaia already has on the `zbra
 
 ### Feature 1: pgvector Replacing ChromaDB
 
-**Status:** storage/vector_db.py exists and is fully ChromaDB-based. postgres-sql-changeover branch has PostgresDB singleton (psycopg2 + connection pooling) but NO vector extension or embedding columns in schema.sql (confirmed: grep found zero matches for "vector", "embed", "pgvector" in schema.sql).
+**Status:** storage/vector_db.py exists and is fully ChromaDB-based. libsql-changeover branch has libSQL/MuninnDBDB singleton (psycopg2 + connection pooling) but NO vector extension or embedding columns in schema.sql (confirmed: grep found zero matches for "vector", "embed", "pgvector" in schema.sql).
 
 **What changes:**
 
@@ -119,7 +119,7 @@ Before mapping integration points, this is what Promaia already has on the `zbra
 | `storage/schema.sql` (from postgres branch) | EXTEND | Add `CREATE EXTENSION vector` and `embedding vector(768)` columns to content tables. 768 dims = Google text-embedding-004. |
 | `ai/models.py` | MODIFY | Add `get_google_embedding_client()` function. Change `_init_embedding_function()` in VectorDBManager to use `google.generativeai` instead of OpenAI. |
 | `storage/unified_query.py` | MINOR MODIFY | Replace ChromaDB filter syntax with pgvector SQL operator (`<=>` cosine distance). |
-| `storage/hybrid_storage.py` | UNCHANGED | SQLite wrapper stays until Postgres migration completes. |
+| `storage/hybrid_storage.py` | UNCHANGED | SQLite wrapper stays until libSQL/MuninnDB migration completes. |
 
 **Key interface to preserve** (callers expect this contract from `vector_db.py`):
 ```python
@@ -149,7 +149,7 @@ rows = db.execute("""
 
 ### Feature 2: Brain Schema — New `brain/` Module
 
-**Status:** No brain module exists in Promaia. The postgres branch schema has NO brain tables. This is entirely new work in the `brain.*` Postgres schema (separate from `public.*`).
+**Status:** No brain module exists in Promaia. The postgres branch schema has NO brain tables. This is entirely new work in the `brain.*` libSQL/MuninnDB schema (separate from `public.*`).
 
 **Why `brain/` not `storage/`:**
 - Brain is a behavioral layer (reasoning, extraction, directives), not a raw storage layer.
@@ -170,7 +170,7 @@ promaia/brain/
 └── stale.py            # get_stale_projects(days_threshold) -> List[Project]
 ```
 
-**Brain schema tables** (new `brain.*` Postgres schema, separate from `public.*`):
+**Brain schema tables** (new `brain.*` libSQL/MuninnDB schema, separate from `public.*`):
 ```sql
 -- brain.memories: cross-session persistent facts
 -- brain.actions: extracted next-steps from conversations
@@ -314,12 +314,12 @@ promaia/
 │   ├── nl_orchestrator.py      [UNCHANGED]
 │   └── prompts.py              [EXTENDED — add brain prompt templates]
 ├── storage/
-│   ├── postgres_db.py          [MODIFIED — change host to Supabase URL]
+│   ├── postgres_db.py          [MODIFIED — change host to Railway Volumes URL]
 │   ├── schema.sql              [EXTENDED — add pgvector extension + embedding columns]
 │   ├── vector_db.py            [MODIFIED — replace ChromaDB with pgvector SQL]
 │   ├── unified_query.py        [MINOR MOD — update vector search filter syntax]
 │   ├── hybrid_storage.py       [UNCHANGED — SQLite, deprecated but not removed in v1.0]
-│   └── supabase_query.py       [UNCHANGED — existing Supabase client interface]
+│   └── railway_volumes_query.py       [UNCHANGED — existing Railway Volumes client interface]
 └── cli/
     ├── heartbeat_commands.py   [NEW — maia heartbeat commands]
     └── brain_commands.py       [NEW — maia brain commands]
@@ -332,16 +332,16 @@ promaia/
 The four features have dependencies. Build in this order:
 
 ### Phase 1: Storage Foundation (pgvector)
-**Rationale:** Everything else depends on the database layer. Brain, heartbeat, and embeddings all write to Postgres. Do this first so subsequent phases can test against real storage.
+**Rationale:** Everything else depends on the database layer. Brain, heartbeat, and embeddings all write to libSQL/MuninnDB. Do this first so subsequent phases can test against real storage.
 
 **Steps:**
-1. Point `postgres_db.py` to Supabase (env var swap: `POSTGRES_HOST` → `DATABASE_URL`)
-2. Run existing `storage/db_init.py` against Supabase — verify all 586-line schema migrates clean
+1. Point `postgres_db.py` to Railway Volumes (env var swap: `POSTGRES_HOST` → `DATABASE_URL`)
+2. Run existing `storage/db_init.py` against Railway Volumes — verify all 586-line schema migrates clean
 3. Add `CREATE EXTENSION vector` and embedding columns to `storage/schema.sql`
 4. Create `storage/brain_schema.sql` with `brain.*` tables
 5. Modify `storage/vector_db.py` internals — keep class interface, replace ChromaDB calls
 6. Update embedding provider in `ai/models.py` or new `ai/router.py` to use Google embed-004
-7. Smoke test: `maia sync` followed by vector search — verify embeddings write to Supabase
+7. Smoke test: `maia sync` followed by vector search — verify embeddings write to Railway Volumes
 
 **Dependencies this unblocks:** Everything. No other phase can proceed without storage.
 
@@ -404,11 +404,11 @@ maia sync
 ```
 maia sync
     → connectors/notion_connector.py → fetch pages (UNCHANGED)
-    → storage/postgres_db.py → write Supabase public.* tables (REPLACES SQLite)
+    → storage/postgres_db.py → write Railway Volumes public.* tables (REPLACES SQLite)
     → storage/vector_db.py → VectorDBManager (SAME INTERFACE)
         → ai/router.py → GeminiClient.embed()
         → Google text-embedding-004 (768 dims)
-        → Supabase pgvector (public.content_embeddings)
+        → Railway Volumes pgvector (public.content_embeddings)
 ```
 
 ### New: Chat startup → Brain briefing flow
@@ -461,7 +461,7 @@ Windows Task Scheduler → 2:00 AM
 | `ai/router.py` | Route tasks to correct model | `ai/models.py` (for model IDs) | Storage, brain, connectors |
 | `storage/vector_db.py` | Embed and search content vectors | `storage/postgres_db`, `ai/router` (embedding) | Brain tables, connectors |
 | `heartbeat/runner.py` | Single-run autonomous orchestration | `brain/*`, `ai/router`, `agents/executor` | CLI layer, chat session |
-| `storage/postgres_db.py` | Connection pool to Supabase | Environment vars | Business logic |
+| `storage/postgres_db.py` | Connection pool to Railway Volumes | Environment vars | Business logic |
 
 ---
 
@@ -518,11 +518,11 @@ These are files that call into the modules being modified. They must not break.
 **Why it's wrong:** A daemon needs to stay running, handle failures, and restart. On Windows this requires a service wrapper or always-on process. Unnecessary complexity for a personal tool.
 **Do this instead:** Single-run script triggered by Windows Task Scheduler. It runs, does its work, writes results to `brain.reviews`, exits. Task Scheduler handles the scheduling. Simpler, more reliable on Windows 11.
 
-### Anti-Pattern 5: Migrating SQLite Before Postgres is Validated
+### Anti-Pattern 5: Migrating SQLite Before libSQL/MuninnDB is Validated
 
 **What people do:** Delete `hybrid_storage.py` and `vector_db.py` (ChromaDB) as soon as postgres_db.py works.
-**Why it's wrong:** The postgres branch has never been tested against Supabase. Schema may need adjustments. ChromaDB data migration takes time. Deleting the working fallback too early risks breaking `maia chat` and `maia sync` during development.
-**Do this instead:** Keep SQLite + ChromaDB operational until pgvector path proves stable in production. Use an env var toggle (`STORAGE_BACKEND=postgres|sqlite`) during transition. Remove old path only after Supabase has been running reliably for at least one week of normal use.
+**Why it's wrong:** The postgres branch has never been tested against Railway Volumes. Schema may need adjustments. ChromaDB data migration takes time. Deleting the working fallback too early risks breaking `maia chat` and `maia sync` during development.
+**Do this instead:** Keep SQLite + ChromaDB operational until pgvector path proves stable in production. Use an env var toggle (`STORAGE_BACKEND=postgres|sqlite`) during transition. Remove old path only after Railway Volumes has been running reliably for at least one week of normal use.
 
 ---
 
@@ -532,8 +532,8 @@ This is a single-user personal tool. Scaling is not the concern. The concerns ar
 
 | Concern | Mitigation |
 |---------|------------|
-| Supabase free tier limits (500MB DB, 2GB bandwidth) | Already on Pro ($27.49/mo). 8GB DB, unlimited API calls. Fine. |
-| pgvector query performance at thousands of embeddings | Add HNSW index on embedding column. Supabase supports this. |
+| Railway Volumes free tier limits (500MB DB, 2GB bandwidth) | Already on Pro ($27.49/mo). 8GB DB, unlimited API calls. Fine. |
+| pgvector query performance at thousands of embeddings | Add HNSW index on embedding column. Railway Volumes supports this. |
 | Heartbeat job running over its window | Add per-task timeout (30s default). Exit cleanly after total budget. |
 | Brain tables growing unbounded | Add `created_at` + periodic archive job. Not day-1 concern. |
 | Google embedding API rate limits | text-embedding-004 allows 1500 RPM on free, more on paid. Fine for personal use. |
@@ -543,9 +543,9 @@ This is a single-user personal tool. Scaling is not the concern. The concerns ar
 ## Sources
 
 - Direct code inspection: `promaia/storage/vector_db.py`, `promaia/ai/models.py`, `promaia/storage/hybrid_storage.py`, `promaia/agent/agent_manager.py`, `promaia/agents/scheduler.py`, `promaia/agents/executor.py`, `promaia/mcp/client.py`, `promaia/connectors/base.py`
-- postgres-sql-changeover branch: `promaia/storage/postgres_db.py`, `promaia/storage/schema.sql` (586 lines inspected, confirmed no pgvector or brain tables)
+- libsql-changeover branch: `promaia/storage/postgres_db.py`, `promaia/storage/schema.sql` (586 lines inspected, confirmed no pgvector or brain tables)
 - PROJECT.md milestone context (zbrain constraints, features, decisions)
-- Supabase pgvector documentation (HIGH confidence — standard extension, well-documented)
+- Railway Volumes pgvector documentation (HIGH confidence — standard extension, well-documented)
 - Google generativeai Python SDK — `genai.embed_content()` with `text-embedding-004` (HIGH confidence)
 
 ---

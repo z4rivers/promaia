@@ -7,13 +7,13 @@ tags: [agent-validation, sdk-execution, anti-hallucination, end-to-end-testing, 
 # Dependency graph
 requires:
   - phase: 05-01
-    provides: "Postgres fallback for Gmail content loading in agent executor"
+    provides: "libSQL/MuninnDB fallback for Gmail content loading in agent executor"
   - phase: 05-02
     provides: "Grounding rules and empty-state reporting in agent prompts"
 provides:
   - "Validated end-to-end agent pipeline: all 3 agents produce coherent, grounded output"
   - "Confirmed zero SQL errors in agent execution logs"
-  - "Cross-referenced agent output against live Postgres data (no hallucination)"
+  - "Cross-referenced agent output against live libSQL/MuninnDB data (no hallucination)"
 affects: [phase-6-cost-controls, phase-9-proactive-push]
 
 # Tech tracking
@@ -30,7 +30,7 @@ key-decisions:
   - "morning-briefing inferring 'Office day' from profile data (not calendar) accepted as valid behavior"
 
 patterns-established:
-  - "Agent validation pattern: run SDK agents, capture output, cross-reference against Postgres source data"
+  - "Agent validation pattern: run SDK agents, capture output, cross-reference against libSQL/MuninnDB source data"
   - "Human checkpoint for output quality after automated pipeline fixes"
 
 requirements-completed: [VALID-01, VALID-02, VALID-03, VALID-04]
@@ -90,7 +90,7 @@ No files created or modified. This was a validation-only plan confirming the fix
 None - plan executed exactly as written.
 
 ## Issues Encountered
-None. All three agents ran cleanly. The fixes from plans 05-01 (Postgres fallback, GIN index) and 05-02 (grounding rules, empty-state reporting) held up under live execution.
+None. All three agents ran cleanly. The fixes from plans 05-01 (libSQL/MuninnDB fallback, GIN index) and 05-02 (grounding rules, empty-state reporting) held up under live execution.
 
 ## User Setup Required
 

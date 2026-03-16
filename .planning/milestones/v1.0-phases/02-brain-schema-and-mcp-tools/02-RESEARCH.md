@@ -8,7 +8,7 @@
 
 ## Summary
 
-Phase 2 builds the proactive brain layer on top of the Postgres foundation from Phase 1. The work breaks into three tightly-coupled areas: (1) brain schema tables in Postgres, (2) an MCP server that exposes brain tools to Claude, and (3) a deterministic engine (`brain/engine.py`) with ~8 pure functions for mode detection, guardrails, and context management.
+Phase 2 builds the proactive brain layer on top of the libSQL/MuninnDB foundation from Phase 1. The work breaks into three tightly-coupled areas: (1) brain schema tables in libSQL/MuninnDB, (2) an MCP server that exposes brain tools to Claude, and (3) a deterministic engine (`brain/engine.py`) with ~8 pure functions for mode detection, guardrails, and context management.
 
 The MCP server pattern is already established in this codebase. The `promaia/mcp/` module has two working stdio servers (gmail_tools_server.py, calendar_tools_server.py) that use the official `mcp` Python SDK with `from mcp.server import Server` and `from mcp.server.stdio import stdio_server`. However, **FastMCP** has emerged as the de-facto standard for new MCP servers in 2025-2026 (70% of all MCP servers, incorporated into official SDK). Either approach works — the codebase already uses the low-level SDK pattern so either can be used. FastMCP is simpler for new code.
 
@@ -42,7 +42,7 @@ The MCP server registers with Claude Code via `claude mcp add --transport stdio 
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
 | `mcp` | `>=1.26.0` (already in requirements.txt) | MCP server protocol (Server, stdio_server, Tool, TextContent) | Official SDK, already used in this codebase |
-| `psycopg2-binary` | `>=2.9.9` (already in requirements.txt) | Postgres queries for brain schema | Phase 1 established this as DB driver |
+| `psycopg2-binary` | `>=2.9.9` (already in requirements.txt) | libSQL/MuninnDB queries for brain schema | Phase 1 established this as DB driver |
 | `pgvector` | `>=0.4.2` (already in requirements.txt) | `register_vector()` for brain.memories embedding queries | Phase 1 established; same HNSW pattern |
 | `google-genai` | `>=1.65.0` (already in requirements.txt) | Embeddings for brain.memories via `gemini-embedding-001` | Phase 1 established |
 | `instructor` | latest | Structured Pydantic output from LLM for action extraction | Standard library for typed LLM output; Gemini Flash support confirmed |
@@ -400,10 +400,10 @@ def suggest_next(domains: list, energy: str = None) -> dict:
 | Typed LLM output for action extraction | Custom JSON parsing + retry logic | `instructor` library | Handles retries, validation, schema generation automatically |
 | MCP protocol implementation | Custom JSON-RPC handler | `mcp` SDK | Protocol already handles message framing, capability negotiation |
 | Embedding generation | New embedding wrapper | Reuse `VectorDBManager.generate_embedding()` or its pattern directly | Same google-genai Client pattern, same model |
-| Staleness calculation | Custom timer | SQL: `NOW() - last_updated > stale_threshold_days * INTERVAL '1 day'` | Postgres handles it; no application-level timer needed |
+| Staleness calculation | Custom timer | SQL: `NOW() - last_updated > stale_threshold_days * INTERVAL '1 day'` | libSQL/MuninnDB handles it; no application-level timer needed |
 | Mode detection ML | Train a classifier | Keyword heuristics in engine.py | "infer + confirm" UX pattern — accuracy is good enough; user corrects wrong guesses |
 
-**Key insight:** The existing `PostgresDB.fetch_all()`, `execute()`, and `insert_returning()` methods cover all query needs. No ORM, no new query builder.
+**Key insight:** The existing `libSQL/MuninnDBDB.fetch_all()`, `execute()`, and `insert_returning()` methods cover all query needs. No ORM, no new query builder.
 
 ---
 
@@ -421,7 +421,7 @@ def suggest_next(domains: list, energy: str = None) -> dict:
 **How to avoid:** Call `register_vector(conn)` inside every connection context manager that touches embedding columns. Copy the pattern from `VectorDBManager._register_vector_on_connection()`.
 **Warning signs:** Errors appear specifically on `brain.memories` queries, not on other tables.
 
-### Pitfall 3: Brain Schema Not in `brain` Postgres Schema
+### Pitfall 3: Brain Schema Not in `brain` libSQL/MuninnDB Schema
 **What goes wrong:** Tables created in `public` schema, conflicting with Promaia's existing tables.
 **Why it happens:** Default schema is `public` unless explicitly specified.
 **How to avoid:** All brain DDL uses `CREATE TABLE IF NOT EXISTS brain.*`. Include `CREATE SCHEMA IF NOT EXISTS brain;` as first statement in brain/schema.sql. Apply with `SET search_path TO brain, public;` or explicit schema qualification in all queries.
@@ -562,11 +562,11 @@ def apply_brain_schema():
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| ChromaDB for vectors | pgvector in Postgres | Phase 1 (2026-03-04) | All vectors now cloud-native in Supabase |
+| ChromaDB for vectors | pgvector in libSQL/MuninnDB | Phase 1 (2026-03-04) | All vectors now cloud-native in Railway Volumes |
 | google-generativeai | google-genai SDK | Phase 1 (2026-03-04) | `genai.Client`, `gemini-embedding-001` |
 | Low-level MCP SDK only | FastMCP available as alternative | 2025 | Either works; low-level already in codebase |
 | Manual JSON parsing for structured LLM output | `instructor` library | 2024-2025 | Typed, validated, retried automatically |
-| `halfvec` for embeddings | `vector(768)` | Phase 1 design review | More stable, better Supabase support |
+| `halfvec` for embeddings | `vector(768)` | Phase 1 design review | More stable, better Railway Volumes support |
 
 **Deprecated/outdated:**
 - `halfvec`: Considered but rejected (Gemini review 2026-03-04). Use `vector(768)`.
@@ -628,7 +628,7 @@ Note: `workflow.nyquist_validation` is not set in `.planning/config.json` (only 
 
 - [ ] `tests/test_brain_schema.py` — covers BRAIN-01, BRAIN-02, BRAIN-03 (requires live DB or mock)
 - [ ] `tests/test_brain_engine.py` — covers BRAIN-04 (mock instructor/Gemini; test extraction logic)
-- [ ] `tests/test_brain_mcp.py` — covers BRAIN-05, BRAIN-06 (mock PostgresDB; test tool handlers)
+- [ ] `tests/test_brain_mcp.py` — covers BRAIN-05, BRAIN-06 (mock libSQL/MuninnDBDB; test tool handlers)
 
 ---
 
@@ -637,7 +637,7 @@ Note: `workflow.nyquist_validation` is not set in `.planning/config.json` (only 
 ### Primary (HIGH confidence)
 
 - Codebase: `promaia/mcp/gmail_tools_server.py` — existing MCP server pattern (low-level SDK, stdio, `@server.list_tools`, `@server.call_tool`)
-- Codebase: `promaia/storage/postgres_db.py` — `PostgresDB.fetch_all()`, `execute()`, `insert_returning()`, `get_connection()` patterns
+- Codebase: `promaia/storage/postgres_db.py` — `libSQL/MuninnDBDB.fetch_all()`, `execute()`, `insert_returning()`, `get_connection()` patterns
 - Codebase: `promaia/storage/vector_db.py` — `register_vector(conn)` pattern, `gemini-embedding-001` embedding generation
 - Codebase: `promaia/storage/schema.sql` — HNSW + GIN index DDL patterns to mirror for brain schema
 - Codebase: `requirements.txt` — confirms `mcp>=1.26.0`, `psycopg2-binary>=2.9.9`, `pgvector>=0.4.2`, `google-genai>=1.65.0` already installed

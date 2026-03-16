@@ -8,7 +8,7 @@
 
 **Architecture:** New `/talk` route serving `talk.html`. New `/api/brain/chat`, `/api/brain/voice`, and `/api/brain/tts` endpoints. Browser-side MediaRecorder for capture with smart MIME detection. Silero VAD (`@ricky0123/vad-web`) detects speech vs car noise on the audio stream, auto-stops on speech end. Raw unfiltered audio sent to Gemini for transcription (it handles noise better than any client-side filter). Google Cloud TTS returns MP3 played via `<audio>` element for reliable car speaker playback (survives screen lock via Media Session API). Continuous conversation loop: after TTS finishes, auto-resume listening. esbuild bundles talk.js + VAD dependency. PWA manifest for home screen install.
 
-**Tech Stack:** FastAPI, Jinja2, Gemini 3 Flash (conversation + transcription), Google Cloud TTS (speech output), esbuild (JS bundler), @ricky0123/vad-web (Silero VAD), Web Audio API (recording), Media Session API (lock screen playback), existing brain Postgres schema, existing conversation.py engine.
+**Tech Stack:** FastAPI, Jinja2, Gemini 3 Flash (conversation + transcription), Google Cloud TTS (speech output), esbuild (JS bundler), @ricky0123/vad-web (Silero VAD), Web Audio API (recording), Media Session API (lock screen playback), existing brain libSQL/MuninnDB schema, existing conversation.py engine.
 
 **Research findings (Gemini-verified 2026-03-08):**
 - `audio/webm;codecs=opus` works on Chrome, Firefox, Safari iOS 18+ — Gemini API accepts it natively

@@ -8,7 +8,7 @@
 
 Phase 11 transforms the Telegram bot from a capture-and-canned-response tool into a genuine conversational surface. The core technical challenge is assembling a rich context window from multiple brain sources (profile, conversations, memories, projects, actions) and passing it to Gemini 3 Flash for every message, while simultaneously managing a two-tier memory system (ephemeral conversations + permanent memories) with heuristic-based impact detection.
 
-The existing infrastructure is solid. The `google-genai` SDK (v1.66.0, installed) provides native async support via `client.aio.models.generate_content` which integrates cleanly with aiogram's (v3.26.0) asyncio event loop. The `brain_ops.py` module already does direct Postgres queries wrapped in `asyncio.to_thread()` for synchronous DB calls. The new conversation module needs to follow the same pattern: async Gemini calls via `client.aio`, sync DB calls via `asyncio.to_thread()`.
+The existing infrastructure is solid. The `google-genai` SDK (v1.66.0, installed) provides native async support via `client.aio.models.generate_content` which integrates cleanly with aiogram's (v3.26.0) asyncio event loop. The `brain_ops.py` module already does direct libSQL/MuninnDB queries wrapped in `asyncio.to_thread()` for synchronous DB calls. The new conversation module needs to follow the same pattern: async Gemini calls via `client.aio`, sync DB calls via `asyncio.to_thread()`.
 
 **Primary recommendation:** Build a single `promaia/telegram/conversation.py` module that owns context assembly, Gemini calling, conversation storage, impact scoring, and session synthesis. Modify existing handlers (`messages.py`, `voice.py`) to route through it instead of the current capture-and-respond pattern.
 
@@ -54,7 +54,7 @@ The existing infrastructure is solid. The `google-genai` SDK (v1.66.0, installed
 |---------|---------|---------|--------------|
 | google-genai | 1.66.0 | Gemini API client | Already installed; provides native async via `client.aio.models.generate_content` |
 | aiogram | 3.26.0 | Telegram bot framework | Already installed; fully async, handles message routing |
-| psycopg2 | (installed) | Postgres driver | Already used everywhere via PostgresDB singleton |
+| psycopg2 | (installed) | libSQL/MuninnDB driver | Already used everywhere via libSQL/MuninnDBDB singleton |
 | pgvector | (installed) | Vector similarity search | Already used for brain.memories semantic search |
 
 ### Supporting
@@ -173,7 +173,7 @@ Score 0.0-1.0, promote to brain.memories if score exceeds threshold (start with 
 - **Calling Gemini to judge impact:** Decision D2 explicitly forbids this. Gemini is bad at judging what's important to a human. Use heuristics.
 - **Blocking on synthesis:** Synthesis should run in a background task. Never block the response to the user.
 - **Full manifest as system prompt:** Decision D4 says condense it. The 126-line manifest describes the product; the system prompt should be ~20-30 lines of direct instruction.
-- **Storing conversation history in memory only:** Must persist to Postgres. Bot restarts should not lose conversation state.
+- **Storing conversation history in memory only:** Must persist to libSQL/MuninnDB. Bot restarts should not lose conversation state.
 - **Using the agent executor path:** CONTEXT.md explicitly says "direct genai.generate_content call (not through agent executor, which is for scheduled agents)". Don't route through the agent pipeline.
 
 ## Don't Hand-Roll
@@ -192,9 +192,9 @@ Score 0.0-1.0, promote to brain.memories if score exceeds threshold (start with 
 
 ### Pitfall 1: Sync DB Calls in Async Context
 **What goes wrong:** Calling `db.fetch_all()` directly in an async handler blocks the event loop, freezing the bot for other operations.
-**Why it happens:** PostgresDB uses psycopg2 (synchronous). The aiogram event loop is asyncio.
+**Why it happens:** libSQL/MuninnDBDB uses psycopg2 (synchronous). The aiogram event loop is asyncio.
 **How to avoid:** Wrap ALL sync DB calls in `asyncio.to_thread()`, exactly as `brain_ops.py` already does.
-**Warning signs:** Bot becomes unresponsive during DB queries, especially when Supabase has network latency.
+**Warning signs:** Bot becomes unresponsive during DB queries, especially when Railway Volumes has network latency.
 
 ### Pitfall 2: Gemini Timeout on Large Context
 **What goes wrong:** With maximalist context (profile + history + memories + projects + actions), the prompt can grow large. Gemini may take several seconds to respond.
@@ -448,7 +448,7 @@ def score_impact(text: str, known_projects: list[str] = None) -> float:
 
 **Deprecated/outdated:**
 - `google.generativeai` library: Fully deprecated. Use `google.genai` only.
-- `client.chats.create()`: Works but unnecessary complexity for our use case. Simpler to pass conversation history directly in the contents parameter of `generate_content`. Chat objects add state management overhead we don't need since we manage history in Postgres ourselves.
+- `client.chats.create()`: Works but unnecessary complexity for our use case. Simpler to pass conversation history directly in the contents parameter of `generate_content`. Chat objects add state management overhead we don't need since we manage history in libSQL/MuninnDB ourselves.
 
 ## Open Questions
 

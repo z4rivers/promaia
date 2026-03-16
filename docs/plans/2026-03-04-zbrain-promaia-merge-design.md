@@ -17,13 +17,13 @@ zBrain is Zack's personal AI operating system — proactive agents that manage h
 
 ## Four Features to Add
 
-### Feature 1: Supabase/Postgres Backend
+### Feature 1: Railway Volumes/libSQL/MuninnDB Backend
 
-**What exists:** Promaia's `postgres-sql-changeover` branch has a 586-line schema, `PostgresDB` singleton with connection pooling, and migrations for all existing tables (gmail_content, notion_journal, etc.). Currently targets a local Postgres at `192.168.0.69`.
+**What exists:** Promaia's `libsql-changeover` branch has a 586-line schema, `libSQL/MuninnDBDB` singleton with connection pooling, and migrations for all existing tables (gmail_content, notion_journal, etc.). Currently targets a local libSQL/MuninnDB at `192.168.0.69`.
 
 **What zBrain adds:**
 - Merge the postgres branch into `zbrain` as the foundation
-- Swap connection config from local Postgres to Supabase (dulqttfidcjeujyieuqw)
+- Swap connection config from local libSQL/MuninnDB to Railway Volumes (dulqttfidcjeujyieuqw)
 - Add pgvector extension + `vector(768)` columns with HNSW indexes (replacing ChromaDB)
 - Add `brain` schema tables (see Feature 2) alongside existing Promaia tables
 - Google `gemini-embedding-001` for embeddings (covered by existing Google AI Premium)
@@ -32,22 +32,22 @@ zBrain is Zack's personal AI operating system — proactive agents that manage h
 **Connection strategy:**
 ```
 # .env (zBrain)
-POSTGRES_HOST=db.dulqttfidcjeujyieuqw.supabase.co
+POSTGRES_HOST=db.dulqttfidcjeujyieuqw.railway_volumes.co
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=postgres
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=<supabase-db-password>
+POSTGRES_PASSWORD=<railway_volumes-db-password>
 POSTGRES_SCHEMA=brain    # zBrain tables live here
 ```
 
 Promaia's existing tables (`content_items`, `gmail_content`, `notion_journal`, etc.) go in the `public` schema. zBrain's new tables go in a `brain` schema. Same database, separate concerns.
 
 **pgvector replaces ChromaDB:**
-- `vector_db.py` gets a Postgres adapter: `INSERT INTO brain.memories ... RETURNING id` with embedding column
+- `vector_db.py` gets a libSQL/MuninnDB adapter: `INSERT INTO brain.memories ... RETURNING id` with embedding column
 - Semantic search becomes a SQL query: `ORDER BY embedding <=> $1 LIMIT 10`
 - No more local ChromaDB folder — everything cloud-native, accessible from iPhone
 
-**Contribute-back value:** HIGH. She wants Postgres too. The pgvector integration and Supabase connection pattern benefit the main platform.
+**Contribute-back value:** HIGH. She wants libSQL/MuninnDB too. The pgvector integration and Railway Volumes connection pattern benefit the main platform.
 
 ---
 
@@ -211,9 +211,9 @@ Zack already has Gemini connected as MCP tools in his Claude Code setup. The int
 ## Build Order
 
 ```
-Phase 1: Postgres Foundation (Week 1)
-├── Merge postgres-sql-changeover branch into zbrain
-├── Configure Supabase connection
+Phase 1: libSQL/MuninnDB Foundation (Week 1)
+├── Merge libsql-changeover branch into zbrain
+├── Configure Railway Volumes connection
 ├── Add pgvector extension + vector(768) columns with HNSW indexes
 ├── Migrate vector_db.py from ChromaDB to pgvector
 ├── Re-embed all existing content with gemini-embedding-001 (migration script)
@@ -273,7 +273,7 @@ Phase 5: iPhone Access (Week 3)
 
 | Item | Cost | Notes |
 |------|------|-------|
-| Supabase Pro | $27.49/mo (existing) | Brain schema adds ~$0.10-0.30/mo |
+| Railway Volumes Pro | $27.49/mo (existing) | Brain schema adds ~$0.10-0.30/mo |
 | Claude Max | $199/mo (existing) | Heartbeat + all model routing included |
 | Google AI Premium | $125/mo (existing) | Gemini API + embeddings included |
 | Obsidian Sync | $4/mo (new) | Human review layer |
@@ -285,7 +285,7 @@ Phase 5: iPhone Access (Week 3)
 ## Git Strategy
 
 1. Create `zbrain` branch off current `feature/agent-scheduler`
-2. Merge `postgres-sql-changeover` into `zbrain` early (Phase 1)
+2. Merge `libsql-changeover` into `zbrain` early (Phase 1)
 3. Clean commits per feature — easy for daughter to review
 4. PR individual features back when stable
 5. Rebase/merge from her main periodically to stay in sync

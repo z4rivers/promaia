@@ -10,7 +10,7 @@
 
 ## What This Document Covers
 
-The original design doc defines *what* zBrain builds (Postgres, brain schema, heartbeat, Gemini routing). This document defines *how zBrain behaves* — the day-to-day UX, workflow intelligence, guardrails, and the thinking frameworks that make it an ADHD-aware AI collaborator, not just a database with tools.
+The original design doc defines *what* zBrain builds (libSQL/MuninnDB, brain schema, heartbeat, Gemini routing). This document defines *how zBrain behaves* — the day-to-day UX, workflow intelligence, guardrails, and the thinking frameworks that make it an ADHD-aware AI collaborator, not just a database with tools.
 
 **Architecture decision: Hybrid (Approach C)**
 - **Deterministic layer** (`brain/engine.py`): Mode detection, guardrails, time tracking, budget enforcement, context save/restore
@@ -52,7 +52,7 @@ Mode transitions are logged so zBrain can reference them: "Earlier you were plan
 
 ## 2. Three Layers
 
-### Layer 1 — Brain Schema (Postgres/Supabase)
+### Layer 1 — Brain Schema (libSQL/MuninnDB/Railway Volumes)
 
 All tables from the original design doc (`brain.memories`, `brain.domains`, `brain.contexts`, `brain.actions`, `brain.reviews`) plus `brain.modes` above, plus `brain.events` (chronological audit trail — type, payload jsonb, source, session_id, created_at).
 
@@ -146,7 +146,7 @@ Zack talks to Claude on mobile (claude.ai + MCP tools)
   → capture() stores thought in brain.memories
   → If thought implies action → brain.actions gets new entry
   → If thought changes project direction → brain.contexts updated
-  → All writes go to Supabase — immediately available everywhere
+  → All writes go to Railway Volumes — immediately available everywhere
 ```
 
 ### Resume Path (PC)
@@ -171,7 +171,7 @@ Zack opens Claude Code on PC
 
 ### Why It Works
 
-Supabase is the shared brain. Mobile and PC don't talk to each other — they both talk to the same database. Captures from mobile are rows in `brain.memories`. The PC session's briefing query picks them up automatically. No sync protocol, no webhooks, no sockets. Just Postgres.
+Railway Volumes is the shared brain. Mobile and PC don't talk to each other — they both talk to the same database. Captures from mobile are rows in `brain.memories`. The PC session's briefing query picks them up automatically. No sync protocol, no webhooks, no sockets. Just libSQL/MuninnDB.
 
 ---
 
@@ -343,7 +343,7 @@ These principles are drawn from research on ADHD productivity, Russell Barkley's
     └──────────────┬─────────────────────┘
                    │
     ┌──────────────▼─────────────────────┐
-    │     Supabase (Postgres + pgvector) │
+    │     Railway Volumes (libSQL/MuninnDB + pgvector) │
     │  ┌─────────┐  ┌────────────────┐   │
     │  │ brain.* │  │ public.*       │   │
     │  │memories │  │gmail_content   │   │
@@ -372,7 +372,7 @@ These principles are drawn from research on ADHD productivity, Russell Barkley's
 Unchanged from original design doc. The workflow layer (this document) is implemented primarily in Phase 2 (brain schema + MCP tools) with the engine.py functions, and refined through Phases 3-5 as more capabilities come online.
 
 ```
-Phase 1: Postgres Foundation (includes re-embed migration, GIN indexes)
+Phase 1: libSQL/MuninnDB Foundation (includes re-embed migration, GIN indexes)
 Phase 2: Brain Schema + MCP Tools + engine.py + System Instructions
 Phase 3: Gemini Routing + Brain Ingestion Pipeline
 Phase 4: Heartbeat Agent + Guardrails (Python direct, not CLI; active user check)
@@ -421,7 +421,7 @@ Phase 5: Mobile Access (iPhone/iPad)
 | Heartbeat autonomy? | Safe actions allowed (commits on feature branches, no external comms, no deletes) |
 | DeBono visibility? | Invisible by default. Methods used internally. Explicit only when Zack requests. |
 | Check-in cadence? | Ambient awareness. No formal check-ins. Context woven naturally at pause points. |
-| Tablet workflow? | Same as phone — mobile (iPhone/iPad) both go through claude.ai + MCP → Supabase |
+| Tablet workflow? | Same as phone — mobile (iPhone/iPad) both go through claude.ai + MCP → Railway Volumes |
 | Adaptive learning? | Yes. System auto-adjusts based on accumulated memories, observed patterns, confirmed preferences |
 | GSD integration? | Internalized patterns (decomposition, checkpointing, verification) — not file artifacts |
 | ADHD design? | Core principles baked into system instructions: no shame, minimum viable decisions, energy adaptation, body double posture |

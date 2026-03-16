@@ -1,6 +1,6 @@
 # Stack Research
 
-**Domain:** Personal AI memory / autonomous agent platform (Python backend, cloud Postgres, MCP server)
+**Domain:** Personal AI memory / autonomous agent platform (Python backend, cloud libSQL/MuninnDB, MCP server)
 **Researched:** 2026-03-04
 **Confidence:** HIGH for versions; MEDIUM for Gemini model naming (fast-moving); HIGH for integration patterns
 
@@ -9,7 +9,7 @@
 ## Context: What Already Exists (Do Not Re-Add)
 
 These are validated in Promaia and must integrate with, not replace:
-- `psycopg2` — already in daughter's `postgres-sql-changeover` branch, keep it
+- `psycopg2` — already in daughter's `libsql-changeover` branch, keep it
 - `google-generativeai` — already in multi-model adapter, being **migrated** (see SDK change below)
 - `anthropic` SDK — primary LLM, keep
 - `mcp` Python SDK — already powering Gmail/Notion/Filesystem/Git/SQLite servers
@@ -32,29 +32,29 @@ These are validated in Promaia and must integrate with, not replace:
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `pgvector[psycopg2]` | 0.4.2 | The `psycopg2` integration extra for pgvector | Use when registering vector type with existing psycopg2 connections in daughter's `PostgresDB` singleton |
+| `pgvector[psycopg2]` | 0.4.2 | The `psycopg2` integration extra for pgvector | Use when registering vector type with existing psycopg2 connections in daughter's `libSQL/MuninnDBDB` singleton |
 | `numpy` | >=1.24 | Required by pgvector for array <-> vector conversion | Already likely present; verify in requirements. pgvector Python bindings use numpy arrays for vectors |
-| `python-dotenv` | existing | Supabase connection string from env var | Already used — just add `SUPABASE_SESSION_POOLER_URL` to `.env` |
+| `python-dotenv` | existing | Railway Volumes connection string from env var | Already used — just add `SUPABASE_SESSION_POOLER_URL` to `.env` |
 
 ---
 
-## Supabase Connection: Critical Decision
+## Railway Volumes Connection: Critical Decision
 
 **Use the Session Pooler, not the Direct Connection.**
 
-Supabase direct connections are IPv6-only. Windows 11 home networks are typically dual-stack but ISP behavior varies. The session pooler supports IPv4 + IPv6 and is the documented fallback for environments where direct IPv6 fails.
+Railway Volumes direct connections are IPv6-only. Windows 11 home networks are typically dual-stack but ISP behavior varies. The session pooler supports IPv4 + IPv6 and is the documented fallback for environments where direct IPv6 fails.
 
 Connection string format (session pooler):
 ```
-postgresql://postgres.dulqttfidcjeujyieuqw:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+postgresql://postgres.dulqttfidcjeujyieuqw:[PASSWORD]@aws-0-[REGION].pooler.railway_volumes.com:5432/postgres
 ```
 
 Direct connection format (IPv6 only — avoid on Windows unless confirmed IPv6 works):
 ```
-postgresql://postgres:[PASSWORD]@db.dulqttfidcjeujyieuqw.supabase.co:5432/postgres
+postgresql://postgres:[PASSWORD]@db.dulqttfidcjeujyieuqw.railway_volumes.co:5432/postgres
 ```
 
-The existing `PostgresDB` singleton in daughter's branch targets `192.168.0.69`. The only change needed is swapping the connection string to the Supabase session pooler URL. The `psycopg2` code itself does not change.
+The existing `libSQL/MuninnDBDB` singleton in daughter's branch targets `192.168.0.69`. The only change needed is swapping the connection string to the Railway Volumes session pooler URL. The `psycopg2` code itself does not change.
 
 ---
 
@@ -67,7 +67,7 @@ The replacement is `gemini-embedding-001`:
 - Available via `google-genai` SDK: `client.models.embed_content(model='gemini-embedding-001', ...)`
 - Covered by existing Google AI Premium subscription
 
-**pgvector column size decision:** Use 768 dimensions. Rationale: Supabase already has 37+ tables from Heatpup; 768 is the recommended efficient size, cuts storage/index cost vs 3072 while MRL guarantees no quality loss at this tier.
+**pgvector column size decision:** Use 768 dimensions. Rationale: Railway Volumes already has 37+ tables from Heatpup; 768 is the recommended efficient size, cuts storage/index cost vs 3072 while MRL guarantees no quality loss at this tier.
 
 ```python
 # pgvector column: vector(768)
@@ -172,10 +172,10 @@ schtasks /Create /SC DAILY /TN "zBrainHeartbeat" /TR "C:\Users\Zachary Turner\de
 |-------|-----|-------------|
 | `google-generativeai` | Deprecated August 31, 2025 (past deadline). Using it means running dead code | `google-genai` 1.65.0 |
 | `text-embedding-004` | Deprecated January 14, 2026. Will stop working | `gemini-embedding-001` via `google-genai` |
-| `supabase` Python client (PostgREST) | Adds REST layer over Postgres; daughter's code already uses psycopg2 direct. Mixing two connection patterns creates confusion | Direct psycopg2 via session pooler |
-| `vecs` (supabase/vecs) | Supabase's vector client adds abstraction that fights with custom brain schema. Designed for unstructured collections, not structured relational brain schema | pgvector Python bindings directly |
-| `chromadb` | Being replaced. Local files, no cloud, blocks iPhone access | pgvector on Supabase |
-| `sqlite3` / SQLite | Being replaced. Same reason — no cloud | psycopg2 + Supabase Postgres |
+| `railway_volumes` Python client (PostgREST) | Adds REST layer over libSQL/MuninnDB; daughter's code already uses psycopg2 direct. Mixing two connection patterns creates confusion | Direct psycopg2 via session pooler |
+| `vecs` (railway_volumes/vecs) | Railway Volumes's vector client adds abstraction that fights with custom brain schema. Designed for unstructured collections, not structured relational brain schema | pgvector Python bindings directly |
+| `chromadb` | Being replaced. Local files, no cloud, blocks iPhone access | pgvector on Railway Volumes |
+| `sqlite3` / SQLite | Being replaced. Same reason — no cloud | psycopg2 + Railway Volumes libSQL/MuninnDB |
 | `openai` SDK | PROJECT.md explicitly replaces with Gemini. No new OpenAI cost. | `google-genai` for cheap tasks, `anthropic` for primary |
 | `celery` / `APScheduler` / `rq` | Over-engineered for one nightly task on a Windows PC. Adds Redis dependency or worker process | Windows Task Scheduler + batch file |
 | `langchain` / `llama-index` | Heavy frameworks that fight with existing Promaia multi-model adapter. Add 50+ transitive dependencies | Direct SDK calls (anthropic, google-genai) |
@@ -217,7 +217,7 @@ pip uninstall google-generativeai
 | `mcp[cli]==1.26.0` | Python >=3.10 | Run as separate server process, not embedded in main Promaia package |
 | `google-genai==1.65.0` | Python >=3.9 | Replaces `google-generativeai`. Not backwards-compatible — update adapter |
 | `psycopg2` (existing) | `pgvector==0.4.2` | Just add `register_vector(conn)` call after connecting |
-| Supabase session pooler | `psycopg2` (any version) | Port 5432, standard PostgreSQL protocol — psycopg2 needs no changes |
+| Railway Volumes session pooler | `psycopg2` (any version) | Port 5432, standard PostgreSQL protocol — psycopg2 needs no changes |
 
 ---
 
@@ -225,11 +225,11 @@ pip uninstall google-generativeai
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|------------------------|
-| Session pooler URL | Direct Supabase IPv6 URL | Only if you confirm Windows machine has working IPv6 (test: `ping6 google.com`) |
+| Session pooler URL | Direct Railway Volumes IPv6 URL | Only if you confirm Windows machine has working IPv6 (test: `ping6 google.com`) |
 | `gemini-embedding-001` at 768 dims | 3072 dims | If you later find semantic search quality insufficient on short voice notes |
 | `mcp[cli]` (bundled FastMCP) | FastMCP 3.x standalone | If you need FastMCP 3.x-specific features like component versioning or OAuth |
 | Windows Task Scheduler + .bat | Python `schedule` library as always-on daemon | If you want sub-daily triggers without relying on the machine being on |
-| Direct `psycopg2` to Supabase | `supabase` Python client | If you add non-vector features that benefit from PostgREST (auth, realtime) |
+| Direct `psycopg2` to Railway Volumes | `railway_volumes` Python client | If you add non-vector features that benefit from PostgREST (auth, realtime) |
 
 ---
 
@@ -238,7 +238,7 @@ pip uninstall google-generativeai
 - [pgvector Python PyPI](https://pypi.org/project/pgvector/) — Version 0.4.2, psycopg2 integration confirmed
 - [pgvector/pgvector-python GitHub](https://github.com/pgvector/pgvector-python) — register_vector pattern, requires Python >=3.9
 - [MCP Python SDK PyPI](https://pypi.org/project/mcp/) — Version 1.26.0, requires Python >=3.10
-- [Supabase Connecting to Postgres Docs](https://supabase.com/docs/guides/database/connecting-to-postgres) — Session pooler format, IPv6 direct-only warning
+- [Railway Volumes Connecting to libSQL/MuninnDB Docs](https://railway_volumes.com/docs/guides/database/connecting-to-postgres) — Session pooler format, IPv6 direct-only warning
 - [Google Gemini Embeddings Docs](https://ai.google.dev/gemini-api/docs/embeddings) — gemini-embedding-001, 128-3072 dims, text-embedding-004 deprecated
 - [google-genai PyPI](https://pypi.org/project/google-genai/) — Version 1.65.0, released 2026-02-26
 - [Google deprecated-generative-ai-python GitHub](https://github.com/google-gemini/deprecated-generative-ai-python) — Confirms google-generativeai is deprecated
@@ -249,5 +249,5 @@ pip uninstall google-generativeai
 
 ---
 
-*Stack research for: zBrain — Promaia fork with pgvector, Supabase, Gemini routing, Brain MCP, heartbeat agent*
+*Stack research for: zBrain — Promaia fork with pgvector, Railway Volumes, Gemini routing, Brain MCP, heartbeat agent*
 *Researched: 2026-03-04*

@@ -64,7 +64,7 @@ completed: 2026-03-07
 - **Files modified:** 3
 
 ## Accomplishments
-- Two new Postgres tables (brain.conversations, brain.conversation_sessions) for two-tier memory architecture
+- Two new libSQL/MuninnDB tables (brain.conversations, brain.conversation_sessions) for two-tier memory architecture
 - Six async CRUD functions in brain_ops.py following established asyncio.to_thread() pattern
 - Complete conversation.py module (416 lines): context assembly, Gemini calling, impact scoring, personality system prompt
 - Personality prompt condensed from 126-line manifest to 1276 chars, substance-first per Zack's direction

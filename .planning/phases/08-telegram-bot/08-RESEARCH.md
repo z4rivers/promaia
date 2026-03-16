@@ -6,11 +6,11 @@
 
 ## Summary
 
-Phase 8 connects Zack's brain to his phone via Telegram. The bot handles three distinct flows: (1) inbound text and commands that call brain tools directly via Postgres, (2) inbound voice notes transcribed via Deepgram Nova-3 then processed as text, and (3) outbound event delivery by implementing the `NotificationChannel` ABC from Phase 7's event bus. The codebase is perfectly staged for this -- the channel abstraction, event router, and rate limiter are all in place.
+Phase 8 connects Zack's brain to his phone via Telegram. The bot handles three distinct flows: (1) inbound text and commands that call brain tools directly via libSQL/MuninnDB, (2) inbound voice notes transcribed via Deepgram Nova-3 then processed as text, and (3) outbound event delivery by implementing the `NotificationChannel` ABC from Phase 7's event bus. The codebase is perfectly staged for this -- the channel abstraction, event router, and rate limiter are all in place.
 
-The recommended stack is **aiogram 3.26.0** for the bot framework (fully async, matches the project's asyncio architecture) and **deepgram-sdk 6.0.1** for voice transcription ($0.0043/min pre-recorded, well within budget). The bot does NOT need an LLM for most commands -- `/briefing`, `/search`, `/capture`, `/projects`, `/actions` all map directly to existing brain Postgres queries in `mcp_server.py`. Free-text messages are the one case where domain detection uses Gemini Flash (already wired in `extraction.py`).
+The recommended stack is **aiogram 3.26.0** for the bot framework (fully async, matches the project's asyncio architecture) and **deepgram-sdk 6.0.1** for voice transcription ($0.0043/min pre-recorded, well within budget). The bot does NOT need an LLM for most commands -- `/briefing`, `/search`, `/capture`, `/projects`, `/actions` all map directly to existing brain libSQL/MuninnDB queries in `mcp_server.py`. Free-text messages are the one case where domain detection uses Gemini Flash (already wired in `extraction.py`).
 
-**Primary recommendation:** Build the bot as a standalone daemon process (`promaia/telegram/bot.py`) that reuses brain Postgres functions directly -- do NOT route through MCP protocol. Register `TelegramChannel` in the event router to receive interrupt/digest events. Use aiogram's built-in polling with backoff for auto-reconnect (TELE-08).
+**Primary recommendation:** Build the bot as a standalone daemon process (`promaia/telegram/bot.py`) that reuses brain libSQL/MuninnDB functions directly -- do NOT route through MCP protocol. Register `TelegramChannel` in the event router to receive interrupt/digest events. Use aiogram's built-in polling with backoff for auto-reconnect (TELE-08).
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -36,10 +36,10 @@ None -- discussion stayed within phase scope
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| TELE-01 | Telegram bot responds to text messages from whitelisted chat IDs | aiogram 3 message handler with chat ID filter; brain tool functions called directly via Postgres |
+| TELE-01 | Telegram bot responds to text messages from whitelisted chat IDs | aiogram 3 message handler with chat ID filter; brain tool functions called directly via libSQL/MuninnDB |
 | TELE-02 | Bot silently ignores messages from non-whitelisted users | aiogram middleware or filter that checks `message.chat.id` against whitelist; non-matching messages dropped silently |
 | TELE-03 | /briefing command triggers and returns morning briefing content | Reuse `_handle_briefing()` logic from mcp_server.py, format for Telegram 4096-char limit |
-| TELE-04 | /search, /capture, /projects, /actions commands work against brain | Reuse corresponding `_handle_*()` functions from mcp_server.py as direct Postgres calls |
+| TELE-04 | /search, /capture, /projects, /actions commands work against brain | Reuse corresponding `_handle_*()` functions from mcp_server.py as direct libSQL/MuninnDB calls |
 | TELE-05 | Free-text messages auto-captured to brain with domain detection | Call `_handle_capture()` logic with domain from `engine.detect_mode()` or keyword heuristics |
 | TELE-06 | Voice notes transcribed via Deepgram Nova-3 and processed as text | Download OGG Opus via aiogram `bot.download_file()`, send bytes to `AsyncDeepgramClient.listen.v1.media.transcribe_file()`, process transcript as text |
 | TELE-07 | Bot registered as event router channel -- interrupt events pushed within 30s | Implement `TelegramChannel(NotificationChannel)` with `deliver()` that calls `bot.send_message(chat_id, text)` |
@@ -88,21 +88,21 @@ promaia/
       voice.py          # Voice note download + transcription
     channel.py          # TelegramChannel(NotificationChannel) for event bus
     auth.py             # Whitelist filter middleware
-    brain_ops.py        # Thin wrappers around brain Postgres operations
+    brain_ops.py        # Thin wrappers around brain libSQL/MuninnDB operations
     formatting.py       # Telegram-safe message formatting (4096 char limit, markdown)
   telegram_cli.py       # CLI entrypoint: start/stop/status (mirrors scheduler_cli.py)
 ```
 
 ### Pattern 1: Direct Brain Access (NOT MCP Protocol)
 
-**What:** The Telegram bot calls brain functions directly via Postgres, NOT through the MCP server protocol. The MCP server is designed for Claude Code's stdio transport -- the Telegram bot should extract the shared logic into importable functions.
+**What:** The Telegram bot calls brain functions directly via libSQL/MuninnDB, NOT through the MCP server protocol. The MCP server is designed for Claude Code's stdio transport -- the Telegram bot should extract the shared logic into importable functions.
 
 **When to use:** All brain operations (briefing, capture, search, actions, etc.)
 
 **Example:**
 ```python
 # promaia/telegram/brain_ops.py
-# Reuse the same Postgres queries from mcp_server.py
+# Reuse the same libSQL/MuninnDB queries from mcp_server.py
 # but return plain strings instead of TextContent objects
 
 from promaia.storage.postgres_db import get_postgres_db
@@ -303,7 +303,7 @@ async def start_bot():
 ```
 
 ### Anti-Patterns to Avoid
-- **Routing through MCP protocol:** The MCP server uses stdio transport for Claude Code. Don't start an MCP client inside the bot. Extract the shared Postgres logic into importable functions.
+- **Routing through MCP protocol:** The MCP server uses stdio transport for Claude Code. Don't start an MCP client inside the bot. Extract the shared libSQL/MuninnDB logic into importable functions.
 - **Synchronous blocking calls:** The project is fully asyncio. Never use `requests` or synchronous DB calls in handlers. Use `aiohttp` (already a dep) and asyncio-compatible patterns.
 - **Monolithic handler file:** Split handlers by concern (commands, voice, free-text). Order matters -- register catch-all free-text handler LAST so commands are matched first.
 - **Exposing error details to user:** If brain operations fail, send a friendly "Something went wrong" rather than tracebacks. Log the real error server-side.
@@ -341,11 +341,11 @@ async def start_bot():
 **How to avoid:** Check `message.voice.file_size` before download. Reject voice notes over ~10MB with a friendly message. Typical voice notes at Telegram's codec are ~1KB/sec (a 10-minute note is ~600KB), so this is rarely an issue in practice.
 **Warning signs:** `aiogram.exceptions.TelegramBadRequest: Bad Request: file is too big`
 
-### Pitfall 4: Blocking the Event Loop with Postgres
+### Pitfall 4: Blocking the Event Loop with libSQL/MuninnDB
 **What goes wrong:** Database queries block the asyncio event loop, making the bot unresponsive.
 **Why it happens:** `psycopg2` is synchronous. The existing codebase uses it synchronously in the MCP server (acceptable because MCP is serial). But in the bot, multiple users or events may arrive concurrently.
-**How to avoid:** Wrap Postgres calls in `asyncio.to_thread()` or use `asyncio.get_event_loop().run_in_executor()`. Note: the existing codebase uses synchronous `get_postgres_db()` in agents too, and this works fine for a single-user bot. Only optimize if latency becomes noticeable.
-**Warning signs:** Bot feels slow to respond, especially during Postgres-heavy operations like search.
+**How to avoid:** Wrap libSQL/MuninnDB calls in `asyncio.to_thread()` or use `asyncio.get_event_loop().run_in_executor()`. Note: the existing codebase uses synchronous `get_postgres_db()` in agents too, and this works fine for a single-user bot. Only optimize if latency becomes noticeable.
+**Warning signs:** Bot feels slow to respond, especially during libSQL/MuninnDB-heavy operations like search.
 
 ### Pitfall 5: DEEPGRAM_API_KEY Not Set
 **What goes wrong:** Voice transcription fails silently or with unhelpful error.
@@ -557,11 +557,11 @@ These are the specific files and patterns the planner must account for:
 |-------------------|------|---------------------|
 | Event channel registration | `promaia/events/router.py` line 30 | Add `TelegramChannel` to `self.channels` list |
 | Channel ABC | `promaia/events/channels.py` | Import `NotificationChannel` base class |
-| Brain operations | `promaia/brain/mcp_server.py` | Extract shared Postgres query logic into importable functions |
+| Brain operations | `promaia/brain/mcp_server.py` | Extract shared libSQL/MuninnDB query logic into importable functions |
 | Domain detection | `promaia/brain/engine.py` | Use `detect_mode()` for free-text domain inference |
 | Action extraction | `promaia/brain/extraction.py` | Reuse `extract_actions()` for captured text |
 | Environment loading | `promaia/utils/config.py` | Add TELEGRAM_BOT_TOKEN, TELEGRAM_WHITELIST, DEEPGRAM_API_KEY to env loading |
-| Postgres connection | `promaia/storage/postgres_db.py` | Reuse `get_postgres_db()` -- already lazy-initialized singleton |
+| libSQL/MuninnDB connection | `promaia/storage/postgres_db.py` | Reuse `get_postgres_db()` -- already lazy-initialized singleton |
 | Vector search | `promaia/storage/vector_db.py` | Reuse `VectorDBManager` for search command |
 | PID file pattern | `promaia/agents/scheduler.py` | Reuse PID_FILE pattern for bot daemon management |
 | Message splitting | `promaia/discord_bot/bot.py` line 317 | Adapt `_split_message()` pattern (change 2000 to 4096) |
@@ -578,8 +578,8 @@ These are the specific files and patterns the planner must account for:
 
 **Confidence breakdown:**
 - Standard stack: HIGH - aiogram 3.26.0 and deepgram-sdk 6.0.1 both verified on PyPI with current versions and Python 3.14 support
-- Architecture: HIGH - Event channel ABC, event router, and brain Postgres functions all exist and are well-documented in the codebase
-- Pitfalls: HIGH - Based on direct analysis of codebase patterns (sync Postgres, handler ordering) and verified Telegram API limits (4096 chars, 20MB files)
+- Architecture: HIGH - Event channel ABC, event router, and brain libSQL/MuninnDB functions all exist and are well-documented in the codebase
+- Pitfalls: HIGH - Based on direct analysis of codebase patterns (sync libSQL/MuninnDB, handler ordering) and verified Telegram API limits (4096 chars, 20MB files)
 - Integration points: HIGH - Every file and line number verified by reading actual source code
 
 **Research date:** 2026-03-07

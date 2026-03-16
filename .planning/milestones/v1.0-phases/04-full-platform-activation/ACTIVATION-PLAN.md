@@ -10,7 +10,7 @@ Promaia is 50K+ lines of production code. Phase 4 is ACTIVATION — configure, t
 
 ## What's Done
 
-- Postgres + pgvector on Supabase (Phase 1)
+- libSQL/MuninnDB + pgvector on Railway Volumes (Phase 1)
 - Brain schema + 15 MCP tools (Phase 2 + 3.1 + 4.1)
 - MuninnDB cognitive memory sidecar (Phase 4.1)
 - Gmail OAuth for 2 accounts (zachary4rivers, zackayak)
@@ -25,14 +25,14 @@ Promaia is 50K+ lines of production code. Phase 4 is ACTIVATION — configure, t
 **What exists:** 5,600 lines in mail/ — classifier, intent_detector, response_generator, draft_manager, context_builder, learning_system, gmail_sender. No Notion imports.
 
 **Steps:**
-1. Deploy mail schema (email_drafts table) to Supabase
+1. Deploy mail schema (email_drafts table) to Railway Volumes
 2. Verify prompts exist in prompts/ directory (classification + response)
 3. Test classifier against live Gmail threads
 4. Test intent_detector with sample messages
 5. Wire gmail_read.py cleanup output into classifier for deeper categorization
 6. Test draft generation for a real email
 
-**Config needed:** Postgres (done), ANTHROPIC_API_KEY (done), GOOGLE_API_KEY (done), Gmail OAuth (done)
+**Config needed:** libSQL/MuninnDB (done), ANTHROPIC_API_KEY (done), GOOGLE_API_KEY (done), Gmail OAuth (done)
 
 ---
 
@@ -135,5 +135,5 @@ Promaia is 50K+ lines of production code. Phase 4 is ACTIVATION — configure, t
 2. **Zero-blocker-first** — start with modules that can run today
 3. **Dog-food everything** — Zack uses it through tool interfaces, not raw code
 4. **Document the process** — every setup step reproducible for other users
-5. **Postgres stays king** — MuninnDB is a sidecar, not replacement
+5. **libSQL/MuninnDB stays king** — MuninnDB is a sidecar, not replacement
 6. **Agents are the heartbeat** — system works autonomously, not just when asked

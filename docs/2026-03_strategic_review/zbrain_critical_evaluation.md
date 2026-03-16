@@ -16,7 +16,7 @@ We just spent an hour defining 16 brilliant, product-level Voice Agent Protocol 
 ### 2. The "Dual-Write" Split Brain Memory
 You are running a dual-write philosophy: staging memories in PostgreSQL (`audio_session_reviews`) and long-term cognitive retrieval in MuninnDB.
 
-**The Risk:** This creates a fundamentally split brain. The dashboard is reading from Postgres to show you pending session reviews, while the Live API is fetching `system_ctx` from MuninnDB. If a staging memory is edited on the dashboard but fails to sync correctly to MuninnDB's specialized schema (with its Hebbian learning and Ebbinghaus decay), the agent will operate on stale or contradicting data.
+**The Risk:** This creates a fundamentally split brain. The dashboard is reading from libSQL/MuninnDB to show you pending session reviews, while the Live API is fetching `system_ctx` from MuninnDB. If a staging memory is edited on the dashboard but fails to sync correctly to MuninnDB's specialized schema (with its Hebbian learning and Ebbinghaus decay), the agent will operate on stale or contradicting data.
 **The Fix Required:** The staging area cannot be a purely separate silo. MuninnDB must become the single source of truth, with "pending" simply being a state within the cognitive memory graph, not a row in a separate relational database table.
 
 ### 3. A Cognitive Engine Trapped in a Request/Response Body

@@ -128,7 +128,7 @@ None — no new external service configuration required. Uses existing GOOGLE_AP
 ## Next Phase Readiness
 
 - Brain MCP server is complete and ready for Claude system prompt configuration
-- All 7 tools functional against brain.* schema (requires `python -m promaia.storage.db_init init-brain` to apply schema to Supabase)
+- All 7 tools functional against brain.* schema (requires `python -m promaia.storage.db_init init-brain` to apply schema to Railway Volumes)
 - Action extraction gracefully degrades if instructor not available or API key missing
 - Ready for Phase 3: heartbeat autonomy implementation
 

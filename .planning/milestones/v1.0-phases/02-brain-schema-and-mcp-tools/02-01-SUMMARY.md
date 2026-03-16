@@ -6,10 +6,10 @@ tags: [postgres, pgvector, hnsw, gin, brain-schema, python, sql]
 
 requires:
   - phase: 01-postgres-foundation
-    provides: PostgresDB singleton, get_postgres_db(), vector(768)/HNSW pattern in public schema, db_init.py scaffold
+    provides: libSQL/MuninnDBDB singleton, get_postgres_db(), vector(768)/HNSW pattern in public schema, db_init.py scaffold
 
 provides:
-  - brain Postgres schema with 7 tables (memories, domains, contexts, actions, reviews, events, modes)
+  - brain libSQL/MuninnDB schema with 7 tables (memories, domains, contexts, actions, reviews, events, modes)
   - brain/schema.sql DDL — idempotent, all CREATE IF NOT EXISTS
   - brain/engine.py with 8 deterministic functions for mode/context/budget management
   - apply_brain_schema() in db_init.py with init-brain subcommand
@@ -22,7 +22,7 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "brain schema in dedicated Postgres schema (not public) — prevents naming collisions"
+    - "brain schema in dedicated libSQL/MuninnDB schema (not public) — prevents naming collisions"
     - "vector(768) + HNSW cosine ops — same as public.content_embeddings"
     - "GIN index on text[] arrays — fast tag lookup"
     - "B-tree indexes on brain.events (type, source, created_at DESC) — event log query patterns"
@@ -38,7 +38,7 @@ key-files:
     - promaia/storage/db_init.py
 
 key-decisions:
-  - "brain schema lives in a dedicated 'brain' Postgres schema — all 7 tables under brain.* to avoid collision with public schema"
+  - "brain schema lives in a dedicated 'brain' libSQL/MuninnDB schema — all 7 tables under brain.* to avoid collision with public schema"
   - "guardrails use separate single-term entries for 'main' and 'master' so either word alone triggers block without requiring both"
   - "suggest_next scores: staleness_score + priority_score; energy='low' halves scores for priority<=3 items"
   - "apply_brain_schema() uses autocommit=True per statement to match existing init_database() pattern"
@@ -56,7 +56,7 @@ completed: 2026-03-05
 
 # Phase 02 Plan 01: Brain Schema and Engine Summary
 
-**Brain Postgres schema (7 tables with HNSW/GIN indexes) and 8 deterministic engine functions for mode detection, guardrails, time tracking, budget management, and context save/restore**
+**Brain libSQL/MuninnDB schema (7 tables with HNSW/GIN indexes) and 8 deterministic engine functions for mode detection, guardrails, time tracking, budget management, and context save/restore**
 
 ## Performance
 
@@ -90,7 +90,7 @@ Each task was committed atomically:
 
 ## Decisions Made
 
-- **brain schema in dedicated Postgres schema:** All 7 tables live under `brain.*` to keep them separate from `public.*` tables. This avoids naming collisions (e.g., public already has no 'memories' table but future additions won't conflict).
+- **brain schema in dedicated libSQL/MuninnDB schema:** All 7 tables live under `brain.*` to keep them separate from `public.*` tables. This avoids naming collisions (e.g., public already has no 'memories' table but future additions won't conflict).
 - **Guardrail pattern design:** Separated 'main' and 'master' into individual single-term block patterns. Original design had them combined (`['main', 'master']`) which required BOTH words to appear — incorrect. Each word independently signals a main branch operation.
 - **apply_brain_schema() uses autocommit=True:** Matches the existing `init_database()` pattern — executes each DDL statement individually. CREATE INDEX/TABLE IF NOT EXISTS are idempotent so this is safe.
 - **suggest_next staleness cap at 2.0:** Domains severely overdue don't get unbounded scores — prevents any single stale domain from completely dominating even with energy adjustments.
@@ -118,11 +118,11 @@ None beyond the guardrails pattern fix above.
 
 ## User Setup Required
 
-None — no external service configuration required. Brain schema is applied via `python -m promaia.storage.db_init init-brain` once Supabase connection is live (existing DATABASE_URL env var).
+None — no external service configuration required. Brain schema is applied via `python -m promaia.storage.db_init init-brain` once Railway Volumes connection is live (existing DATABASE_URL env var).
 
 ## Next Phase Readiness
 
-- Brain schema SQL is ready to apply against Supabase (run `init-brain` subcommand)
+- Brain schema SQL is ready to apply against Railway Volumes (run `init-brain` subcommand)
 - All 8 engine functions importable and passing tests
 - Plan 02-02 (MCP tools) can build on brain.* tables and import from engine.py immediately
 - No blockers

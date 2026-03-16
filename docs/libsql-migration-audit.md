@@ -1,6 +1,6 @@
 # libSQL Migration Audit — 2026-03-15
 
-Full codebase audit of the Postgres-to-libSQL migration. Found **30+ issues** across 20 files.
+Full codebase audit of the libSQL/MuninnDB-to-libSQL migration. Found **30+ issues** across 20 files.
 The brain MCP server was running against broken schemas for ~9 days, causing silent failures
 and data written to ghost tables.
 
@@ -15,10 +15,10 @@ and data written to ghost tables.
 - All agent cost data for the last 9 days went to the ghost table, not the real one
 - **Fix:** Replace `brain_agent_costs` with `agent_costs` throughout file
 
-### 2. Postgres `::type` casts in engine.py
+### 2. libSQL/MuninnDB `::type` casts in engine.py
 **File:** `promaia/brain/engine.py` (lines 176, 218)
-- `(payload->>'domain_id')::int` — `::int` is Postgres, SQLite errors
-- `(payload->>'cost')::float` — `::float` is Postgres
+- `(payload->>'domain_id')::int` — `::int` is libSQL/MuninnDB, SQLite errors
+- `(payload->>'cost')::float` — `::float` is libSQL/MuninnDB
 - **Fix:** Use `CAST(json_extract(payload, '$.domain_id') AS INTEGER)` etc.
 
 ### 3. pgvector operator in telegram/brain_ops.py
@@ -62,9 +62,9 @@ and data written to ghost tables.
 - Should query `gmail_content` table directly
 - **Fix:** Rewrite to query `gmail_content` columns
 
-### 10. `supabase_query.py` imports nonexistent classes
-**File:** `promaia/storage/supabase_query.py` (line 11)
-- Imports `PostgresQueryInterface`, `get_postgres_query_interface` from `db_factory`
+### 10. `railway_volumes_query.py` imports nonexistent classes
+**File:** `promaia/storage/railway_volumes_query.py` (line 11)
+- Imports `libSQL/MuninnDBQueryInterface`, `get_postgres_query_interface` from `db_factory`
 - These don't exist — crashes on import
 - **Fix:** Remove or rewrite module
 
@@ -75,21 +75,21 @@ and data written to ghost tables.
 
 ---
 
-## HIGH — Postgres DDL That Fails on Table Creation
+## HIGH — libSQL/MuninnDB DDL That Fails on Table Creation
 
 ### 12. `SERIAL PRIMARY KEY` in block_cache.py and sync_cache.py
 **Files:** `promaia/storage/block_cache.py` (line 41), `promaia/storage/sync_cache.py` (line 43)
-- `SERIAL` is Postgres-only
+- `SERIAL` is libSQL/MuninnDB-only
 - **Fix:** Change to `INTEGER PRIMARY KEY AUTOINCREMENT`
 
 ### 13. `JSONB` column type in block_cache.py
 **File:** `promaia/storage/block_cache.py` (line 44)
-- `JSONB` is Postgres type
+- `JSONB` is libSQL/MuninnDB type
 - **Fix:** Change to `TEXT`
 
 ### 14. `DOUBLE PRECISION` in sync_cache.py and block_cache.py
 **Files:** `sync_cache.py` (line 46), `block_cache.py` (line 45)
-- Postgres type, SQLite uses `REAL`
+- libSQL/MuninnDB type, SQLite uses `REAL`
 - **Fix:** Change to `REAL`
 
 ### 15. Incomplete GIN index in hybrid_storage.py
@@ -99,17 +99,17 @@ and data written to ghost tables.
 
 ### 16. `NULLS LAST` in hybrid_query.py
 **File:** `promaia/storage/hybrid_query.py` (lines 156, 175)
-- Postgres-only syntax
+- libSQL/MuninnDB-only syntax
 - **Fix:** Use `ORDER BY COALESCE(col, '') DESC`
 
 ### 17. `to_char()` + `::timestamp` in sql_generator.py
 **File:** `promaia/ai/sql_generator.py` (line 400)
-- Postgres function and cast
+- libSQL/MuninnDB function and cast
 - **Fix:** Use `strftime('%Y-%W', created_time)`
 
-### 18. `schema.sql` is entirely Postgres
+### 18. `schema.sql` is entirely libSQL/MuninnDB
 **File:** `promaia/brain/schema.sql`
-- Full Postgres DDL: `CREATE SCHEMA`, `SERIAL`, `TIMESTAMPTZ`, `JSONB`, `vector(768)`, `TEXT[]`, `USING hnsw`, `USING gin`
+- Full libSQL/MuninnDB DDL: `CREATE SCHEMA`, `SERIAL`, `TIMESTAMPTZ`, `JSONB`, `vector(768)`, `TEXT[]`, `USING hnsw`, `USING gin`
 - If `db_init.py` runs `apply_brain_schema()`, everything breaks
 - **Fix:** Create libSQL-compatible schema or mark as deprecated
 
@@ -151,7 +151,7 @@ and data written to ghost tables.
 
 ## LOW — Stale Comments / Cosmetic
 
-### 24. ~8 `PostgresDB` references in docstrings
+### 24. ~8 `libSQL/MuninnDBDB` references in docstrings
 engine.py, onboarding.py, gmail_read.py, pc_scan.py, memory_pipeline.py
 
 ### 25. ~15 `pgvector` references in comments

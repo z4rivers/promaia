@@ -7,11 +7,11 @@
 
 ## Executive Summary
 
-zBrain is a personal AI brain built as a focused fork of the Promaia platform. Its core value proposition is eliminating AI amnesia: the system remembers across sessions, proactively surfaces what matters, extracts action commitments from conversations, and runs autonomous overnight work. The recommended approach is additive — build new `brain/` and `heartbeat/` modules on top of Promaia's existing agent orchestration, connector, and multi-model adapter infrastructure, while replacing the local SQLite/ChromaDB storage with Supabase Postgres and pgvector. Nothing in the existing connector or CLI layer needs to change; the work is primarily in storage migration, a new model router, and the brain behavioral layer.
+zBrain is a personal AI brain built as a focused fork of the Promaia platform. Its core value proposition is eliminating AI amnesia: the system remembers across sessions, proactively surfaces what matters, extracts action commitments from conversations, and runs autonomous overnight work. The recommended approach is additive — build new `brain/` and `heartbeat/` modules on top of Promaia's existing agent orchestration, connector, and multi-model adapter infrastructure, while replacing the local SQLite/ChromaDB storage with Railway Volumes libSQL/MuninnDB and pgvector. Nothing in the existing connector or CLI layer needs to change; the work is primarily in storage migration, a new model router, and the brain behavioral layer.
 
-The most important sequencing decision is infrastructure first. Every zBrain feature — session briefings, action extraction, standing directives, stale project alerts, heartbeat agent — depends on the brain schema being live in Supabase with pgvector enabled. Daughter's `postgres-sql-changeover` branch is 70% complete and is the critical path blocker. Until Supabase is the storage target and the `brain.*` schema exists, no other work can proceed meaningfully. The model routing layer (new `ai/router.py`) should be built second, before the brain module, so brain features use Gemini Flash from day one rather than making direct API calls that need refactoring later.
+The most important sequencing decision is infrastructure first. Every zBrain feature — session briefings, action extraction, standing directives, stale project alerts, heartbeat agent — depends on the brain schema being live in Railway Volumes with pgvector enabled. Daughter's `libsql-changeover` branch is 70% complete and is the critical path blocker. Until Railway Volumes is the storage target and the `brain.*` schema exists, no other work can proceed meaningfully. The model routing layer (new `ai/router.py`) should be built second, before the brain module, so brain features use Gemini Flash from day one rather than making direct API calls that need refactoring later.
 
-The principal risks are technical and operational. On the technical side: asyncpg prepared statement failures on Supabase's pooler (use port 5432 direct connection), chromadb-to-pgvector API mismatch (no drop-in replacement — requires a full abstraction layer), and embedding model deprecation (text-embedding-004 is past EOL; use `gemini-embedding-001` via the new `google-genai` SDK). On the operational side: the heartbeat agent must invoke Claude via the official Claude Code CLI subprocess pattern — not via Agent SDK or OAuth extraction — to comply with Anthropic's ToS. Upstream codebase drift is also a real risk given that daughter's Promaia is under active development; weekly rebases on `zbrain` are non-negotiable.
+The principal risks are technical and operational. On the technical side: asyncpg prepared statement failures on Railway Volumes's pooler (use port 5432 direct connection), chromadb-to-pgvector API mismatch (no drop-in replacement — requires a full abstraction layer), and embedding model deprecation (text-embedding-004 is past EOL; use `gemini-embedding-001` via the new `google-genai` SDK). On the operational side: the heartbeat agent must invoke Claude via the official Claude Code CLI subprocess pattern — not via Agent SDK or OAuth extraction — to comply with Anthropic's ToS. Upstream codebase drift is also a real risk given that daughter's Promaia is under active development; weekly rebases on `zbrain` are non-negotiable.
 
 ---
 
@@ -21,13 +21,13 @@ The principal risks are technical and operational. On the technical side: asyncp
 
 The new additions are minimal and deliberate. Three new packages cover all zBrain requirements: `pgvector==0.4.2` (vector type binding for the existing psycopg2 connection), `google-genai==1.65.0` (replaces deprecated `google-generativeai`, provides `gemini-embedding-001` embeddings and Gemini 2.5 Flash for cheap tasks), and `mcp[cli]==1.26.0` (bundles FastMCP for the Brain MCP server, already used in Promaia for external servers). The heartbeat agent requires no new Python scheduler library — Windows Task Scheduler plus a `.bat` wrapper is sufficient and simpler than running a daemon.
 
-Two migration steps are mandatory before writing new code: (1) uninstall `google-generativeai` and update all imports to `google-genai`, since the old SDK is deprecated and past EOL as of August 2025; (2) swap the Postgres connection string from the local `192.168.0.69` host to the Supabase session pooler URL. The Brain MCP server must run in a separate Python 3.10+ venv since `mcp[cli]` requires Python >=3.10 while Promaia targets 3.8+.
+Two migration steps are mandatory before writing new code: (1) uninstall `google-generativeai` and update all imports to `google-genai`, since the old SDK is deprecated and past EOL as of August 2025; (2) swap the libSQL/MuninnDB connection string from the local `192.168.0.69` host to the Railway Volumes session pooler URL. The Brain MCP server must run in a separate Python 3.10+ venv since `mcp[cli]` requires Python >=3.10 while Promaia targets 3.8+.
 
 **Core technologies:**
 - `pgvector==0.4.2`: Vector type for psycopg2 — one `register_vector(conn)` call, no separate DB process
 - `google-genai==1.65.0`: Required replacement for deprecated SDK; provides `gemini-embedding-001` (768 dims) and Gemini 2.5 Flash
 - `mcp[cli]==1.26.0`: FastMCP bundled; builds Brain MCP server; Python 3.10+ venv required
-- Supabase session pooler (port 5432): IPv4+IPv6 compatible; psycopg2 direct connection avoids asyncpg prepared statement issues
+- Railway Volumes session pooler (port 5432): IPv4+IPv6 compatible; psycopg2 direct connection avoids asyncpg prepared statement issues
 - Windows Task Scheduler + `.bat` wrapper: Heartbeat trigger; no daemon, no Redis, no APScheduler
 
 **Critical version constraints:**
@@ -37,7 +37,7 @@ Two migration steps are mandatory before writing new code: (1) uninstall `google
 
 ### Expected Features
 
-The Postgres migration is the only pre-condition. Once the `brain.*` schema exists in Supabase, all features become buildable independently.
+The libSQL/MuninnDB migration is the only pre-condition. Once the `brain.*` schema exists in Railway Volumes, all features become buildable independently.
 
 **Must have (table stakes — v1.0):**
 - Persistent cross-session memory — core value proposition; without this the system is just a chatbot
@@ -48,7 +48,7 @@ The Postgres migration is the only pre-condition. Once the `brain.*` schema exis
 - Gemini model routing — deterministic task-type table (not a fallback chain); Gemini Flash for cheap tasks, Claude for reasoning
 - Brain ingestion: YouTube — primary research format; `youtube-transcript-api` → chunk → embed → store
 - Heartbeat agent — Windows Task Scheduler, 2–6 AM window, single-run script, HEARTBEAT.md checklist pattern
-- iPhone access verification — Supabase cloud already provides this; verify claude.ai + MCP works day-1
+- iPhone access verification — Railway Volumes cloud already provides this; verify claude.ai + MCP works day-1
 
 **Should have (competitive — v1.1):**
 - Google Calendar integration — briefing includes today's schedule; heartbeat pre-researches meetings
@@ -72,7 +72,7 @@ The Postgres migration is the only pre-condition. Once the `brain.*` schema exis
 
 The architecture is strictly additive. Two new top-level modules (`brain/` and `heartbeat/`) contain all new behavioral logic. Two existing modules are modified (`storage/vector_db.py` replaces ChromaDB internals while preserving the public interface; `storage/postgres_db.py` changes its connection target). One new module is added to the AI layer (`ai/router.py`). The connector layer and CLI layer are untouched except for new hook points (briefing on chat startup, new `maia brain` and `maia heartbeat` commands).
 
-The `brain/` module is explicitly NOT in `storage/` — this separation matters for the daughter's fork. Storage is raw connector output; brain is derived intelligence (reasoning, extraction, directives). Keeping them in separate modules means she can cherry-pick storage changes without picking up brain logic. The `brain.*` Postgres schema is separate from `public.*` for the same reason.
+The `brain/` module is explicitly NOT in `storage/` — this separation matters for the daughter's fork. Storage is raw connector output; brain is derived intelligence (reasoning, extraction, directives). Keeping them in separate modules means she can cherry-pick storage changes without picking up brain logic. The `brain.*` libSQL/MuninnDB schema is separate from `public.*` for the same reason.
 
 **Major components:**
 1. `brain/` module — `briefing.py`, `actions.py`, `directives.py`, `stale.py`; the behavioral intelligence layer that reads from storage and reasons about state
@@ -83,13 +83,13 @@ The `brain/` module is explicitly NOT in `storage/` — this separation matters 
 
 **Key patterns to follow:**
 - Preserve `VectorDBManager`'s public interface (`search`, `add_content`, `add_content_with_chunking`, `check_exists`) — four callers depend on these signatures
-- Use HNSW index (not IVFFlat) — HNSW builds incrementally, works on empty tables, Supabase recommends it
+- Use HNSW index (not IVFFlat) — HNSW builds incrementally, works on empty tables, Railway Volumes recommends it
 - Build router before brain module so brain uses it from day one
 - Heartbeat is a single-run script, not a daemon — Task Scheduler handles scheduling
 
 ### Critical Pitfalls
 
-1. **asyncpg + Supabase pooler incompatibility** — Supabase's pooler (port 6543, PgBouncer in transaction mode) does not persist prepared statements; asyncpg uses them automatically; queries that work locally fail against Supabase. Prevention: use port 5432 (direct connection) for all Python processes; never use the pooler for persistent Python services.
+1. **asyncpg + Railway Volumes pooler incompatibility** — Railway Volumes's pooler (port 6543, PgBouncer in transaction mode) does not persist prepared statements; asyncpg uses them automatically; queries that work locally fail against Railway Volumes. Prevention: use port 5432 (direct connection) for all Python processes; never use the pooler for persistent Python services.
 
 2. **Anthropic ToS — heartbeat agent invocation method** — Claude Max OAuth tokens are valid only inside the official Claude Code CLI. Using Agent SDK or any library that extracts OAuth tokens programmatically is a ToS violation Anthropic actively enforces (blocks deployed January 2026). Prevention: heartbeat invokes Claude via `claude` CLI subprocess only. Never use Agent SDK with Max subscription credentials.
 
@@ -103,7 +103,7 @@ The `brain/` module is explicitly NOT in `storage/` — this separation matters 
 
 7. **IVFFlat index on empty table** — IVFFlat builds cluster centers from data present at index creation; an empty table means broken recall with no error thrown. Prevention: use HNSW exclusively; never IVFFlat.
 
-8. **Custom schema not exposed in Supabase Data API** — `brain.*` schema is invisible to PostgREST by default; RLS defaults to DENY ALL. Prevention: add `brain` to exposed schemas in Supabase dashboard; use direct psycopg2 connection for all Python brain operations; set RLS policy for service-role access.
+8. **Custom schema not exposed in Railway Volumes Data API** — `brain.*` schema is invisible to PostgREST by default; RLS defaults to DENY ALL. Prevention: add `brain` to exposed schemas in Railway Volumes dashboard; use direct psycopg2 connection for all Python brain operations; set RLS policy for service-role access.
 
 ---
 
@@ -112,11 +112,11 @@ The `brain/` module is explicitly NOT in `storage/` — this separation matters 
 The dependency chain is clear: storage foundation unlocks everything. Model router enables brain features. Brain module enables heartbeat. This dictates a strict four-phase sequence.
 
 ### Phase 1: Storage Foundation
-**Rationale:** Absolute critical path. Every zBrain feature depends on Supabase being the storage target and `brain.*` schema existing. This completes daughter's 70%-done `postgres-sql-changeover` branch, adds pgvector, creates the brain schema, and validates the connection. Nothing else can be built on an unvalidated foundation.
-**Delivers:** Supabase as active storage target; `brain.*` schema live with HNSW indexes; ChromaDB internals replaced in `VectorDBManager` while preserving public interface; `maia sync` writing embeddings to Supabase pgvector; verified connection from Windows 11 machine
-**Addresses:** Postgres/pgvector migration, brain schema creation, iPhone access (Supabase cloud)
-**Avoids:** asyncpg pooler incompatibility (port 5432 direct); IVFFlat on empty table (HNSW from creation); embedding dimension lock-in (gemini-embedding-001 at 768 dims via config constant); ChromaDB API mismatch (abstraction layer); SQLite parameter style bugs (audit before building); Supabase schema exposure (configure during setup)
-**Research flag:** STANDARD PATTERNS — Supabase Postgres migration is well-documented; pgvector HNSW setup is documented by Supabase; connection pooler behavior is documented in official Supabase docs. No phase research needed.
+**Rationale:** Absolute critical path. Every zBrain feature depends on Railway Volumes being the storage target and `brain.*` schema existing. This completes daughter's 70%-done `libsql-changeover` branch, adds pgvector, creates the brain schema, and validates the connection. Nothing else can be built on an unvalidated foundation.
+**Delivers:** Railway Volumes as active storage target; `brain.*` schema live with HNSW indexes; ChromaDB internals replaced in `VectorDBManager` while preserving public interface; `maia sync` writing embeddings to Railway Volumes pgvector; verified connection from Windows 11 machine
+**Addresses:** libSQL/MuninnDB/pgvector migration, brain schema creation, iPhone access (Railway Volumes cloud)
+**Avoids:** asyncpg pooler incompatibility (port 5432 direct); IVFFlat on empty table (HNSW from creation); embedding dimension lock-in (gemini-embedding-001 at 768 dims via config constant); ChromaDB API mismatch (abstraction layer); SQLite parameter style bugs (audit before building); Railway Volumes schema exposure (configure during setup)
+**Research flag:** STANDARD PATTERNS — Railway Volumes libSQL/MuninnDB migration is well-documented; pgvector HNSW setup is documented by Railway Volumes; connection pooler behavior is documented in official Railway Volumes docs. No phase research needed.
 
 ### Phase 2: Model Router
 **Rationale:** Brain features need Gemini Flash for cheap tasks. Building the router before the brain module means brain code uses the router from day one and never makes direct API calls that need refactoring. This is infrastructure, not a user feature, so it should be invisible to end users.
@@ -161,7 +161,7 @@ Phases needing deeper research during planning:
 - **Phase 4 (Heartbeat Agent):** Verify current Anthropic ToS on CLI subprocess invocation pattern before implementation. The compliant path (calling `claude` CLI subprocess) is documented but ToS evolves rapidly. Also smoke-test Windows Task Scheduler absolute path behavior on Windows 11 before committing to the bat wrapper architecture.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1:** Supabase Postgres/pgvector migration is extensively documented. HNSW index setup is Supabase-official. psycopg2 direct connection is standard.
+- **Phase 1:** Railway Volumes libSQL/MuninnDB/pgvector migration is extensively documented. HNSW index setup is Railway Volumes-official. psycopg2 direct connection is standard.
 - **Phase 2:** Task-based LLM routing is a well-established pattern. `google-genai` SDK migration is official and documented.
 - **Phase 3:** LLM-based action extraction and session briefing composition are established patterns. Prompt iteration may be needed but doesn't require research.
 - **Phase 5:** `youtube-transcript-api` and chunking pipelines are documented and stable.
@@ -174,8 +174,8 @@ Phases with standard patterns (skip research-phase):
 |------|------------|-------|
 | Stack | HIGH | Versions verified against official PyPI and Google/Anthropic docs. One MEDIUM exception: Gemini model naming changes frequently — verify `gemini-2.5-flash-lite` string at runtime startup; SDK returns clear error if wrong. |
 | Features | MEDIUM-HIGH | Core patterns (session briefing, action extraction, heartbeat) are well-documented in analogous systems (OpenClaw, Nate Jones Open Brain). Specific Promaia integration points inferred from codebase context rather than tested. |
-| Architecture | HIGH | Based on direct code inspection of 400+ lines across 10 source files in the `zbrain` and `postgres-sql-changeover` branches. Component boundaries and integration points are verified, not inferred. |
-| Pitfalls | HIGH | Most pitfalls verified via official docs and multiple sources. asyncpg/pooler incompatibility confirmed via Supabase GitHub issues. Anthropic ToS constraint confirmed via official support article. ChromaDB migration pitfalls confirmed via multiple migration post-mortems. |
+| Architecture | HIGH | Based on direct code inspection of 400+ lines across 10 source files in the `zbrain` and `libsql-changeover` branches. Component boundaries and integration points are verified, not inferred. |
+| Pitfalls | HIGH | Most pitfalls verified via official docs and multiple sources. asyncpg/pooler incompatibility confirmed via Railway Volumes GitHub issues. Anthropic ToS constraint confirmed via official support article. ChromaDB migration pitfalls confirmed via multiple migration post-mortems. |
 
 **Overall confidence:** HIGH
 
@@ -184,7 +184,7 @@ Phases with standard patterns (skip research-phase):
 - **Gemini model name verification at runtime:** `gemini-2.5-flash-lite` is the recommended model as of March 2026 but Google model naming changes frequently. Add a startup check that validates the model string against the API before the first production run.
 - **`text-embedding-004` vs `gemini-embedding-001` availability:** STACK.md directs use of `gemini-embedding-001` (via `google-genai` SDK). ARCHITECTURE.md references `text-embedding-004` in some patterns (written slightly earlier). PITFALLS.md confirms `text-embedding-004` is deprecated. Treat `gemini-embedding-001` via `google-genai` as the definitive choice. Verify availability with a test API call before writing the schema.
 - **Python 3.10+ venv for Brain MCP server:** Promaia targets Python 3.8+. The Brain MCP server requires a separate 3.10+ venv. This venv setup is not yet documented in the project. Address in Phase 1 setup.
-- **Supabase Pro connection limit:** Pro plan allows 60 direct connections. With heartbeat + CLI + any concurrent processes, this could be a constraint. Document and revisit at v1.1 if needed. Not a day-1 blocker.
+- **Railway Volumes Pro connection limit:** Pro plan allows 60 direct connections. With heartbeat + CLI + any concurrent processes, this could be a constraint. Document and revisit at v1.1 if needed. Not a day-1 blocker.
 - **Upstream sync cadence:** Daughter's `feature/agent-scheduler` branch is the sync target. Weekly rebases must begin in Phase 1 and never slip. This is a process requirement, not a technical gap.
 
 ---
@@ -193,8 +193,8 @@ Phases with standard patterns (skip research-phase):
 
 ### Primary (HIGH confidence)
 - Direct code inspection: `storage/vector_db.py`, `ai/models.py`, `storage/hybrid_storage.py`, `agent/agent_manager.py`, `agents/scheduler.py`, `agents/executor.py`, `mcp/client.py`, `connectors/base.py`, `storage/postgres_db.py`, `storage/schema.sql` — architecture and integration points
-- [Supabase Connecting to Postgres Docs](https://supabase.com/docs/guides/database/connecting-to-postgres) — session pooler format, IPv6 direct-only warning, port guidance
-- [Supabase pgvector Docs](https://supabase.com/docs/guides/database/extensions/pgvector) — HNSW index recommendation
+- [Railway Volumes Connecting to libSQL/MuninnDB Docs](https://railway_volumes.com/docs/guides/database/connecting-to-postgres) — session pooler format, IPv6 direct-only warning, port guidance
+- [Railway Volumes pgvector Docs](https://railway_volumes.com/docs/guides/database/extensions/pgvector) — HNSW index recommendation
 - [Google Gemini Embeddings Docs](https://ai.google.dev/gemini-api/docs/embeddings) — `gemini-embedding-001`, 128-3072 dims, `text-embedding-004` deprecated
 - [google-genai PyPI 1.65.0](https://pypi.org/project/google-genai/) — version confirmed 2026-02-26
 - [MCP Python SDK PyPI 1.26.0](https://pypi.org/project/mcp/) — Python >=3.10 requirement confirmed
@@ -204,7 +204,7 @@ Phases with standard patterns (skip research-phase):
 ### Secondary (MEDIUM confidence)
 - [pgvector/pgvector-python GitHub](https://github.com/pgvector/pgvector-python) — `register_vector()` pattern
 - [Google deprecated-generativeai-python GitHub](https://github.com/google-gemini/deprecated-generativeai-python) — confirms `google-generativeai` is deprecated
-- [Supabase GitHub Issue: asyncpg prepared statement errors](https://github.com/supabase/supabase/issues/39227) — pooler incompatibility verified
+- [Railway Volumes GitHub Issue: asyncpg prepared statement errors](https://github.com/railway_volumes/railway_volumes/issues/39227) — pooler incompatibility verified
 - [ChromaDB migration post-mortem](https://wwakabobik.github.io/2025/11/migrating_chroma_db/) — API mismatch pitfall confirmed
 - [pgvector vs ChromaDB comparison (Elestio)](https://blog.elest.io/pgvector-vs-chromadb-when-to-extend-postgresql-and-when-to-go-dedicated/) — no Python SDK for pgvector confirmed
 - [OpenClaw HEARTBEAT.md Guide](https://openclawconsult.com/lab/openclaw-heartbeat-md) — heartbeat pattern and checklist approach

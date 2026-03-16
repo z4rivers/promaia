@@ -11,7 +11,7 @@ Create a Discord bot that:
 - Uses Claude's agentic loop (multi-step reasoning, tool calling)
 - Has access to Promaia's aggregated context (journal, stories, CMS, etc.)
 - Can perform write operations via service-specific MCPs (Gmail, Notion)
-- Runs 24/7 on Render
+- Runs 24/7 on Railway
 
 ## Key Architectural Decisions
 
@@ -99,7 +99,7 @@ Claude sees attachment for all subsequent messages
          │
          v
 ┌─────────────────────────────────────┐
-│     Discord Bot (on Render)         │
+│     Discord Bot (on Railway)         │
 │  - Handles Discord events           │
 │  - Manages conversation context     │
 └────────┬────────────────────────────┘
@@ -154,7 +154,7 @@ Claude sees attachment for all subsequent messages
 - **Connectors** - Notion, CMS, Gmail sync happens locally
 - **Credentials** - API keys, workspace configs stay local
 
-### Server (Render)
+### Server (Railway)
 - **Discord Bot Process** - Runs 24/7, connected to Discord
 - **Claude Agent SDK** - Agentic capabilities
 - **Promaia MCP Server** - Exposes synced database copies
@@ -169,7 +169,7 @@ Claude sees attachment for all subsequent messages
 maia sync          # Updates local databases
 ./sync_to_s3.sh    # Uploads to Cloudflare R2
 
-# Render server
+# Railway server
 # Polls R2 every 10 minutes
 # Downloads if changed
 # Reloads MCP context
@@ -179,8 +179,8 @@ maia sync          # Updates local databases
 ```bash
 # Local machine runs sync
 maia sync          # Updates local DBs
-# Triggers webhook to Render
-# Render reloads immediately
+# Triggers webhook to Railway
+# Railway reloads immediately
 ```
 
 ## Implementation Plan
@@ -207,13 +207,13 @@ maia sync          # Updates local DBs
 
 ### Phase 4: Deployment
 1. Create Dockerfile
-2. Set up Render service (Background Worker)
+2. Set up Railway service (Background Worker)
 3. Configure environment variables
-4. Set up data sync (local → R2 → Render)
+4. Set up data sync (local → R2 → Railway)
 5. Deploy and test
 6. Monitor and iterate
 
-## Deployment Configuration (Render)
+## Deployment Configuration (Railway)
 
 ### Service Type
 **Background Worker** (recommended)
@@ -234,7 +234,7 @@ NOTION_MCP_HOST=localhost:3002
 ```
 
 ### Data Storage
-- **Render Persistent Disk** for database files
+- **Railway Persistent Disk** for database files
 - **Cloudflare R2** for sync storage
 - **Local SQLite** for conversation state
 

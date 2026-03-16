@@ -6,7 +6,7 @@
 
 **Architecture:** New `brain.profile_narrative` table caches the synthesized narrative with a hash of the profile state. When `update_profile` is called, the hash is invalidated. Next `profile(mode="narrative")` call detects staleness, regenerates via Gemini Flash, caches, and returns. Full profile dump stays available via default behavior or `mode="full"`.
 
-**Tech Stack:** Postgres (brain schema), Gemini 3 Flash (synthesis), existing MCP server infrastructure, existing `promaia.ai.models` for model IDs.
+**Tech Stack:** libSQL/MuninnDB (brain schema), Gemini 3 Flash (synthesis), existing MCP server infrastructure, existing `promaia.ai.models` for model IDs.
 
 ---
 

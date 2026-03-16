@@ -8,7 +8,7 @@ Dashboard becomes a life command center with category tabs (All | Projects | Hea
 - v3.0 Quick Wins — dashboard nav, health indicator, notification badge all exist
 
 ## What Already Exists
-- `promaia/web/routers/dashboard.py` — 5 routes, queries Postgres directly
+- `promaia/web/routers/dashboard.py` — 5 routes, queries libSQL/MuninnDB directly
 - `promaia/web/templates/` — base.html, dashboard.html, projects.html, email.html, profile.html
 - `promaia/web/static/skins/superflat.css` — CSS custom properties design system
 - Brain schema: brain.memories, brain.actions, brain.contexts (projects), brain.domains, brain.profile

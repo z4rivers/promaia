@@ -10,7 +10,7 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 ### Validation & Data Pipeline
 
 - [x] **VALID-01**: Agent scheduler runs all 3 agents (morning-briefing, email-triage, evening-digest) successfully via SDK
-- [x] **VALID-02**: Gmail context loads from Postgres (not .md files on disk) in agent executor
+- [x] **VALID-02**: Gmail context loads from libSQL/MuninnDB (not .md files on disk) in agent executor
 - [x] **VALID-03**: SQL dialect bugs fixed (jsonb operators, timestamp casting, unified_content table reference). Note: files.py row['thread_id'] fix already applied.
 - [x] **VALID-04**: Agent output is coherent and surfaces real data (not hallucinated)
 
@@ -58,7 +58,7 @@ Requirements for v2.0 milestone. Each maps to roadmap phases.
 
 ### Memory & Polish
 
-- [ ] **MEM-01**: MuninnDB health monitored every 5 minutes with graceful fallback to Postgres-only
+- [ ] **MEM-01**: MuninnDB health monitored every 5 minutes with graceful fallback to libSQL/MuninnDB-only
 - [ ] **MEM-02**: Memory decay tiers (core/active/warm/cold/archive) recalculated nightly based on access
 - [ ] **MEM-03**: Association strengthening tracks co-retrieved memories and boosts linked results
 - [ ] **MEM-04**: Profile-driven prompt (~200 tokens of "who Zack is") injected as cached prefix in every agent call
@@ -88,7 +88,7 @@ Deferred beyond v2.0.
 
 ### Advanced Memory
 
-- **AMEM-01**: Hebbian learning natively in Postgres (replace MuninnDB dependency)
+- **AMEM-01**: Hebbian learning natively in libSQL/MuninnDB (replace MuninnDB dependency)
 - **AMEM-02**: Temporal narrative construction from memory graph
 
 ## Out of Scope

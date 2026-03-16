@@ -6,7 +6,7 @@
 
 ## Core Principle
 
-MuninnDB is the cognitive engine. Postgres is the durable store and fallback. When MuninnDB is healthy, ACTIVATE is the PRIMARY retrieval path. When MuninnDB is down, the system should feel noticeably dumber, because it IS dumber without decay, Hebbian learning, and associative recall.
+MuninnDB is the cognitive engine. libSQL/MuninnDB is the durable store and fallback. When MuninnDB is healthy, ACTIVATE is the PRIMARY retrieval path. When MuninnDB is down, the system should feel noticeably dumber, because it IS dumber without decay, Hebbian learning, and associative recall.
 
 ---
 
@@ -24,7 +24,7 @@ The architecture inverts the traditional RAG stack. Instead of stateless vector 
    - **Session Context:** Via `ACTIVATE("previous session summary")`
 4. **Action/Response:** Agent generates output
 5. **Dual-Write Commitment:**
-   - **Postgres:** `INSERT INTO memories (...)` (Durability) -- blocks, must succeed
+   - **libSQL/MuninnDB:** `INSERT INTO memories (...)` (Durability) -- blocks, must succeed
    - **MuninnDB:** `POST /engrams` (Cognition/Learning) -- parallel write
 
 ---
@@ -94,7 +94,7 @@ async def run_agent_cycle(user_input, session_history):
 
 ## 4. Memory Tier Mapping (MuninnDB-Driven)
 
-MEM-02 tiers are views on MuninnDB's dynamic scoring -- NOT separate Postgres labels.
+MEM-02 tiers are views on MuninnDB's dynamic scoring -- NOT separate libSQL/MuninnDB labels.
 
 | Tier | MuninnDB Condition | Meaning |
 |------|-------------------|---------|
@@ -204,7 +204,7 @@ await muninn_write(content=new_memory, concept="interaction_log", tags=["session
 ## 10. Seeding for Maximum Early Association
 
 ### Step 1: Import
-Loop through 56 Postgres memories, POST each to MuninnDB individually (batch endpoint has vault bug in v0.3.6).
+Loop through 56 libSQL/MuninnDB memories, POST each to MuninnDB individually (batch endpoint has vault bug in v0.3.6).
 
 ### Step 2: Hebbian Bootstrap
 After seeding, don't leave memories as isolated nodes. Run targeted ACTIVATE queries that co-activate related memories:
@@ -248,7 +248,7 @@ The brain starts pre-wired with meaningful associations instead of 56 disconnect
    - Add health monitoring (5-minute cycle, alert to Telegram when down)
 
 3. **Seeding & Bootstrapping**
-   - Migrate 56 Postgres memories to MuninnDB
+   - Migrate 56 libSQL/MuninnDB memories to MuninnDB
    - Run Hebbian bootstrap script to pre-wire associations
 
 4. **Integration Phase 1 (Retrieval)**
@@ -296,4 +296,4 @@ Start-Service MuninnDB
 ---
 
 *Source: Gemini Deep Research, corrected 2026-03-07*
-*Posture: MuninnDB is the cognitive engine, Postgres is the filing cabinet behind it*
+*Posture: MuninnDB is the cognitive engine, libSQL/MuninnDB is the filing cabinet behind it*

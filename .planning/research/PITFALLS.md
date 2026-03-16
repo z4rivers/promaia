@@ -1,6 +1,6 @@
 # Pitfalls Research
 
-**Domain:** Adding cloud Postgres/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to an existing Python content management platform (Promaia fork)
+**Domain:** Adding cloud libSQL/MuninnDB/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to an existing Python content management platform (Promaia fork)
 **Researched:** 2026-03-04
 **Confidence:** HIGH (most pitfalls verified via official docs + multiple sources)
 
@@ -8,25 +8,25 @@
 
 ## Critical Pitfalls
 
-### Pitfall 1: Supabase Transaction Pooler Breaks asyncpg Prepared Statements
+### Pitfall 1: Railway Volumes Transaction Pooler Breaks asyncpg Prepared Statements
 
 **What goes wrong:**
-Promaia's existing `PostgresDB` singleton likely uses asyncpg or SQLAlchemy with asyncpg. When pointed at Supabase's pooled connection (port 6543, PgBouncer in transaction mode), every query that uses a prepared statement fails with `PreparedStatementError: prepared statement 'asyncpg_stmt_X' does not exist`. This is a silent killer — it works on direct connections during local dev, then explodes when you point at Supabase.
+Promaia's existing `libSQL/MuninnDBDB` singleton likely uses asyncpg or SQLAlchemy with asyncpg. When pointed at Railway Volumes's pooled connection (port 6543, PgBouncer in transaction mode), every query that uses a prepared statement fails with `PreparedStatementError: prepared statement 'asyncpg_stmt_X' does not exist`. This is a silent killer — it works on direct connections during local dev, then explodes when you point at Railway Volumes.
 
 **Why it happens:**
-PgBouncer in transaction mode does not persist prepared statements between connections. asyncpg automatically uses prepared statements for performance. These two behaviors are mutually incompatible. The daughter's existing `PostgresDB` was written against a local Postgres at `192.168.0.69` (direct connection), not a pooler. Supabase's default public URL hits the pooler.
+PgBouncer in transaction mode does not persist prepared statements between connections. asyncpg automatically uses prepared statements for performance. These two behaviors are mutually incompatible. The daughter's existing `libSQL/MuninnDBDB` was written against a local libSQL/MuninnDB at `192.168.0.69` (direct connection), not a pooler. Railway Volumes's default public URL hits the pooler.
 
 **How to avoid:**
-- Use Supabase's direct connection string (port 5432) for all non-serverless, persistent Python processes.
+- Use Railway Volumes's direct connection string (port 5432) for all non-serverless, persistent Python processes.
 - If you must use the pooler (port 6543), disable prepared statements explicitly: `statement_cache_size=0` in `asyncpg.connect()` and `asyncpg.create_pool()`. For SQLAlchemy: set both `statement_cache_size` and `prepared_statement_cache_size` to 0 in `connect_args`, and use `NullPool`.
 - In the connection config, document which port is used and why. Never silently switch ports.
 
 **Warning signs:**
 - `PreparedStatementError` or `asyncpg.exceptions.InvalidCachedStatementError` in logs.
-- Queries that work locally fail after pointing at Supabase URL.
+- Queries that work locally fail after pointing at Railway Volumes URL.
 - Intermittent failures that appear random but correlate with connection recycling.
 
-**Phase to address:** Phase 1 (Postgres/Supabase migration). This must be resolved before any other work proceeds.
+**Phase to address:** Phase 1 (libSQL/MuninnDB/Railway Volumes migration). This must be resolved before any other work proceeds.
 
 ---
 
@@ -83,7 +83,7 @@ pgvector columns are typed with a fixed dimension at creation time (`vector(N)`)
 Promaia uses ChromaDB's Python client (`collection.add()`, `collection.query()`, `collection.get()`). pgvector has no equivalent Python client — it's a SQL extension. All vector operations become raw SQL queries or ORM calls. Every caller of the vector store must be rewritten, not just the storage layer. Code that worked with `results = collection.query(query_embeddings=..., n_results=10)` must become `SELECT ... ORDER BY embedding <-> $1 LIMIT 10`.
 
 **Why it happens:**
-Developers assume "replacing the vector database" means swapping a configuration line. ChromaDB is a standalone service with a Python SDK. pgvector is a Postgres extension — it has no Python SDK. The query interface is SQL, not an object API. This touches every code path that does retrieval, not just the storage initialization.
+Developers assume "replacing the vector database" means swapping a configuration line. ChromaDB is a standalone service with a Python SDK. pgvector is a libSQL/MuninnDB extension — it has no Python SDK. The query interface is SQL, not an object API. This touches every code path that does retrieval, not just the storage initialization.
 
 **How to avoid:**
 - Audit every use of `chromadb` in Promaia before writing a single line of pgvector code. (`grep -r "chromadb" --include="*.py"` in the repo.)
@@ -100,26 +100,26 @@ Developers assume "replacing the vector database" means swapping a configuration
 
 ---
 
-### Pitfall 5: SQLite Parameter Style Breaking Postgres Queries
+### Pitfall 5: SQLite Parameter Style Breaking libSQL/MuninnDB Queries
 
 **What goes wrong:**
-SQLite uses `?` as the parameter placeholder (`WHERE id = ?`). PostgreSQL uses `$1, $2, ...` (`WHERE id = $1`). The daughter's existing codebase was built against SQLite. When the `PostgresDB` branch is used as the base, some queries may already be converted. But any new SQL written referencing the old style will fail with `syntax error at or near "?"` in Postgres — silently working in tests that still hit SQLite.
+SQLite uses `?` as the parameter placeholder (`WHERE id = ?`). PostgreSQL uses `$1, $2, ...` (`WHERE id = $1`). The daughter's existing codebase was built against SQLite. When the `libSQL/MuninnDBDB` branch is used as the base, some queries may already be converted. But any new SQL written referencing the old style will fail with `syntax error at or near "?"` in libSQL/MuninnDB — silently working in tests that still hit SQLite.
 
 **Why it happens:**
-If the test suite still runs against SQLite (fast, no config), bugs in postgres-targeted code are invisible until you run the full integration test against Supabase. This is especially dangerous in a fork where you're extending code you didn't write and can't fully audit before starting.
+If the test suite still runs against SQLite (fast, no config), bugs in postgres-targeted code are invisible until you run the full integration test against Railway Volumes. This is especially dangerous in a fork where you're extending code you didn't write and can't fully audit before starting.
 
 **How to avoid:**
 - Before writing any SQL: run `grep -r "= ?" --include="*.py"` across the entire repo. Document every location.
-- Make Supabase the default test target from day one. No SQLite fallback for any code path that touches the database.
-- In `zbrain` branch, never add test fixtures that use SQLite. All tests hit a Supabase test schema.
+- Make Railway Volumes the default test target from day one. No SQLite fallback for any code path that touches the database.
+- In `zbrain` branch, never add test fixtures that use SQLite. All tests hit a Railway Volumes test schema.
 - Add a linter rule or pre-commit hook that rejects `?` placeholders in `.py` files.
 
 **Warning signs:**
-- Tests passing locally but queries failing against Supabase.
+- Tests passing locally but queries failing against Railway Volumes.
 - `psycopg2.ProgrammingError: syntax error at or near "?"` in logs.
-- Boolean columns behaving strangely (SQLite stores 0/1, Postgres uses true/false).
+- Boolean columns behaving strangely (SQLite stores 0/1, libSQL/MuninnDB uses true/false).
 
-**Phase to address:** Phase 1 (Postgres migration). Catch all before building any new features on top.
+**Phase to address:** Phase 1 (libSQL/MuninnDB migration). Catch all before building any new features on top.
 
 ---
 
@@ -181,7 +181,7 @@ The brain schema is created, IVFFlat index is added immediately on the empty `br
 IVFFlat builds cluster centers at index creation time based on the data present. An empty table means all clusters are initialized randomly. This is a well-documented pgvector pitfall but easy to miss because the SQL creates without error and queries "work" (return something).
 
 **How to avoid:**
-- Use HNSW index, not IVFFlat. HNSW builds incrementally as data is inserted, has no "populate first" requirement, and doesn't need rebuilding when data distribution changes. Supabase's own documentation recommends HNSW.
+- Use HNSW index, not IVFFlat. HNSW builds incrementally as data is inserted, has no "populate first" requirement, and doesn't need rebuilding when data distribution changes. Railway Volumes's own documentation recommends HNSW.
 - `CREATE INDEX ON brain.memories USING hnsw (embedding vector_cosine_ops)` — create this immediately on table creation, before any data.
 - If IVFFlat is ever used (it shouldn't be), only create it after inserting at least 1000 rows.
 
@@ -194,22 +194,22 @@ IVFFlat builds cluster centers at index creation time based on the data present.
 
 ---
 
-### Pitfall 9: Custom Schema Not Exposed in Supabase Data API
+### Pitfall 9: Custom Schema Not Exposed in Railway Volumes Data API
 
 **What goes wrong:**
-`brain.*` schema is created, tables are populated, but the Supabase client (JavaScript or Python using the REST API) returns "relation does not exist" or 404 errors. The Supabase Data API (PostgREST) only exposes the `public` schema by default. The `brain` schema exists in Postgres but is invisible to the REST layer.
+`brain.*` schema is created, tables are populated, but the Railway Volumes client (JavaScript or Python using the REST API) returns "relation does not exist" or 404 errors. The Railway Volumes Data API (PostgREST) only exposes the `public` schema by default. The `brain` schema exists in libSQL/MuninnDB but is invisible to the REST layer.
 
 **Why it happens:**
-Supabase's PostgREST layer requires explicit schema exposure. It's not automatic for non-`public` schemas. Additionally, RLS (Row Level Security) policies default to `DENY ALL` for new tables, so even with the schema exposed, queries return empty results or permission errors without explicit policies.
+Railway Volumes's PostgREST layer requires explicit schema exposure. It's not automatic for non-`public` schemas. Additionally, RLS (Row Level Security) policies default to `DENY ALL` for new tables, so even with the schema exposed, queries return empty results or permission errors without explicit policies.
 
 **How to avoid:**
-- Go to Supabase Dashboard → Project Settings → Data API → Exposed Schemas. Add `brain`.
-- Alternatively, use direct database connections (not the Supabase REST client) for all brain operations from Python. This bypasses PostgREST entirely and avoids the schema exposure issue.
+- Go to Railway Volumes Dashboard → Project Settings → Data API → Exposed Schemas. Add `brain`.
+- Alternatively, use direct database connections (not the Railway Volumes REST client) for all brain operations from Python. This bypasses PostgREST entirely and avoids the schema exposure issue.
 - For every new table in `brain.*`, explicitly set RLS policy or disable RLS for service-role access. Document which tables have RLS enabled.
-- Do not mix Supabase REST client and direct Postgres connection in the same code path without documentation.
+- Do not mix Railway Volumes REST client and direct libSQL/MuninnDB connection in the same code path without documentation.
 
 **Warning signs:**
-- `pgrst116: The schema must be one of the following: public` error from Supabase client.
+- `pgrst116: The schema must be one of the following: public` error from Railway Volumes client.
 - Empty results from Python code when rows definitely exist (RLS silently filtering).
 - Dashboard showing table data but Python client returning nothing.
 
@@ -269,12 +269,12 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Using direct Postgres connection for everything (skip pooler) | Simpler config, no prepared statement issues | Connection limit exhaustion when heartbeat + CLI + any background process all run simultaneously; Supabase Pro limit is 60 direct connections | Acceptable for v1.0, document and revisit at v1.1 |
+| Using direct libSQL/MuninnDB connection for everything (skip pooler) | Simpler config, no prepared statement issues | Connection limit exhaustion when heartbeat + CLI + any background process all run simultaneously; Railway Volumes Pro limit is 60 direct connections | Acceptable for v1.0, document and revisit at v1.1 |
 | Hardcoding model names (claude-sonnet-4-6, gemini-2.0-flash) | Faster to build | Model deprecation breaks code silently; version-pinned models cost more as newer models are cheaper | Never — use config constants always |
 | Single `zbrain` branch (no feature branches) | Simple workflow | If a feature partially breaks upstream compatibility, you can't cherry-pick; daughter must accept the whole branch | Acceptable only if features are small and frequent syncs happen |
 | Skipping RLS on brain tables | Simpler access | Any compromised credential exposes all brain data | Never — add service-role access pattern from day one |
 | Running IVFFlat instead of HNSW | Marginally faster at scale | Built on empty table = broken recall; need to rebuild when data grows | Never — use HNSW |
-| Storing raw conversation transcripts in brain schema | Easier ingestion | Privacy risk; also grows unboundedly; Postgres is not a log store | Only if TTL and size limits are implemented from the start |
+| Storing raw conversation transcripts in brain schema | Easier ingestion | Privacy risk; also grows unboundedly; libSQL/MuninnDB is not a log store | Only if TTL and size limits are implemented from the start |
 
 ---
 
@@ -284,8 +284,8 @@ Common mistakes when connecting to external services.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Supabase (pooler) | Pointing asyncpg at port 6543 without disabling prepared statements | Use port 5432 (direct) for Python processes; set `statement_cache_size=0` if pooler is required |
-| Supabase (schema) | Using PostgREST client for `brain.*` tables without exposing schema | Use direct psycopg2/asyncpg connection from Python; expose schema in dashboard for any REST calls |
+| Railway Volumes (pooler) | Pointing asyncpg at port 6543 without disabling prepared statements | Use port 5432 (direct) for Python processes; set `statement_cache_size=0` if pooler is required |
+| Railway Volumes (schema) | Using PostgREST client for `brain.*` tables without exposing schema | Use direct psycopg2/asyncpg connection from Python; expose schema in dashboard for any REST calls |
 | Google Generative AI | Calling `embed_content` without rate limiting; the function internally uses batch endpoint with a separate rate limit | Add retry with exponential backoff; batch in groups of ≤100; track RPM |
 | Google Generative AI | Using text-embedding-004 (deprecated Nov 2025) | Verify current model name before each project phase; use config constant not hardcoded string |
 | Claude Code CLI (heartbeat) | Spawning Claude subprocesses without timeout | Always set subprocess timeout; kill on exceeded wall-clock time |
@@ -301,11 +301,11 @@ Patterns that work at small scale but fail as usage grows.
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
 | Re-embedding all content on every heartbeat run | First few runs fine, then 30min+ runtimes | Incremental embedding: only embed new/changed content; track `last_embedded_at` | After ~100 memories |
-| Full table scan for similar memories (no index) | Sub-second locally, 10+ seconds against Supabase | HNSW index created at table creation, `EXPLAIN ANALYZE` every query in development | After ~500 rows |
+| Full table scan for similar memories (no index) | Sub-second locally, 10+ seconds against Railway Volumes | HNSW index created at table creation, `EXPLAIN ANALYZE` every query in development | After ~500 rows |
 | Fetching all memories into Python, filtering in-app | Works with 50 memories, OOM with 5000 | All filtering in SQL; never `SELECT * FROM brain.memories` without LIMIT | After ~1000 rows |
 | Generating briefing by reading entire message history | Single session fine; briefing degrades after 6 months | Time-bounded lookups: `WHERE created_at > NOW() - INTERVAL '30 days'` | After ~3 months of use |
 | Model routing with no fallback timeout | One slow model call blocks entire pipeline | Per-model timeout with fallback; never await indefinitely | On first network hiccup |
-| Storing both raw text and embedding in brain.memories without size cap | Fine for first 100 notes | Postgres row size balloons; embedding alone is 3KB per row (768 floats × 4 bytes) | After ~50K memories |
+| Storing both raw text and embedding in brain.memories without size cap | Fine for first 100 notes | libSQL/MuninnDB row size balloons; embedding alone is 3KB per row (768 floats × 4 bytes) | After ~50K memories |
 
 ---
 
@@ -315,10 +315,10 @@ Domain-specific security issues beyond general web security.
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Supabase service role key in Python files or dotenv committed to git | Full database access exposed; Heatpup's 37+ tables at risk, not just brain schema | `.env` in `.gitignore` verified before first commit; separate service role per project if Supabase supports it |
+| Railway Volumes service role key in Python files or dotenv committed to git | Full database access exposed; Heatpup's 37+ tables at risk, not just brain schema | `.env` in `.gitignore` verified before first commit; separate service role per project if Railway Volumes supports it |
 | Brain memories contain private data (voice notes, personal projects) accessible via public schema | If daughter's app inadvertently queries across schemas, personal data leaks | `brain.*` schema never cross-referenced in Promaia's `public.*` queries; RLS policy on brain tables |
-| Heartbeat agent credentials (API keys, Supabase URL) in scheduled task command line | Visible in Windows Task Scheduler UI and Event Viewer logs | Load all credentials from `.env` file; never pass secrets as CLI arguments |
-| Claude prompts containing Supabase credentials for database operations | Prompt injection can expose or modify credentials | Never include connection strings in prompts; use tool calls with pre-configured connections only |
+| Heartbeat agent credentials (API keys, Railway Volumes URL) in scheduled task command line | Visible in Windows Task Scheduler UI and Event Viewer logs | Load all credentials from `.env` file; never pass secrets as CLI arguments |
+| Claude prompts containing Railway Volumes credentials for database operations | Prompt injection can expose or modify credentials | Never include connection strings in prompts; use tool calls with pre-configured connections only |
 | Gemini API key shared between Promaia (daughter's app) and zBrain | Key rotation or exhaustion in one project breaks both | Separate API keys per project; zBrain uses Zack's Google AI Premium, Promaia uses separate key |
 
 ---
@@ -341,12 +341,12 @@ Common user experience mistakes in this domain.
 
 Things that appear complete but are missing critical pieces.
 
-- [ ] **Postgres migration:** Often missing — all ChromaDB callers updated, not just storage init. Verify: `grep -r "chromadb" --include="*.py"` returns zero results.
+- [ ] **libSQL/MuninnDB migration:** Often missing — all ChromaDB callers updated, not just storage init. Verify: `grep -r "chromadb" --include="*.py"` returns zero results.
 - [ ] **Brain schema:** Often missing — HNSW index actually created (not just planned). Verify: `\d+ brain.memories` in psql shows index.
 - [ ] **Heartbeat agent:** Often missing — actual kill switch / timeout implemented (not just documented). Verify: Run heartbeat with a deliberately slow API call and confirm it terminates.
-- [ ] **Supabase connection:** Often missing — tested against actual Supabase, not just local Postgres. Verify: Run test query from the production connection string.
+- [ ] **Railway Volumes connection:** Often missing — tested against actual Railway Volumes, not just local libSQL/MuninnDB. Verify: Run test query from the production connection string.
 - [ ] **ToS compliance:** Often missing — heartbeat invocation method is actually via Claude Code CLI, not via Agent SDK or OAuth spoofing. Verify: Check no OAuth token extraction occurs in the codebase.
-- [ ] **Schema exposure:** Often missing — `brain` schema added to Supabase's exposed schemas list. Verify: Test a PostgREST call to `brain.memories` returns data, not 404.
+- [ ] **Schema exposure:** Often missing — `brain` schema added to Railway Volumes's exposed schemas list. Verify: Test a PostgREST call to `brain.memories` returns data, not 404.
 - [ ] **Embedding model:** Often missing — verified text-embedding-005 (or current model) is available and dimensions confirmed. Verify: Make a test embedding call and print `len(result.embeddings[0].values)`.
 - [ ] **Upstream sync:** Often missing — `zbrain` branch has been rebased on latest upstream within the last week. Verify: `git log --oneline HEAD..upstream/feature/agent-scheduler` returns nothing.
 - [ ] **Gemini routing:** Often missing — fallback behavior when Gemini is unavailable is tested. Verify: Simulate a Gemini API error and confirm Claude handles the task without crashing.
@@ -359,12 +359,12 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| asyncpg prepared statement errors on Supabase | LOW | Switch connection string to port 5432 (direct); restart Python process; no data loss |
+| asyncpg prepared statement errors on Railway Volumes | LOW | Switch connection string to port 5432 (direct); restart Python process; no data loss |
 | Embedding dimension mismatch after model change | HIGH | 1) Add new column `embedding_v2 vector(NEW_DIM)`. 2) Re-embed all rows into new column. 3) Swap column names. 4) Rebuild HNSW index. Expect 2-4 hours of work. |
 | ChromaDB migration broke retrieval | MEDIUM | Keep ChromaDB running in parallel behind the abstraction layer; switch retrieval back to ChromaDB flag; debug pgvector in isolation |
 | Heartbeat ran away (many API calls, possible data pollution) | MEDIUM | 1) Disable Task Scheduler task immediately. 2) Audit `brain.heartbeat_log` for what ran. 3) Delete suspicious memories by `source = 'heartbeat' AND created_at > [runaway_start]`. 4) Fix budget ceiling before re-enabling. |
 | `zbrain` branch unmergeable with upstream | HIGH | 1) Create new branch from latest upstream. 2) Cherry-pick zbrain commits that don't conflict. 3) Manually reapply conflicting changes. Plan for 1-2 days. Prevent by weekly rebases. |
-| Supabase Heatpup tables affected by brain schema migration | CRITICAL | Brain schema (`brain.*`) never touches `public.*`. If this happens, a migration script ran against wrong schema. Restore from Supabase backup (Pro plan includes PITR). |
+| Railway Volumes Heatpup tables affected by brain schema migration | CRITICAL | Brain schema (`brain.*`) never touches `public.*`. If this happens, a migration script ran against wrong schema. Restore from Railway Volumes backup (Pro plan includes PITR). |
 | ToS violation discovered (wrong Claude access method) | MEDIUM | Swap invocation method to compliant Claude Code CLI subprocess; no API key needed; heartbeat functionality preserved |
 
 ---
@@ -375,7 +375,7 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| asyncpg + Supabase pooler incompatibility | Phase 1: Postgres/Supabase setup | Test query against Supabase connection string succeeds; check port in connection config |
+| asyncpg + Railway Volumes pooler incompatibility | Phase 1: libSQL/MuninnDB/Railway Volumes setup | Test query against Railway Volumes connection string succeeds; check port in connection config |
 | Anthropic ToS violation in heartbeat | Phase 3: Heartbeat agent design | Code review confirms no OAuth extraction; invocation uses `claude` CLI subprocess or API key |
 | Embedding dimension lock-in | Phase 1: Brain schema definition | `brain.embedding_config` table exists; model name is a config constant; test embedding call dimension printed |
 | ChromaDB API mismatch (not drop-in) | Phase 1: Storage migration | `grep -r "chromadb"` returns zero in non-adapter files |
@@ -383,7 +383,7 @@ How roadmap phases should address these pitfalls.
 | Heartbeat token runaway | Phase 3: Heartbeat initial implementation | Budget ceiling and kill switch tested; heartbeat log shows per-run token counts |
 | Upstream codebase drift | Phase 0: Branch setup + every phase | Weekly rebase confirmed in work log; no more than 20 unsynced upstream commits |
 | IVFFlat on empty table | Phase 1: Brain schema definition | `\d+ brain.memories` shows HNSW index; IVFFlat never appears in migration files |
-| Brain schema not exposed in Supabase | Phase 1: Supabase configuration | PostgREST call to `brain.*` endpoint succeeds |
+| Brain schema not exposed in Railway Volumes | Phase 1: Railway Volumes configuration | PostgREST call to `brain.*` endpoint succeeds |
 | text-embedding-004 deprecation | Phase 0/1 setup | Test API call to current model succeeds; model name is config constant not hardcoded |
 | Windows Task Scheduler path issues | Phase 3: Heartbeat agent | Heartbeat log entry written as first action; morning after first scheduled run, log entry exists |
 | Upstream files in Heatpup affected | Ongoing | Brain schema migrations never reference `public.*`; reviewed before each migration run |
@@ -392,11 +392,11 @@ How roadmap phases should address these pitfalls.
 
 ## Sources
 
-- [Supabase: Pooling and asyncpg incompatibility (Medium)](https://medium.com/@patrickduch93/supabase-pooling-and-asyncpg-dont-mix-here-s-the-real-fix-44f700b05249)
-- [Supabase GitHub Issue: asyncpg prepared statement errors](https://github.com/supabase/supabase/issues/39227)
-- [Supabase Docs: Connecting to Postgres](https://supabase.com/docs/guides/database/connecting-to-postgres)
-- [Supabase Docs: HNSW Indexes](https://supabase.com/docs/guides/ai/vector-indexes/hnsw-indexes)
-- [Supabase Docs: pgvector extension](https://supabase.com/docs/guides/database/extensions/pgvector)
+- [Railway Volumes: Pooling and asyncpg incompatibility (Medium)](https://medium.com/@patrickduch93/railway_volumes-pooling-and-asyncpg-dont-mix-here-s-the-real-fix-44f700b05249)
+- [Railway Volumes GitHub Issue: asyncpg prepared statement errors](https://github.com/railway_volumes/railway_volumes/issues/39227)
+- [Railway Volumes Docs: Connecting to libSQL/MuninnDB](https://railway_volumes.com/docs/guides/database/connecting-to-postgres)
+- [Railway Volumes Docs: HNSW Indexes](https://railway_volumes.com/docs/guides/ai/vector-indexes/hnsw-indexes)
+- [Railway Volumes Docs: pgvector extension](https://railway_volumes.com/docs/guides/database/extensions/pgvector)
 - [Anthropic: Using Claude Code with Pro/Max plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
 - [Anthropic ToS changes 2025: aihackers.net](https://aihackers.net/posts/anthropic-tos-changes-2025/)
 - [TechCrunch: Anthropic rate limits Claude Code](https://techcrunch.com/2025/07/28/anthropic-unveils-new-rate-limits-to-curb-claude-code-power-users/)
@@ -414,5 +414,5 @@ How roadmap phases should address these pitfalls.
 - [GitHub Blog: Friendly fork management strategies](https://github.blog/2022-05-02-friend-zone-strategies-friendly-fork-management/)
 
 ---
-*Pitfalls research for: zBrain — adding cloud Postgres/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to Promaia fork*
+*Pitfalls research for: zBrain — adding cloud libSQL/MuninnDB/pgvector, proactive AI brain, autonomous heartbeat agents, and multi-model routing to Promaia fork*
 *Researched: 2026-03-04*

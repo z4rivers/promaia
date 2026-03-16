@@ -11,7 +11,7 @@
 <details>
 <summary>v1.0 Foundation (Phases 01-04) -- SHIPPED 2026-03-06</summary>
 
-- [x] Phase 01: Postgres Foundation (3/3 plans) -- 2026-03-04
+- [x] Phase 01: libSQL/MuninnDB Foundation (3/3 plans) -- 2026-03-04
 - [x] Phase 02: Brain Schema and MCP Tools (3/3 plans) -- 2026-03-05
 - [x] Phase 03.1: Onboarding Module (3/3 plans) -- 2026-03-05
 - [x] Phase 04: Full Platform Activation (1/1 formal plan + 5 informal) -- 2026-03-06
@@ -37,12 +37,12 @@
 **Success Criteria** (what must be TRUE):
   1. All three agents (morning-briefing, email-triage, evening-digest) complete a full SDK run without errors
   2. Agent output references actual emails, calendar events, and brain memories -- not fabricated content
-  3. Gmail context appears in agent output (loaded from Postgres, not disk files)
+  3. Gmail context appears in agent output (loaded from libSQL/MuninnDB, not disk files)
   4. No SQL errors in agent logs related to jsonb, timestamp, or table references
 **Plans:** 3/3 plans complete
 
 Plans:
-- [x] 05-01-PLAN.md -- Fix Gmail content pipeline (Postgres fallback + message body population)
+- [x] 05-01-PLAN.md -- Fix Gmail content pipeline (libSQL/MuninnDB fallback + message body population)
 - [x] 05-02-PLAN.md -- Agent config + prompt hardening (schedule change + anti-hallucination)
 - [x] 05-03-PLAN.md -- Full validation run + human verification of agent output
 
@@ -120,7 +120,7 @@ Plans:
 **Depends on**: Phase 9
 **Requirements**: MEM-01, MEM-02, MEM-03, MEM-04, MEM-05
 **Success Criteria** (what must be TRUE):
-  1. MuninnDB health is checked every 5 minutes; if it goes down, brain operations continue on Postgres without interruption
+  1. MuninnDB health is checked every 5 minutes; if it goes down, brain operations continue on libSQL/MuninnDB without interruption
   2. A nightly job recalculates memory tiers (core/active/warm/cold/archive) and stale memories rank lower in search results
   3. Memories that are frequently retrieved together score higher when either one is searched (association strengthening)
   4. Every agent call includes a ~200-token cached profile prefix describing who Zack is, his schedule, and his preferences
@@ -170,7 +170,7 @@ Quick Wins (Plans 0.5a, 0.5b, 1, 2, 4) shipped 2026-03-07. Plan 3 became Phase 1
 **Plans:** 1 plan
 
 Plans:
-- [ ] v3-05-01-PLAN.md -- Fix deployment blockers + deploy to Render
+- [ ] v3-05-01-PLAN.md -- Fix deployment blockers + deploy to Railway
 
 ### Plan 6: Life Dashboard Categories
 **Goal**: Dashboard becomes life command center with category tabs, health/finance domains, interactive elements
@@ -190,7 +190,7 @@ Plans:
 
 | Phase/Plan | Milestone | Status | Completed |
 |------------|-----------|--------|-----------|
-| 01. Postgres Foundation | v1.0 | Complete | 2026-03-04 |
+| 01. libSQL/MuninnDB Foundation | v1.0 | Complete | 2026-03-04 |
 | 02. Brain Schema + MCP | v1.0 | Complete | 2026-03-05 |
 | 03.1 Onboarding Module | v1.0 | Complete | 2026-03-05 |
 | 04. Platform Activation | v1.0 | Complete | 2026-03-06 |

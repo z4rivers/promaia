@@ -13,7 +13,7 @@ When a user tells the voice agent to "save that to memory," the STT transcriptio
 
 ### The Mechanism
 We use a **Hybrid Async Confirmation** model.
-1. The agent's `record_memory` tool *does not write permanently*. Instead, it adds the extracted memory to a temporary `proposed_memories` array within the current `AudioSession` (Postgres).
+1. The agent's `record_memory` tool *does not write permanently*. Instead, it adds the extracted memory to a temporary `proposed_memories` array within the current `AudioSession` (libSQL/MuninnDB).
 2. The user is told "I've noted that for review" rather than "I saved it".
 3. After the conversation ends, these proposed memories appear on the web dashboard for visual confirmation (Accept/Edit/Discard).
 4. Only upon clicking "Accept" does the data officially flow into the semantic MuninnDB for long-term recall.
@@ -53,7 +53,7 @@ Over a 30-minute Voice Session, vital implicit context (names, ideas discussed) 
 The prompt implicitly instructs the model to use `record_memory` constantly (as a background process) when interesting facts emerge, rather than waiting for explicitly commanded "Save this." Because of the *Hybrid Async Confirmation* (see point 1), over-capturing is perfectly safe—the user will filter the noise on the dashboard later.
 
 ### Migration Rule
-Do not attempt to batch tool calls at the end of the WebSocket session. Tool calls must execute mid-stream to ensure data is safely lodged in the Postgres staging tables before the connection is inevitably severed by network drops.
+Do not attempt to batch tool calls at the end of the WebSocket session. Tool calls must execute mid-stream to ensure data is safely lodged in the libSQL/MuninnDB staging tables before the connection is inevitably severed by network drops.
 
 ---
 

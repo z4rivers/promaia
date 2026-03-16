@@ -65,7 +65,7 @@ completed: 2026-03-05
 - CLAUDE.md with 5 behavior sections: session start briefing, capture on thoughts, project context loading, ambient awareness, energy adaptation — all using mcp__brain__ tool names
 - .mcp.json registering brain server as stdio transport with DATABASE_URL and GOOGLE_API_KEY env passthrough
 - seed.py that populates 10 domains (7 projects, 3 non-projects) and 5 project contexts with directives, stale thresholds, and priorities — fully idempotent
-- End-to-end verified: brain schema deployed to Supabase, seed data populated, MCP server starts and registers in Claude Code, briefing fires on session start
+- End-to-end verified: brain schema deployed to Railway Volumes, seed data populated, MCP server starts and registers in Claude Code, briefing fires on session start
 
 ## Task Commits
 
@@ -100,7 +100,7 @@ None.
 
 User completed end-to-end verification:
 
-1. Applied brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"` — 7 brain.* tables deployed to Supabase
+1. Applied brain schema: `python -c "from promaia.storage.db_init import apply_brain_schema; apply_brain_schema()"` — 7 brain.* tables deployed to Railway Volumes
 2. Ran seed data: `python -m promaia.brain.seed` — 10 domains and 5 contexts populated
 3. Tested MCP server starts: `python -m promaia.brain.mcp_server` — hangs on stdio as expected
 4. Registered with Claude Code: `claude mcp add --scope project --transport stdio brain -- python -m promaia.brain.mcp_server`

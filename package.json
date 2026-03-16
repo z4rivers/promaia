@@ -13,16 +13,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/commodorebob/promaia.git"
+    "url": "git+https://github.com/z4rivers/promaia.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "Commodore Bob & Zachary Turner",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/commodorebob/promaia/issues"
+    "url": "https://github.com/z4rivers/promaia/issues"
   },
-  "homepage": "https://github.com/commodorebob/promaia#readme",
+  "homepage": "https://github.com/z4rivers/promaia#readme",
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
     "onnxruntime-web": "^1.24.3"

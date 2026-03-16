@@ -32,7 +32,7 @@ The event bus (Phase 7) already routes events to TelegramChannel (Phase 8). The 
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| psycopg2 | 2.9.x (installed) | Postgres queries for events, scheduling state | Already used throughout |
+| psycopg2 | 2.9.x (installed) | libSQL/MuninnDB queries for events, scheduling state | Already used throughout |
 | aiogram | 3.26.0 (installed) | Telegram message delivery and reply handling | Already powers the bot |
 | asyncio | stdlib | Scheduler timing, sleep-until logic | Already used by scheduler |
 | zoneinfo | stdlib | Timezone-aware scheduling (6:00 AM ET, not UTC) | Already used by event router |
@@ -175,8 +175,8 @@ async def push_agent_output(agent_name: str, output: str):
 **When to use:** To achieve PUSH-06's "within 1 minute" requirement without running the full LLM-based triage agent every minute.
 
 ```python
-# Approach: Check Gmail for new unread count via Postgres
-# The Gmail pipeline syncs email metadata to Postgres. We can detect
+# Approach: Check Gmail for new unread count via libSQL/MuninnDB
+# The Gmail pipeline syncs email metadata to libSQL/MuninnDB. We can detect
 # new unread emails by comparing counts.
 
 async def _email_check_loop(self):
@@ -200,7 +200,7 @@ async def _email_check_loop(self):
             last_known_count = current_count
 
 def _get_unread_count(self) -> int:
-    """Count unread emails from Gmail data in Postgres."""
+    """Count unread emails from Gmail data in libSQL/MuninnDB."""
     db = get_postgres_db()
     row = db.fetch_one(
         """SELECT COUNT(*) as cnt FROM unified_content
@@ -292,7 +292,7 @@ This is mostly handled by the agent's prompt and context loading. The only gap i
 |---------|-------------|-------------|-----|
 | Time-of-day scheduling | Cron-like parser | Simple sleep-until with datetime math | Only 3 agents, all daily. Don't need a full cron engine. |
 | Cross-timezone time calculation | Manual UTC offset | `zoneinfo.ZoneInfo` + `datetime.now(tz)` | DST transitions handled correctly by stdlib |
-| Gmail new-mail detection | Full Gmail API polling | SQL COUNT on existing Postgres gmail data | The Gmail pipeline already syncs. Just check the counts. |
+| Gmail new-mail detection | Full Gmail API polling | SQL COUNT on existing libSQL/MuninnDB gmail data | The Gmail pipeline already syncs. Just check the counts. |
 | Message batching | Custom accumulator | Agent prompt + single push | The evening digest agent already produces batched output. |
 
 **Key insight:** The infrastructure is already built. Phase 9 is mostly wiring and configuration, not new infrastructure. The scheduler, event router, Telegram channel, and agents all exist. The gaps are: timing, direct push, reply handling, and faster email detection.
@@ -320,8 +320,8 @@ This is mostly handled by the agent's prompt and context loading. The only gap i
 **Warning signs:** Zack receiving the same briefing twice on Telegram.
 
 ### Pitfall 4: Email-Check Loop Missing New Mail
-**What goes wrong:** The lightweight email check polls Postgres, but the Gmail sync pipeline hasn't ingested the new email yet.
-**Why it happens:** There's a lag between Gmail receiving an email and the sync pipeline writing it to Postgres. If the sync runs every 480 minutes, the email-check loop waiting on Postgres sees nothing for 8 hours.
+**What goes wrong:** The lightweight email check polls libSQL/MuninnDB, but the Gmail sync pipeline hasn't ingested the new email yet.
+**Why it happens:** There's a lag between Gmail receiving an email and the sync pipeline writing it to libSQL/MuninnDB. If the sync runs every 480 minutes, the email-check loop waiting on libSQL/MuninnDB sees nothing for 8 hours.
 **How to avoid:** The email-check loop should either: (a) call the Gmail API directly for a lightweight `is:unread` check, or (b) ensure the Gmail sync pipeline runs frequently enough. Option (a) is simpler and has no dependency on sync timing.
 **Warning signs:** "Urgent" emails arriving hours late despite the check loop running every 60 seconds.
 
@@ -476,12 +476,12 @@ Three options were evaluated:
 | Option | How | Cost | Latency | Complexity |
 |--------|-----|------|---------|------------|
 | A: Reduce email-triage interval to 1min | Run full LLM triage every 60s | ~$5.76/day | ~60s | Low |
-| B: SQL poll for new emails in Postgres | COUNT unread from synced gmail data | $0/day | Depends on sync frequency | Medium |
+| B: SQL poll for new emails in libSQL/MuninnDB | COUNT unread from synced gmail data | $0/day | Depends on sync frequency | Medium |
 | C: Gmail API lightweight check | `users.messages.list(q=is:unread)` | $0/day (free API) | ~60s | Medium |
 
 **Recommendation:** Option C (Gmail API check) or a hybrid: run a cheap SQL check first, and if the gmail sync pipeline runs frequently, that's sufficient. If the pipeline only runs every 480 minutes, Option C is needed.
 
-**Practical note:** Looking at the codebase, gmail sync is tied to the email-triage agent's interval. So if email-triage runs every 480 minutes, new emails are only available in Postgres every 480 minutes. This means Option B won't work for sub-minute detection. Option C (direct Gmail API check) or Option A (cheaper interval) is needed.
+**Practical note:** Looking at the codebase, gmail sync is tied to the email-triage agent's interval. So if email-triage runs every 480 minutes, new emails are only available in libSQL/MuninnDB every 480 minutes. This means Option B won't work for sub-minute detection. Option C (direct Gmail API check) or Option A (cheaper interval) is needed.
 
 **Simplest viable approach:** Reduce email-triage `interval_minutes` to 10 minutes ($0.58/day). This gives ~10-minute email detection latency, not 1-minute. For true 1-minute latency, need Option C (lightweight Gmail API check that triggers the full triage on demand). Given the cost constraints (~$20/month budget), 10-minute intervals at $17.40/month might be acceptable. Or use the lightweight Gmail check for $0 API cost.
 
@@ -495,8 +495,8 @@ Implementation: Track `event_id` in the rate limiter, not just channel+timestamp
 ## Open Questions
 
 1. **Gmail Sync Pipeline Frequency**
-   - What we know: The gmail sync runs as part of the email-triage agent execution. When email-triage runs, it loads gmail data from Postgres (already synced) and classifies it.
-   - What's unclear: Does the gmail data in Postgres update independently of agent runs, or only when the agent runs? If only when the agent runs, then a lightweight SQL check won't detect new emails between runs.
+   - What we know: The gmail sync runs as part of the email-triage agent execution. When email-triage runs, it loads gmail data from libSQL/MuninnDB (already synced) and classifies it.
+   - What's unclear: Does the gmail data in libSQL/MuninnDB update independently of agent runs, or only when the agent runs? If only when the agent runs, then a lightweight SQL check won't detect new emails between runs.
    - Recommendation: Investigate whether gmail sync is continuous or agent-triggered. If agent-triggered, use Gmail API `users.messages.list` for the check loop.
 
 2. **Wake Signal vs Fixed Time**

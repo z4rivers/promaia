@@ -2,18 +2,18 @@
 
 ## Context
 
-v1 roadmap (Phases 1-4) built the foundation: Postgres+pgvector, brain schema, MCP tools, onboarding, agents, dashboard, Gmail pipeline. All infrastructure is LIVE as of 2026-03-06.
+v1 roadmap (Phases 1-4) built the foundation: libSQL/MuninnDB+pgvector, brain schema, MCP tools, onboarding, agents, dashboard, Gmail pipeline. All infrastructure is LIVE as of 2026-03-06.
 
 v2 focuses on making the system feel like a proactive personal agent — not a dashboard you check, but an assistant that reaches you, takes initiative, and turns ideas into action while you're walking the dog.
 
-Inspired by OpenClaw's popularity but built on Promaia's stronger foundation (Postgres vs flat files, pgvector vs SQLite, brain context injection vs raw cron).
+Inspired by OpenClaw's popularity but built on Promaia's stronger foundation (libSQL/MuninnDB vs flat files, pgvector vs SQLite, brain context injection vs raw cron).
 
 ## Current State (2026-03-06)
 
 ### Working
 - Brain MCP server: 15 tools, 56 memories, 10 domains, 98 profile traits
 - Agent scheduler: 3 agents (morning-briefing, email-triage, evening-digest), $0.07/cycle
-- Web dashboard: FastAPI, 5 pages, 6 CSS skins, live Postgres data
+- Web dashboard: FastAPI, 5 pages, 6 CSS skins, live libSQL/MuninnDB data
 - Gmail pipeline: OAuth working, 34 emails ingested
 - Action extraction: Gemini Flash via GOOGLE_API_KEY (working)
 - Claude Agent SDK: available, agents run successfully outside Claude Code

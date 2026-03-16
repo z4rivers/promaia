@@ -22,7 +22,7 @@ The current executor (`promaia/agents/executor.py`) uses the Claude Agent SDK wi
 | ROUTE-03 | Agent prompts restructured into cacheable tiers | Gemini explicit caching API with anchor/tools/context split; see Prompt Caching |
 | ROUTE-04 | Dynamic tool injection reduces prompt size | Only include MCP tool docs relevant to each agent; see Tool Injection |
 | ROUTE-05 | AgentContext dataclass provides standardized awareness | Dataclass with user profile, time, goals, events, domain state; see AgentContext |
-| COST-01 | brain.agent_costs table logs every API call | New Postgres table with model, tokens, cached_tokens, cost; see Cost Tracking |
+| COST-01 | brain.agent_costs table logs every API call | New libSQL/MuninnDB table with model, tokens, cached_tokens, cost; see Cost Tracking |
 | COST-02 | Per-run budget cap enforced | Budget tracker checks cumulative cost mid-run; see Budget Enforcement |
 | COST-03 | Daily budget cap skips non-critical runs | Scheduler queries daily spend before launching non-critical agents; see Budget Enforcement |
 | COST-04 | Each agent uses assigned model | Agent config gets `model` field mapped to Gemini model IDs; see Model Assignment |
@@ -34,7 +34,7 @@ The current executor (`promaia/agents/executor.py`) uses the Claude Agent SDK wi
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
 | `google-genai` | latest (1.x+) | Gemini API client -- generate_content, caching, batch | Official Google SDK, already imported in nl_orchestrator.py |
-| `psycopg2` | existing | Postgres for cost tracking table | Already used throughout codebase |
+| `psycopg2` | existing | libSQL/MuninnDB for cost tracking table | Already used throughout codebase |
 
 ### Supporting
 | Library | Version | Purpose | When to Use |
@@ -47,7 +47,7 @@ The current executor (`promaia/agents/executor.py`) uses the Claude Agent SDK wi
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
 | Direct google-genai | LiteLLM | Adds dependency; google-genai already in codebase and sufficient |
-| Postgres cost table | SQLite | Already using Postgres for everything; no reason to split |
+| libSQL/MuninnDB cost table | SQLite | Already using libSQL/MuninnDB for everything; no reason to split |
 | Manual model routing | LLM-based routing | Overkill for 3 agents with known task types |
 
 **Installation:**
@@ -445,7 +445,7 @@ class AgentContext:
     domain_state: dict  # e.g., {"unread_emails": 5, "calendar_events_today": 2}
 
     def to_prompt_block(self) -> str:
-        """Render as a prompt-injectable text block (~200-300 tokens)."""
+        """Railway as a prompt-injectable text block (~200-300 tokens)."""
         parts = [
             f"Current time: {self.current_time.strftime('%Y-%m-%d %H:%M %Z')} ({self.day_of_week})",
             f"User: {self.user_name}",

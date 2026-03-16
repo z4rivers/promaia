@@ -9,7 +9,7 @@
 
 **Decision:** Implementation details are delegated -- no user involvement needed. Optimize for compatibility with upstream Promaia so updates don't break the integration.
 
-- The executor currently expects `.md` files on disk but Gmail data is in Postgres. Fix the executor to load from Postgres directly.
+- The executor currently expects `.md` files on disk but Gmail data is in libSQL/MuninnDB. Fix the executor to load from libSQL/MuninnDB directly.
 - Keep the interface shape compatible with how Promaia's mail module already structures data, so cherry-picks from upstream don't require rework.
 - **Schedule change:** Email-triage does NOT need to run every 2 hours. Zack is not mail-driven. Run email checks **3x/day**: morning, midday, and afternoon. Adjust the agent scheduler accordingly.
 
@@ -26,7 +26,7 @@
 
 **Decision:** Be suspicious of everything. Verify against source data. Assume hallucinated unless proven otherwise.
 
-- **Spot-check approach:** After agent runs, cross-reference claims in agent output against actual Postgres data (email subjects, dates, senders, calendar events, brain memories).
+- **Spot-check approach:** After agent runs, cross-reference claims in agent output against actual libSQL/MuninnDB data (email subjects, dates, senders, calendar events, brain memories).
 - **Verification pattern:** If an agent references an email, the email must exist in the database with matching subject/sender/date. If it references a calendar event, it must exist. If it references a memory, it must exist.
 - **Automated where possible:** Build lightweight post-run checks that compare referenced entities against source tables. Log discrepancies.
 - **Manual spot-check:** For subjective quality (tone, usefulness, relevance), manual review during development. No need for ongoing automated quality scoring.
@@ -44,7 +44,7 @@
 
 These are documented and scoped -- not gray areas, just implementation targets:
 
-1. **Gmail context loading** -- executor._load_initial_context() expects .md files on disk, Gmail pipeline writes to Postgres only. All 34 emails were skipped.
+1. **Gmail context loading** -- executor._load_initial_context() expects .md files on disk, Gmail pipeline writes to libSQL/MuninnDB only. All 34 emails were skipped.
 2. **SQL dialect bugs** -- gmail_labels is jsonb not array (ANY/ALL fails), email_date is text not timestamp, synced_time is text not timestamptz.
 3. **message_content NULL** -- only body_snippet populated. Sync pipeline must store full bodies.
 4. **Legacy mode token tracking** -- shows $0.00. SDK mode should track properly.
