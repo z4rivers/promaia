@@ -30,6 +30,8 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     """Return stale projects, pending actions, and recent heartbeat activity."""
     db = get_db()
     
+    room_id = args.get("room_id")
+    
     now_utc = datetime.now(timezone.utc)
     current_time_str = now_utc.strftime("%A, %Y-%m-%d %H:%M:%S UTC")
     
@@ -61,6 +63,29 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     else:
         lines.append("## Promaia: Online\n")
 
+    if room_id:
+        room = db.fetch_one("SELECT name, topic, artifact_ref FROM rooms WHERE id = ?", (int(room_id),))
+        if room:
+            lines.append(f"## Room Briefing: {room['name']}")
+            if room.get('topic'):
+                lines.append(f"**Topic/Purpose:** {room['topic']}")
+            
+            artifact = room.get('artifact_ref')
+            if artifact:
+                lines.append(f"**Associated Artifact:** `{artifact}`")
+                lines.append(f"\n> **ROOM DIRECTIVE:** You are working inside the specific topic room '{room['name']}'.")
+                lines.append(f"> Your primary context is the artifact file listed above. **YOU MUST read the artifact file `{artifact}`** using your file viewing tool to understand the current state before taking any action.")
+            else:
+                lines.append(f"\n> **ROOM DIRECTIVE:** You are working inside the specific topic room '{room['name']}'. Focus your actions strictly on this concept.")
+            
+            lines.append("\n### Policy Enforcement (v1 Dashboard Rooms)")
+            lines.append("1. **Confirmation-Required:** You MUST receive explicit verbal or written confirmation from the user BEFORE executing any tool interactions that modify the system (no autonomous disk writes or database changes). Ask for permission first.")
+            lines.append("2. **Action Rationale Pattern:** For every task you execute, you MUST use the rationale pattern: \"Because [reason X], I decided to [action Y]\" when reporting back.")
+            
+            lines.append("\n*Note: Chat history and standard briefings are truncated in Room Mode to maintain context density on the artifact.*")
+            
+            # Short-circuit the rest of the briefing to keep context clean
+            return [TextContent(type="text", text="\n".join(lines))]
 
     try:
         stale = db.fetch_all(

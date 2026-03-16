@@ -56,12 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function appendFeedItem(text, type) {
         if (!sessionFeed) return;
         
-        // Auto-expand the details block if activity occurs
-        const detailsBlock = document.getElementById('maia-widget-details');
-        if (detailsBlock && !detailsBlock.open) {
-            detailsBlock.open = true;
-        }
-
         const div = document.createElement('div');
         div.className = `maia-feed-item maia-feed-item--${type}`;
         
@@ -172,6 +166,73 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function fetchCommitteeRooms() {
+        try {
+            const resp = await fetch('/api/brain/rooms');
+            const data = await resp.json();
+            const grid = document.getElementById('committee-rooms-grid');
+            if (!grid) return;
+            
+            grid.innerHTML = '';
+            
+            const rooms = data.rooms || [];
+            const topicRooms = rooms.filter(r => r.id !== 1);
+            
+            if (topicRooms.length === 0) {
+                grid.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;" id="no-rooms-placeholder">No active topic rooms.</div>';
+                return;
+            }
+
+            topicRooms.forEach(room => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.style.cursor = 'pointer';
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div class="project-name">${escapeHtml(room.name)}</div>
+                            <div class="project-detail" style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(room.topic || 'No topic')}</div>
+                        </div>
+                        <div style="display: flex; gap: 4px;" title="Members">
+                            <span class="action-indicator action-indicator--active" style="margin-top:0"></span>
+                        </div>
+                    </div>
+                `;
+                card.addEventListener('click', () => {
+                   alert("Entering topic rooms UI will be implemented in v2. For now, they run silently."); 
+                });
+                grid.appendChild(card);
+            });
+            
+        } catch (e) {
+            console.error("Failed to fetch rooms", e);
+        }
+    }
+
+    const newRoomBtn = document.getElementById('new-room-btn');
+    if (newRoomBtn) {
+        newRoomBtn.addEventListener('click', async () => {
+            const name = prompt("Topic Room Name (e.g., 'Routing Refix'):");
+            if (!name) return;
+            const topic = prompt("Topic Description:");
+            try {
+                const resp = await fetch('/api/brain/rooms', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: name,
+                        topic: topic || "Focus session",
+                        created_by: "zack"
+                    })
+                });
+                if (resp.ok) fetchCommitteeRooms();
+            } catch (e) {
+                console.error("Failed to create room", e);
+            }
+        });
+    }
+
     // Initialize connection
+    fetchCommitteeRooms();
     connectWebSocket();
 });

@@ -417,12 +417,18 @@
         </div>
     </header>
 
-    <!-- Maia Active Session Widget (Additive, Expandable) -->
-    <details id="maia-widget-details" style="margin-bottom: var(--space-xl, 24px); background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); overflow: hidden;">
-        <summary style="padding: 12px 16px; cursor: pointer; font-family: var(--font-heading); font-weight: 600; display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); color: var(--accent-primary);">
-            <span>Maia Context Engine</span>
+    <!-- Main Room: Zack & Maia -->
+    <section id="maia-main-room" style="margin-bottom: var(--space-lg, 16px); background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--accent-primary); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        <header style="padding: 12px 16px; font-family: var(--font-heading); font-weight: 600; display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); color: var(--accent-primary);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>Main Room</span>
+                <div style="display: flex; gap: 4px;" title="Zack & Maia">
+                    <span class="action-indicator action-indicator--active" style="margin-top:0"></span>
+                    <span class="action-indicator" style="margin-top:0; background: #fbbf24"></span>
+                </div>
+            </div>
             <span id="maia-status-label" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">Connecting...</span>
-        </summary>
+        </header>
         
         <div style="padding: var(--space-md, 16px); display: flex; flex-direction: column; gap: var(--space-md, 16px);">
             <div id="maia-session-feed" style="background: var(--bg-card-hover); border-radius: var(--radius-sm); padding: var(--space-md, 16px); min-height: 180px; max-height: 350px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px;">
@@ -436,12 +442,22 @@
                 </button>
                 <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px;">
                     <div id="maia-attachments-preview" style="display: none; padding: 4px 8px; gap: 8px; flex-wrap: wrap;"></div>
-                    <textarea id="maia-chat-input" placeholder="Query Muninn, drop a screenshot, or chat natively..." rows="2" style="width: 100%; background: transparent; border: none; padding: 6px 10px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem; resize: vertical; min-height: 50px; outline: none;"></textarea>
+                    <textarea id="maia-chat-input" placeholder="Query Muninn, drop a screenshot, or chat natively in Main Room..." rows="2" style="width: 100%; background: transparent; border: none; padding: 6px 10px; color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem; resize: vertical; min-height: 50px; outline: none;"></textarea>
                 </div>
                 <button id="maia-send-btn" style="padding: 0 20px; background: color-mix(in srgb, var(--accent-primary) 20%, transparent); color: var(--accent-primary); border: 1px solid var(--accent-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; align-self: stretch;">Engage</button>
             </div>
         </div>
-    </details>
+    </section>
+
+    <!-- Committee Rooms Grid -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-sm, 8px);">
+        <h2 class="section-header" style="margin-bottom: 0;">Topic Rooms</h2>
+        <button id="new-room-btn" style="background: none; border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.75rem; font-family: var(--font-mono);">+ New Room</button>
+    </div>
+    <div id="committee-rooms-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-md, 16px); margin-bottom: var(--space-xl, 32px);">
+        <!-- Populated by JS -->
+        <div style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;" id="no-rooms-placeholder">Loading rooms...</div>
+    </div>
 
 
 
@@ -570,7 +586,7 @@
 <!-- Main Application Logic (Existing /talk overlay) -->
 <script src="/static/js/talk.js?v=2.5"></script>
 <!-- New Maia Dashboard Widget Logic -->
-<script src="/static/js/maia_widget.js"></script>
+<script src="/static/js/maia_widget.js?v=2.6"></script>
 
 <script>
 // Mark all notifications as read when dashboard is viewed (EVENT-06)

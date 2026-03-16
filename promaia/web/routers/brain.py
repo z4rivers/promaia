@@ -26,7 +26,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 active_text_listeners = set()
-active_maia_listeners = set()
+room_listeners: dict[int, set] = {1: set()}
+
+# Dependency to inject DB into routes
+def get_db_instance():
+    return get_db()
+
 
 # ---------------------------------------------------------------------------
 # DEPRECATED: Old heartbeat push model — replaced by brain daemon /health
@@ -137,8 +142,8 @@ async def text_stream_endpoint(websocket: WebSocket):
         active_text_listeners.remove(websocket)
 
 @router.websocket("/maia_stream")
-async def maia_stream_endpoint(websocket: WebSocket):
-    """Additive WebSocket endpoint specifically for the Maia Web Widget."""
+async def maia_stream_endpoint(websocket: WebSocket, room_id: int = 1):
+    """Additive WebSocket endpoint specifically for the Maia Web Widget OR topic rooms."""
     from promaia.web.auth import COOKIE_NAME, _verify_token, is_auth_enabled
     
     # Authenticate via cookie from handshake before accepting
@@ -149,7 +154,10 @@ async def maia_stream_endpoint(websocket: WebSocket):
             return
             
     await websocket.accept()
-    active_maia_listeners.add(websocket)
+    if room_id not in room_listeners:
+        room_listeners[room_id] = set()
+    room_listeners[room_id].add(websocket)
+    
     from promaia.web.maia_bridge import generate_maia_response
     
     async def status_callback(status: str):
@@ -185,12 +193,15 @@ async def maia_stream_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Maia stream error: {e}", exc_info=True)
     finally:
-        active_maia_listeners.remove(websocket)
+        if room_id in room_listeners and websocket in room_listeners[room_id]:
+            room_listeners[room_id].remove(websocket)
 
-async def broadcast_maia_activity(text: str, signal_data: dict = None):
-    """Broadcast an activity message to all open Maia widget sessions."""
+async def broadcast_maia_activity(text: str, signal_data: dict = None, room_id: int = 1):
+    """Broadcast an activity message to all open sessions in a specific room."""
     dead_sockets = set()
-    for ws in active_maia_listeners:
+    listeners = room_listeners.get(room_id, set())
+    
+    for ws in listeners:
         try:
             if signal_data:
                 await ws.send_json(signal_data)
@@ -198,18 +209,71 @@ async def broadcast_maia_activity(text: str, signal_data: dict = None):
                 await ws.send_json({"type": "activity", "text": text})
         except Exception:
             dead_sockets.add(ws)
+            
     for ws in dead_sockets:
-        active_maia_listeners.remove(ws)
+        listeners.remove(ws)
 
 class BroadcastRequest(BaseModel):
     text: str
     signal_data: Optional[dict] = None
+    room_id: int = 1
 
 @router.post("/broadcast")
 async def api_broadcast(req: BroadcastRequest):
     """Endpoint for IDEs and MCP servers to broadcast activity to the dashboard."""
-    await broadcast_maia_activity(req.text, req.signal_data)
+    await broadcast_maia_activity(req.text, req.signal_data, req.room_id)
     return {"status": "broadcast_sent"}
+
+# --- Room CRUD Endpoints ---
+class CreateRoomRequest(BaseModel):
+    name: str
+    topic: str
+    artifact_ref: Optional[str] = None
+    created_by: str = "zack"
+
+@router.post("/rooms", tags=["Rooms"])
+async def create_room(req: CreateRoomRequest):
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    room_id = db.create_room(req.name, req.topic, req.created_by, 'topic', req.artifact_ref)
+    return {"room_id": room_id}
+
+@router.get("/rooms", tags=["Rooms"])
+async def list_active_rooms():
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    rooms = db.get_active_rooms()
+    return {"rooms": rooms}
+
+@router.get("/rooms/{room_id}/members", tags=["Rooms"])
+async def get_room_members(room_id: int):
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    members = db.get_room_members(room_id)
+    return {"members": members}
+
+class SummonRequest(BaseModel):
+    agent_name: str
+    role: str = "member"
+
+@router.post("/rooms/{room_id}/summon", tags=["Rooms"])
+async def summon_agent(room_id: int, req: SummonRequest):
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    success = db.join_room(room_id, req.agent_name, req.role)
+    if success:
+        return {"status": "summoned", "agent": req.agent_name}
+    raise HTTPException(status_code=400, detail="Failed to summon agent")
+
+@router.post("/rooms/{room_id}/dissolve", tags=["Rooms"])
+async def dissolve_room(room_id: int):
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    success = db.dissolve_room(room_id)
+    if success:
+        return {"status": "dissolved"}
+    raise HTTPException(status_code=400, detail="Failed to dissolve room")
+
 
 class CommitCaptureRequest(BaseModel):
     commit_hash: str
@@ -320,7 +384,7 @@ async def api_capture_multimodal(
         )
         
         # Broadcast the actual response back to the websocket
-        for ws in active_maia_listeners:
+        for ws in room_listeners.get(1, set()):
             try:
                 await ws.send_json({
                     "type": "response",

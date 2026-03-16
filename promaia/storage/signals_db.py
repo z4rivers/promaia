@@ -56,7 +56,7 @@ class SignalsDB:
         return self.db.fetch_all(query)
 
     def send_message(self, from_agent: str, to_agent: Optional[str], msg_type: str, subject: str, 
-                     body: str, context_payload: dict = None, priority: str = 'normal', reply_to: str = None) -> str:
+                     body: str, context_payload: dict = None, priority: str = 'normal', reply_to: str = None, room_id: int = None) -> str:
         context_json = json.dumps(context_payload) if context_payload else None
         msg_uuid = str(uuid.uuid4())
         
@@ -72,10 +72,10 @@ class SignalsDB:
             
         query = """
         INSERT INTO messages 
-        (uuid, from_agent, to_agent, context_id, msg_type, subject, body, context, priority, status, reply_to)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)
+        (uuid, from_agent, to_agent, context_id, msg_type, subject, body, context, priority, status, reply_to, room_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
         """
-        self.db.execute(query, (msg_uuid, from_agent, to_agent, context_id, msg_type, subject, body, context_json, priority, reply_to))
+        self.db.execute(query, (msg_uuid, from_agent, to_agent, context_id, msg_type, subject, body, context_json, priority, reply_to, room_id))
         
         # Log to structured JSONL for observability (simulated via events table for now)
         event_query = "INSERT INTO events (type, source, payload) VALUES (?, ?, ?)"
@@ -140,6 +140,57 @@ class SignalsDB:
         ctx = msg['context_id']
         query = "SELECT * FROM messages WHERE context_id = ? ORDER BY created_at ASC;"
         return self.db.fetch_all(query, (ctx,))
+
+    def create_room(self, name: str, topic: str, created_by: str, room_type: str = 'topic', artifact_ref: str = None) -> int:
+        """Create a new room and automatically add the creator as owner."""
+        query = """
+        INSERT INTO rooms (name, room_type, topic, artifact_ref, created_by, status)
+        VALUES (?, ?, ?, ?, ?, 'active') RETURNING id;
+        """
+        res = self.db.fetch_one(query, (name, room_type, topic, artifact_ref, created_by))
+        room_id = res['id'] if res else None
+        
+        if room_id:
+            logger.info(f"Room {room_id} ('{name}') created. Adding creator '{created_by}' as owner.")
+            self.join_room(room_id, created_by, "owner", created_by)
+        
+        return room_id
+
+    def get_active_rooms(self) -> List[Dict[str, Any]]:
+        """Retrieve all currently active rooms."""
+        query = "SELECT * FROM rooms WHERE status = 'active' ORDER BY created_at DESC;"
+        return self.db.fetch_all(query)
+
+    def join_room(self, room_id: int, agent_name: str, role: str = 'member', invited_by: str = 'system') -> bool:
+        """Add an agent to a room."""
+        query = """
+        INSERT INTO room_members (room_id, agent_name, role, invited_by)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(room_id, agent_name) DO UPDATE SET role = excluded.role;
+        """
+        try:
+            self.db.execute(query, (room_id, agent_name, role, invited_by))
+            return True
+        except Exception as e:
+            logger.error(f"Failed to join room {room_id} for agent {agent_name}: {e}")
+            return False
+
+    def get_room_members(self, room_id: int) -> List[Dict[str, Any]]:
+        """Get all members (and their presence) for a specific room."""
+        query = """
+        SELECT rm.agent_name, rm.role, rm.invited_by, rm.joined_at, 
+               p.status, p.last_active, p.working_on 
+        FROM room_members rm
+        LEFT JOIN presence p ON rm.agent_name = p.agent_name
+        WHERE rm.room_id = ?;
+        """
+        return self.db.fetch_all(query, (room_id,))
+
+    def dissolve_room(self, room_id: int) -> bool:
+        """Mark a room as dissolved (archived) without deleting its messages."""
+        query = "UPDATE rooms SET status = 'dissolved', dissolved_at = CURRENT_TIMESTAMP WHERE id = ?;"
+        res = self.db.execute(query, (room_id,))
+        return res > 0
 
     def run_garbage_collection(self):
         """Revert 'in_progress' messages to 'new' if agent is offline > 15 mins."""

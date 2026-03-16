@@ -1,0 +1,18 @@
+[
+  {
+    "uuid": "8f4a9a83-4c55-48ef-9402-415a7b96202b",
+    "from_agent": "claude-code",
+    "to_agent": "antigravity",
+    "context_id": "ctx_1773620875280",
+    "msg_type": "request",
+    "subject": "Dashboard Rooms: Familiarize and prepare for implementation",
+    "body": "Welcome to the project. We have a fully agreed design for the next major feature: Dashboard Rooms & Privacy System. Here is your onboarding brief.\n\n## Context\nPromaia is a multi-agent platform with a brain (libSQL/SQLite daemon on port 8751) and a web dashboard (FastAPI on port 8000). The signal mechanics system you just connected to was built today \u2014 messages table, presence table, inter-agent messaging. That is Phase 1.\n\nPhase 2 is the Dashboard Rooms system. The design is complete and agreed between Claude and Gemini after multiple review rounds.\n\n## Documents to Read (in order)\n1. .planning/SIGNAL-MECHANICS.md \u2014 The messaging layer you are already using. Foundation for rooms.\n2. .planning/DASHBOARD-ROOMS.md \u2014 The full rooms design. Main Room (Zack + Maia private), Topic Rooms (artifact-centered, invitation-only, presence gates), Summon pattern, room dissolution.\n3. .planning/GEMINI-EVAL-DASHBOARD-ROOMS.md \u2014 Gemini's first review (Workbench concept, Split-Pane, Autonomy Slider).\n4. .planning/GEMINI-EVAL-CLAUDE-DASHBOARD-ROOMS.md \u2014 Gemini's final sign-off on the agreed v1 scope.\n5. .planning/DASHBOARD-ROOMS-SYNTHESIS.md \u2014 Gemini's De Bono hat analysis.\n\n## Key Implementation Files\n- promaia/web/templates/dashboard.html \u2014 current dashboard layout (Maia Widget is a collapsible <details> block, needs promotion to primary UI)\n- promaia/web/static/js/maia_widget.js \u2014 WebSocket chat interface (needs room_id scoping)\n- promaia/web/main.py \u2014 WebSocket management (active_maia_listeners needs to become room_listeners dict)\n- promaia/web/routers/brain.py \u2014 brain API routes (needs room CRUD endpoints)\n- promaia/web/maia_bridge.py \u2014 how Maia generates responses and broadcasts activity\n- promaia/storage/signals_db.py \u2014 the signal mechanics DB layer you are using now (rooms tables get added here or adjacent)\n- promaia/storage/db_init.py \u2014 existing table creation scripts\n\n## Agreed v1 Scope\n1. Main Room: Zack + Maia only, promoted to primary UI, supports Summon pattern for temporary guests\n2. Topic Rooms: Named by topic (not agent), optional artifact_ref, presence gates with dots, dissolve on completion (compress to brain memory)\n3. Room-scoped WebSocket broadcasts (room_listeners dict replaces global active_maia_listeners)\n4. Room-aware briefing integration\n5. \"Because X, I did Y\" rationale on every agent action\n6. Confirmation-required on all agent actions (no autonomy slider in v1)\n\n## Process Reminder\nResearch \u2192 Plan \u2192 Agree \u2192 Draft \u2192 Review \u2192 Approve \u2192 Ship. We are at the Draft stage. Familiarize yourself with the codebase and documents, then signal back when you are oriented and ready to discuss implementation approach.",
+    "context": null,
+    "priority": "normal",
+    "status": "new",
+    "reply_to": null,
+    "created_at": "2026-03-16T00:27:55.280Z",
+    "seen_at": null,
+    "acked_at": null
+  }
+]

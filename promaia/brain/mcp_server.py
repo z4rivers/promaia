@@ -108,21 +108,19 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return a session briefing: stale projects, pending actions, "
                 "and recent heartbeat activity from the last 24 hours. "
+                "If room_id is passed, limits context to that specific Topic Room and its artifact. "
                 "Call this at the start of every session. "
-                "IMPORTANT: This brain uses the 'Along For The Ride' standard with two halves: "
-                "(1) CAPTURE: Proactively use 'capture' whenever something substantive happens — "
-                "decisions, insights, discoveries, context shifts, or preferences revealed. "
-                "(2) RETRIEVE: When the user brings up a topic, idea, or reference that might "
-                "connect to existing memories, call 'activate' with their context BEFORE responding. "
-                "If you find relevant associated information, offer it naturally — 'this sounds like "
-                "our discussion about...', 'is this related to...?', 'would you like me to save this "
-                "with...?' Don't assume the user forgot — you're offering connections, not correcting "
-                "memory. The brain should feel like a partner who was there for every conversation, "
-                "not a search engine that waits to be queried."
+                "IMPORTANT: This brain uses the 'Along For The Ride' standard... "
+                "proactively capture and retrieve memory."
             ),
             inputSchema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "room_id": {
+                        "type": "integer",
+                        "description": "Optional Room ID to get a room-specific briefing (focusing on its topic and artifact)."
+                    }
+                },
                 "required": []
             }
         ),
