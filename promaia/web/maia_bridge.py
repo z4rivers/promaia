@@ -65,7 +65,7 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
     context = await _assemble_context(chat_id, user_message)
 
     if status_callback:
-        await status_callback("Consulting Gemini models...")
+        await status_callback("Consulting LLM models...")
 
     user_parts = [types.Part.from_text(text=f"{context}\n\nUser: {user_message}")]
     

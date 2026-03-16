@@ -70,7 +70,7 @@ def get_config() -> Dict[str, Any]:
     """
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
                 try:
                     return json.loads(content)
@@ -105,7 +105,7 @@ def update_config(updates: Dict[str, Any]) -> Dict[str, Any]:
     config.update(updates)
     
     # Save updated config
-    with open(CONFIG_FILE, 'w') as f:
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f)
     
     return config

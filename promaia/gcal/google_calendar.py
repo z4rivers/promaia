@@ -86,7 +86,7 @@ class GoogleCalendarManager:
 
                 # Save the credentials for next time
                 token_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(token_path, 'w') as token:
+                with open(token_path, 'w', encoding='utf-8') as token:
                     token.write(creds.to_json())
 
             # Build service

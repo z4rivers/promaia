@@ -80,7 +80,7 @@ def discover_accounts() -> Dict[str, Path]:
 def _label_from_token(token_path: Path) -> Optional[str]:
     """Try to extract email prefix from token file."""
     try:
-        with open(token_path) as f:
+        with open(token_path, encoding='utf-8') as f:
             data = json.load(f)
         # Token doesn't always have the email, but we can check via API
         return None
@@ -93,13 +93,13 @@ def _get_gmail_service(token_path: Path):
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
-    with open(token_path) as f:
+    with open(token_path, encoding='utf-8') as f:
         token_data = json.load(f)
 
     # Add client info for token refresh
     creds_file = _CREDS_DIR / "gmail_credentials.json"
     if creds_file.exists():
-        with open(creds_file) as f:
+        with open(creds_file, encoding='utf-8') as f:
             client_data = json.load(f).get("installed", {})
         token_data.setdefault("client_id", client_data.get("client_id"))
         token_data.setdefault("client_secret", client_data.get("client_secret"))
@@ -112,7 +112,7 @@ def _get_gmail_service(token_path: Path):
         from google.auth.transport.requests import Request
         creds.refresh(Request())
         # Save refreshed token
-        with open(token_path, "w") as f:
+        with open(token_path, "w", encoding='utf-8') as f:
             f.write(creds.to_json())
 
     return build("gmail", "v1", credentials=creds)

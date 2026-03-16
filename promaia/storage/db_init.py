@@ -36,7 +36,7 @@ def init_database():
             logger.error(f"Schema file not found: {schema_path}")
             return False
 
-        with open(schema_path, 'r') as f:
+        with open(schema_path, 'r', encoding='utf-8') as f:
             schema_sql = f.read()
 
         # Split by semicolons and execute each statement

@@ -48,7 +48,7 @@ class EmailClassifier:
         workspace_prompt_file = os.path.join("prompts", f"maia_mail_classification_prompt_{workspace}.md")
 
         try:
-            with open(workspace_prompt_file, 'r') as f:
+            with open(workspace_prompt_file, 'r', encoding='utf-8') as f:
                 prompt = f.read()
                 self._prompt_cache[workspace] = prompt
                 logger.info(f"Loaded workspace-specific classification prompt for '{workspace}'")
@@ -59,7 +59,7 @@ class EmailClassifier:
         # Fall back to generic prompt
         generic_prompt_file = os.path.join("prompts", "maia_mail_classification_prompt.md")
         try:
-            with open(generic_prompt_file, 'r') as f:
+            with open(generic_prompt_file, 'r', encoding='utf-8') as f:
                 prompt = f.read()
                 self._prompt_cache[workspace] = prompt
                 logger.warning(f"Using generic classification prompt for workspace '{workspace}' (no workspace-specific prompt found)")

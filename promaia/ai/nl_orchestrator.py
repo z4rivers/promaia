@@ -180,7 +180,7 @@ class AgenticNLQueryProcessor:
         """Load workspace configuration to provide context to AI."""
         try:
             if os.path.exists(config_file):
-                with open(config_file, 'r') as f:
+                with open(config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     # Filter out sensitive info and return just structure
                     return {
@@ -855,7 +855,7 @@ Return ONLY the JSON object:"""
 
             # Get database IDs for the target databases
             import json
-            with open('promaia.config.json', 'r') as f:
+            with open('promaia.config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
             # Build property name mapping for all target databases

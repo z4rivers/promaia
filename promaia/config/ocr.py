@@ -169,7 +169,7 @@ class OCRConfigManager:
                 # Load environment variables first
                 load_env_file()
 
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
 
                 # Resolve environment variables
@@ -202,7 +202,7 @@ class OCRConfigManager:
         # Load existing config to preserve other sections
         if os.path.exists(self.config_file):
             try:
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
             except Exception as e:
                 logger.warning(f"Could not load existing config for merging: {e}")
@@ -216,7 +216,7 @@ class OCRConfigManager:
 
         # Write config file
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2)
             logger.debug(f"Saved OCR configuration to {self.config_file}")
         except Exception as e:

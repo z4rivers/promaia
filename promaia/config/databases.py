@@ -175,7 +175,7 @@ class DatabaseManager:
             # Load environment variables first
             load_env_file()
             
-            with open(self.config_file, 'r') as f:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
             
             # Resolve environment variables in configuration
@@ -201,7 +201,7 @@ class DatabaseManager:
         existing_config = {}
         try:
             if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
                     existing_config = json.load(f)
         except Exception as e:
             logger.warning(f"Could not load existing config for preservation: {e}")
@@ -223,7 +223,7 @@ class DatabaseManager:
             config_data["default_workspace"] = existing_config["default_workspace"]
         
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2)
             logger.debug(f"Configuration saved to {self.config_file}")
         except Exception as e:

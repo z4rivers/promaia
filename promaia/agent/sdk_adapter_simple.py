@@ -39,7 +39,7 @@ def load_mcp_servers_from_claude_config(project_dir: str = None) -> Dict[str, Di
         return {}
 
     try:
-        with open(claude_config_path) as f:
+        with open(claude_config_path, encoding='utf-8') as f:
             config = json.load(f)
 
         # Get MCP servers for the project

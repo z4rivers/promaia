@@ -37,7 +37,7 @@ class ConversationConnector(BaseConnector):
             if not os.path.exists(self.history_file):
                 self.logger.warning(f"Chat history file not found: {self.history_file}")
                 # Create empty file if it doesn't exist
-                with open(self.history_file, 'w') as f:
+                with open(self.history_file, 'w', encoding='utf-8') as f:
                     json.dump([], f)
 
             self._connected = True

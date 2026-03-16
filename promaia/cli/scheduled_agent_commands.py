@@ -271,7 +271,7 @@ async def handle_agent_add(args):
         from pathlib import Path
         mcp_config_file = Path("mcp_servers.json")
         if mcp_config_file.exists():
-            with open(mcp_config_file, 'r') as f:
+            with open(mcp_config_file, 'r', encoding='utf-8') as f:
                 mcp_config = json.load(f)
                 servers = mcp_config.get('servers', {})
                 available_tools = [
@@ -1603,7 +1603,7 @@ async def handle_agent_edit(args):
             from pathlib import Path
             mcp_config_file = Path("mcp_servers.json")
             if mcp_config_file.exists():
-                with open(mcp_config_file, "r") as f:
+                with open(mcp_config_file, "r", encoding='utf-8') as f:
                     mcp_config = json.load(f)
                     servers = mcp_config.get("servers", {})
                     available_tools = [

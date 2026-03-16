@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let icon = "⚡";
         if (type === "user") icon = "👤";
-        if (type === "response") icon = "🧠";
+        if (type === "response") icon = "💎";
         if (type === "activity") icon = "⚙️";
         
         div.innerHTML = `

@@ -147,7 +147,7 @@ def load_mcp_servers_for_agent(agent_config) -> Dict[str, Any]:
 
     try:
         # Load from global mcp_servers.json
-        with open(mcp_servers_path) as f:
+        with open(mcp_servers_path, encoding='utf-8') as f:
             all_servers = json.load(f).get('servers', {})
 
         base_dir = mcp_servers_path.parent.resolve()

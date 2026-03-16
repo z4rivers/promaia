@@ -109,7 +109,7 @@ class OCRProcessor:
         """Get Notion database ID from config if available."""
         try:
             import json
-            with open("promaia.config.json", 'r') as f:
+            with open("promaia.config.json", 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 db_config = config.get("databases", {}).get("ocr_uploads", {})
                 return db_config.get("database_id")

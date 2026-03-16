@@ -36,7 +36,7 @@ PID_FILE = Path.home() / ".promaia" / "telegram_bot.pid"
 def write_pid_file():
     """Write the current process ID to the PID file."""
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(PID_FILE, "w") as f:
+    with open(PID_FILE, "w", encoding='utf-8') as f:
         f.write(str(os.getpid()))
     logging.getLogger(__name__).info(f"PID file written: {PID_FILE}")
 
@@ -46,7 +46,7 @@ def read_pid_file():
     if not PID_FILE.exists():
         return None
     try:
-        with open(PID_FILE, "r") as f:
+        with open(PID_FILE, "r", encoding='utf-8') as f:
             return int(f.read().strip())
     except Exception as e:
         logging.getLogger(__name__).error(f"Error reading PID file: {e}")

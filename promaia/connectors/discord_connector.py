@@ -1146,7 +1146,7 @@ class DiscordConnector(BaseConnector):
             
             # Cache the results
             try:
-                with open(cache_file, 'w') as f:
+                with open(cache_file, 'w', encoding='utf-8') as f:
                     json.dump(channel_data, f, indent=2)
                 self.logger.info(f"Cached {len(channel_data.get('channels', []))} accessible channels")
             except Exception as e:
@@ -1156,7 +1156,7 @@ class DiscordConnector(BaseConnector):
         
         # Load from cache
         try:
-            with open(cache_file, 'r') as f:
+            with open(cache_file, 'r', encoding='utf-8') as f:
                 channel_data = json.load(f)
             self.logger.debug(f"Loaded {len(channel_data.get('channels', []))} channels from cache")
             return channel_data

@@ -86,7 +86,7 @@ async def handle_slack_setup(args):
     }
     
     try:
-        with open(credentials_file, 'w') as f:
+        with open(credentials_file, 'w', encoding='utf-8') as f:
             json.dump(creds_data, f, indent=2)
         print_text(f"✅ Credentials saved to {credentials_file}")
     except Exception as e:
@@ -139,7 +139,7 @@ async def handle_slack_list_channels(args):
         print_text(f"Run: maia workspace slack-setup {workspace}")
         return
         
-    with open(credentials_file, 'r') as f:
+    with open(credentials_file, 'r', encoding='utf-8') as f:
         creds_data = json.load(f)
         
     try:
@@ -204,7 +204,7 @@ async def handle_slack_sync(args):
         print_text(f"Run: maia workspace slack-setup {workspace}")
         return
         
-    with open(credentials_file, 'r') as f:
+    with open(credentials_file, 'r', encoding='utf-8') as f:
         creds_data = json.load(f)
         
     from datetime import datetime, timedelta, timezone

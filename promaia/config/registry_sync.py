@@ -33,7 +33,7 @@ class ConfigRegistrySync:
             return None
             
         try:
-            with open(self.config_file, 'r') as f:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             return hashlib.md5(content.encode()).hexdigest()
         except Exception as e:

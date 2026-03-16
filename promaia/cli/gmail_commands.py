@@ -56,7 +56,7 @@ async def handle_gmail_setup(args):
     
     # Verify credentials file is valid JSON
     try:
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         # Basic validation

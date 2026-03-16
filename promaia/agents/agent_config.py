@@ -204,7 +204,7 @@ def load_config() -> Dict[str, Any]:
         return {}
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading config: {e}")
@@ -219,7 +219,7 @@ def save_config(config: Dict[str, Any]) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
     except Exception as e:
         print(f"Error saving config: {e}")

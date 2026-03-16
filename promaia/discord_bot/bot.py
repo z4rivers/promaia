@@ -80,7 +80,7 @@ class PromaiaBot(commands.Bot):
                 f"Run: maia workspace discord-setup {self.workspace}"
             )
 
-        with open(config_path) as f:
+        with open(config_path, encoding='utf-8') as f:
             return json.load(f)
 
     async def _get_prefix(self, bot, message):

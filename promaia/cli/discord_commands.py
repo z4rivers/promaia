@@ -82,7 +82,7 @@ async def handle_discord_setup(args):
     
     # Save credentials
     try:
-        with open(credentials_file, 'w') as f:
+        with open(credentials_file, 'w', encoding='utf-8') as f:
             json.dump(creds_data, f, indent=2)
         
         print_text(f"✅ Credentials saved to {credentials_file}")
@@ -150,7 +150,7 @@ async def handle_discord_list_channels(args):
             print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         bot_token = creds_data.get("bot_token")
@@ -252,7 +252,7 @@ async def handle_discord_sync(args):
             print(f"Please run: maia workspace discord-setup {workspace}")
             return
         
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         # Create connector
@@ -345,7 +345,7 @@ async def handle_discord_browse(args):
             print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         bot_token = creds_data.get("bot_token")
@@ -503,7 +503,7 @@ async def handle_discord_browse_filtered(args, previous_selections=None):
             print_text(f"Please run: maia workspace discord-setup {workspace}")
             return []
         
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         bot_token = creds_data.get("bot_token")
@@ -1068,7 +1068,7 @@ async def handle_discord_debug_channels(args):
                 print_text(f"   ❌ Discord credentials not found for workspace '{workspace}'", style="red")
                 continue
             
-            with open(credentials_file, 'r') as f:
+            with open(credentials_file, 'r', encoding='utf-8') as f:
                 creds_data = json.load(f)
             
             # Create connector config
@@ -1118,7 +1118,7 @@ async def handle_discord_refresh(args):
             print_text(f"Please run: maia workspace discord-setup {workspace}")
             return
         
-        with open(credentials_file, 'r') as f:
+        with open(credentials_file, 'r', encoding='utf-8') as f:
             creds_data = json.load(f)
         
         bot_token = creds_data.get("bot_token")

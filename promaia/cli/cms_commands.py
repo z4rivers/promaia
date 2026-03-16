@@ -238,7 +238,7 @@ async def pull_cms_filtered(database_config, output_dir, property_filters, days,
             return
         
         try:
-            with open(credentials_file, 'r') as f:
+            with open(credentials_file, 'r', encoding='utf-8') as f:
                 creds_data = json.load(f)
             connector_config['bot_token'] = creds_data.get("bot_token")
         except Exception as e:

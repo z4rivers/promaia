@@ -836,7 +836,7 @@ def write_pid_file():
 
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(PID_FILE, 'w') as f:
+    with open(PID_FILE, 'w', encoding='utf-8') as f:
         f.write(str(os.getpid()))
 
     logger.info(f"📝 PID file written: {PID_FILE}")
@@ -848,7 +848,7 @@ def read_pid_file() -> Optional[int]:
         return None
 
     try:
-        with open(PID_FILE, 'r') as f:
+        with open(PID_FILE, 'r', encoding='utf-8') as f:
             return int(f.read().strip())
     except Exception as e:
         logger.error(f"Error reading PID file: {e}")

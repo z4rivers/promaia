@@ -276,7 +276,7 @@ async def _add_discord_channels_interactive(db_config, workspace, db_name):
     bot_token = None
     if os.path.exists(credentials_file):
         try:
-            with open(credentials_file, 'r') as f:
+            with open(credentials_file, 'r', encoding='utf-8') as f:
                 creds_data = json.load(f)
             bot_token = creds_data.get("bot_token")
         except Exception as e:
@@ -1414,7 +1414,7 @@ async def sync_database(source_spec: Dict[str, Any], args):
                 return result
             
             try:
-                with open(credentials_file, 'r') as f:
+                with open(credentials_file, 'r', encoding='utf-8') as f:
                     creds_data = json.load(f)
                 connector_config['bot_token'] = creds_data.get("bot_token")
             except Exception as e:

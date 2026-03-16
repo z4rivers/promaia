@@ -134,7 +134,7 @@ def get_api_preference():
     """Get the saved API preference and model ID."""
     try:
         if os.path.exists(API_PREFERENCE_FILE):
-            with open(API_PREFERENCE_FILE, 'r') as f:
+            with open(API_PREFERENCE_FILE, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
                 lines = content.split('\n')
                 api_type = lines[0] if lines else "anthropic"
@@ -152,7 +152,7 @@ def get_api_preference():
 def save_api_preference(api_type, model_id=None):
     """Save the API preference and optionally the model ID."""
     try:
-        with open(API_PREFERENCE_FILE, 'w') as f:
+        with open(API_PREFERENCE_FILE, 'w', encoding='utf-8') as f:
             f.write(api_type)
             if model_id:
                 f.write(f'\n{model_id}')
@@ -164,7 +164,7 @@ def get_browser_selection():
     """Get the saved browser selection (selected sources)."""
     try:
         if os.path.exists(BROWSER_PREFERENCE_FILE):
-            with open(BROWSER_PREFERENCE_FILE, 'r') as f:
+            with open(BROWSER_PREFERENCE_FILE, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
                 if content:
                     # Sources are stored one per line
@@ -176,7 +176,7 @@ def get_browser_selection():
 def save_browser_selection(sources):
     """Save the browser selection (selected sources)."""
     try:
-        with open(BROWSER_PREFERENCE_FILE, 'w') as f:
+        with open(BROWSER_PREFERENCE_FILE, 'w', encoding='utf-8') as f:
             if sources:
                 f.write('\n'.join(sources))
         debug_print(f"Browser selection saved: {len(sources)} sources")
@@ -7792,7 +7792,7 @@ The user will type `/send` to trigger the actual sending process.
                     mail_prompt_path = os.path.join(os.path.dirname(__file__), '..', '..', 'prompts', 'maia_mail_prompt.md')
 
                     try:
-                        with open(mail_prompt_path, 'r') as f:
+                        with open(mail_prompt_path, 'r', encoding='utf-8') as f:
                             mail_prompt_content = f.read()
 
                         # Add date/time context using replace to avoid issues with JSON {} in examples

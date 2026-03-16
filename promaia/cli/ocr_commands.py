@@ -410,7 +410,7 @@ async def cmd_ocr_database_add(args: argparse.Namespace):
     import json
     config_file = "promaia.config.json"
     try:
-        with open(config_file, 'r') as f:
+        with open(config_file, 'r', encoding='utf-8') as f:
             full_config = json.load(f)
 
         if "databases" not in full_config:
@@ -418,7 +418,7 @@ async def cmd_ocr_database_add(args: argparse.Namespace):
 
         full_config["databases"]["ocr_uploads"] = db_config
 
-        with open(config_file, 'w') as f:
+        with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(full_config, f, indent=2)
 
         console.print(f"\n[bold green]✓ Database added successfully![/bold green]")
@@ -442,7 +442,7 @@ async def cmd_ocr_database_setup(args: argparse.Namespace):
     # Get database ID from config
     import json
     try:
-        with open("promaia.config.json", 'r') as f:
+        with open("promaia.config.json", 'r', encoding='utf-8') as f:
             config = json.load(f)
             db_config = config.get("databases", {}).get("ocr_uploads", {})
             database_id = db_config.get("database_id")
@@ -499,7 +499,7 @@ async def cmd_ocr_database_info(args: argparse.Namespace):
     # Get database config
     import json
     try:
-        with open("promaia.config.json", 'r') as f:
+        with open("promaia.config.json", 'r', encoding='utf-8') as f:
             config = json.load(f)
             db_config = config.get("databases", {}).get("ocr_uploads", {})
 
@@ -557,7 +557,7 @@ async def cmd_ocr_sync(args: argparse.Namespace):
     # Get database ID from config
     import json
     try:
-        with open("promaia.config.json", 'r') as f:
+        with open("promaia.config.json", 'r', encoding='utf-8') as f:
             config = json.load(f)
             db_config = config.get("databases", {}).get("ocr_uploads", {})
             database_id = db_config.get("database_id")

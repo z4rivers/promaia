@@ -597,7 +597,7 @@ Return ONLY the JSON object:"""
         try:
             # Get config for defaults
             config_path = "promaia.config.json"
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             vector_config = config.get('global', {}).get('vector_search', {})
 

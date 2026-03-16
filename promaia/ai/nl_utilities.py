@@ -180,7 +180,7 @@ class QueryLearningSystem:
             return []
         
         try:
-            with open(self.index_file, 'r') as f:
+            with open(self.index_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print_text(f"⚠️  Could not load patterns: {e}", style="yellow")
@@ -202,7 +202,7 @@ class QueryLearningSystem:
         patterns = patterns[:self.max_patterns]
         
         try:
-            with open(self.index_file, 'w') as f:
+            with open(self.index_file, 'w', encoding='utf-8') as f:
                 json.dump(patterns, f, indent=2)
             print_text(f"✅ Saved pattern to learning index ({len(patterns)}/20)", style="green")
         except Exception as e:
@@ -246,7 +246,7 @@ class NLContextLogger:
         log_file = self.log_dir / f"{timestamp}_nl_query_draft.json"
         
         try:
-            with open(log_file, 'w') as f:
+            with open(log_file, 'w', encoding='utf-8') as f:
                 json.dump(query_info, f, indent=2)
             return log_file
         except Exception as e:
@@ -291,7 +291,7 @@ RESULTS:
                 summary += f"       Date: {result.get('created_time', 'N/A')[:10]}\n"
         
         try:
-            with open(summary_file, 'w') as f:
+            with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(summary)
             return summary_file
         except Exception as e:

@@ -30,7 +30,7 @@ def _ensure_cache_file():
             },
             "conversions": {}
         }
-        with open(CACHE_FILE, 'w') as f:
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(initial_data, f, indent=2)
 
 
@@ -49,7 +49,7 @@ def load_cache() -> Dict[str, str]:
     _ensure_cache_file()
 
     try:
-        with open(CACHE_FILE, 'r') as f:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
             _cache = data.get("conversions", {})
             return _cache
@@ -89,12 +89,12 @@ def cache_webp_conversion(original_url: str, webp_url: str):
     # Save to disk
     try:
         _ensure_cache_file()
-        with open(CACHE_FILE, 'r') as f:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         data["conversions"][original_url] = webp_url
 
-        with open(CACHE_FILE, 'w') as f:
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
 
         logger.info(f"Cached WebP conversion: {original_url} -> {webp_url}")

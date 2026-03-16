@@ -56,7 +56,7 @@ class ResponseGenerator:
         """Load refinement prompt template from file."""
         prompt_file = os.path.join("prompts", "maia_mail_refinement_prompt.md")
         try:
-            with open(prompt_file, 'r') as f:
+            with open(prompt_file, 'r', encoding='utf-8') as f:
                 return f.read()
         except FileNotFoundError:
             logger.error(f"Refinement prompt file not found: {prompt_file}")

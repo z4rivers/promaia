@@ -873,7 +873,7 @@ class HybridContentRegistry:
             import json
             import os
             config_path = "promaia.config.json"
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             vector_config = config.get('global', {}).get('vector_search', {})
 
@@ -1017,7 +1017,7 @@ class HybridContentRegistry:
             # Check if vector search is enabled - load from main config file
             import json
             config_path = "promaia.config.json"
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             vector_config = config.get('global', {}).get('vector_search', {})
 
@@ -2063,7 +2063,7 @@ class HybridContentRegistry:
                     try:
                         # Load vector config to check if embeddings are enabled
                         config_path = "promaia.config.json"
-                        with open(config_path, 'r') as f:
+                        with open(config_path, 'r', encoding='utf-8') as f:
                             config = json.load(f)
                         vector_config = config.get('global', {}).get('vector_search', {})
 
@@ -2090,7 +2090,7 @@ class HybridContentRegistry:
                     try:
                         # Load vector config to check if embeddings are enabled
                         config_path = "promaia.config.json"
-                        with open(config_path, 'r') as f:
+                        with open(config_path, 'r', encoding='utf-8') as f:
                             config = json.load(f)
                         vector_config = config.get('global', {}).get('vector_search', {})
 

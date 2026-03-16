@@ -74,7 +74,7 @@ def load_cms_config(reload: bool = False) -> Dict[str, Any]:
         return _cached_config
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             loaded_config = json.load(f)
 
         # Merge with defaults to ensure all keys exist

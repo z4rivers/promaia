@@ -67,7 +67,7 @@ def parse_vs_queries_with_params(argv):
 
         # Load defaults from config
         try:
-            with open('promaia.config.json', 'r') as f:
+            with open('promaia.config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 top_k = config.get('vector_search', {}).get('default_n_results', 20)
                 threshold = config.get('vector_search', {}).get('default_similarity_threshold', 0.2)

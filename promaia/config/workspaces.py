@@ -83,7 +83,7 @@ class WorkspaceManager:
                 # Load environment variables first
                 load_env_file()
                 
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                 
                 # Resolve environment variables in configuration
@@ -127,7 +127,7 @@ class WorkspaceManager:
         # Load existing config to preserve other sections
         if os.path.exists(self.config_file):
             try:
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
             except Exception as e:
                 logger.warning(f"Could not load existing config for merging: {e}")
@@ -144,7 +144,7 @@ class WorkspaceManager:
         
         # Write config file
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
             logger.debug(f"Saved workspace configuration to {self.config_file}")
         except Exception as e:

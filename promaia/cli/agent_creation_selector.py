@@ -48,7 +48,7 @@ async def fetch_discord_channels(workspace: str, db_configs: List[Dict]) -> List
 
     if credentials_file.exists():
         try:
-            with open(credentials_file, 'r') as f:
+            with open(credentials_file, 'r', encoding='utf-8') as f:
                 creds_data = json.load(f)
                 bot_token = creds_data.get('bot_token')
         except Exception as e:

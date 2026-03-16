@@ -178,13 +178,13 @@ class GmailConnector(BaseConnector):
         # Load existing token (try JSON first, then pickle for legacy tokens)
         if os.path.exists(self.token_file):
             try:
-                with open(self.token_file, 'r') as token:
+                with open(self.token_file, 'r', encoding='utf-8') as token:
                     token_data = json.load(token)
                 # JSON token — load via Credentials.from_authorized_user_info
                 # Merge client info for token refresh
                 creds_file = os.path.join(self.credentials_dir, "gmail_credentials.json")
                 if os.path.exists(creds_file):
-                    with open(creds_file, 'r') as f:
+                    with open(creds_file, 'r', encoding='utf-8') as f:
                         client_data = json.load(f).get("installed", {})
                     token_data.setdefault("client_id", client_data.get("client_id"))
                     token_data.setdefault("client_secret", client_data.get("client_secret"))

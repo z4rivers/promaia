@@ -24,7 +24,7 @@ def get_display_config() -> dict:
         # Look for config file in current directory
         config_path = "promaia.config.json"
         if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 return config.get("global", {}).get("display", {})
     except Exception as e:
