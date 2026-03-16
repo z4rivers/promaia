@@ -504,8 +504,9 @@ async def generate_session_review(transcript_log: list, rescued_memories: list =
             "required": ["category", "reason"]
         }
         
+        from promaia.ai.models import GOOGLE_MODELS
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GOOGLE_MODELS["flash"],
             contents=triage_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

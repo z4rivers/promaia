@@ -167,6 +167,10 @@ def calculate_ai_cost(prompt_tokens: int, response_tokens: int, model_name: str 
         "claude-sonnet-4-5-20250929": "claude-sonnet-4",
         "claude-haiku-4-5-20251001": "claude-sonnet-4",
         "claude-3-5-sonnet-20241022": "claude-3.5-sonnet",
+        "gemini-3-flash-preview": "gemini-3-flash",
+        "gemini-3.1-pro-preview": "gemini-2.5-pro-short",  # closest pricing tier
+        "gemini-3.1-flash-lite-preview": "gemini-3-flash",  # cheaper but use flash tier
+        "gemini-2.5-flash": "gemini-3-flash",  # legacy alias
     }
     
     # Use mapping if available, otherwise use the model name as-is

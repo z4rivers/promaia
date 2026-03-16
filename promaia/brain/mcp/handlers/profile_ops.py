@@ -33,7 +33,7 @@ async def _handle_profile(args: dict) -> list[TextContent]:
 
     # Narrative mode — synthesized portrait
     if mode == "narrative":
-        from promaia.profile_narrative import get_or_generate_narrative
+        from promaia.brain.profile_narrative import get_or_generate_narrative
         narrative = await get_or_generate_narrative()
         return [TextContent(type="text", text=f"# Profile Portrait\n\n{narrative}")]
 

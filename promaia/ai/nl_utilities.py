@@ -45,29 +45,21 @@ class SchemaExplorer:
                 conn.rollback()
                 cursor = conn.cursor()
 
-                # Get all tables AND views
-                cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+                # Get all tables (libSQL/SQLite uses sqlite_master)
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
                 tables = [row[0] for row in cursor.fetchall()]
-                
+
                 # Explore each table
                 for table in tables:
-                    # Get column info
-                    cursor.execute(f"""
-                        SELECT column_name, data_type, is_nullable, 
-                               CASE WHEN column_name IN (
-                                   SELECT column_name FROM information_schema.key_column_usage 
-                                   WHERE table_name = %s AND table_schema = 'public'
-                               ) THEN true ELSE false END as is_pk
-                        FROM information_schema.columns 
-                        WHERE table_name = %s AND table_schema = 'public'
-                    """, (table, table))
+                    # Get column info via PRAGMA
+                    cursor.execute(f"PRAGMA table_info({table})")
                     columns = []
                     for row in cursor.fetchall():
                         columns.append({
-                            "name": row[0],
-                            "type": row[1],
-                            "notnull": row[2] == 'NO',
-                            "pk": row[3]
+                            "name": row[1],
+                            "type": row[2] or "TEXT",
+                            "notnull": bool(row[3]),
+                            "pk": bool(row[5])
                         })
                     
                     # Get row count
@@ -513,7 +505,7 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
             if content_type == 'gmail' or database_name == 'gmail':
                 # Get subject from gmail_content
                 cursor.execute(
-                    "SELECT subject FROM gmail_content WHERE page_id = %s",
+                    "SELECT subject FROM gmail_content WHERE page_id = ?",
                     (page_id,)
                 )
                 row = cursor.fetchone()
@@ -523,7 +515,7 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
             elif content_type == 'discord' or database_name == 'discord':
                 # Get content snippet from discord_content
                 cursor.execute(
-                    "SELECT content FROM discord_content WHERE page_id = %s",
+                    "SELECT content FROM discord_content WHERE page_id = ?",
                     (page_id,)
                 )
                 row = cursor.fetchone()
@@ -535,7 +527,7 @@ def _get_content_display_text(result: Dict[str, Any], db_path: str = "data/hybri
             elif content_type == 'notion' or database_name in ['stories', 'yp', 'notion', 'projects', 'cms', 'epics', 'journal', 'awakenings']:
                 # For Notion databases, try to get title from unified_content
                 cursor.execute(
-                    "SELECT title FROM unified_content WHERE page_id = %s",
+                    "SELECT title FROM unified_content WHERE page_id = ?",
                     (page_id,)
                 )
                 row = cursor.fetchone()

@@ -71,8 +71,9 @@ async def handle(ft) -> types.FunctionResponse:
             rag_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
             prompt = f"Transcript from YouTube video ({video_id}):\n\n{text_result[:80000]}\n\nAnalyze this transcript deeply. Answer the user's specific question or request: {question}\n\nProvide a very dense, direct, highly technical answer using exclusively the facts from the transcript. Make it concise enough to be spoken aloud (max 200 words). If the transcript doesn't answer it, explicitly state that."
             
+            from promaia.ai.models import GOOGLE_MODELS
             rag_response = rag_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model=GOOGLE_MODELS["flash"],
                 contents=prompt
             )
             

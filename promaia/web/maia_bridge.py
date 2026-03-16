@@ -128,7 +128,8 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
         
         max_turns = 5
         staged_memories = [] # Tool state
-        
+        response_text = None  # Ensure defined even if loop exhausts all turns on tool calls
+
         for turn in range(max_turns):
             response = await asyncio.wait_for(
                 client.aio.models.generate_content(

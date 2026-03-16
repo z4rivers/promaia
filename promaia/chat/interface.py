@@ -5604,8 +5604,7 @@ The user will type `/send` to trigger the actual sending process.
                         total_tokens = response.usage_metadata.total_token_count
 
                         from promaia.utils.ai import calculate_ai_cost
-                        gemini_model = "gemini-2.5-pro-short" if total_tokens <= 128000 else "gemini-2.5-pro-long"
-                        cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model)
+                        cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model_name_chat)
                         total_cost = cost_data["total_cost"]
 
                         response_content = {
@@ -8094,10 +8093,8 @@ The user will type `/send` when ready to send the email.
                             # Calculate cost using centralized function
                             from promaia.utils.ai import calculate_ai_cost
                             debug_print(f"Cost calculation: prompt_tokens={prompt_tokens}, completion_tokens={completion_tokens}")
-                            
-                            # Determine Gemini model for pricing (use short context pricing for now)
-                            gemini_model = "gemini-2.5-pro-short" if total_tokens <= 128000 else "gemini-2.5-pro-long"
-                            cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model)
+
+                            cost_data = calculate_ai_cost(prompt_tokens, completion_tokens, gemini_model_name_chat)
                             total_cost = cost_data["total_cost"]
                             debug_print(f"Calculated cost: ${total_cost:.6f}")
 
