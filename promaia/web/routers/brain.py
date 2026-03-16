@@ -158,6 +158,9 @@ async def maia_stream_endpoint(websocket: WebSocket, room_id: int = 1):
         room_listeners[room_id] = set()
     room_listeners[room_id].add(websocket)
     
+    from promaia.storage.signals_db import SignalsDB
+    SignalsDB().update_presence("maia", status="online")
+    
     from promaia.web.maia_bridge import generate_maia_response
     
     async def status_callback(status: str):
@@ -195,6 +198,9 @@ async def maia_stream_endpoint(websocket: WebSocket, room_id: int = 1):
     finally:
         if room_id in room_listeners and websocket in room_listeners[room_id]:
             room_listeners[room_id].remove(websocket)
+        from promaia.storage.signals_db import SignalsDB
+        if not any(room_listeners.values()):
+            SignalsDB().update_presence("maia", status="offline")
 
 async def broadcast_maia_activity(text: str, signal_data: dict = None, room_id: int = 1):
     """Broadcast an activity message to all open sessions in a specific room."""
@@ -251,6 +257,13 @@ async def get_room_members(room_id: int):
     db = SignalsDB()
     members = db.get_room_members(room_id)
     return {"members": members}
+
+@router.get("/rooms/{room_id}/messages", tags=["Rooms"])
+async def get_room_messages_api(room_id: int, limit: int = 50):
+    from promaia.storage.signals_db import SignalsDB
+    db = SignalsDB()
+    messages = db.get_room_messages(room_id, limit)
+    return {"messages": messages}
 
 class SummonRequest(BaseModel):
     agent_name: str
@@ -310,7 +323,8 @@ async def api_capture_commit(req: CommitCaptureRequest):
 @router.post("/capture_multimodal")
 async def api_capture_multimodal(
     message: str = Form(...),
-    files: List[UploadFile] = File(None)
+    files: List[UploadFile] = File(None),
+    room_id: int = Form(1)
 ):
     """Hybrid out-of-band capture for heavy media. Broadcasts response down the WebSocket."""
     import uuid
@@ -347,13 +361,13 @@ async def api_capture_multimodal(
                 logger.error(f"Failed to save uploaded file {file.filename}: {e}")
                 
     # Alert the widget we're working (broadcast)
-    await broadcast_maia_activity("Analyzing multimodal input...")
+    await broadcast_maia_activity("Analyzing multimodal input...", room_id=room_id)
     
     # Process through the Maia Bridge (brain_chat handles Muninn search & formatting)
     from promaia.web.maia_bridge import generate_maia_response
     
     async def status_callback(status: str):
-        await broadcast_maia_activity(status)
+        await broadcast_maia_activity(status, room_id=room_id)
         
     try:
         reply = await generate_maia_response(
@@ -384,7 +398,7 @@ async def api_capture_multimodal(
         )
         
         # Broadcast the actual response back to the websocket
-        for ws in room_listeners.get(1, set()):
+        for ws in room_listeners.get(room_id, set()):
             try:
                 await ws.send_json({
                     "type": "response",

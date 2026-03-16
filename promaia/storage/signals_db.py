@@ -141,6 +141,12 @@ class SignalsDB:
         query = "SELECT * FROM messages WHERE context_id = ? ORDER BY created_at ASC;"
         return self.db.fetch_all(query, (ctx,))
 
+    def get_room_messages(self, room_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch the latest messages from a specific room."""
+        query = "SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?;"
+        rows = self.db.fetch_all(query, (room_id, limit))
+        return list(reversed(rows))
+
     def create_room(self, name: str, topic: str, created_by: str, room_type: str = 'topic', artifact_ref: str = None) -> int:
         """Create a new room and automatically add the creator as owner."""
         query = """

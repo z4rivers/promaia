@@ -14,10 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const attachmentsPreview = document.getElementById('maia-attachments-preview');
     
     let ws = null;
+    let currentRoomId = 1;
 
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/maia_stream`);
+        ws = new WebSocket(`${protocol}//${window.location.host}/api/brain/maia_stream?room_id=${currentRoomId}`);
         
         ws.onopen = () => {
             console.log("Maia Widget Engine: Connected");
@@ -99,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus("Uploading media...", "working");
             const formData = new FormData();
             formData.append("message", text || "Attached media");
+            formData.append("room_id", currentRoomId);
             for(let i = 0; i < files.length; i++) {
                 formData.append("files", files[i]);
             }
@@ -183,31 +185,138 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            topicRooms.forEach(room => {
+            for (const room of topicRooms) {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.style.cursor = 'pointer';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '8px';
+                
+                // Fetch members
+                let membersHtml = '';
+                try {
+                    const mResp = await fetch(`/api/brain/rooms/${room.id}/members`);
+                    const mData = await mResp.json();
+                    if (mData.members) {
+                        membersHtml = mData.members.map(m => {
+                            // "online" => active, "idle" => yellow, "offline" => none
+                            let color = 'var(--text-muted)';
+                            let badgeClass = 'action-indicator';
+                            if (m.current_status === 'online') badgeClass += ' action-indicator--active';
+                            else if (m.current_status === 'idle') { badgeClass += ' action-indicator--active'; color = '#fbbf24'; }
+                            return `<span style="display:flex; align-items:center; gap:4px; font-size:0.75rem; color:var(--text-muted);"><span class="${badgeClass}" style="margin-top:0; ${m.current_status === 'idle' ? 'background:#fbbf24;' : ''}"></span>${escapeHtml(m.agent_name)}</span>`;
+                        }).join('');
+                    }
+                } catch(e) { console.error(e); }
+
                 card.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; cursor: pointer;" class="room-enter-zone">
                         <div>
                             <div class="project-name">${escapeHtml(room.name)}</div>
                             <div class="project-detail" style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(room.topic || 'No topic')}</div>
                         </div>
-                        <div style="display: flex; gap: 4px;" title="Members">
-                            <span class="action-indicator action-indicator--active" style="margin-top:0"></span>
-                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                        ${membersHtml || '<span style="font-size:0.75rem; color:var(--text-muted);">Empty</span>'}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+                        <button class="btn btn--secondary room-invite-btn" style="padding: 2px 8px; font-size: 0.7rem;">+ Invite</button>
+                        <button class="btn btn--secondary room-dissolve-btn" style="padding: 2px 8px; font-size: 0.7rem; color: var(--color-danger); border-color: transparent;">Dissolve</button>
                     </div>
                 `;
-                card.addEventListener('click', () => {
-                   alert("Entering topic rooms UI will be implemented in v2. For now, they run silently."); 
+                
+                // Interactive parts
+                card.querySelector('.room-enter-zone').addEventListener('click', () => {
+                   enterTopicRoom(room);
                 });
+                card.querySelector('.room-invite-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const nameToInvite = prompt("Agent name to summon (e.g. 'claude-code', 'maia', 'zack'):");
+                    if (!nameToInvite) return;
+                    try {
+                        const sResp = await fetch(`/api/brain/rooms/${room.id}/summon`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({agent_name: nameToInvite, role: 'member'})
+                        });
+                        if(sResp.ok) fetchCommitteeRooms();
+                    } catch(e) {}
+                });
+                card.querySelector('.room-dissolve-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if(!confirm(`Are you sure you want to dissolve '${room.name}'?`)) return;
+                    try {
+                        const dResp = await fetch(`/api/brain/rooms/${room.id}/dissolve`, {method: 'POST'});
+                        if(dResp.ok) fetchCommitteeRooms();
+                    } catch(e) {}
+                });
+
                 grid.appendChild(card);
-            });
+            }
             
         } catch (e) {
             console.error("Failed to fetch rooms", e);
         }
     }
+
+    async function enterTopicRoom(room) {
+        if (currentRoomId === room.id) return;
+        currentRoomId = room.id;
+        
+        // Update Title UI
+        const mainTitle = document.getElementById('main-room-title');
+        if (mainTitle) {
+            mainTitle.innerHTML = `<span style="color:var(--text-muted); font-weight:normal; font-size:0.8em; cursor:pointer;" onclick="window.enterTopicRoom({id:1, name:'Main Room', topic:''})">← Main</span> &nbsp; ${escapeHtml(room.name)}`;
+        }
+        
+        // Members UI
+        const mainMembers = document.getElementById('main-room-members');
+        if (mainMembers) {
+            let membersHtml = '';
+            try {
+                const mResp = await fetch(`/api/brain/rooms/${room.id}/members`);
+                const mData = await mResp.json();
+                if (mData.members) {
+                    membersHtml = mData.members.map(m => {
+                        let badgeClass = 'action-indicator';
+                        let bgStyle = '';
+                        if (m.current_status === 'online') badgeClass += ' action-indicator--active';
+                        else if (m.current_status === 'idle') { badgeClass += ' action-indicator--active'; bgStyle = 'background:#fbbf24;'; }
+                        return `<span style="display:flex; align-items:center; gap:4px;"><span class="${badgeClass}" style="margin-top:0; ${bgStyle}"></span>${escapeHtml(m.agent_name)}</span>`;
+                    }).join('');
+                }
+            } catch(e) {}
+            mainMembers.innerHTML = membersHtml;
+        }
+
+        // Fetch History
+        if (sessionFeed) {
+            sessionFeed.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; text-align:center; margin:16px;">Loading room history...</div>';
+            try {
+                const hResp = await fetch(`/api/brain/rooms/${room.id}/messages`);
+                const hData = await hResp.json();
+                sessionFeed.innerHTML = '';
+                if (hData.messages && hData.messages.length > 0) {
+                    hData.messages.forEach(m => {
+                        appendFeedItem(m.body, m.from_agent === 'zack' ? 'user' : 'response');
+                    });
+                } else {
+                    sessionFeed.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; text-align:center; margin:16px;">Room created. Use chat to begin.</div>';
+                }
+            } catch(e) {
+                console.error(e);
+                sessionFeed.innerHTML = '';
+            }
+        }
+        
+        // Reconnect WS
+        if (ws) {
+            ws.onclose = null; // Prevent auto-reconnect fallback triggering immediately
+            ws.close();
+        }
+        connectWebSocket();
+    }
+    window.enterTopicRoom = enterTopicRoom; // expose for the "<- Main Room" click
 
     const newRoomBtn = document.getElementById('new-room-btn');
     if (newRoomBtn) {
