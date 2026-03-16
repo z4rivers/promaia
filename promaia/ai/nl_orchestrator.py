@@ -9,6 +9,7 @@ This replaces the hardcoded example-based system with a fully agentic approach:
 """
 import os
 import json
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 # Load environment variables
@@ -780,7 +781,7 @@ Rules for date_filter - CRITICAL:
 - For date RANGES use start_date and end_date: "between X and Y" → start_date: X, end_date: Y
 - For future dates, use ISO format (YYYY-MM-DD) or relative dates: "until april" → end_date: "2026-04-30"
 - Parse relative dates: "a week ago" → "DATE('now', '-7 days')" for start_date
-- TODAY IS: 2026-01-16 - use this for calculating relative dates
+- TODAY IS: {datetime.now().strftime('%Y-%m-%d')} - use this for calculating relative dates
 - If no date mentioned, set all date_filter fields to null
 - NEVER mix incompatible date logic (e.g., don't use days_back with start_date/end_date)
 

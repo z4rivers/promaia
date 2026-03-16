@@ -842,16 +842,16 @@ Return ONLY the JSON object:"""
             if operator == 'not_empty':
                 where_clause = f"{property_name} IS NOT NULL AND {property_name} != ''"
             elif operator == 'equals':
-                where_clause = f"{property_name} = %s"
+                where_clause = f"{property_name} = ?"
             elif operator == 'contains':
-                where_clause = f"{property_name} LIKE %s"
+                where_clause = f"{property_name} LIKE ?"
                 value = f"%{value}%"
             elif operator == 'greater_than':
-                where_clause = f"{property_name} > %s"
+                where_clause = f"{property_name} > ?"
             elif operator == 'less_than':
-                where_clause = f"{property_name} < %s"
+                where_clause = f"{property_name} < ?"
             else:
-                where_clause = f"{property_name} = %s"
+                where_clause = f"{property_name} = ?"
 
             # Query unified_content with property filter
             # TODO: This needs to be implemented in hybrid_storage
