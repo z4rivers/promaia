@@ -139,6 +139,7 @@ Replace the in-memory `staged_memories` list with a DB table:
 ```sql
 CREATE TABLE IF NOT EXISTS staged_memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT DEFAULT 'zack',   -- future multi-tenant support (Maia's feedback)
     surface TEXT NOT NULL,         -- 'voice', 'web', future surfaces
     content TEXT NOT NULL,
     domain TEXT,
@@ -147,6 +148,8 @@ CREATE TABLE IF NOT EXISTS staged_memories (
     created_at TIMESTAMP DEFAULT (datetime('now'))
 );
 ```
+
+**`user_id` is Maia's contribution.** Defaults to `'zack'` now (single user). Costs nothing to add. Saves a painful migration if Promaia ever serves multiple users (Josie, Rose, or external). Every query that touches this table should include `WHERE user_id = ?` from day one so the pattern is established.
 
 Update `memory_ops.handle()` to write/read from this table instead of the Python list. Commit handler flips status to `committed` and calls `capture_memory()`. Heartbeat expires stale staged memories after 24 hours.
 
@@ -263,13 +266,30 @@ async def assemble_brain_context(
 
 All providers run in parallel via `asyncio.gather()` with per-provider timeouts (same pattern as `_refresh_voice_context()` in `routers/brain.py:102`).
 
-#### What if Gemini needs to search?
+#### Search Escalation Tool (Maia's feedback — moved from future to Phase 2)
 
-Generous context assembly covers 90% of cases. For the 10% edge case ("what did I say about Heatpup last week?"), the bridge could detect "I don't have enough context" in Gemini's response and do a targeted search + re-call. That's a future enhancement, not this sprint. Context tokens are cheap; tool turns are expensive.
+Generous context assembly covers 90% of cases. For the 10% edge case ("what did I say about Heatpup last week?"), the bridge needs a fallback:
 
-#### Assistant response promotion (from cross-evaluation)
+1. After Gemini generates a response, the bridge scans for low-confidence signals ("I'm not sure", "I don't have context about", "I don't recall")
+2. If detected, the bridge does a targeted MuninnDB ACTIVATE + sqlite-vec search using the specific topic
+3. If relevant results are found, re-call Gemini with the enriched context appended
+4. If no results, let the original response stand
 
-Neither original plan addressed this: Maia's responses contain intelligence too. "I'll be more direct with you" is a preference. "Morning is your best time for deep work" is an insight. Add impact scoring to assistant responses in Stage 3. Promote high-impact responses through the pipeline with `source="assistant"` and `confidence=0.6`.
+This adds at most one extra Gemini call per message, only when the initial context was insufficient. Keeps Gemini tool-free while covering the gap.
+
+**Implementation:** Add a `_check_escalation()` function to `maia_bridge.py` that runs between Stage 2 (GENERATE) and Stage 3 (PERSIST).
+
+#### Assistant response promotion + echo chamber prevention (from cross-evaluation + Maia's feedback)
+
+Maia's responses contain intelligence too. "I'll be more direct with you" is a preference. "Morning is your best time for deep work" is an insight. Add impact scoring to assistant responses in Stage 3. Promote high-impact responses through the pipeline with `source="assistant"` and `confidence=0.6`.
+
+**Assistant Memory Weighting (Maia's feedback):** Without safeguards, assistant-generated memories feed back into context assembly and amplify — Maia starts echoing her own past responses instead of responding to Zack. Prevention:
+
+1. All assistant-promoted memories get `source="assistant"` (already planned above)
+2. In `assemble_brain_context()`, apply a **retrieval penalty** to `source="assistant"` memories: multiply their relevance score by 0.5 before ranking. User-generated content always outranks machine-generated.
+3. Cap assistant memories at **max 2 per context assembly** regardless of relevance. Zack's words and decisions should dominate the context, not Maia's interpretations of them.
+
+This prevents the echo chamber while still allowing genuinely useful assistant insights (like discovered preferences) to surface.
 
 **Phase 2 Files:**
 - `promaia/brain/context_assembly.py` (new — shared context function)
@@ -356,11 +376,24 @@ Run MuninnDB ACTIVATE with recent context (last 24h topics). If a dormant memory
 
 **Fallback if MuninnDB index_size=0:** Use `content_embeddings` similarity instead. The pipeline's embeddings work (via `VectorDBManager` + `gemini-embedding-001`). This is the mitigation for the MuninnDB embedding model issue.
 
-#### 4C. Heartbeat Digest (every 6 hours)
+#### 4C. Manual Heartbeat Trigger (Maia's feedback)
+
+Add an MCP tool and API endpoint to fire the heartbeat on demand:
+
+```python
+# MCP tool: trigger_heartbeat
+# API endpoint: POST /api/brain/heartbeat/trigger
+```
+
+**Why:** Waiting 15-30 minutes for the next scheduled cycle is painful when you just made a batch of captures and want associations processed NOW. Zack says "process this" → heartbeat runs immediately → associations and push triggers surface in seconds, not minutes.
+
+The manual trigger runs the same `_run_subconscious_cycle()` function as the scheduled job. No separate code path. Debounce with a 60-second cooldown to prevent spam.
+
+#### 4D. Heartbeat Digest (every 6 hours)
 
 Summarize heartbeat activity: associations found, push triggers fired, memory health. Written as `heartbeat_digest` event for dashboard display.
 
-#### 4D. Workflow State Advancement (Gemini's growth opportunity)
+#### 4E. Workflow State Advancement (Gemini's growth opportunity)
 
 If Campfire snapshots have `status='awaiting_review'` and conditions are met (e.g., tests pass, time elapsed), advance to next state. Write a `state_transition` event. This is the first step toward the heartbeat as an autonomous workflow engine.
 
@@ -476,8 +509,6 @@ Ideas that emerged from the collaboration that are genuinely valuable but belong
 - **Memory Status Field** — Add processing state to memories: `raw` → `extracted` → `associated` → `surfaced` → `acted_on`. Turns the memory table into a visible pipeline. Heartbeat advances memories through states. Dashboard shows "12 memories awaiting association."
 
 ### Bridge Enhancements
-
-- **Escalation Pattern** — If Gemini's response contains "I don't have enough context about...", the bridge detects this, does a targeted MuninnDB search, and re-calls Gemini with enriched context. Handles the 10% edge case without permanent tool access.
 
 - **Context Compression** — Replace truncation with summarization for old memories. "What happened in the Heatpup project" → condensed narrative instead of cut-off text. Requires one more LLM call but dramatically improves context quality within budget.
 
