@@ -200,8 +200,12 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                 await status_callback("Composing response...")
             try:
                 no_tools_config = types.GenerateContentConfig(
-                    system_instruction=PERSONALITY_SYSTEM_PROMPT,
+                    system_instruction=PERSONALITY_SYSTEM_PROMPT + "\n\nYou have already used your tools. Now respond to the user with what you've learned. Do NOT call any more tools.",
                     temperature=0.7,
+                    tools=[],
+                    tool_config=types.ToolConfig(
+                        function_calling_config=types.FunctionCallingConfig(mode="NONE")
+                    ),
                 )
                 final_response = await asyncio.wait_for(
                     client.aio.models.generate_content(
