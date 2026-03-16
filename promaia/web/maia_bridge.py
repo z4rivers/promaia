@@ -181,7 +181,32 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
             # If no function calls, we have our final text!
             response_text = response.text if response and response.text else None
             break
-            
+        else:
+            # Loop exhausted all turns on tool calls — force a text response
+            # by making one final call with tools disabled
+            logger.warning(f"Tool loop exhausted {max_turns} turns, forcing text response")
+            if status_callback:
+                await status_callback("Composing response...")
+            try:
+                no_tools_config = types.GenerateContentConfig(
+                    system_instruction=PERSONALITY_SYSTEM_PROMPT,
+                    temperature=0.7,
+                )
+                final_response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=GOOGLE_MODELS["flash"],
+                        contents=history,
+                        config=no_tools_config,
+                    ),
+                    timeout=30.0,
+                )
+                if final_response:
+                    _log_cost(final_response, "maia-web-bridge")
+                response_text = final_response.text if final_response and final_response.text else None
+            except Exception as e:
+                logger.error(f"Final text-only call failed: {e}", exc_info=True)
+                response_text = None
+
     except asyncio.TimeoutError:
         logger.error("Gemini call timed out after 30 seconds")
         response_text = None
