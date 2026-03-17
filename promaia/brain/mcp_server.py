@@ -840,15 +840,44 @@ def _get_token() -> str:
     return token
 
 
+_health_cache: dict = {}
+_health_cache_time: float = 0.0
+_HEALTH_CACHE_TTL = 30.0
+
 async def _health_endpoint(request: Request) -> JSONResponse:
-    """Unauthenticated health check for dashboard polling."""
-    return JSONResponse({
-        "status": "ok",
-        "service": "zbrain-brain",
-        "active": len(_active_calls) > 0,
-        "active_count": len(_active_calls),
-        "tools": list(_active_calls),
-    })
+    """Deep health check with 30-second caching.
+    Cache stores FULL result. Redaction happens on output, not storage."""
+    global _health_cache, _health_cache_time
+    import copy
+
+    now = time.time()
+    if not _health_cache or (now - _health_cache_time) >= _HEALTH_CACHE_TTL:
+        from promaia.brain.health import run_checks
+        _health_cache = await run_checks(
+            db=get_db(),
+            vector_mgr=get_vector_mgr(),
+            server=server,
+            include_mcp_registration=False,
+            host=os.environ.get("BRAIN_MCP_HOST", "127.0.0.1"),
+            port=int(os.environ.get("BRAIN_MCP_PORT", "8751")),
+            token=_get_token(),
+        )
+        _health_cache_time = now
+
+    from promaia.brain.health import detect_environment
+    env = detect_environment()
+    result = copy.deepcopy(_health_cache)
+
+    # In production, strip sensitive details unless authenticated
+    if env == "production":
+        auth_header = request.headers.get("authorization", "")
+        expected = f"Bearer {_get_token()}"
+        is_authed = secrets.compare_digest(auth_header, expected)
+        if not is_authed:
+            if "env_vars" in result.get("checks", {}):
+                result["checks"]["env_vars"].pop("missing", None)
+
+    return JSONResponse(result)
 
 
 def _bearer_auth_middleware(app):
@@ -866,6 +895,100 @@ def _bearer_auth_middleware(app):
     return middleware
 
 
+async def _validate_startup():
+    """Run startup validation and log results."""
+    from promaia.brain.health import run_checks, detect_environment
+
+    env = detect_environment()
+    host = os.environ.get("BRAIN_MCP_HOST", "127.0.0.1")
+    port = int(os.environ.get("BRAIN_MCP_PORT", "8751"))
+    token = _get_token()
+
+    result = await run_checks(
+        db=get_db(),
+        vector_mgr=get_vector_mgr(),
+        server=server,
+        include_mcp_registration=(env == "local"),
+        host=host,
+        port=port,
+        token=token,
+    )
+
+    checks = result.get("checks", {})
+    logger.info("Startup validation:")
+
+    for name, check in checks.items():
+        status = check.get("status", "?")
+        if name == "database":
+            detail = f"{check.get('backend', '?')}"
+            if check.get("sync_ok") is not None:
+                detail += f", sync {'ok' if check['sync_ok'] else 'FAILED'}"
+            logger.info(f"  {name:20s} {status.upper()} ({detail})")
+        elif name == "mcp_registration":
+            if status == "ok":
+                logger.info(f"  {name:20s} OK")
+            else:
+                logger.warning(f"  {name:20s} {status.upper()}")
+                for issue in check.get("issues", []):
+                    logger.warning(f"    {issue}")
+                logger.warning(f"    Expected: {json.dumps(check.get('expected', {}))}")
+                if env == "local":
+                    logger.warning("    Fix: Update MCP config or set BRAIN_AUTO_FIX_CONFIG=true")
+                if os.environ.get("BRAIN_AUTO_FIX_CONFIG", "").lower() == "true":
+                    _auto_fix_mcp_config(host, port, token)
+        elif name == "env_vars":
+            missing = check.get("missing", [])
+            if missing:
+                logger.warning(f"  {name:20s} MISSING: {', '.join(missing)}")
+            else:
+                logger.info(f"  {name:20s} OK")
+        else:
+            logger.info(f"  {name:20s} {status.upper()}")
+
+    if env == "production" and not os.environ.get("BRAIN_MCP_TOKEN", "").strip():
+        logger.warning("  BRAIN_MCP_TOKEN was auto-generated. Set it as a Railway env var.")
+
+    overall = result.get("status", "unknown")
+    logger.info(f"Status: {overall.upper()}")
+
+
+def _auto_fix_mcp_config(host: str, port: int, token: str):
+    """Auto-repair Claude MCP config files. Creates .bak before modifying."""
+    import shutil
+
+    correct_brain = {
+        "url": f"http://{host}:{port}/mcp/",
+        "headers": {"Authorization": f"Bearer {token}"},
+    }
+
+    for path in [Path.home() / ".claude" / ".mcp.json", _project_root / ".mcp.json"]:
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            brain = data.get("mcpServers", {}).get("brain")
+            if brain is None:
+                continue
+
+            if brain.get("url") == correct_brain["url"]:
+                auth = brain.get("headers", {}).get("Authorization", "")
+                if auth == correct_brain["headers"]["Authorization"]:
+                    continue
+
+            # Backup (path.name + ".bak" avoids with_suffix mangling .mcp.json)
+            bak = path.parent / (path.name + ".bak")
+            shutil.copy2(path, bak)
+            logger.info(f"  Backed up {path} -> {bak}")
+
+            data["mcpServers"]["brain"] = correct_brain
+            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            logger.info(f"  Auto-fixed {path}")
+        except json.JSONDecodeError:
+            logger.error(f"  Cannot auto-fix {path}: invalid JSON")
+        except Exception as e:
+            logger.error(f"  Cannot auto-fix {path}: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Starlette app factory
 # ---------------------------------------------------------------------------
@@ -877,6 +1000,7 @@ def create_app() -> Starlette:
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         async with session_manager.run():
             logger.info("Brain MCP daemon ready")
+            await _validate_startup()
             yield
 
     app = Starlette(
@@ -894,58 +1018,14 @@ def create_app() -> Starlette:
 # ---------------------------------------------------------------------------
 def run_selftest():
     """Run diagnostics to verify MCP server dependencies before launching."""
-    print("Running zBrain MCP Server Self-Test...\n")
-    success = True
-
-    # 1. Database Check
-    try:
-        from promaia.storage.db_factory import get_db
-        db = get_db()
-        db.execute("SELECT 1")
-        print("  Database Connection: OK")
-    except Exception as e:
-        print(f"  Database Connection: FAILED ({e})")
-        success = False
-
-    # 2. Vector DB Check
-    try:
-        from promaia.storage.vector_db import VectorDBManager
-        mgr = VectorDBManager()
-        print("  Vector DB Manager: OK")
-    except Exception as e:
-        print(f"  Vector DB Manager: FAILED ({e})")
-        success = False
-
-    # 3. MuninnDB Check
-    try:
-        from promaia.brain.muninn import get_muninn
-        import asyncio
-        m = asyncio.run(get_muninn())
-        if m is not None:
-            print("  MuninnDB Access: OK")
-        else:
-            print("  MuninnDB Access: FAILED (Returned None - Server may be down)")
-            success = False
-    except Exception as e:
-        print(f"  MuninnDB Access: FAILED ({e})")
-        success = False
-
-    # 4. LLM API Keys
-    import os
-    keys = {"ANTHROPIC": os.getenv("ANTHROPIC_API_KEY"), "OPENAI": os.getenv("OPENAI_API_KEY"), "GEMINI": os.getenv("GOOGLE_API_KEY")}
-    found = [k for k, v in keys.items() if v]
-    if found:
-        print(f"  LLM API Keys: OK ({', '.join(found)})")
-    else:
-        print("  LLM API Keys: FAILED (No core generation keys found)")
-        success = False
-
-    # 5. Bearer token check
-    token = _get_token()
-    print(f"  Bearer Token: OK (first 8 chars: {token[:8]}...)")
-
-    print(f"\nSelf-Test {'PASSED' if success else 'FAILED'}")
-    sys.exit(0 if success else 1)
+    from promaia.brain.health import run_checks_sync, format_cli_output
+    result = run_checks_sync(
+        include_mcp_registration=True,
+        include_port_check=True,
+        token=_get_token(),
+    )
+    print(format_cli_output(result))
+    sys.exit(0 if result["status"] != "error" else 1)
 
 
 if __name__ == "__main__":
