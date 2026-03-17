@@ -236,6 +236,12 @@ def main():
             # Insert before scheduler
             processes.insert(1, ManagedProcess("Telegram Bot", [sys.executable, "-m", "promaia.telegram_cli", "start"], "TG"))
 
+        print("Running pre-flight database migrations...")
+        try:
+            subprocess.run([sys.executable, str(Path(__file__).parent / "run_migrations.py")], check=True)
+        except Exception as e:
+            print(f"Failed to run pre-flight migrations: {e}")
+
         for p in processes:
             p.start()
             time.sleep(1) # stagger startups slightly
