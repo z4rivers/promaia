@@ -237,7 +237,7 @@ def main():
 
         processes = [
             ManagedProcess("Brain Daemon", [sys.executable, "-m", "promaia.brain.mcp_server"], "BRAIN"),
-            ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", "8000"], "WEB"),
+            ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", os.environ.get("PORT", "8000")], "WEB"),
             ManagedProcess("Agent Scheduler", [sys.executable, "-m", "promaia.agents.scheduler_cli", "start"], "SCHED")
         ]
         

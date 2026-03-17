@@ -62,7 +62,12 @@ async def start_bot() -> None:
         logger.error("TELEGRAM_BOT_TOKEN not set -- cannot start bot")
         return
 
-    _bot, _dp = _setup_dispatcher()
+    # Reuse existing dispatcher on restart — routers can only attach once
+    if _dp is None:
+        _bot, _dp = _setup_dispatcher()
+    else:
+        # Just refresh the bot instance (new session) with existing dispatcher
+        _bot = Bot(token=token)
 
     webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "").strip()
     if webhook_url:

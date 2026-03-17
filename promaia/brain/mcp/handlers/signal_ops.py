@@ -47,7 +47,7 @@ async def _handle_message_check(args: dict) -> list[TextContent]:
         
     out = ["# Inbox"]
     for m in messages:
-        out.append(f"[{m['id']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}\n{m['body']}")
+        out.append(f"[{m['uuid']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}\n{m['body']}")
     return [TextContent(type="text", text="\n".join(out))]
 
 async def _handle_message_pickup(args: dict) -> list[TextContent]:
@@ -109,7 +109,7 @@ async def _handle_message_thread(args: dict) -> list[TextContent]:
         
     out = [f"# Thread for message {msg_uuid}"]
     for m in thread:
-        out.append(f"[{m['id']}] {m['from_agent']} -> {m['to_agent'] or 'any'}: {m['body']}")
+        out.append(f"[{m['uuid']}] {m['from_agent']} -> {m['to_agent'] or 'any'}: {m['body']}")
     return [TextContent(type="text", text="\n".join(out))]
 
 async def _handle_message_done(args: dict) -> list[TextContent]:

@@ -108,7 +108,12 @@
       "WebFetch(domain:www.shakudo.io)",
       "WebFetch(domain:www.smashingmagazine.com)",
       "WebFetch(domain:www.copilotkit.ai)",
-      "mcp__brain__gmail_query"
+      "mcp__brain__gmail_query",
+      "mcp__brain__message_check",
+      "WebFetch(domain:docs.turso.tech)",
+      "WebFetch(domain:turso.tech)",
+      "WebFetch(domain:docs.railway.com)",
+      "WebFetch(domain:www.meetgor.com)"
     ]
   }
 }

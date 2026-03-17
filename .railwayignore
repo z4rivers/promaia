@@ -1,41 +1,27 @@
+# Core junk
 .git/
-.claude/
-zbrain-patches/
-screenshots/
-screenshots and samples/
+node_modules/
 __pycache__/
 *.pyc
 .env
 .env.*
-!.env.example
-*.patch
-audit_clean.txt
-audit_prompt.txt
-gmail_human_dump.json
-gmail_life_analysis.md
-CLAUDE.md.template
-SETUP.md
-credentials/
-node_modules/
-promaia.db
-promaia.db-shm
-promaia.db-wal
-logs/
-.planning/
-docs/
-scripts/debug/
-scripts/migrations/
+
+# Large assets
+**/vad/
 bin/
 data/
-**/vad/
+screenshots/
+"screenshots and samples/"
 context_logs/
 tmp/
+
+# DB and logs
+*.db
+*.db-shm
+*.db-wal
+logs/
+
+# Build artifacts
 *.zip
 *.exe
-
-.git
-node_modules
-bin
-data
-promaia/web/static/vad
-promaia.egg-info
+promaia.egg-info/

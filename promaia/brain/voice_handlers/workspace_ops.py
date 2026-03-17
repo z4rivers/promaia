@@ -124,7 +124,8 @@ async def handle(ft) -> types.FunctionResponse:
         target = args.get("target", "all").lower()
         logger.info(f"Triggering background sync for: {target}")
         try:
-            cmd = ["maia", "database", "sync"]
+            import sys
+            cmd = [sys.executable, "-m", "promaia", "database", "sync"]
             if target != "all":
                 cmd.extend(["-s", target])
             # Run asynchronously so we don't block the voice bridge
