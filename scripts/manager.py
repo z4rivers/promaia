@@ -143,9 +143,9 @@ def cleanup_existing_processes():
     
     killed = 0
     try:
-        # Use wmic to get command lines of all python processes
+        # Use wmic to get command lines of all python/pythonw processes
         output = subprocess.check_output(
-            ["wmic", "process", "where", "name='python.exe'", "get", "ProcessId,CommandLine", "/format:csv"],
+            ["wmic", "process", "where", "(name='python.exe' or name='pythonw.exe')", "get", "ProcessId,CommandLine", "/format:csv"],
             text=True, stderr=subprocess.DEVNULL
         )
         
