@@ -276,7 +276,7 @@ async def search_brain(query: str, limit: int = 5) -> str:
             rows = db.fetch_all(
                 """
                 SELECT id, content, domain, created_at,
-                       vec_distance_cosine(embedding, %s) AS distance
+                       vector_distance_cos(embedding, %s) AS distance
                 FROM memories
                 WHERE embedding IS NOT NULL
                 ORDER BY distance ASC

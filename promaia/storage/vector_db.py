@@ -585,7 +585,7 @@ class VectorDBManager:
 
             sql = """
                 SELECT id, page_id, property_value,
-                       1 - vec_distance_cosine(embedding, %s) AS similarity_score,
+                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
                        metadata, property_name, property_type
                 FROM property_embeddings
                 WHERE property_name = %s
@@ -607,7 +607,7 @@ class VectorDBManager:
                         sql += " AND json_extract(metadata, '$.' || %s) = %s"
                         params.extend([key, str(value)])
 
-            sql += " ORDER BY vec_distance_cosine(embedding, %s) LIMIT %s"
+            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
             params.extend([query_blob, n_results])
 
             cur = self.db.execute(sql, params)
@@ -659,7 +659,7 @@ class VectorDBManager:
 
             sql = """
                 SELECT page_id, content,
-                       1 - vec_distance_cosine(embedding, %s) AS similarity_score,
+                       1 - vector_distance_cos(embedding, %s) AS similarity_score,
                        metadata, workspace, database_name
                 FROM content_embeddings
                 WHERE 1=1
@@ -683,7 +683,7 @@ class VectorDBManager:
                         sql += " AND database_name = %s"
                         params.append(db_filter)
 
-            sql += " ORDER BY vec_distance_cosine(embedding, %s) LIMIT %s"
+            sql += " ORDER BY vector_distance_cos(embedding, %s) LIMIT %s"
             params.extend([query_blob, n_results])
 
             cur = self.db.execute(sql, params)

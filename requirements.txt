@@ -98,7 +98,8 @@ pgvector>=0.4.2
 google-cloud-vision==3.7.0
 opencv-python==4.9.0.80
 
-# Database (libSQL/sqlite-vec)
+# Database (libSQL/Turso)
+libsql>=0.1.11
 numpy==1.26.3
 
 # Action extraction (brain MCP)

@@ -4,8 +4,7 @@ import contextlib
 import logging
 import json
 import time
-import sqlite3 as libsql
-import sqlite_vec
+import libsql
 from typing import Optional, Any, Tuple, Generator, List, Dict
 logger = logging.getLogger(__name__)
 
@@ -144,20 +143,25 @@ class LibSQLDB:
 
     def _init_connection(self):
         try:
-            self._conn = libsql.connect(self.db_path, check_same_thread=False)
-            self._conn.enable_load_extension(True)
-            sqlite_vec.load(self._conn)
-            self._conn.enable_load_extension(False)
-            self._conn.execute("PRAGMA journal_mode=WAL;")
-            self._conn.execute("PRAGMA synchronous=NORMAL;")
+            sync_url = os.environ.get("TURSO_DATABASE_URL")
+            auth_token = os.environ.get("TURSO_AUTH_TOKEN")
+
+            if sync_url and auth_token:
+                # Embedded replica: local file for fast reads, Turso cloud for sync
+                self._conn = libsql.connect(
+                    self.db_path,
+                    sync_url=sync_url,
+                    auth_token=auth_token,
+                    sync_interval=60,
+                )
+                self._conn.sync()
+                logger.info(f"Connected to Turso (embedded replica at {self.db_path}, sync to {sync_url})")
+            else:
+                # Local-only mode (no cloud sync)
+                self._conn = libsql.connect(self.db_path)
+                logger.info(f"Connected to local libSQL database at {self.db_path} (no Turso sync)")
+
             self._wrapped_conn = LibSQLConnectionWrapper(self._conn)
-            # Verify WAL mode (Phase 1D)
-            try:
-                mode_row = self._conn.execute("PRAGMA journal_mode").fetchone()
-                mode = mode_row[0] if mode_row else "unknown"
-                logger.info(f"Connected to local libSQL database at {self.db_path} (Journal mode: {mode})")
-            except Exception:
-                logger.info(f"Connected to local libSQL database at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to connect to libSQL database: {str(e)}")
             raise

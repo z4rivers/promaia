@@ -51,7 +51,7 @@ async def _handle_profile(args: dict) -> list[TextContent]:
             rows = db.fetch_all(
                 """
                 SELECT p.category, p.field, p.value, p.confidence, p.source, p.updated_at,
-                       vec_distance_cosine(ce.embedding, ?) AS distance
+                       vector_distance_cos(ce.embedding, ?) AS distance
                 FROM content_embeddings ce
                 JOIN profile p ON ce.page_id = 'profile:' || p.category || ':' || p.field
                 WHERE ce.database_name = 'brain_profile'
