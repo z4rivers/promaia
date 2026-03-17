@@ -93,7 +93,7 @@ async def assemble_brain_context(
     max_memories: int = 15,
     max_actions: int = 5,
     max_history: int = 10,
-    token_budget: int = 4000,
+    token_budget: int = 6000,
     context_hints: Optional[List[str]] = None,
     active_domain: Optional[str] = None,
 ) -> str:
@@ -122,7 +122,7 @@ async def assemble_brain_context(
             else:
                 # Open mode: broader profile for richer context
                 rows = db.fetch_all(
-                    "SELECT category, field, value FROM profile WHERE confidence > 0.7 ORDER BY category"
+                    "SELECT category, field, value FROM profile WHERE confidence > 0.7 ORDER BY confidence DESC LIMIT 25"
                 )
             if not rows:
                 return ""
@@ -302,16 +302,65 @@ async def assemble_brain_context(
             logger.warning(f"Context projects failed: {e}")
             return ""
 
+    # Priority 6: Email context (demand-driven — only when message is email-related)
+    async def get_email_context():
+        email_keywords = ('email', 'inbox', 'gmail', 'mail', 'message from', 'unread',
+                          'newsletter', 'sender', 'sent me', 'got a message', 'check my')
+        if not any(kw in user_message.lower() for kw in email_keywords):
+            return ""
+        try:
+            rows = db.fetch_all(
+                """
+                SELECT sender_name, sender_email, subject, body_snippet,
+                       is_unread, email_date
+                FROM gmail_content
+                ORDER BY synced_time DESC
+                LIMIT 15
+                """
+            )
+            if not rows:
+                return ""
+            unread = [r for r in rows if r.get("is_unread")]
+            read = [r for r in rows if not r.get("is_unread")]
+
+            lines = ["### Recent Email (Live from Gmail)"]
+            if unread:
+                lines.append(f"**{len(unread)} unread:**")
+                for r in unread[:8]:
+                    sender = r.get("sender_name") or r.get("sender_email") or "Unknown"
+                    subj = r.get("subject") or "(no subject)"
+                    snippet = (r.get("body_snippet") or "")[:80]
+                    lines.append(f"- [{r.get('email_date', '')}] **{sender}**: {subj}")
+                    if snippet:
+                        lines.append(f"  > {snippet}")
+            if read:
+                lines.append(f"\n**Recent read ({len(read)}):**")
+                for r in read[:5]:
+                    sender = r.get("sender_name") or r.get("sender_email") or "Unknown"
+                    subj = r.get("subject") or "(no subject)"
+                    lines.append(f"- {sender}: {subj}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.warning(f"Context email failed: {e}")
+            return ""
+
     # Run all in parallel
-    tasks = [get_profile(), get_history(), get_muninn_context(), get_actions(), get_projects()]
+    tasks = [get_profile(), get_history(), get_muninn_context(), get_actions(), get_projects(), get_email_context()]
     results = await asyncio.gather(*tasks)
-    
+
     # Combined for logic check
     mem_block = results[2] or ""
     proj_block = results[4] or ""
+    email_block = results[5] or ""
+
+    # When email context is present, prioritize it: profile, email, history, rest
+    if email_block:
+        ordered = [results[0], email_block, results[1], results[2], results[3], results[4]]
+    else:
+        ordered = list(results[:6])
 
     # Combine with budget awareness
-    full_context = "\n\n".join([r for r in results if r])
+    full_context = "\n\n".join([r for r in ordered if r])
 
     # IGNORANCE PROTOCOL GUARDRAIL (Phase 3)
     # If in Silo mode and we found ZERO memories/projects, append a CRITICAL instruction
