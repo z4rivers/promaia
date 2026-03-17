@@ -273,12 +273,15 @@ def main():
     except KeyboardInterrupt:
         print("\nReceived KeyboardInterrupt. Shutting down all processes...")
     finally:
-        for p in reversed(processes):
-            p.stop()
-            
+        if 'processes' in dir():
+            for p in reversed(processes):
+                p.stop()
+
         if muninn_enabled:
-            print("Stopping MuninnDB daemon...")
-            subprocess.run(["muninn", "stop"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.run(["muninn", "stop"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                pass
             
         if LOCK_FILE.exists():
             try:
