@@ -271,7 +271,8 @@ class LibSQLDB:
 # from creating a ghost database in the wrong directory.
 # ---------------------------------------------------------------------------
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_DB_PATH = str(_PROJECT_ROOT / "promaia.db")
+# Use different filenames: embedded replica (Turso) vs local-only (sqlite3 fallback)
+_DEFAULT_DB_PATH = str(_PROJECT_ROOT / ("turso-replica.db" if _USING_REAL_LIBSQL else "promaia.db"))
 
 # Global instance
 _db_instance = None
