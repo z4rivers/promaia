@@ -27,7 +27,7 @@ scripts/debug/
 scripts/migrations/
 bin/
 data/
-promaia/web/static/vad/
+**/vad/
 context_logs/
 tmp/
 *.zip
