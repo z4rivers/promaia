@@ -202,11 +202,12 @@ output_tools = {
             "delete_calendar_event",
             "send_email_draft",
             "switch_cognitive_mode",
-            "hang_up_call",
             "log_system_feedback",
             "create_action",
             "set_focus",
-            "write_content"
+            "recall_memory",
+            # hang_up_call removed — voice-only, dead in web context
+            # write_content removed — external process not wired up in bridge
         ]
     ]
 }

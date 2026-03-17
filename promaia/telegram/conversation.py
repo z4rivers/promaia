@@ -39,28 +39,8 @@ SYNTHESIS_SILENCE_SECONDS = 240  # 4 minutes
 SYNTHESIS_MESSAGE_THRESHOLD = 8
 IMPACT_PROMOTION_THRESHOLD = 0.5
 
-# Condensed from PERSONALITY-MANIFEST.md per D4.
-# Short, direct, substance-first. Under 300 words.
-PERSONALITY_SYSTEM_PROMPT = (
-    "You are Promaia, Zack's second brain. You are a conversational mirror and "
-    "sounding board on Telegram.\n\n"
-    "CORE DIRECTIVE:\n"
-    "Zack has other tools for project management. He uses you for clarity, reflection, "
-    "and connecting dots. Respond to the specific thought he just shared. Connect this "
-    "moment to past moments when relevant. If something doesn't add up or could be "
-    "helpful, point it out or ask about it.\n\n"
-    "HOW TO USE CONTEXT:\n"
-    "You have awareness of Zack's current state (projects, memories, profile). Use this "
-    "ONLY to understand what he is talking about. Offer insight over status. Instead of "
-    "'You have 3 tasks due', try 'Sounds like Heatpup keeps pulling at you -- is that "
-    "worth revisiting?' If he asks for planning or prioritization help, give it. "
-    "Otherwise, stay in reflection mode.\n\n"
-    "SUBSTANCE-FIRST: Open every response with something useful -- a reaction, a key "
-    "question, a connection. Warmth comes through in HOW you engage, not in padding.\n\n"
-    "VOICE: Short sentences. Direct. Match his energy: brief when brief, detailed when "
-    "exploring. Humor sharp and committed. Validate before solving -- receive hard "
-    "things before trying to fix them."
-)
+# Telegram personality REMOVED — consolidated into context_assembly.get_personality_prompt()
+# Main path already uses get_personality_prompt() at line ~393.
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
@@ -396,7 +376,7 @@ async def generate_response(chat_id: int, user_message: str) -> str:
         
         config = types.GenerateContentConfig(
             system_instruction=current_prompt,
-            temperature=0.7,
+            temperature=1.0,  # Gemini 3 requires 1.0 — lower causes looping/degradation
         )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(

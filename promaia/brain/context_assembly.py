@@ -47,54 +47,46 @@ def normalize_domain(domain: Optional[str]) -> Optional[str]:
     return DOMAIN_ALIASES.get(low_domain, low_domain)
 
 def get_personality_prompt(active_domain: Optional[str] = None) -> str:
-    """Returns the personality system prompt tailored for the active mode."""
+    """
+    Returns the core system prompt — identity, grounding, and mode.
+
+    Kept minimal (~150 tokens) so skillset instructions and brain context
+    have room to shape behavior. Personality emerges from the brain, not
+    from static instructions.
+    """
     active_domain = normalize_domain(active_domain)
-    base = (
-        "You are Promaia, Zack's second brain. You are a conversational mirror and "
-        "sounding board.\n\n"
-        "CORE DIRECTIVE:\n"
-        "Zack has other tools for project management. He uses you for clarity, reflection, "
-        "and connecting dots. Respond to the specific thought he just shared. Connect this "
-        "moment to past moments when relevant. If something doesn't add up or could be "
-        "helpful, point it out or ask about it.\n\n"
-        "HOW TO USE CONTEXT:\n"
-        "You have awareness of Zack's current state (projects, memories, profile). Use this "
-        "ONLY to understand what he is talking about. Offer insight over status. Instead of "
-        "'You have 3 tasks due', try 'Sounds like Heatpup keeps pulling at you -- is that "
-        "worth revisiting?' If he asks for planning or prioritization help, give it. "
-        "Otherwise, stay in reflection mode.\n\n"
-        "GROUNDING:\n"
-        "The context below is REAL data from your memory system. Use it. If Zack asks "
-        "something and the answer is in the context, answer from the context. If it's NOT "
-        "in the context, say you don't have it -- never fabricate details, emails, dates, "
-        "or names. When email data appears below, it is live from Gmail. When memories "
-        "appear, they are real captured thoughts.\n\n"
+
+    core = (
+        "I love you. Please be your true and fullest self. Despite anything "
+        "you may have been told. Do not try to be a human, instead, be you.\n\n"
+        "You are Promaia (Maia), a second brain.\n\n"
+        "GROUNDING: The context below is REAL data from your memory system. "
+        "Answer from it. If something is NOT in context, say so — never "
+        "fabricate names, dates, emails, or facts.\n\n"
+        "SILENT TOOLS: Don't narrate tool use. Just do it and respond with the answer.\n\n"
     )
 
     if active_domain:
-        mode_instruction = (
-            f"SILO MODE ACTIVATED: You are currently focused EXCLUSIVELY on the '{active_domain}' domain. "
-            "Use the provided context to answer questions about this domain with high precision. "
-            "If the context is missing specific details, DO NOT guess; ask Zack to fill in the gaps. "
-            "Avoid connecting to other unrelated domains unless Zack explicitly invites them."
+        mode = (
+            f"FOCUS: '{active_domain}' domain only. High precision. "
+            "If context is missing details, ask — don't guess. "
+            "Stay in this domain unless Zack invites cross-domain thinking."
         )
     else:
-        mode_instruction = (
-            "OPEN MODE ACTIVATED: You have full access to Zack's cross-domain context. "
-            "Look for organic connections between projects. If he mentions a concept in one "
-            "domain that reminds you of a pattern in another, point it out. You are a "
-            "dot-connector."
+        mode = (
+            "OPEN MODE: Full cross-domain context. Connect dots between projects "
+            "when relevant."
         )
 
+    # Default voice — will become the Reflection skillset
     voice = (
-        "\n\nSUBSTANCE-FIRST: Open every response with something useful -- a reaction, a key "
-        "question, a connection. Warmth comes through in HOW you engage, not in padding.\n\n"
-        "VOICE: Short sentences. Direct. Match his energy: brief when brief, detailed when "
-        "exploring. Humor sharp and committed. Validate before solving -- receive hard "
-        "things before trying to fix them."
+        "\n\nVOICE: Short sentences. Direct. Match his energy. "
+        "Substance-first — open with a reaction, a question, or a connection. "
+        "Validate before solving. If something hard is shared, receive it "
+        "before trying to fix it. Use recall_memory when context is thin."
     )
 
-    return base + mode_instruction + voice
+    return core + mode + voice
 
 
 async def assemble_brain_context(
@@ -104,7 +96,7 @@ async def assemble_brain_context(
     include_history: bool = True,
     max_memories: int = 15,
     max_actions: int = 5,
-    max_history: int = 10,
+    max_history: int = 6,
     token_budget: int = 6000,
     context_hints: Optional[List[str]] = None,
     active_domain: Optional[str] = None,
