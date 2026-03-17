@@ -4,7 +4,12 @@ import contextlib
 import logging
 import json
 import time
-import libsql
+try:
+    import libsql
+    _USING_REAL_LIBSQL = True
+except ImportError:
+    import sqlite3 as libsql
+    _USING_REAL_LIBSQL = False
 from typing import Optional, Any, Tuple, Generator, List, Dict
 logger = logging.getLogger(__name__)
 
@@ -146,7 +151,7 @@ class LibSQLDB:
             sync_url = os.environ.get("TURSO_DATABASE_URL")
             auth_token = os.environ.get("TURSO_AUTH_TOKEN")
 
-            if sync_url and auth_token:
+            if _USING_REAL_LIBSQL and sync_url and auth_token:
                 # Embedded replica: local file for fast reads, Turso cloud for sync
                 self._conn = libsql.connect(
                     self.db_path,
@@ -156,10 +161,16 @@ class LibSQLDB:
                 )
                 self._conn.sync()
                 logger.info(f"Connected to Turso (embedded replica at {self.db_path}, sync to {sync_url})")
-            else:
-                # Local-only mode (no cloud sync)
+            elif _USING_REAL_LIBSQL:
+                # Real libsql, local-only (no Turso credentials)
                 self._conn = libsql.connect(self.db_path)
                 logger.info(f"Connected to local libSQL database at {self.db_path} (no Turso sync)")
+            else:
+                # Fallback: sqlite3 (Python 3.14 without libsql wheel)
+                self._conn = libsql.connect(self.db_path, check_same_thread=False)
+                self._conn.execute("PRAGMA journal_mode=WAL;")
+                self._conn.execute("PRAGMA synchronous=NORMAL;")
+                logger.info(f"Connected to local SQLite at {self.db_path} (sqlite3 fallback, no Turso)")
 
             self._wrapped_conn = LibSQLConnectionWrapper(self._conn)
         except Exception as e:
