@@ -16,9 +16,13 @@ from promaia.telegram.conversation import (
     _get_known_projects,
     _log_cost
 )
+from typing import Optional, List, Dict, Any
+from promaia.storage.db_factory import get_db
+from promaia.storage.vector_db import VectorDBManager
+from promaia.brain.core.memory_pipeline import capture_memory
 from promaia.brain.tool_definitions import output_tools
 from promaia.brain.tool_handlers import handle_tool_call
-from promaia.brain.context_assembly import assemble_brain_context
+from promaia.brain.context_assembly import assemble_brain_context, get_personality_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +71,27 @@ async def _check_escalation(response_text: str, user_message: str) -> Optional[s
                 return enriched
     return None
 
-async def generate_maia_response(user_message: str, status_callback=None, image_paths=None, audio_paths=None, document_paths=None) -> str:
+async def generate_maia_response(user_message: str, status_callback=None, image_paths=None, audio_paths=None, document_paths=None, websocket=None) -> str:
     """
     Generate a conversational response for the web dashboard using Gemini.
     Three-stage pipeline: GATHER -> GENERATE -> PERSIST.
     """
     chat_id = WEB_CHAT_ID
+    db = get_db()
     
     # 1. GATHER
     if status_callback:
         await status_callback("GATHERING brain context...")
         
     session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
+    
+    # NEW: Fetch active domain focus for this session
+    session_row = db.fetch_one(
+        "SELECT active_domain FROM conversation_sessions WHERE session_id = %s",
+        (session_id,)
+    )
+    active_domain = session_row['active_domain'] if session_row else None
+    
     known_projects = _get_known_projects()
     impact = score_impact(user_message, known_projects)
 
@@ -93,8 +106,8 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
         except Exception as e:
             logger.warning(f"Failed to promote message {msg_id} to memory: {e}")
 
-    # Unified context assembly
-    context = await assemble_brain_context(user_message, chat_id=chat_id)
+    # Unified context assembly (Phase 2 Focus-Aware)
+    context = await assemble_brain_context(user_message, chat_id=chat_id, active_domain=active_domain)
 
     # 2. GENERATE
     if status_callback:
@@ -149,8 +162,11 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
         client = _get_genai_client()
         gemini_tools = [{"function_declarations": output_tools["function_declarations"]}]
         
+        # Use dynamic personality prompt (Phase 3)
+        current_prompt = get_personality_prompt(active_domain)
+
         config = types.GenerateContentConfig(
-            system_instruction=PERSONALITY_SYSTEM_PROMPT,
+            system_instruction=current_prompt,
             temperature=0.7,
             tools=gemini_tools
         )
@@ -187,7 +203,7 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                         await status_callback(f"Executing {ft.name}...")
 
                     # Staged memories table is now persistent, so we don't need to pass a list
-                    func_res = await handle_tool_call(ft, None, None)
+                    func_res = await handle_tool_call(ft, websocket, None, session_id=session_id)
                     tool_responses.append(func_res)
 
                     if isinstance(func_res.response, dict):
@@ -204,6 +220,26 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
 
             response_text = response.text if response and response.text else None
             break
+        else:
+            # All turns consumed by tool calls — force a text response
+            logger.warning(f"Tool loop exhausted {max_turns} turns, forcing text response")
+            no_tools_config = types.GenerateContentConfig(
+                system_instruction=PERSONALITY_SYSTEM_PROMPT + "\n\nYou have used all your tools. Respond directly now.",
+                temperature=0.7,
+                tools=[],
+                tool_config=types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(mode="NONE")
+                ),
+            )
+            final_response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=GOOGLE_MODELS["flash"],
+                    contents=history,
+                    config=no_tools_config,
+                ),
+                timeout=30.0,
+            )
+            response_text = final_response.text if final_response and final_response.text else None
         
         # SEARCH ESCALATION
         if response_text:

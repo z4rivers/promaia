@@ -83,3 +83,35 @@ async def cmd_actions(message: Message) -> None:
     """List pending actions."""
     result = await get_actions()
     await send_long_message(message, result)
+
+
+@router.message(Command("focus"))
+async def cmd_focus(message: Message) -> None:
+    """Set or clear the conversation focus (Silo Mode)."""
+    text = (message.text or "").strip()
+    domain = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
+    
+    # Handle "null" or "none" or "reset" for open mode
+    if domain.lower() in ["null", "none", "reset", "clear", "open"]:
+        domain = None
+        
+    try:
+        from promaia.storage.db_factory import get_db
+        from promaia.telegram.conversation import get_or_create_session, SESSION_GAP_MINUTES
+        db = get_db()
+        chat_id = message.chat.id
+        session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
+        
+        db.execute(
+            "UPDATE conversation_sessions SET active_domain = ? WHERE session_id = ?",
+            (domain, session_id)
+        )
+        
+        if domain:
+            await message.answer(f"Focus locked: **{domain}**. Silo mode activated.")
+        else:
+            await message.answer("Focus cleared. Open mode activated (cross-domain connected).")
+            
+    except Exception as e:
+        logger.error(f"Failed to set focus via command: {e}")
+        await message.answer(f"Error setting focus: {str(e)}")

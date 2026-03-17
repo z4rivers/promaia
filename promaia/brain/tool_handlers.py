@@ -64,7 +64,7 @@ async def _handle_read_file(ft) -> types.FunctionResponse:
         )
 
 
-async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResponse:
+async def handle_tool_call(ft, websocket, staged_memories, session_id=None) -> types.FunctionResponse:
     """
     Executes a single tool call from the Gemini Live API and returns the FunctionResponse.
     Routes requests to specialized voice handler modules based on the domain.
@@ -85,8 +85,8 @@ async def handle_tool_call(ft, websocket, staged_memories) -> types.FunctionResp
         elif ft.name in ["sync_youtube_context", "query_youtube_transcript"]:
             return await youtube_ops.handle(ft)
             
-        elif ft.name in ["switch_cognitive_mode", "hang_up_call", "log_system_feedback", "create_action"]:
-            return await system_ops.handle(ft, websocket)
+        elif ft.name in ["switch_cognitive_mode", "hang_up_call", "log_system_feedback", "create_action", "set_focus"]:
+            return await system_ops.handle(ft, websocket, session_id=session_id)
             
         # Unhandled tools
         return types.FunctionResponse(

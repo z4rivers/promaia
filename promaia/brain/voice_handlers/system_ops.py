@@ -6,7 +6,7 @@ from promaia.brain.core.memory_pipeline import capture_memory
 
 logger = logging.getLogger(__name__)
 
-async def handle(ft, websocket) -> types.FunctionResponse:
+async def handle(ft, websocket, session_id=None) -> types.FunctionResponse:
     if ft.name == "switch_cognitive_mode":
         args = ft.args
         color = args.get("hat_color", "").lower()
@@ -31,6 +31,47 @@ async def handle(ft, websocket) -> types.FunctionResponse:
             id=ft.id,
             response={"result": "mode_switched", "new_instructions": instruction}
         )
+        
+    elif ft.name == "set_focus":
+        args = ft.args
+        domain = args.get("domain")
+        if domain and domain.lower() in ["null", "none"]:
+            domain = None
+            
+        try:
+            if not session_id:
+                raise ValueError("No session_id provided to set_focus")
+                
+            db = get_db()
+            db.execute(
+                "UPDATE conversation_sessions SET active_domain = ? WHERE session_id = ?",
+                (domain, session_id)
+            )
+            logger.info(f"Set focus to: {domain} for session {session_id}")
+            
+            # Broadcast to UI for sync (if websocket is a Maia stream websocket)
+            if websocket:
+                try:
+                    import json
+                    await websocket.send_json({
+                        "type": "room_change",
+                        "domain": domain or "general"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast focus change to websocket: {e}")
+
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "focus_set", "active_domain": domain}
+            )
+        except Exception as e:
+            logger.error(f"Failed to set focus: {e}", exc_info=True)
+            return types.FunctionResponse(
+                name=ft.name,
+                id=ft.id,
+                response={"result": "error_setting_focus", "error": str(e)}
+            )
         
     elif ft.name == "hang_up_call":
         logger.info(f"Agent decided to hang up the call.")

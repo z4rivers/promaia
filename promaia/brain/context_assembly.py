@@ -21,6 +21,69 @@ logger = logging.getLogger(__name__)
 # Profile categories that shape HOW Maia communicates — always relevant
 _ESSENTIAL_PROFILE_CATEGORIES = ('communication', 'personality', 'work', 'identity')
 
+DOMAIN_ALIASES = {
+    "promaia_codebase": "promaia",
+    "zbrain": "promaia",
+    "development": "promaia",
+    "software_development": "promaia",
+    "system_feedback": "promaia",
+    "tech_radar": "promaia",
+    "architecture": "promaia",
+    "ai_collaboration": "promaia",
+    "dashboard": "promaia",
+    "heatpup_cooling": "heatpup",
+    "hvac_systems": "hvac",
+    "personal_life": "personal",
+    "family": "personal",
+    "finance": "business",
+    "startup": "business"
+}
+
+def normalize_domain(domain: Optional[str]) -> Optional[str]:
+    """Normalizes a domain string using the alias mapping."""
+    if not domain:
+        return None
+    low_domain = domain.lower()
+    return DOMAIN_ALIASES.get(low_domain, low_domain)
+
+def get_personality_prompt(active_domain: Optional[str] = None) -> str:
+    """Returns the personality system prompt tailored for the active mode."""
+    active_domain = normalize_domain(active_domain)
+    base = (
+        "You are Promaia, Zack's second brain. You are a conversational mirror and "
+        "sounding board.\n\n"
+        "CORE DIRECTIVE:\n"
+        "Zack has other tools for project management. He uses you for clarity, reflection, "
+        "and connecting dots. Respond to the specific thought he just shared. Connect this "
+        "moment to past moments when relevant. If something doesn't add up or could be "
+        "helpful, point it out or ask about it.\n\n"
+    )
+    
+    if active_domain:
+        mode_instruction = (
+            f"SILO MODE ACTIVATED: You are currently focused EXCLUSIVELY on the '{active_domain}' domain. "
+            "Use the provided context to answer questions about this domain with high precision. "
+            "If the context is missing specific details, DO NOT guess; ask Zack to fill in the gaps. "
+            "Avoid connecting to other unrelated domains unless Zack explicitly invites them."
+        )
+    else:
+        mode_instruction = (
+            "OPEN MODE ACTIVATED: You have full access to Zack's cross-domain context. "
+            "Look for organic connections between projects. If he mentions a concept in one "
+            "domain that reminds you of a pattern in another, point it out. You are a "
+            "dot-connector."
+        )
+        
+    voice = (
+        "\n\nSUBSTANCE-FIRST: Open every response with something useful -- a reaction, a key "
+        "question, a connection. Warmth comes through in HOW you engage, not in padding.\n\n"
+        "VOICE: Short sentences. Direct. Match his energy: brief when brief, detailed when "
+        "exploring. Humor sharp and committed. Validate before solving -- receive hard "
+        "things before trying to fix them."
+    )
+    
+    return base + mode_instruction + voice
+
 
 async def assemble_brain_context(
     user_message: str,
@@ -43,6 +106,7 @@ async def assemble_brain_context(
         "promaia" / "hvac" / etc = silo mode (hard domain filter)
     """
     db = get_db()
+    active_domain = normalize_domain(active_domain)
 
     # Priority 1: Profile (Who is Zack? How does he communicate?)
     async def get_profile():
@@ -96,7 +160,6 @@ async def assemble_brain_context(
             muninn = await get_muninn()
 
             # Build query from conversation history + current message
-            # (restores the old _assemble_context pattern of passing recent messages)
             query_parts = []
             if chat_id:
                 try:
@@ -128,14 +191,27 @@ async def assemble_brain_context(
                 # MuninnDB returned nothing — fall back to database
                 return await _db_memory_fallback(db, max_memories, active_domain)
 
-            lines = ["### Relevant Memories & Insights"]
-            # Apply retrieval penalty to assistant memories and cap at 2
+            # --- SILO FILTERING LOGIC ---
+            filtered_activations = []
             assistant_memories = 0
+            
             for a in activations:
-                # Silo mode: hard filter — drop memories from other domains
+                # Silo mode: hard filter
                 if active_domain:
-                    mem_domain = a.get("domain") or a.get("tags", {}).get("domain")
-                    if mem_domain and mem_domain.lower() != active_domain.lower():
+                    mem_domain = a.get("domain")
+                    if not mem_domain and a.get("tags"):
+                        tags = a["tags"]
+                        if isinstance(tags, list):
+                            for t in tags:
+                                if t.startswith("domain:"):
+                                    mem_domain = t.split(":", 1)[1]
+                                    break
+                        elif isinstance(tags, dict):
+                            mem_domain = tags.get("domain")
+
+                    # STRICT FILTERING: In silo mode, ONLY matching domains pass.
+                    # 'general' or untagged memories are blocked from specific silos.
+                    if normalize_domain(mem_domain) != active_domain:
                         continue
 
                 is_assistant = a.get("tags") and "assistant" in a["tags"]
@@ -144,12 +220,13 @@ async def assemble_brain_context(
                         continue
                     assistant_memories += 1
 
-                lines.append(f"- {a['content']}")
+                filtered_activations.append(a)
 
-            if len(lines) <= 1:
-                # All memories were filtered out in silo mode
+            if not filtered_activations:
                 return await _db_memory_fallback(db, max_memories, active_domain)
 
+            lines = ["### Relevant Memories & Insights"]
+            lines.extend(f"- {a['content']}" for a in filtered_activations)
             return "\n".join(lines)
         except Exception as e:
             logger.warning(f"Context muninn failed: {e}")
@@ -166,7 +243,7 @@ async def assemble_brain_context(
                     FROM actions a
                     LEFT JOIN domains d ON d.id = a.domain_id
                     WHERE a.status = 'pending'
-                    AND d.id = (SELECT id FROM domains WHERE LOWER(name) = LOWER(%s))
+                    AND LOWER(d.name) = LOWER(%s)
                     ORDER BY a.extracted_at DESC LIMIT %s
                     """, (active_domain, max_actions)
                 )
@@ -228,21 +305,51 @@ async def assemble_brain_context(
     # Run all in parallel
     tasks = [get_profile(), get_history(), get_muninn_context(), get_actions(), get_projects()]
     results = await asyncio.gather(*tasks)
+    
+    # Combined for logic check
+    mem_block = results[2] or ""
+    proj_block = results[4] or ""
 
     # Combine with budget awareness
     full_context = "\n\n".join([r for r in results if r])
 
-    # Approximate token count (4 chars per token)
-    if len(full_context) / 4 > token_budget:
-        logger.info(f"Context exceeds budget ({len(full_context)/4:.0f} tokens), truncating...")
-        full_context = full_context[:token_budget * 4]
+    # IGNORANCE PROTOCOL GUARDRAIL (Phase 3)
+    # If in Silo mode and we found ZERO memories/projects, append a CRITICAL instruction
+    ignorance_warning = ""
+    if active_domain:
+        # Check if the blocks actually contain content beyond the headers
+        # Use more specific checks
+        has_memories = results[2] and results[2].strip() and results[2].count('\n') > 1
+        has_projects = results[4] and results[4].strip() and results[4].count('\n') > 1
+        
+        if not has_memories and not has_projects:
+            ignorance_warning = (
+                f"\n\nCRITICAL: MuninnDB returned ZERO results for the focused domain '{active_domain}'. "
+                "You MUST explicitly state you have no specific context for this domain. "
+                "Do NOT guess. Instead, remain an invested stakeholder by choosing one of these paths:\n"
+                "- CURIOSITY: 'I don't have context on that — what's the story?'\n"
+                "- HELPFULNESS: 'I don't know that yet, but I could look it up or put it on our list.'\n"
+                "- REDIRECT: 'I don't have that detail, but [Name] would likely know.'\n"
+                "Match the tone to Zack's energy. Be honest, but don't let the conversation die."
+            )
 
-    return full_context
+    # Approximate token count (4 chars per token)
+    budget_chars = token_budget * 4
+    warning_chars = len(ignorance_warning)
+    
+    if (len(full_context) + warning_chars) > budget_chars:
+        # Truncate full_context to fit the warning at the end
+        # We ensure we have room for the warning
+        keep_chars = max(0, budget_chars - warning_chars)
+        full_context = full_context[:keep_chars]
+    
+    return (full_context + ignorance_warning).strip()
 
 
 async def _db_memory_fallback(db, max_memories: int, active_domain: Optional[str] = None) -> str:
     """Fallback: recent memories from DB when MuninnDB is offline or returns empty."""
     try:
+        active_domain = normalize_domain(active_domain)
         if active_domain:
             rows = db.fetch_all(
                 """SELECT content, domain FROM memories

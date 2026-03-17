@@ -181,7 +181,7 @@ async def maia_stream_endpoint(websocket: WebSocket, room_id: int = 1):
             if not isinstance(user_message, str) or not user_message.strip():
                 continue
                 
-            reply = await generate_maia_response(user_message, status_callback=status_callback)
+            reply = await generate_maia_response(user_message, status_callback=status_callback, websocket=websocket)
             
             try:
                 await websocket.send_json({

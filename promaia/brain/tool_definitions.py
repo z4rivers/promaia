@@ -103,6 +103,17 @@ memory_tools = {
             }
         },
         {
+            "name": "set_focus",
+            "description": "Set the conversation's domain focus. Call this when Zack says 'focus on X', 'only X right now', or 'switching to X'. This tightens context retrieval to prioritize that domain. Call with domain=None to return to open mode.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "domain": {"type": "STRING", "description": "Domain name (e.g. 'promaia', 'hvac', 'heatpup', 'personal') or null for open mode"}
+                },
+                "required": ["domain"]
+            }
+        },
+        {
             "name": "recall_memory",
             "description": "Recall specific facts or context from MuninnDB based on a semantic search query.",
             "parameters": {
@@ -194,6 +205,7 @@ output_tools = {
             "hang_up_call",
             "log_system_feedback",
             "create_action",
+            "set_focus",
             "write_content"
         ]
     ]

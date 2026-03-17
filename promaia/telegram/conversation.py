@@ -327,8 +327,18 @@ async def _assemble_context(chat_id: int, user_message: str) -> str:
     """Build context string from brain sources.
     Delegates to the shared brain/context_assembly.py for consistency.
     """
+    db = _get_db()
+    session_id = await get_or_create_session(chat_id, gap_minutes=SESSION_GAP_MINUTES)
+    
+    # Fetch active domain focus for this session
+    session_row = db.fetch_one(
+        "SELECT active_domain FROM conversation_sessions WHERE session_id = %s",
+        (session_id,)
+    )
+    active_domain = session_row['active_domain'] if session_row else None
+
     from promaia.brain.context_assembly import assemble_brain_context
-    return await assemble_brain_context(user_message, chat_id=chat_id)
+    return await assemble_brain_context(user_message, chat_id=chat_id, active_domain=active_domain)
 
 
 # ---------------------------------------------------------------------------
@@ -369,12 +379,23 @@ async def generate_response(chat_id: int, user_message: str) -> str:
 
     # 5. Assemble context
     context = await _assemble_context(chat_id, user_message)
+    
+    # NEW: Fetch active domain focus for this session (again for prompt)
+    db = _get_db()
+    session_row = db.fetch_one(
+        "SELECT active_domain FROM conversation_sessions WHERE session_id = %s",
+        (session_id,)
+    )
+    active_domain = session_row['active_domain'] if session_row else None
 
     # 6. Call Gemini
     try:
+        from promaia.brain.context_assembly import get_personality_prompt
         client = _get_genai_client()
+        current_prompt = get_personality_prompt(active_domain)
+        
         config = types.GenerateContentConfig(
-            system_instruction=PERSONALITY_SYSTEM_PROMPT,
+            system_instruction=current_prompt,
             temperature=0.7,
         )
         response = await asyncio.wait_for(
