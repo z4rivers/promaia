@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 import numpy as np
+from pathlib import Path
 from mcp.types import TextContent
 from datetime import datetime, timezone
 from promaia.storage.vector_db import VectorDBManager
@@ -62,6 +63,48 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         )
     else:
         lines.append("## Promaia: Online\n")
+
+    # --- Brain boot status check ---
+    try:
+        startup_status_file = Path.home() / ".promaia" / "startup.status"
+        boot_warning = None
+
+        if startup_status_file.exists():
+            import json as _json
+            boot_data = _json.loads(startup_status_file.read_text(encoding="utf-8"))
+            if not boot_data.get("brain_healthy"):
+                boot_warning = (
+                    f"Brain server was NOT healthy at boot "
+                    f"(boot time: {boot_data.get('boot_time_sec', '?')}s, "
+                    f"at {boot_data.get('timestamp', '?')}). "
+                    f"If MCP tools are missing, restart Claude Code."
+                )
+        else:
+            boot_warning = (
+                "No boot status file found (~/.promaia/startup.status). "
+                "Brain server may not have been ready when this session started."
+            )
+
+        # Also check uptime — if brain just started, tools may have been missed
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://127.0.0.1:8751/health", timeout=3.0)
+                if resp.status_code == 200:
+                    health_data = resp.json()
+                    uptime = health_data.get("uptime_sec", 999)
+                    if uptime < 60 and not boot_warning:
+                        boot_warning = (
+                            f"Brain server started only {int(uptime)}s ago. "
+                            f"If MCP tools are missing, restart Claude Code."
+                        )
+        except Exception:
+            pass
+
+        if boot_warning:
+            lines.append(f"## Boot Warning\n{boot_warning}\n")
+    except Exception:
+        pass  # never let boot check crash the briefing
 
     # --- Campfire Context (Phase 3 & 5) ---
     try:
