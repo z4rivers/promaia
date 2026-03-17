@@ -32,3 +32,10 @@ context_logs/
 tmp/
 *.zip
 *.exe
+
+.git
+node_modules
+bin
+data
+promaia/web/static/vad
+promaia.egg-info
