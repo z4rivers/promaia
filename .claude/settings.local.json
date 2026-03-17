@@ -118,7 +118,9 @@
       "Bash(\"$HOME/.turso/bin/turso.exe\" auth:*)",
       "Bash(wsl bash:*)",
       "mcp__brain__message_send",
-      "Bash(find ~/.claude -name *.json -o -name .mcp.json)"
+      "Bash(find ~/.claude -name *.json -o -name .mcp.json)",
+      "Bash(python -c \":*)",
+      "Bash(muninn --version)"
     ]
   }
 }
