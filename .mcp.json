@@ -7,12 +7,6 @@
         "kapture-mcp@latest",
         "bridge"
       ]
-    },
-    "zbrain": {
-      "url": "http://127.0.0.1:8751/mcp/sse",
-      "headers": {
-        "Authorization": "Bearer 9Aps8JMHcA_2yl9yY3Obr4MCj_ZfSMsx3nZBxx5YafM"
-      }
     }
   }
 }

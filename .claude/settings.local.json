@@ -113,7 +113,12 @@
       "WebFetch(domain:docs.turso.tech)",
       "WebFetch(domain:turso.tech)",
       "WebFetch(domain:docs.railway.com)",
-      "WebFetch(domain:www.meetgor.com)"
+      "WebFetch(domain:www.meetgor.com)",
+      "Bash(cargo --version)",
+      "Bash(\"$HOME/.turso/bin/turso.exe\" auth:*)",
+      "Bash(wsl bash:*)",
+      "mcp__brain__message_send",
+      "Bash(find ~/.claude -name *.json -o -name .mcp.json)"
     ]
   }
 }
