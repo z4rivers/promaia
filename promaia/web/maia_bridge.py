@@ -152,7 +152,7 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
             tools=gemini_tools
         )
         
-        max_turns = 4 # Reduced turns as bridge pre-gathers context
+        max_turns = 8 # Enough room for tool calls + final text response
         response_text = None
         failed_tools = set()
 
@@ -220,7 +220,11 @@ async def generate_maia_response(user_message: str, status_callback=None, image_
                 ),
                 timeout=30.0,
             )
-            response_text = final_response.text if final_response and final_response.text else None
+            if final_response and final_response.candidates:
+                text_parts = [p.text for p in final_response.candidates[0].content.parts if hasattr(p, 'text') and p.text]
+                response_text = "\n".join(text_parts) if text_parts else None
+            else:
+                response_text = None
         
         # SEARCH ESCALATION
         if response_text:
