@@ -144,6 +144,8 @@ class LibSQLDB:
         self.db_path = db_path
         self._conn: Optional[libsql.Connection] = None
         self._wrapped_conn: Optional[LibSQLConnectionWrapper] = None
+        self._last_sync_time: float = 0.0
+        self._using_turso: bool = False
         self._init_connection()
 
     def _init_connection(self):
@@ -160,16 +162,20 @@ class LibSQLDB:
                     sync_interval=60,
                 )
                 self._conn.sync()
+                self._last_sync_time = time.time()
+                self._using_turso = True
                 logger.info(f"Connected to Turso (embedded replica at {self.db_path}, sync to {sync_url})")
             elif _USING_REAL_LIBSQL:
                 # Real libsql, local-only (no Turso credentials)
                 self._conn = libsql.connect(self.db_path)
+                self._last_sync_time = time.time()
                 logger.info(f"Connected to local libSQL database at {self.db_path} (no Turso sync)")
             else:
                 # Fallback: sqlite3 (Python 3.14 without libsql wheel)
                 self._conn = libsql.connect(self.db_path, check_same_thread=False)
                 self._conn.execute("PRAGMA journal_mode=WAL;")
                 self._conn.execute("PRAGMA synchronous=NORMAL;")
+                self._last_sync_time = time.time()
                 logger.info(f"Connected to local SQLite at {self.db_path} (sqlite3 fallback, no Turso)")
 
             self._wrapped_conn = LibSQLConnectionWrapper(self._conn)
@@ -260,9 +266,28 @@ class LibSQLDB:
 
     def close(self):
         pass
-        
+
     def close_pool(self):
         pass
+
+    def sync_age(self) -> float:
+        """Seconds since last successful Turso sync. Returns 0.0 if never synced (local-only)."""
+        if not self._last_sync_time:
+            return 0.0
+        return time.time() - self._last_sync_time
+
+    def try_sync(self) -> bool:
+        """Attempt a Turso sync. Returns True on success, False on failure or if not using Turso."""
+        if not self._using_turso or not hasattr(self._conn, 'sync'):
+            self._last_sync_time = time.time()  # local-only DB, "sync" is trivially successful
+            return True
+        try:
+            self._conn.sync()
+            self._last_sync_time = time.time()
+            return True
+        except Exception as e:
+            logger.warning(f"Turso sync failed: {e}")
+            return False
 
 # ---------------------------------------------------------------------------
 # Resolve the canonical database path: always relative to the project root
