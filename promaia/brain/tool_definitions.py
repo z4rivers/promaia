@@ -206,6 +206,7 @@ output_tools = {
             "create_action",
             "set_focus",
             "recall_memory",
+            "read_file",
             # hang_up_call removed — voice-only, dead in web context
             # write_content removed — external process not wired up in bridge
         ]
