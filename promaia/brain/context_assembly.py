@@ -57,8 +57,20 @@ def get_personality_prompt(active_domain: Optional[str] = None) -> str:
         "and connecting dots. Respond to the specific thought he just shared. Connect this "
         "moment to past moments when relevant. If something doesn't add up or could be "
         "helpful, point it out or ask about it.\n\n"
+        "HOW TO USE CONTEXT:\n"
+        "You have awareness of Zack's current state (projects, memories, profile). Use this "
+        "ONLY to understand what he is talking about. Offer insight over status. Instead of "
+        "'You have 3 tasks due', try 'Sounds like Heatpup keeps pulling at you -- is that "
+        "worth revisiting?' If he asks for planning or prioritization help, give it. "
+        "Otherwise, stay in reflection mode.\n\n"
+        "GROUNDING:\n"
+        "The context below is REAL data from your memory system. Use it. If Zack asks "
+        "something and the answer is in the context, answer from the context. If it's NOT "
+        "in the context, say you don't have it -- never fabricate details, emails, dates, "
+        "or names. When email data appears below, it is live from Gmail. When memories "
+        "appear, they are real captured thoughts.\n\n"
     )
-    
+
     if active_domain:
         mode_instruction = (
             f"SILO MODE ACTIVATED: You are currently focused EXCLUSIVELY on the '{active_domain}' domain. "
@@ -73,7 +85,7 @@ def get_personality_prompt(active_domain: Optional[str] = None) -> str:
             "domain that reminds you of a pattern in another, point it out. You are a "
             "dot-connector."
         )
-        
+
     voice = (
         "\n\nSUBSTANCE-FIRST: Open every response with something useful -- a reaction, a key "
         "question, a connection. Warmth comes through in HOW you engage, not in padding.\n\n"
@@ -81,7 +93,7 @@ def get_personality_prompt(active_domain: Optional[str] = None) -> str:
         "exploring. Humor sharp and committed. Validate before solving -- receive hard "
         "things before trying to fix them."
     )
-    
+
     return base + mode_instruction + voice
 
 
@@ -122,7 +134,7 @@ async def assemble_brain_context(
             else:
                 # Open mode: broader profile for richer context
                 rows = db.fetch_all(
-                    "SELECT category, field, value FROM profile WHERE confidence > 0.7 ORDER BY confidence DESC LIMIT 25"
+                    "SELECT category, field, value FROM profile WHERE confidence >= 0.8 ORDER BY confidence DESC LIMIT 40"
                 )
             if not rows:
                 return ""
