@@ -94,7 +94,8 @@ async def assemble_brain_context(
     chat_id: int = None,
     include_calendar: bool = False,
     include_history: bool = True,
-    max_memories: int = 15,
+    max_memories: int = 8,
+    min_memory_score: float = 0.25,
     max_actions: int = 5,
     max_history: int = 6,
     token_budget: int = 6000,
@@ -200,6 +201,11 @@ async def assemble_brain_context(
             assistant_memories = 0
             
             for a in activations:
+                # Relevance floor — drop low-scoring noise
+                score = a.get("score", 1.0)
+                if score < min_memory_score:
+                    continue
+
                 # Silo mode: hard filter
                 if active_domain:
                     mem_domain = a.get("domain")
