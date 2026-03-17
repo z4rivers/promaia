@@ -98,6 +98,7 @@ class SignalsDB:
         SELECT * FROM messages 
         WHERE (to_agent = ? OR to_agent IS NULL) 
         AND status IN ('new', 'seen')
+        AND datetime(created_at) > datetime('now', '-24 hours')
         ORDER BY created_at ASC;
         """
         return self.db.fetch_all(query, (agent_name,))
@@ -207,6 +208,15 @@ class SignalsDB:
             
             self.db.execute(idle_query)
             self.db.execute(offline_query)
+            
+            # 1.5 Expire extremely old unhandled messages
+            expire_query = """
+            UPDATE messages 
+            SET status = 'expired' 
+            WHERE status IN ('new', 'seen') 
+            AND datetime(created_at) < datetime('now', '-7 days');
+            """
+            self.db.execute(expire_query)
             
             # 2. Revert in_progress messages for offline agents
             revert_query = """
