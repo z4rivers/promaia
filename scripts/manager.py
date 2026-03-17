@@ -129,6 +129,10 @@ def cleanup_existing_processes():
     import subprocess
     print("Pre-flight check: cleaning up any lingering processes...")
     
+    if sys.platform != "win32":
+        print("Non-Windows platform detected. Skipping native process cleanup.")
+        return
+    
     # Signatures of processes we own
     target_signatures = [
         "uvicorn promaia.web.main:app",
@@ -188,6 +192,8 @@ def cleanup_existing_processes():
 def main():
     print(f"Starting Promaia Unified Manager. Logging to {LOG_FILE.absolute()}")
     
+    processes = []
+    
     LOCK_FILE = Path.home() / ".promaia" / "manager.lock"
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     if LOCK_FILE.exists():
@@ -224,7 +230,10 @@ def main():
 
         if muninn_enabled:
             print("Starting MuninnDB daemon...")
-            subprocess.run(["muninn", "start"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.run(["muninn", "start"], shell=(sys.platform == "win32"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                print(f"Warning: Could not start MuninnDB daemon: {e}")
 
         processes = [
             ManagedProcess("Brain Daemon", [sys.executable, "-m", "promaia.brain.mcp_server"], "BRAIN"),
