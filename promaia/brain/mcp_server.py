@@ -997,7 +997,9 @@ def _auto_fix_mcp_config(host: str, port: int, token: str):
 # ---------------------------------------------------------------------------
 def create_app() -> Starlette:
     """Build the Starlette ASGI app with MCP session manager."""
-    session_manager = StreamableHTTPSessionManager(app=server)
+    session_manager = StreamableHTTPSessionManager(
+        app=server, json_response=True, stateless=True,
+    )
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:

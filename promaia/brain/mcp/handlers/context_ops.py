@@ -236,7 +236,7 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         if messages:
             lines.append("## Pending Messages")
             for m in messages:
-                lines.append(f"- [{m['id']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}")
+                lines.append(f"- [{m['uuid']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}")
             lines.append("")
         else:
             lines.append("## Pending Messages\nNo new messages.\n")
@@ -320,7 +320,10 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
     except Exception as e:
         logger.warning(f"Could not log briefing event: {e}")
 
-    return [TextContent(type="text", text="\n".join(lines))]
+    text = "\n".join(lines)
+    # Sanitize surrogates that break JSON serialization
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    return [TextContent(type="text", text=text)]
 
 async def _handle_context(args: dict) -> list[TextContent]:
     """Read directive and current state for a domain."""
