@@ -1,8 +1,11 @@
 """
-Brain MCP Server — 17 tools for zBrain.
+Brain MCP Server — 26 tools for zBrain.
 
 Exposes Claude's persistent memory system as MCP tools over Streamable HTTP.
 Runs as an always-on daemon (default: 127.0.0.1:8751) with bearer token auth.
+Includes deep health monitoring (/health), startup validation, and CLI diagnostics
+(python -m promaia brain check).
+
 Claude calls these tools to get briefings, capture thoughts, search memories,
 manage project context, track actions, maintain a personal profile,
 manage the onboarding flow, run data ingestion channels, and perform
