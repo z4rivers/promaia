@@ -189,6 +189,26 @@ def cleanup_existing_processes():
     else:
         print("No lingering processes found.")
 
+def _wait_for_brain_health(host="127.0.0.1", port=8751, timeout=10):
+    """Poll brain /health until it responds or timeout.
+    Returns the parsed health JSON on any valid response (ok, degraded, or error).
+    Returns None only on timeout (brain never responded at all).
+    """
+    import urllib.request
+    import json as _json
+
+    url = f"http://{host}:{port}/health"
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                return _json.loads(resp.read())
+        except Exception:
+            time.sleep(1)
+
+    return None
+
 def main():
     print(f"Starting Promaia Unified Manager. Logging to {LOG_FILE.absolute()}")
     
@@ -251,9 +271,29 @@ def main():
         except Exception as e:
             print(f"Failed to run pre-flight migrations: {e}")
 
-        for p in processes:
+        # Start Brain Daemon first and wait for health
+        brain_proc = processes[0]  # Brain Daemon is always first
+        brain_proc.start()
+
+        print("Waiting for Brain Daemon health check...")
+        health = _wait_for_brain_health(timeout=15)
+        if health is None:
+            print("CRITICAL: Brain daemon did not respond on :8751 within 15s.")
+            print("Claude Code MCP tools will NOT work this session.")
+        elif health.get("status") == "error":
+            print(f"WARNING: Brain daemon is up but unhealthy: {health.get('status')}")
+            for name, check in health.get("checks", {}).items():
+                if check.get("status") not in ("ok", "listening"):
+                    print(f"  {name}: {check.get('status')} — {check.get('error', check.get('reason', ''))}")
+        elif health.get("status") == "degraded":
+            print(f"Brain daemon healthy (degraded — non-critical subsystem down)")
+        else:
+            print(f"Brain daemon healthy ({health.get('checks', {}).get('tools', {}).get('count', '?')} tools)")
+
+        # Start remaining services
+        for p in processes[1:]:
             p.start()
-            time.sleep(1) # stagger startups slightly
+            time.sleep(1)
 
         while True:
             time.sleep(2)
