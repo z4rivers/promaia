@@ -859,7 +859,7 @@ async def _health_endpoint(request: Request) -> JSONResponse:
         _health_cache = await run_checks(
             db=get_db(),
             vector_mgr=get_vector_mgr(),
-            server=server,
+            tool_list_fn=list_tools,
             include_mcp_registration=False,
             host=os.environ.get("BRAIN_MCP_HOST", "127.0.0.1"),
             port=int(os.environ.get("BRAIN_MCP_PORT", "8751")),
@@ -910,7 +910,7 @@ async def _validate_startup():
     result = await run_checks(
         db=get_db(),
         vector_mgr=get_vector_mgr(),
-        server=server,
+        tool_list_fn=list_tools,
         include_mcp_registration=(env == "local"),
         host=host,
         port=port,

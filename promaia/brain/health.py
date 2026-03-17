@@ -103,12 +103,18 @@ async def check_env_vars() -> dict[str, Any]:
     return {"status": "ok" if not missing else "error", "missing": missing}
 
 
-async def check_tools(server=None) -> dict[str, Any]:
-    if server is None:
+async def check_tools(tool_list_fn=None) -> dict[str, Any]:
+    """Check MCP tools are registered.
+
+    Args:
+        tool_list_fn: The module-level list_tools() async function from mcp_server.
+                      Pass the decorated function directly, not the server object.
+    """
+    if tool_list_fn is None:
         return {"status": "ok", "count": -1, "note": "no server instance (CLI mode)"}
     try:
-        tools = await server.list_tools()
-        count = len(tools.tools) if hasattr(tools, 'tools') else len(tools)
+        tools = await tool_list_fn()
+        count = len(tools) if isinstance(tools, list) else 0
         return {"status": "ok" if count > 0 else "error", "count": count}
     except Exception as e:
         return {"status": "error", "count": 0, "error": str(e)}
@@ -213,7 +219,7 @@ async def check_startup_status() -> dict[str, Any]:
 async def run_checks(
     db=None,
     vector_mgr=None,
-    server=None,
+    tool_list_fn=None,
     include_mcp_registration: bool = True,
     include_port_check: bool = False,
     host: str = "127.0.0.1",
@@ -226,7 +232,7 @@ async def run_checks(
         "vector_db": check_vector_db(vector_mgr),
         "muninn": check_muninn(),
         "env_vars": check_env_vars(),
-        "tools": check_tools(server),
+        "tools": check_tools(tool_list_fn),
     }
     results = {}
     for key, coro in tasks.items():
