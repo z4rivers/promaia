@@ -1,9 +1,9 @@
-.git
-.claude
-zbrain-patches
-screenshots
-screenshots and samples
-__pycache__
+.git/
+.claude/
+zbrain-patches/
+screenshots/
+screenshots and samples/
+__pycache__/
 *.pyc
 .env
 .env.*
@@ -15,22 +15,20 @@ gmail_human_dump.json
 gmail_life_analysis.md
 CLAUDE.md.template
 SETUP.md
-credentials
-node_modules
+credentials/
+node_modules/
 promaia.db
 promaia.db-shm
 promaia.db-wal
-logs
-.planning
-docs
-scripts/debug
-scripts/migrations
-bin
-data
-promaia/web/static/vad
-screenshots and samples
-context_logs
-tmp
-zbrain-patches
+logs/
+.planning/
+docs/
+scripts/debug/
+scripts/migrations/
+bin/
+data/
+promaia/web/static/vad/
+context_logs/
+tmp/
 *.zip
 *.exe
