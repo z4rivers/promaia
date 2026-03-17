@@ -2,6 +2,9 @@
 .git/
 node_modules/
 __pycache__/
+Lib/
+Scripts/
+Include/
 *.pyc
 .env
 .env.*
