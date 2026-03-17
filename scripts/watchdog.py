@@ -63,6 +63,20 @@ def is_promaia_up() -> bool:
     except Exception:
         return False
 
+def is_brain_up() -> bool:
+    """Return True if Brain MCP /health responds 200 with ok or degraded status."""
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8751/health",
+            headers={"User-Agent": "promaia-watchdog/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return data.get("status") in ("ok", "degraded")
+    except Exception:
+        return False
+
+
 def is_muninn_up() -> bool:
     """Return True if MuninnDB /api/health responds 200."""
     try:
@@ -117,6 +131,21 @@ def send_telegram(message: str) -> bool:
 # Main
 # ---------------------------------------------------------------------------
 
+def _restart_brain():
+    """Restart brain via lifecycle (idempotent `brain start` command)."""
+    import subprocess as _sp
+    project_root = Path(__file__).parent.parent
+    try:
+        result = _sp.run(
+            [sys.executable, "-m", "promaia", "brain", "start"],
+            cwd=str(project_root),
+            capture_output=True, text=True, timeout=30,
+        )
+        return result.returncode == 0, result.stdout.strip()
+    except Exception as e:
+        return False, str(e)
+
+
 def main():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -124,22 +153,41 @@ def main():
         print(f"[{now}] Outside waking hours ({WAKING_START}:00–{WAKING_END}:00). Skipping.")
         return
 
+    brain_up = is_brain_up()
     promaia_up = is_promaia_up()
     muninn_up = is_muninn_up()
 
-    if promaia_up and muninn_up:
-        print(f"[{now}] Promaia and MuninnDB are UP. All good.")
+    if brain_up and promaia_up and muninn_up:
+        print(f"[{now}] Brain, Promaia, and MuninnDB are UP. All good.")
         return
 
-    # Something is down during waking hours — alert
+    # Brain is the most critical — handle it first
+    if not brain_up:
+        print(f"[{now}] Brain is DOWN. Attempting auto-restart...")
+        ok, detail = _restart_brain()
+
+        message = (
+            f"⚠️ *Brain MCP Server is OFFLINE*\n"
+            f"Checked at {now}\n"
+            f"Health endpoint: `http://127.0.0.1:8751/health`\n\n"
+        )
+        if ok:
+            message += f"✅ Auto-restart succeeded.\n{detail}"
+            print(f"[{now}] Brain restarted successfully.")
+        else:
+            message += f"❌ Auto-restart failed: {detail}"
+            print(f"[{now}] Brain restart FAILED: {detail}")
+
+        send_telegram(message)
+
     if not promaia_up:
         message = (
-            f"⚠️ *Promaia is OFFLINE*\n"
+            f"⚠️ *Promaia Web Server is OFFLINE*\n"
             f"Checked at {now}\n"
             f"Health endpoint: `{PROMAIA_URL}/api/health`\n\n"
             f"Attempting auto-restart via manager.py...\n"
         )
-        
+
         try:
             import subprocess
             import shutil
@@ -158,21 +206,17 @@ def main():
                 message += "❌ Failed to restart: pythonw.exe not found on PATH."
         except Exception as e:
             message += f"❌ Failed to restart: {e}"
-    else:
+
+        send_telegram(message)
+
+    if not muninn_up and promaia_up:
         message = (
             f"⚠️ *MuninnDB is OFFLINE*\n"
             f"Checked at {now}\n"
             f"Promaia server is running, but the cognitive memory substrate is unreachable.\n"
             f"Voice memory, text search, and AI association are severely degraded.\n"
         )
-
-    sent = send_telegram(message)
-    if sent:
-        status_msg = "Promaia DOWN" if not promaia_up else "Muninn DOWN"
-        print(f"[{now}] {status_msg} — Telegram alert sent.")
-    else:
-        print(f"[{now}] Alert FAILED to send.", file=sys.stderr)
-        sys.exit(1)
+        send_telegram(message)
 
 
 if __name__ == "__main__":

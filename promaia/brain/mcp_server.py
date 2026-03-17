@@ -993,6 +993,32 @@ def _auto_fix_mcp_config(host: str, port: int, token: str):
 
 
 # ---------------------------------------------------------------------------
+# Lifecycle heartbeat
+# ---------------------------------------------------------------------------
+async def _heartbeat_loop():
+    """Periodically update the lifecycle status file with health info."""
+    from promaia.brain.lifecycle import update_status
+    from datetime import datetime
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            try:
+                tools = await list_tools()
+                tool_count = len(tools)
+            except Exception:
+                tool_count = -1
+            update_status(
+                state="healthy",
+                last_health_check=datetime.now().isoformat(),
+                last_health_result="ok",
+                tools_count=tool_count,
+            )
+        except Exception:
+            pass  # Don't let heartbeat failure crash the server
+
+
+# ---------------------------------------------------------------------------
 # Starlette app factory
 # ---------------------------------------------------------------------------
 def create_app() -> Starlette:
@@ -1003,10 +1029,35 @@ def create_app() -> Starlette:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        from promaia.brain.lifecycle import update_status
+
         async with session_manager.run():
             logger.info("Brain MCP daemon ready")
             await _validate_startup()
-            yield
+
+            # Report healthy to lifecycle status file
+            try:
+                tools = await list_tools()
+                tool_count = len(tools)
+            except Exception:
+                tool_count = -1
+            update_status(
+                state="healthy",
+                last_health_check=__import__("datetime").datetime.now().isoformat(),
+                last_health_result="ok",
+                tools_count=tool_count,
+            )
+
+            # Start background heartbeat — updates status file every 60s
+            heartbeat_task = asyncio.create_task(_heartbeat_loop())
+            try:
+                yield
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
 
     app = Starlette(
         routes=[
@@ -1038,10 +1089,15 @@ if __name__ == "__main__":
         run_selftest()
     else:
         import uvicorn
+        from promaia.brain.lifecycle import write_pid, remove_pid, write_status, update_status
 
         host = os.environ.get("BRAIN_MCP_HOST", "127.0.0.1")
         port = int(os.environ.get("BRAIN_MCP_PORT", "8751"))
         log_level = os.environ.get("BRAIN_LOG_LEVEL", "info").lower()
+
+        # Register with lifecycle system
+        write_pid()
+        write_status(state="starting", started_at=__import__("datetime").datetime.now().isoformat())
 
         logger.info(f"Starting zBrain MCP daemon on {host}:{port}")
         try:
@@ -1055,6 +1111,7 @@ if __name__ == "__main__":
             logger.info("Brain MCP daemon stopped")
         except Exception as e:
             logger.error(f"Fatal error: {e}", exc_info=True)
+            update_status(state="crashed", error=str(e))
             sys.exit(1)
         finally:
             try:
@@ -1062,3 +1119,5 @@ if __name__ == "__main__":
                 get_db().close_pool()
             except Exception as e:
                 logger.error(f"Failed to close database connection pool: {e}")
+            remove_pid()
+            update_status(state="stopped")

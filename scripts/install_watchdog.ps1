@@ -95,16 +95,52 @@ Register-ScheduledTask `
 Write-Host "[OK] PromaiaWatchdog task registered - runs hourly 07:00-23:00." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
-# 3. Verify
+# 3. BRAIN WATCHDOG — runs 'brain start' every 5 min (idempotent, ensures brain is always up)
+# ---------------------------------------------------------------------------
+
+$BrainAction = New-ScheduledTaskAction `
+    -Execute $Python `
+    -Argument "-m promaia brain start" `
+    -WorkingDirectory $ProjectRoot
+
+# Repeat every 5 minutes, indefinitely
+$BrainTrigger = New-ScheduledTaskTrigger `
+    -Once `
+    -At "00:00" `
+    -RepetitionInterval (New-TimeSpan -Minutes 5) `
+    -RepetitionDuration ([TimeSpan]::MaxValue)
+
+$BrainSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 1) `
+    -StartWhenAvailable
+
+Unregister-ScheduledTask -TaskName "PromaiBrainWatchdog" -Confirm:$false -ErrorAction SilentlyContinue
+
+Register-ScheduledTask `
+    -TaskName   "PromaiBrainWatchdog" `
+    -Action     $BrainAction `
+    -Trigger    $BrainTrigger `
+    -Settings   $BrainSettings `
+    -RunLevel   Highest `
+    -Description "Every 5 min: ensures Brain MCP server is running (idempotent start)" `
+    | Out-Null
+
+Write-Host "[OK] PromaiBrainWatchdog task registered - runs 'brain start' every 5 min." -ForegroundColor Green
+
+# ---------------------------------------------------------------------------
+# 4. Verify
 # ---------------------------------------------------------------------------
 
 Write-Host ""
 Write-Host "Registered tasks:" -ForegroundColor Cyan
-Get-ScheduledTask -TaskName "Promaia*" | Format-Table TaskName, State, Description -AutoSize
+Get-ScheduledTask -TaskName "Promai*" | Format-Table TaskName, State, Description -AutoSize
 
 Write-Host ""
 Write-Host "Done. To test the watchdog now (without waiting 60 min):" -ForegroundColor Yellow
 Write-Host "  python scripts\watchdog.py"
 Write-Host ""
-Write-Host "To start Promaia immediately via the scheduled task:" -ForegroundColor Yellow
+Write-Host "To start Brain immediately:" -ForegroundColor Yellow
+Write-Host "  python -m promaia brain start"
+Write-Host ""
+Write-Host "To start all Promaia services via the scheduled task:" -ForegroundColor Yellow
 Write-Host "  Start-ScheduledTask -TaskName 'PromaiaAutostart'"

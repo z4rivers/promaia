@@ -255,15 +255,19 @@ def main():
             except Exception as e:
                 print(f"Warning: Could not start MuninnDB daemon: {e}")
 
+        # --skip-brain flag: startup.py already started brain independently
+        skip_brain = "--skip-brain" in sys.argv
+        from promaia.brain.lifecycle import (
+            start_brain, stop_brain, is_brain_alive, read_pid,
+        )
+
         processes = [
-            ManagedProcess("Brain Daemon", [sys.executable, "-m", "promaia.brain.mcp_server"], "BRAIN"),
             ManagedProcess("Web Server", [sys.executable, "-m", "uvicorn", "promaia.web.main:app", "--host", "0.0.0.0", "--port", os.environ.get("PORT", "8000")], "WEB"),
             ManagedProcess("Agent Scheduler", [sys.executable, "-m", "promaia.agents.scheduler_cli", "start"], "SCHED")
         ]
-        
+
         if telegram_enabled:
-            # Insert before scheduler
-            processes.insert(1, ManagedProcess("Telegram Bot", [sys.executable, "-m", "promaia.telegram_cli", "start"], "TG"))
+            processes.insert(0, ManagedProcess("Telegram Bot", [sys.executable, "-m", "promaia.telegram_cli", "start"], "TG"))
 
         print("Running pre-flight database migrations...")
         try:
@@ -271,38 +275,43 @@ def main():
         except Exception as e:
             print(f"Failed to run pre-flight migrations: {e}")
 
-        # Start Brain Daemon first and wait for health
-        brain_proc = processes[0]  # Brain Daemon is always first
-        brain_proc.start()
+        # Start Brain via lifecycle (idempotent — no-ops if already running)
+        brain_managed = not skip_brain
+        if skip_brain:
+            brain_pid = read_pid()
+            if brain_pid and is_brain_alive(brain_pid):
+                print(f"Brain already running (PID {brain_pid}, started by startup.py). Skipping.")
+            else:
+                print("--skip-brain passed but brain is not running. Starting it anyway.")
+                brain_managed = True
 
-        print("Waiting for Brain Daemon health check...")
-        health = _wait_for_brain_health(timeout=15)
-        if health is None:
-            print("CRITICAL: Brain daemon did not respond on :8751 within 15s.")
-            print("Claude Code MCP tools will NOT work this session.")
-        elif health.get("status") == "error":
-            print(f"WARNING: Brain daemon is up but unhealthy: {health.get('status')}")
-            for name, check in health.get("checks", {}).items():
-                if check.get("status") not in ("ok", "listening"):
-                    print(f"  {name}: {check.get('status')} — {check.get('error', check.get('reason', ''))}")
-        elif health.get("status") == "degraded":
-            print(f"Brain daemon healthy (degraded — non-critical subsystem down)")
-        else:
-            print(f"Brain daemon healthy ({health.get('checks', {}).get('tools', {}).get('count', '?')} tools)")
+        if brain_managed:
+            print("Starting Brain Daemon via lifecycle...")
+            ok = start_brain(foreground=False, wait_healthy=True, timeout=15)
+            if ok:
+                print(f"Brain daemon healthy (PID {read_pid()}).")
+            else:
+                print("CRITICAL: Brain daemon did not become healthy within 15s.")
+                print("Claude Code MCP tools will NOT work this session.")
 
         # Start remaining services
-        for p in processes[1:]:
+        for p in processes:
             p.start()
             time.sleep(1)
 
         while True:
             time.sleep(2)
             all_stopped = True
+
+            # Supervisor: check brain via lifecycle
+            if not is_brain_alive():
+                print("Brain daemon crashed. Restarting via lifecycle...")
+                start_brain(foreground=False, wait_healthy=True, timeout=15)
+
             for p in processes:
                 if not p.should_stop:
                     all_stopped = False
                 if not p.check_and_restart():
-                    # Process exceeded max restarts — mark it dead, but keep others alive
                     print(f"WARNING: {p.name} failed to stabilize after {MAX_RESTARTS} restarts. Abandoning it.")
                     p.should_stop = True
 
@@ -313,6 +322,13 @@ def main():
     except KeyboardInterrupt:
         print("\nReceived KeyboardInterrupt. Shutting down all processes...")
     finally:
+        # Stop brain via lifecycle (clean PID + status file)
+        try:
+            stop_brain()
+            print("Brain daemon stopped via lifecycle.")
+        except Exception as e:
+            print(f"Warning: lifecycle stop_brain failed: {e}")
+
         if 'processes' in dir():
             for p in reversed(processes):
                 p.stop()

@@ -53,27 +53,40 @@ def write_status(healthy: bool, boot_time: float, details: dict = None):
 def main():
     start = time.time()
 
+    # Ensure lifecycle module is importable
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    # Phase 1: Start brain FIRST via lifecycle (fast — ~5-10s)
+    # This ensures brain is accepting MCP connections before anything else.
+    from promaia.brain.lifecycle import start_brain, read_pid
+
+    brain_ok = start_brain(foreground=False, wait_healthy=True, timeout=20)
+    brain_elapsed = time.time() - start
+
+    if brain_ok:
+        brain_pid = read_pid()
+        write_status(
+            healthy=True,
+            boot_time=brain_elapsed,
+            details={"brain_status": "ok", "brain_pid": brain_pid},
+        )
+    else:
+        write_status(
+            healthy=False,
+            boot_time=brain_elapsed,
+            details={"error": "brain failed to start or become healthy"},
+        )
+
+    # Phase 2: Start the manager for remaining services (--skip-brain since brain is up)
     creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     subprocess.Popen(
-        [sys.executable, "-m", "promaia", "dev"],
+        [sys.executable, "-m", "promaia", "dev", "--skip-brain"],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=creation_flags,
     )
-
-    health = wait_for_brain_health()
-    elapsed = time.time() - start
-
-    if health:
-        status = health.get("status", "unknown")
-        write_status(
-            healthy=(status in ("ok", "degraded")),
-            boot_time=elapsed,
-            details={"brain_status": status},
-        )
-    else:
-        write_status(healthy=False, boot_time=elapsed, details={"error": "timeout"})
 
 
 if __name__ == "__main__":

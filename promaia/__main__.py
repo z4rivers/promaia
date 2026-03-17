@@ -20,16 +20,51 @@ def main():
         whisper_main(sys.argv[2:])
         return
 
-    # Fast path: 'python -m promaia brain check'
-    # Import health module directly (not mcp_server) to avoid heavy server init.
-    # Token is read from .env via dotenv, same as mcp_server does.
+    # Fast path: 'python -m promaia brain {start|stop|restart|status|check}'
+    # Imports only lightweight lifecycle module (not mcp_server) to avoid heavy server init.
     if len(sys.argv) > 1 and sys.argv[1] == "brain":
-        if len(sys.argv) > 2 and sys.argv[2] == "check":
-            from pathlib import Path
-            from dotenv import load_dotenv
-            _root = Path(__file__).resolve().parents[1]
-            load_dotenv(_root / ".env")
+        from pathlib import Path
+        from dotenv import load_dotenv
+        _root = Path(__file__).resolve().parents[1]
+        load_dotenv(_root / ".env")
 
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+
+        if subcmd == "start":
+            from promaia.brain.lifecycle import start_brain, get_brain_status, format_status
+            ok = start_brain(foreground=False, wait_healthy=True)
+            if ok:
+                print(format_status(get_brain_status()))
+                sys.exit(0)
+            else:
+                print("ERROR: Brain failed to start or become healthy.")
+                sys.exit(1)
+
+        elif subcmd == "stop":
+            from promaia.brain.lifecycle import stop_brain
+            if stop_brain():
+                print("Brain stopped.")
+                sys.exit(0)
+            else:
+                print("ERROR: Failed to stop brain.")
+                sys.exit(1)
+
+        elif subcmd == "restart":
+            from promaia.brain.lifecycle import restart_brain, get_brain_status, format_status
+            if restart_brain():
+                print(format_status(get_brain_status()))
+                sys.exit(0)
+            else:
+                print("ERROR: Brain restart failed.")
+                sys.exit(1)
+
+        elif subcmd == "status":
+            from promaia.brain.lifecycle import get_brain_status, format_status
+            status = get_brain_status()
+            print(format_status(status))
+            sys.exit(0 if status["alive"] else 2)
+
+        elif subcmd == "check":
             import os
             token = os.environ.get("BRAIN_MCP_TOKEN", "")
 
@@ -46,8 +81,9 @@ def main():
             if port_status == "not_listening":
                 sys.exit(2)
             sys.exit(0 if result["status"] != "error" else 1)
+
         else:
-            print("Usage: python -m promaia brain check")
+            print("Usage: python -m promaia brain {start|stop|restart|status|check}")
             sys.exit(1)
 
     # Full CLI — load cli.py (not cli/ package) via importlib
