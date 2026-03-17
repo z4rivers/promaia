@@ -2,6 +2,7 @@
 .claude
 zbrain-patches
 screenshots
+screenshots and samples
 __pycache__
 *.pyc
 .env
@@ -15,3 +16,12 @@ gmail_life_analysis.md
 CLAUDE.md.template
 SETUP.md
 credentials
+node_modules
+promaia.db
+promaia.db-shm
+promaia.db-wal
+logs
+.planning
+docs
+scripts/debug
+scripts/migrations
