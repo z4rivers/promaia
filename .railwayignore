@@ -25,3 +25,12 @@ logs
 docs
 scripts/debug
 scripts/migrations
+bin
+data
+promaia/web/static/vad
+screenshots and samples
+context_logs
+tmp
+zbrain-patches
+*.zip
+*.exe
