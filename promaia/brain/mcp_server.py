@@ -611,32 +611,32 @@ async def list_tools() -> list[Tool]:
 
         Tool(
             name="message_send",
-            description="Send a message to an agent (or broadcast if to=null).",
+            description="Send a signal to an agent. Routes through Whispers dispatcher with mode-aware delivery.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "to": {"type": "string"},
-                    "type": {"type": "string", "description": "request, response, correction, heads_up, handoff"},
+                    "to": {"type": "string", "description": "Recipient agent name"},
+                    "type": {"type": "string", "description": "request, inform, propose, accept, reject, heads_up, handoff, checkpoint"},
                     "subject": {"type": "string"},
                     "body": {"type": "string"},
-                    "context": {"type": "string", "description": "JSON payload of state (active_files, etc)"},
-                    "priority": {"type": "string", "description": "normal, high, urgent"}
+                    "context": {"type": "string", "description": "JSON payload of structured data"},
+                    "priority": {"type": "string", "description": "routine, priority, flash, system (also accepts: normal, high, urgent)"}
                 },
                 "required": ["type", "subject"]
             }
         ),
         Tool(
             name="message_check",
-            description="Check for new messages addressed to me.",
+            description="Check for new signals addressed to me. Returns up to 50 pending messages ordered by priority.",
             inputSchema={"type": "object", "properties": {}, "required": []}
         ),
         Tool(
             name="message_pickup",
-            description="Mark a message as in_progress and update presence. Pass active_files as JSON array to lock files.",
+            description="Mark a signal as in_progress and update presence. Pass active_files as JSON array to lock files.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "id": {"type": "integer"},
+                    "id": {"type": "string", "description": "Message UUID"},
                     "active_files": {"type": "string", "description": "JSON array of file paths"}
                 },
                 "required": ["id"]
@@ -644,13 +644,13 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="message_respond",
-            description="Reply to a message (threads via reply_to).",
+            description="Reply to a signal (threads via reply_to).",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "reply_to": {"type": "integer"},
+                    "reply_to": {"type": "string", "description": "UUID of parent message"},
                     "body": {"type": "string"},
-                    "type": {"type": "string", "default": "response"},
+                    "type": {"type": "string", "default": "inform"},
                     "context": {"type": "string"}
                 },
                 "required": ["reply_to", "body"]
@@ -659,17 +659,40 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="message_thread",
             description="View full conversation thread.",
-            inputSchema={"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}
+            inputSchema={"type": "object", "properties": {"id": {"type": "string", "description": "Message UUID"}}, "required": ["id"]}
         ),
         Tool(
             name="message_done",
             description="Mark a thread resolved.",
-            inputSchema={"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}
+            inputSchema={"type": "object", "properties": {"id": {"type": "string", "description": "Message UUID"}}, "required": ["id"]}
         ),
         Tool(
             name="presence_who",
-            description="Who is online right now and what are they working on?",
+            description="Who is online right now, what mode are they in, and what are they working on?",
             inputSchema={"type": "object", "properties": {}, "required": []}
+        ),
+        Tool(
+            name="signal_mode_set",
+            description="Set your reception mode. OPEN=receive all, FOCUSED=filter by senders/types, QUIET=queue everything.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "description": "open, focused, or quiet"},
+                    "allow_senders": {"type": "string", "description": "JSON array of agent names allowed through in FOCUSED mode"}
+                },
+                "required": ["mode"]
+            }
+        ),
+        Tool(
+            name="signal_mode_get",
+            description="Check any agent's current reception mode and filter.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent": {"type": "string", "description": "Agent name to check (default: claude-code)"}
+                },
+                "required": []
+            }
         ),
         Tool(
             name="ide_activity_broadcast",
@@ -790,6 +813,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         elif name == "message_thread": return await _handle_message_thread(arguments)
         elif name == "message_done": return await _handle_message_done(arguments)
         elif name == "presence_who": return await _handle_presence_who(arguments)
+        elif name == "signal_mode_set": return await _handle_signal_mode_set(arguments)
+        elif name == "signal_mode_get": return await _handle_signal_mode_get(arguments)
         elif name == "ide_activity_broadcast":
             import httpx
             async with httpx.AsyncClient() as client:
@@ -821,7 +846,11 @@ from promaia.brain.mcp.handlers.context_ops import _handle_briefing, _handle_con
 from promaia.brain.mcp.handlers.profile_ops import _handle_profile, _handle_update_profile, _handle_onboard, _handle_pc_scan, _handle_timeline
 from promaia.brain.mcp.handlers.gmail_ops import _handle_gmail_scan, _handle_gmail_query
 from promaia.brain.mcp.handlers.muninn_ops import _handle_activate
-from promaia.brain.mcp.handlers.signal_ops import _handle_message_send, _handle_message_check, _handle_message_pickup, _handle_message_respond, _handle_message_thread, _handle_message_done, _handle_presence_who
+from promaia.brain.mcp.handlers.signal_ops import (
+    _handle_message_send, _handle_message_check, _handle_message_pickup,
+    _handle_message_respond, _handle_message_thread, _handle_message_done,
+    _handle_presence_who, _handle_signal_mode_set, _handle_signal_mode_get
+)
 
 from promaia.brain.mcp.handlers.metrics_ops import _handle_brain_costs
 

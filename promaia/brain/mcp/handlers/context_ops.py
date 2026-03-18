@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import uuid
 import numpy as np
 from pathlib import Path
@@ -228,21 +229,38 @@ async def _handle_briefing(args: dict) -> list[TextContent]:
         lines.append("## Heartbeat Activity (last 24h)\n(query error)\n")
 
 
-    # --- Pending Messages ---
+    # --- Pending Signals (Whispers) ---
     try:
-        from promaia.storage.signals_db import SignalsDB
-        sdb = SignalsDB()
-        messages = sdb.check_inbox("claude-code")
-        if messages:
-            lines.append("## Pending Messages")
-            for m in messages:
-                lines.append(f"- [{m['uuid']}] from {m['from_agent']} - {m['msg_type']} ({m['status']}): {m['subject']}")
-            lines.append("")
+        import sqlite3 as _sqlite3
+        _wdb_path = os.environ.get("WHISPERS_DB_PATH", "./whispers.db")
+        if os.path.exists(_wdb_path):
+            _wconn = _sqlite3.connect(_wdb_path)
+            _wconn.row_factory = _sqlite3.Row
+            _wcur = _wconn.cursor()
+            _wcur.execute(
+                "SELECT uuid, from_agent, msg_type, subject, priority, created_at "
+                "FROM messages WHERE to_agent = 'claude-code' AND status = 'new' "
+                "ORDER BY CASE priority "
+                "  WHEN 'system' THEN 0 WHEN 'flash' THEN 1 "
+                "  WHEN 'priority' THEN 2 ELSE 3 END, "
+                "created_at ASC LIMIT 20"
+            )
+            messages = _wcur.fetchall()
+            _wconn.close()
+
+            if messages:
+                lines.append("## Pending Signals")
+                for m in messages:
+                    ptag = f"[{m['priority'].upper()}]" if m['priority'] != 'routine' else ""
+                    lines.append(f"  {ptag} From {m['from_agent']}: \"{m['subject']}\" ({m['msg_type']}, {m['created_at']})")
+                lines.append("")
+            else:
+                lines.append("## Pending Signals\nNo new signals.\n")
         else:
-            lines.append("## Pending Messages\nNo new messages.\n")
+            lines.append("## Pending Signals\nWhispers DB not initialized.\n")
     except Exception as e:
-        logger.warning(f"briefing messages query failed: {e}")
-        lines.append("## Pending Messages\n(query error)\n")
+        logger.warning(f"briefing whispers query failed: {e}")
+        lines.append("## Pending Signals\n(query error)\n")
 
     # --- Profile gap awareness ---
 
